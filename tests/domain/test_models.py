@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from smart_pid_domain.enums import (
     AIEngine, ConnectionState, ControllerMode, ControlObjective,
     ExecutionMode, IntegralType, OptimizerState, PIDStructure,
     ProcessSpeed, SignalStatus, UserRole,
 )
+from smart_pid_domain.models.controller import (
+    AIConfig, ControlOpts, Controller, IOOpts, PIDParams, ScaleConfig, TagBindings,
+)
+from smart_pid_domain.models.telemetry import ControlAction, TelemetryFrame
 
 
 class TestEnums:
@@ -49,3 +55,43 @@ class TestEnums:
         assert UserRole.ADMIN == "ADMIN"
         assert UserRole.SUPERVISOR == "SUPERVISOR"
         assert UserRole.OPERATOR == "OPERATOR"
+
+
+class TestPIDParams:
+    def test_defaults(self) -> None:
+        p = PIDParams()
+        assert p.gain == 1.0
+        assert p.reset == 10.0
+        assert p.rate == 0.0
+        assert p.alpha == 0.125
+        assert p.deadband == 0.0
+
+
+class TestScaleConfig:
+    def test_span(self) -> None:
+        s = ScaleConfig(eu_min=0.0, eu_max=100.0, unit="degC")
+        assert s.span == 100.0
+
+    def test_negative_range(self) -> None:
+        s = ScaleConfig(eu_min=-50.0, eu_max=50.0, unit="%")
+        assert s.span == 100.0
+
+
+class TestTelemetryFrame:
+    def test_is_frozen(self) -> None:
+        now = datetime.now(tz=timezone.utc)
+        frame = TelemetryFrame(
+            controller_id=1, pv=50.0, sp=50.0, co=25.0,
+            integral_val=1.0, timestamp=now, status=SignalStatus.GOOD,
+        )
+        assert frame.pv == 50.0
+        import pytest
+        with pytest.raises(AttributeError):
+            frame.pv = 99.0  # type: ignore[misc]
+
+
+class TestControlAction:
+    def test_construction(self) -> None:
+        now = datetime.now(tz=timezone.utc)
+        action = ControlAction(controller_id=1, co=45.0, integral_val=1.5, timestamp=now)
+        assert action.co == 45.0
