@@ -1,0 +1,58 @@
+"""Outbound port interfaces (domain -> external world)."""
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from datetime import datetime
+    from pathlib import Path
+
+    from smart_pid.domain.models.controller import Controller
+    from smart_pid.domain.models.telemetry import TelemetryFrame
+
+
+class ControlWriter(Protocol):
+    """Writes control actions to the process (OPC-UA or Simulator)."""
+
+    async def write_output(self, controller_id: int, co: float) -> None: ...
+
+    async def write_parameter(
+        self, controller_id: int, param: str, value: float
+    ) -> None: ...
+
+
+class ControllerRepository(Protocol):
+    """Persistence for controller configurations."""
+
+    async def get(self, controller_id: int) -> Controller: ...
+
+    async def list_all(self) -> list[Controller]: ...
+
+    async def save(self, controller: Controller) -> None: ...
+
+    async def delete(self, controller_id: int) -> None: ...
+
+
+class HistorianWriter(Protocol):
+    """Batch write process data to historian storage."""
+
+    async def write_batch(self, frames: list[TelemetryFrame]) -> None: ...
+
+    async def query(
+        self,
+        controller_id: int,
+        start: datetime,
+        end: datetime,
+    ) -> list[TelemetryFrame]: ...
+
+    async def cleanup_older_than(self, days: int) -> int: ...
+
+
+class ProjectStore(Protocol):
+    """Manages .spid project files."""
+
+    async def create(self, path: Path) -> None: ...
+
+    async def open(self, path: Path) -> None: ...
+
+    async def close(self) -> None: ...
