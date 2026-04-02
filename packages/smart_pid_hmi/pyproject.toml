@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "smart-pid-hmi"
+version = "0.1.0"
+description = "Smart PID — Desktop HMI Client"
+requires-python = ">=3.13"
+dependencies = [
+    "smart-pid-domain",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.10",
+    "ruff>=0.4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/smart_pid_hmi"]

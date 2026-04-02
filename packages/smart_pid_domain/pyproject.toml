@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "smart-pid-domain"
+version = "0.1.0"
+description = "Smart PID — Shared domain models, events, enums"
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic>=2.7",
+    "msgpack>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.10",
+    "ruff>=0.4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/smart_pid_domain"]
