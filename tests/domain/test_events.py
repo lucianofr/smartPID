@@ -3,9 +3,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from smart_pid_domain.enums import ConnectionState, SignalStatus
+import pytest
+
+from smart_pid_domain.enums import AIEngine, ConnectionState, ControlObjective, SignalStatus
 from smart_pid_domain.events import (
+    AIActionComputed,
     ControlActionComputed,
+    StatsUpdated,
     SystemStateChanged,
     TelemetryReceived,
 )
@@ -29,7 +33,6 @@ class TestTelemetryReceived:
             integral_val=1.0, timestamp=now, status=SignalStatus.GOOD,
         )
         event = TelemetryReceived(controller_id=1, frame=frame)
-        import pytest
         with pytest.raises(AttributeError):
             event.controller_id = 2  # type: ignore[misc]
 
@@ -42,6 +45,41 @@ class TestControlActionComputed:
             delta_cv=0.5, timestamp=now,
         )
         assert event.delta_cv == 0.5
+
+
+class TestAIActionComputed:
+    def test_frozen(self):
+        event = AIActionComputed(
+            controller_id=1,
+            gamma=0.5,
+            new_ki=1.5,
+            engine=AIEngine.FUZZY,
+            objective=ControlObjective.SP_TRACKING,
+            reasoning="test",
+            timestamp=datetime.now(UTC),
+        )
+        with pytest.raises(AttributeError):
+            event.gamma = 0.0  # type: ignore[misc]
+
+    def test_has_event_id(self):
+        event = AIActionComputed(
+            controller_id=1, gamma=0.5, new_ki=1.5,
+            engine=AIEngine.FUZZY, objective=ControlObjective.SP_TRACKING,
+            reasoning="test", timestamp=datetime.now(UTC),
+        )
+        assert event.event_id is not None
+
+
+class TestStatsUpdated:
+    def test_frozen(self):
+        event = StatsUpdated(
+            controller_id=1, iae=1.0, itae=2.0, mse=0.5,
+            std_dev=0.1, total_variation=3.0,
+            variability_sp=0.02, variability_range=0.01,
+            timestamp=datetime.now(UTC),
+        )
+        with pytest.raises(AttributeError):
+            event.iae = 0.0  # type: ignore[misc]
 
 
 class TestSystemStateChanged:
