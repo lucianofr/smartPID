@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from smart_pid_core.config import CoreSettings
 
 
@@ -17,5 +18,6 @@ class TestCoreSettings:
 
     def test_jwt_secret_required(self) -> None:
         import pytest
-        with pytest.raises(Exception):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
             CoreSettings()  # type: ignore[call-arg]

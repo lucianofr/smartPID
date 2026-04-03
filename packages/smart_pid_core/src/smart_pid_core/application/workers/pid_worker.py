@@ -1,23 +1,28 @@
 """PID Worker — high-priority daemon thread executing PID at the controller's scan rate."""
 from __future__ import annotations
+
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+
 import msgpack
-from smart_pid_domain.enums import ControllerMode
+
 from smart_pid_core.domain.services.pid_engine import PIDState
 from smart_pid_core.domain.services.pid_mode_manager import BlockStatus
+from smart_pid_domain.enums import ControllerMode
 
 if TYPE_CHECKING:
-    from smart_pid_domain.models.controller import Controller
     from smart_pid_core.application.event_bus import EventBus
     from smart_pid_core.domain.services.pid_engine import PIDEngine
     from smart_pid_core.domain.services.pid_mode_manager import ModeManager
+    from smart_pid_domain.models.controller import Controller
 
 
 class PIDWorker:
-    def __init__(self, bus: EventBus, controller: Controller, engine: PIDEngine, mode_manager: ModeManager) -> None:
+    def __init__(
+        self, bus: EventBus, controller: Controller, engine: PIDEngine, mode_manager: ModeManager
+    ) -> None:
         self._bus = bus
         self._controller = controller
         self._engine = engine
@@ -38,7 +43,9 @@ class PIDWorker:
 
     def start(self) -> None:
         self._stop_event.clear()
-        self._thread = threading.Thread(target=self._run, daemon=True, name=f"pid-worker-{self.controller_id}")
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name=f"pid-worker-{self.controller_id}"
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -65,7 +72,9 @@ class PIDWorker:
             self._drain_telemetry(telem_sub)
             self._drain_ai_actions(ai_sub)
 
-            if self._has_telemetry and self._mode in {ControllerMode.AUTO, ControllerMode.CAS, ControllerMode.RCAS}:
+            if self._has_telemetry and self._mode in {
+                ControllerMode.AUTO, ControllerMode.CAS, ControllerMode.RCAS
+            }:
                 params = self._controller.pid_params
                 out_limits = (self._controller.out_lo_lim, self._controller.out_hi_lim)
                 direct_acting = self._controller.control_opts.direct_acting
@@ -78,7 +87,7 @@ class PIDWorker:
                 action_data = {
                     "controller_id": self.controller_id, "co": result.cv,
                     "integral_val": result.new_state.cv, "delta_cv": result.delta_cv,
-                    "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+                    "timestamp": datetime.now(tz=UTC).isoformat(),
                 }
                 pub.send(f"ACTION.CTRL.{self.controller_id}".encode(), msgpack.packb(action_data))
 
@@ -87,7 +96,7 @@ class PIDWorker:
                     "controller_id": self.controller_id, "pv": self._last_pv,
                     "sp": self._last_sp, "co": self._last_co,
                     "integral_val": self._state.cv,
-                    "timestamp": datetime.now(tz=timezone.utc).isoformat(), "status": "GOOD",
+                    "timestamp": datetime.now(tz=UTC).isoformat(), "status": "GOOD",
                 }
                 pub.send(f"TELEMETRY.{self.controller_id}".encode(), msgpack.packb(telem_data))
 

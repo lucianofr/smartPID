@@ -1,14 +1,16 @@
 """Loop Manager — lifecycle management for controller PID loops."""
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+
 from smart_pid_core.application.workers.pid_worker import PIDWorker
 from smart_pid_core.domain.services.pid_engine import PIDEngine
 from smart_pid_core.domain.services.pid_mode_manager import ModeManager
 
 if TYPE_CHECKING:
-    from smart_pid_domain.models.controller import Controller
     from smart_pid_core.application.event_bus import EventBus
+    from smart_pid_domain.models.controller import Controller
 
 
 @dataclass
@@ -32,8 +34,12 @@ class LoopManager:
             return
         engine = PIDEngine()
         mode_manager = ModeManager()
-        pid_worker = PIDWorker(bus=self._bus, controller=controller, engine=engine, mode_manager=mode_manager)
-        ctx = LoopContext(controller=controller, pid_worker=pid_worker, engine=engine, mode_manager=mode_manager)
+        pid_worker = PIDWorker(
+            bus=self._bus, controller=controller, engine=engine, mode_manager=mode_manager
+        )
+        ctx = LoopContext(
+            controller=controller, pid_worker=pid_worker, engine=engine, mode_manager=mode_manager
+        )
         self._loops[controller.id] = ctx
         pid_worker.start()
 

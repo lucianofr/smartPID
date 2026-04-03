@@ -1,10 +1,13 @@
 from __future__ import annotations
+
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+
 import msgpack
 import pytest
-from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
+from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.workers.db_worker import DBWorker
 
@@ -30,14 +33,16 @@ class TestDBWorker:
         try:
             pub = bus.create_publisher()
             time.sleep(0.05)
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
             frame_data = {
                 "controller_id": 1, "pv": 55.0, "sp": 50.0, "co": 30.0,
                 "integral_val": 1.2, "timestamp": now.isoformat(), "status": "GOOD",
             }
             pub.send(b"TELEMETRY.1", msgpack.packb(frame_data))
             time.sleep(0.3)
-            result = await historian.query(1, now - timedelta(seconds=5), now + timedelta(seconds=5))
+            result = await historian.query(
+                1, now - timedelta(seconds=5), now + timedelta(seconds=5)
+            )
             assert len(result) >= 1
             assert result[0].pv == 55.0
         finally:
@@ -51,7 +56,7 @@ class TestDBWorker:
         try:
             pub = bus.create_publisher()
             time.sleep(0.05)
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
             for i in range(5):
                 frame_data = {
                     "controller_id": 1, "pv": 50.0 + i, "sp": 50.0, "co": 25.0,
@@ -59,7 +64,9 @@ class TestDBWorker:
                 }
                 pub.send(b"TELEMETRY.1", msgpack.packb(frame_data))
             time.sleep(0.3)
-            result = await historian.query(1, now - timedelta(seconds=5), now + timedelta(seconds=5))
+            result = await historian.query(
+                1, now - timedelta(seconds=5), now + timedelta(seconds=5)
+            )
             assert len(result) == 5
         finally:
             worker.stop()

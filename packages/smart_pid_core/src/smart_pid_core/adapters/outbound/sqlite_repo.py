@@ -1,10 +1,12 @@
 """SQLite-backed Controller repository adapter."""
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiosqlite
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from smart_pid_domain.enums import (
     AIEngine,
@@ -24,9 +26,6 @@ from smart_pid_domain.models.controller import (
     ScaleConfig,
     TagBindings,
 )
-
-if TYPE_CHECKING:
-    pass
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS Usuarios (
@@ -253,7 +252,9 @@ class SQLiteRepository:
     async def _update(self, c: Controller) -> None:
         params = self._controller_to_params(c)
         assignments = ", ".join(f"{k} = ?" for k in params)
-        sql = f"UPDATE Controladores SET {assignments}, atualizado_em = datetime('now') WHERE id = ?"
+        sql = (
+            f"UPDATE Controladores SET {assignments}, atualizado_em = datetime('now') WHERE id = ?"
+        )
         await self.db.execute(sql, [*params.values(), c.id])
         await self.db.commit()
 

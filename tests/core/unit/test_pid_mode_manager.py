@@ -1,14 +1,11 @@
 """Unit tests for PID mode state machine."""
 from __future__ import annotations
 
-import pytest
-
-from smart_pid_domain.enums import ControllerMode, SignalStatus
 from smart_pid_core.domain.services.pid_mode_manager import (
     BlockStatus,
     ModeManager,
-    ModeTransition,
 )
+from smart_pid_domain.enums import ControllerMode, SignalStatus
 
 
 class TestModeTransitions:
@@ -16,7 +13,9 @@ class TestModeTransitions:
 
     def setup_method(self) -> None:
         self.mgr = ModeManager()
-        self.permitted = {ControllerMode.OOS, ControllerMode.MAN, ControllerMode.AUTO, ControllerMode.CAS}
+        self.permitted = {
+            ControllerMode.OOS, ControllerMode.MAN, ControllerMode.AUTO, ControllerMode.CAS
+        }
 
     def test_man_to_auto_allowed(self) -> None:
         result = self.mgr.request_mode(

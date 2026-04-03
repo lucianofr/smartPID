@@ -1,10 +1,12 @@
 """Outbound port interfaces — domain pushes data to infrastructure."""
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
+
     from smart_pid_domain.models.controller import Controller
     from smart_pid_domain.models.telemetry import TelemetryFrame
 
@@ -20,7 +22,9 @@ class ControllerRepository(Protocol):
 
 class HistorianWriter(Protocol):
     async def write_batch(self, frames: list[TelemetryFrame]) -> None: ...
-    async def query(self, controller_id: int, start: datetime, end: datetime) -> list[TelemetryFrame]: ...
+    async def query(
+        self, controller_id: int, start: datetime, end: datetime
+    ) -> list[TelemetryFrame]: ...
     async def cleanup_older_than(self, days: int) -> int: ...
 
 class ProjectStore(Protocol):

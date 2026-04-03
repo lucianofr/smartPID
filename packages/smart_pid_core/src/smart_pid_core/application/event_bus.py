@@ -1,6 +1,9 @@
 """ZeroMQ inproc:// event bus with XPUB/XSUB proxy for many-to-many messaging."""
 from __future__ import annotations
+
+import contextlib
 import threading
+
 import zmq
 
 
@@ -56,10 +59,8 @@ class EventBus:
         self._proxy_thread.start()
 
     def _run_proxy(self) -> None:
-        try:
+        with contextlib.suppress(zmq.ContextTerminated, zmq.ZMQError):
             zmq.proxy(self._xsub, self._xpub)
-        except (zmq.ContextTerminated, zmq.ZMQError):
-            pass
 
     def stop(self) -> None:
         if not self._running:

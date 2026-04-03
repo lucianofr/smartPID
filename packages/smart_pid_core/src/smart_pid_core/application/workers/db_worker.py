@@ -1,11 +1,14 @@
 """DB Worker — subscribes to bus, buffers telemetry, flushes to SQLite in batches."""
 from __future__ import annotations
+
 import asyncio
 import threading
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+
 import msgpack
+
 from smart_pid_domain.enums import SignalStatus
 from smart_pid_domain.models.telemetry import TelemetryFrame
 
@@ -17,7 +20,13 @@ if TYPE_CHECKING:
 class DBWorker:
     """Daemon thread that subscribes to TELEMETRY.* and flushes batches to SQLite."""
 
-    def __init__(self, bus: EventBus, historian: SQLiteHistorian, flush_interval_s: float = 5.0, batch_size: int = 500) -> None:
+    def __init__(
+        self,
+        bus: EventBus,
+        historian: SQLiteHistorian,
+        flush_interval_s: float = 5.0,
+        batch_size: int = 500,
+    ) -> None:
         self._bus = bus
         self._historian = historian
         self._flush_interval_s = flush_interval_s
@@ -70,7 +79,7 @@ class DBWorker:
                 controller_id=data["controller_id"],
                 pv=data["pv"], sp=data["sp"], co=data["co"],
                 integral_val=data["integral_val"],
-                timestamp=datetime.fromisoformat(data["timestamp"]).replace(tzinfo=timezone.utc),
+                timestamp=datetime.fromisoformat(data["timestamp"]).replace(tzinfo=UTC),
                 status=SignalStatus(data.get("status", "GOOD")),
             )
             self._buffer.append(frame)

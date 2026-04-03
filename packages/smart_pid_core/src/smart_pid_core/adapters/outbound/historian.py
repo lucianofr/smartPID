@@ -1,9 +1,11 @@
 """SQLite-backed historian adapter for telemetry data."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-import aiosqlite
+if TYPE_CHECKING:
+    import aiosqlite
 
 from smart_pid_domain.enums import SignalStatus
 from smart_pid_domain.models.telemetry import TelemetryFrame
@@ -63,7 +65,7 @@ class SQLiteHistorian:
                 sp=row[3],
                 co=row[4],
                 integral_val=row[5],
-                timestamp=datetime.fromisoformat(row[1]).replace(tzinfo=timezone.utc)
+                timestamp=datetime.fromisoformat(row[1]).replace(tzinfo=UTC)
                 if datetime.fromisoformat(row[1]).tzinfo is None
                 else datetime.fromisoformat(row[1]),
                 status=SignalStatus.GOOD,
