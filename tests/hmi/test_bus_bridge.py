@@ -1,0 +1,82 @@
+"""Tests for BusBridge — QTimer drains SimpleQueue -> Qt signals."""
+from queue import SimpleQueue
+
+import pytest
+
+from smart_pid_hmi.bus_bridge import BusBridge
+
+
+@pytest.fixture
+def bridge(qtbot):
+    q = SimpleQueue()
+    b = BusBridge(queue=q, refresh_ms=10)
+    yield b
+    b.stop()
+
+
+def test_emits_telemetry_signal(bridge, qtbot):
+    frame = {
+        "controller_id": 1, "pv": 45.0, "sp": 50.0,
+        "co": 62.0, "integral_val": 0.5,
+        "timestamp": "2026-04-03T10:00:00", "status": "GOOD",
+    }
+    bridge._queue.put(("STATUS.1", frame))
+    bridge.start()
+
+    with qtbot.waitSignal(bridge.telemetry_received, timeout=500) as sig:
+        pass
+    assert sig.args[0] == 1  # controller_id
+    assert sig.args[1]["pv"] == 45.0
+
+
+def test_batches_same_controller(bridge, qtbot):
+    """Multiple frames for same controller in one tick -> only last emitted."""
+    for pv in [10.0, 20.0, 30.0]:
+        frame = {
+            "controller_id": 1, "pv": pv, "sp": 50.0,
+            "co": 50.0, "integral_val": 0.0,
+            "timestamp": "2026-04-03T10:00:00", "status": "GOOD",
+        }
+        bridge._queue.put(("STATUS.1", frame))
+
+    received = []
+    bridge.telemetry_received.connect(lambda cid, f: received.append(f["pv"]))
+    bridge.start()
+    qtbot.wait(100)
+
+    # Should receive only the last value (30.0) for controller 1
+    assert len(received) == 1
+    assert received[0] == 30.0
+
+
+def test_connection_lost_after_timeout(qtbot):
+    q = SimpleQueue()
+    b = BusBridge(queue=q, refresh_ms=10, heartbeat_timeout_s=0.1)
+    b.start()
+    # Put one frame to start heartbeat, then wait for timeout
+    frame = {
+        "controller_id": 1, "pv": 45.0, "sp": 50.0,
+        "co": 62.0, "integral_val": 0.0,
+        "timestamp": "2026-04-03T10:00:00", "status": "GOOD",
+    }
+    q.put(("STATUS.1", frame))
+    qtbot.wait(50)
+
+    with qtbot.waitSignal(b.connection_lost, timeout=1000):
+        pass
+    b.stop()
+
+
+def test_latest_property(bridge, qtbot):
+    frame = {
+        "controller_id": 1, "pv": 45.0, "sp": 50.0,
+        "co": 62.0, "integral_val": 0.5,
+        "timestamp": "2026-04-03T10:00:00", "status": "GOOD",
+    }
+    bridge._queue.put(("STATUS.1", frame))
+    bridge.start()
+    qtbot.wait(100)
+
+    latest = bridge.latest(1)
+    assert latest is not None
+    assert latest["pv"] == 45.0
