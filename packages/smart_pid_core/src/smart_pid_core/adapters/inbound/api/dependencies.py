@@ -80,3 +80,13 @@ def get_simulator_adapter(request: Request):
             detail="Simulator not enabled",
         )
     return adapter
+
+
+def get_opcua_adapter(request: Request):
+    adapter = getattr(request.app.state, "opcua_adapter", None)
+    if adapter is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="OPC-UA not available (simulator mode active)",
+        )
+    return adapter

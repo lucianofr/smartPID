@@ -14,6 +14,7 @@ from smart_pid_core.adapters.inbound.api.routers import (
     commands,
     controllers,
     history,
+    opcua,
     simulator,
     system,
 )
@@ -40,6 +41,7 @@ def create_app(
     loop_manager: LoopManager,
     settings: CoreSettings,
     simulator_adapter=None,
+    opcua_adapter=None,
 ) -> FastAPI:
     """Build and configure the FastAPI application."""
     app = FastAPI(title="Smart PID API", version="2.0.0", lifespan=_lifespan)
@@ -51,6 +53,7 @@ def create_app(
     app.state.loop_manager = loop_manager
     app.state.settings = settings
     app.state.simulator_adapter = simulator_adapter
+    app.state.opcua_adapter = opcua_adapter
 
     # Register routers
     app.include_router(system.router, prefix="/system", tags=["system"])
@@ -59,6 +62,7 @@ def create_app(
     app.include_router(commands.router, prefix="/command", tags=["commands"])
     app.include_router(history.router, prefix="/history", tags=["history"])
     app.include_router(simulator.router, prefix="/simulator", tags=["simulator"])
+    app.include_router(opcua.router, prefix="/opcua", tags=["opcua"])
 
     register_error_handlers(app)
 
