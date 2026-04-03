@@ -18,6 +18,7 @@ from smart_pid_hmi.bus_bridge import BusBridge
 from smart_pid_hmi.config import HMISettings
 from smart_pid_hmi.pages.connection_page import ConnectionPage
 from smart_pid_hmi.pages.dashboard_page import DashboardPage
+from smart_pid_hmi.pages.simulator_page import SimulatorPage
 from smart_pid_hmi.services.session import Session
 from smart_pid_hmi.themes.isa101 import ISA101Theme
 
@@ -70,6 +71,17 @@ class MainWindow(QMainWindow):
         )
         toolbar.addWidget(self._user_label)
 
+        toolbar.addSeparator()
+        self._dashboard_btn = toolbar.addAction("Dashboard")
+        self._dashboard_btn.triggered.connect(
+            lambda: self._stack.setCurrentWidget(self._dashboard_page)
+        )
+        self._simulator_btn = toolbar.addAction("Simulator")
+        self._simulator_btn.triggered.connect(
+            lambda: self._stack.setCurrentWidget(self._simulator_page)
+        )
+        self._simulator_btn.setEnabled(False)  # enabled after login if backend has simulator
+
         spacer = QWidget()
         toolbar.addWidget(spacer)
         self.addToolBar(toolbar)
@@ -82,6 +94,8 @@ class MainWindow(QMainWindow):
         self._dashboard_page = DashboardPage(theme=theme, bus_bridge=bus_bridge)
         self._stack.addWidget(self._connection_page)
         self._stack.addWidget(self._dashboard_page)
+        self._simulator_page = SimulatorPage(theme=theme)
+        self._stack.addWidget(self._simulator_page)
 
         # Wire signals
         self._connection_page.login_requested.connect(self._on_login)
@@ -94,6 +108,11 @@ class MainWindow(QMainWindow):
         bus_bridge.connection_restored.connect(
             lambda: self._conn_indicator.setStyleSheet("color: green; background: transparent;")
         )
+        self._simulator_page.preset_changed.connect(self._send_sim_preset)
+        self._simulator_page.parameters_changed.connect(self._send_sim_parameters)
+        self._simulator_page.step_requested.connect(self._send_sim_step)
+        self._simulator_page.noise_requested.connect(self._send_sim_noise)
+        self._simulator_page.clear_disturbance_requested.connect(self._send_sim_clear)
 
     def _on_login(self, server_url: str, username: str, password: str) -> None:
         """Handle login in background thread."""
@@ -120,6 +139,7 @@ class MainWindow(QMainWindow):
         self._bus_bridge.start()
         self._load_dashboard()
         self._stack.setCurrentWidget(self._dashboard_page)
+        self._check_simulator_available()
 
     @Slot()
     def _login_failed(self) -> None:
@@ -142,6 +162,7 @@ class MainWindow(QMainWindow):
     @Slot()
     def _populate_dashboard(self) -> None:
         self._dashboard_page.populate_controllers(self._pending_controllers)
+        self._simulator_page.populate_controllers(self._pending_controllers)
 
     def _send_setpoint(self, controller_id: int, value: float) -> None:
         threading.Thread(
@@ -158,6 +179,72 @@ class MainWindow(QMainWindow):
     def _send_output(self, controller_id: int, value: float) -> None:
         threading.Thread(
             target=lambda: self._api_client.set_output(controller_id, value),
+            daemon=True,
+        ).start()
+
+    def _check_simulator_available(self) -> None:
+        """Check if backend has simulator and enable button if so."""
+        def do_check():
+            try:
+                status = self._api_client.get_simulator_status()
+                if status.enabled:
+                    QMetaObject.invokeMethod(
+                        self, "_enable_simulator", Qt.ConnectionType.QueuedConnection,
+                    )
+            except Exception:
+                pass  # Not available — button stays disabled
+
+        threading.Thread(target=do_check, daemon=True).start()
+
+    @Slot()
+    def _enable_simulator(self) -> None:
+        self._simulator_btn.setEnabled(True)
+
+    def _send_sim_preset(self, preset: str) -> None:
+        cid = self._simulator_page.current_controller_id
+        if cid is None:
+            return
+        threading.Thread(
+            target=lambda: self._api_client.set_simulator_preset(cid, preset),
+            daemon=True,
+        ).start()
+
+    def _send_sim_parameters(self, gain: float, tau1: float, tau2: float, dead_time: float) -> None:
+        cid = self._simulator_page.current_controller_id
+        if cid is None:
+            return
+        tau2_val = tau2 if tau2 > 0 else None
+        threading.Thread(
+            target=lambda: self._api_client.set_simulator_parameters(
+                cid, gain, tau1, tau2_val, dead_time,
+            ),
+            daemon=True,
+        ).start()
+
+    def _send_sim_step(self, amplitude: float) -> None:
+        cid = self._simulator_page.current_controller_id
+        if cid is None:
+            return
+        threading.Thread(
+            target=lambda: self._api_client.inject_simulator_disturbance(cid, "step", amplitude),
+            daemon=True,
+        ).start()
+
+    def _send_sim_noise(self, amplitude: float) -> None:
+        cid = self._simulator_page.current_controller_id
+        if cid is None:
+            return
+        threading.Thread(
+            target=lambda: self._api_client.inject_simulator_disturbance(cid, "noise", amplitude),
+            daemon=True,
+        ).start()
+
+    def _send_sim_clear(self) -> None:
+        cid = self._simulator_page.current_controller_id
+        if cid is None:
+            return
+        threading.Thread(
+            target=lambda: self._api_client.clear_simulator_disturbance(cid),
             daemon=True,
         ).start()
 
