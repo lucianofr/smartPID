@@ -1,5 +1,4 @@
 """Integration test: MockTelemetrySource -> BusBridge -> ControllerCardWidget."""
-import pytest
 
 from smart_pid_hmi.bus_bridge import BusBridge
 from smart_pid_hmi.services.mock_service import MockTelemetrySource

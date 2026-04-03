@@ -1,0 +1,154 @@
+# Projeto: Smart PID Edge Platform
+
+## Stack e padroes
+- Python 3.13, uv workspace (hatchling), monorepo
+- PySide6 (HMI desktop), ZeroMQ (msgpack), aiosqlite (WAL mode)
+- FastAPI + httpx (REST para HMI->Backend, NAO e web frontend)
+- pydantic v2 + pydantic-settings (prefixo SPID_)
+- PyJWT + bcrypt (auth, Phase 6)
+- Ruff (lint, line-length=100), mypy strict, pytest + pytest-asyncio
+- Codigo, commits e nomes de variaveis em ingles; comunicacao com usuario em portugues e aceitavel
+
+## Comandos principais
+- sync: `uv sync --all-packages`
+- test: `uv run pytest tests/ -v`
+- lint: `uv run --with ruff ruff check .`
+- lint fix: `uv run --with ruff ruff check --fix .`
+- mypy: `uv run mypy packages/`
+- run backend: `uv run python -m smart_pid_core`
+
+Nota: em ambientes Flatpak (VS Code) o binario uv pode estar em:
+`/home/luciano/.var/app/com.visualstudio.code/bin/uv`
+
+## Arquitetura
+
+Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI desktop).
+
+### Monorepo (3 pacotes)
+- `packages/smart_pid_domain/` — Modelos, enums, eventos, excecoes (ZERO dependencias de infra)
+- `packages/smart_pid_core/` — Backend daemon (PID engine, workers, event bus, SQLite, API)
+- `packages/smart_pid_hmi/` — Cliente desktop PySide6 (stub em Phase 1)
+
+### Estrutura do Backend (`smart_pid_core`)
+- `domain/services/` — PID engine (velocity form), mode manager (8 modos)
+- `domain/ports/` — Protocolos inbound/outbound (TelemetrySource, ControlWriter, etc.)
+- `application/` — Event bus (ZMQ XPUB/XSUB), loop manager, workers (PID, DB)
+- `adapters/outbound/` — SQLite repo (7 tabelas), historian (batch insert)
+- `config.py` — CoreSettings via pydantic-settings (SPID_ prefix)
+- `main.py` — Daemon entry point com signal handlers
+
+### Estrutura do Domain (`smart_pid_domain`)
+- `enums.py` — 14 StrEnums (ControllerMode, ExecutionMode, PIDStructure, etc.)
+- `models/` — Controller (30+ campos), PIDParams, TelemetryFrame, ControlAction
+- `events.py` — Frozen dataclasses com UUID (TelemetryReceived, ControlActionComputed, etc.)
+- `exceptions.py` — Hierarquia: SmartPIDError -> Domain/Infra/Communication/Project/Auth errors
+
+### Comunicacao
+- ZeroMQ inproc:// — Bus interno entre threads do Backend (XPUB/XSUB proxy, msgpack)
+- ZeroMQ tcp://5555 — PUB/SUB Backend->HMI (telemetria em tempo real)
+- FastAPI REST — HMI->Backend (comandos, historico, CRUD)
+- Topicos: TELEMETRY.{id}, ACTION.CTRL.{id}, ACTION.AI.{id}, STATUS.{id}
+
+### PID Engine
+- Velocity form: delta_cv = Kp * [(e-e1) + dt/Ti*e - Td*(pv-2pv1+pv2)/dt]
+- Anti-windup com ARW limits separados + 16x reset recovery
+- Bumpless transfer, SP ramp, derivative filter, integral deadband
+- 8 modos: OOS, IMan, LO, Man, Auto, Cas, RCas, ROut
+
+### Fuzzy Engine (Phase 5 — otimizacao de Ki)
+- Objetivo: ajuste online de Ki via logica fuzzy, sem intervencao manual
+- Entradas: error (E) e delta_error (ΔE), normalizados para -100%..+100% do span
+- 7 niveis linguisticos: NB, NM, NS, ZO, PS, PM, PB
+- Membership functions: triangulares (centro) + trapezoidais (extremos), 50% overlap
+- Defuzzificacao: Centro de Gravidade (CoG), saida gamma ∈ [-1.0, +1.0]
+- Atualizacao de Ki: `Ki_new = Ki * (1 + gamma * Sv)`, clamped a ai_limit_min/max
+- Speed factor (Sv): SLOW=0.30, MEDIUM=0.15, FAST=0.05
+- Cadencia: `T_cycle = dead_time_L * 3`
+- 3 matrizes de regras por objetivo de controle:
+  - **SP Tracking**: resposta rapida a mudancas de setpoint
+  - **Disturbance Rejection**: agressivo proximo a erro zero, minimiza offset
+  - **Surge Level**: foco em estabilidade da valvula
+- Cada loop PID seleciona independentemente: NONE, FUZZY ou RL
+
+### RL Engine (Phase 5 — otimizacao de Ki via Reinforcement Learning)
+- Algoritmos: SAC (Soft Actor-Critic) ou PPO (Proximal Policy Optimization)
+- Framework: stable-baselines3 (lazy import — so carrega quando habilitado)
+- Observation space: [error, delta_error, CO, integral_val] normalizados
+- Action space: gamma ∈ [-1.0, +1.0] (mesma interface do Fuzzy)
+- Mesma formula de atualizacao de Ki e guardrails (ai_limit_min/max) do Fuzzy
+- Reward functions por objetivo:
+  - **SP Tracking / Disturbance Rejection**: minimizar IAE/ITAE, penalizar TV (valve chattering)
+  - **Surge Level**: recompensar estabilidade da valvula, penalizar IAE apenas fora do deadband
+- Treinamento online continuo durante operacao
+- Telemetria de decisoes de tuning logada em `Log_Sintonia_IA`
+
+### Estatisticas de Performance (Phase 5)
+- Metricas computadas por loop: IAE, ITAE, ISE, MSE, desvio padrao, Total Variation (TV)
+- Variabilidade: `2*sigma/RANGE` (relativa ao span) e `2*sigma/SP` (relativa ao setpoint)
+
+## Variaveis de ambiente
+- `SPID_JWT_SECRET` — Obrigatorio (auth)
+- `SPID_LOG_LEVEL` — Default: INFO
+- `SPID_OPCUA_ENDPOINT` — Default: opc.tcp://localhost:4840
+- `SPID_API_PORT` / `SPID_API_HOST` — Default: 8000 / 0.0.0.0
+- `SPID_ZMQ_PUBLISH_PORT` — Default: 5555
+- `SPID_SIMULATOR_ENABLED` / `SPID_SIMULATOR_PORT` — Default: false / 4841
+
+## Documentos de referencia
+- Spec V2: `docs/superpowers/specs/2026-04-02-smart-pid-v2-architecture-design.md`
+- Plano Phase 1: `docs/superpowers/plans/2026-04-02-phase1-foundation-domain-pid-v2.md`
+- Review Phase 1: `docs/superpowers/reviews/2026-04-03-phase1-code-review.md`
+- Requisitos originais: `docs/smartPIDv2.md`
+- Referencia PID: `docs/bloco_pid.md`
+- Identidade Visual Dark Room: `docs/identidade_visual_Dark.md`
+- Identidade Visual ISA-101: `docs/identidade_visual_ISA101.md`
+- Identidade Visual MD3: `docs/identidade_visual_MD3.md`
+
+## Fases de implementacao (seguindo V2 Spec)
+1. **Phase 1 — Foundation + Domain + PID** ✅ (merged to main)
+2. **Phase 2 — REST API + Auth + Telemetry Publisher** ✅ (merged to main)
+3. Phase 3 — PySide6 HMI + OPC-UA I/O Worker
+4. Phase 4 — Simulator (digital twin)
+5. Phase 5 — AI (Fuzzy + RL) + Statistics
+6. Phase 6 — Alarms + RBAC fine-grained
+7. Phase 7 — Executive Dashboard + Multi-Trend + Export + Themes
+
+Phases 4/5/6 sao paralelizaveis apos Phase 3.
+
+## Convencoes
+- TDD: write failing test -> implement -> green -> commit
+- Commits convencionais: feat(scope), fix(scope), chore(scope)
+- Hexagonal: domain NUNCA importa de adapters/application
+- Protocol classes para ports (sem ABC)
+- Frozen dataclasses para eventos e telemetria
+- StrEnum para todos os enumerados
+- SQLite WAL mode, .spid files, 7-day retention
+
+## Compact Instructions
+Ao compactar, preserve:
+- Fase atual e quais fases ja foram concluidas
+- Decisoes de arquitetura (hexagonal, PySide6 nao PyQt6, ZMQ dual bus, monorepo 3 pacotes)
+- Estado das tarefas em progresso (task number, o que falta)
+- Variaveis de ambiente obrigatorias (SPID_*)
+- Caminho do uv em Flatpak se relevante
+- Issues de code review pendentes (se houver)
+- Branch atual e se esta em worktree
+
+## Como passar o estado entre sessões (o "onde parou")
+
+Antes de dar `/clear`, peça ao Claude para salvar o contexto importante em um arquivo markdown. Crie um diretório `.claude/docs/` no projeto e peça para ele registrar: decisões de arquitetura, o que foi feito, o que falta fazer, e qualquer detalhe crítico da implementação atual. 
+
+Fluxo prático:
+```
+1. Antes de limpar:
+   "Salve o estado atual em .claude/docs/estado-atual.md:
+    - o que foi concluído
+    - decisões tomadas
+    - próximos passos
+    - arquivos modificados"
+
+2. /clear
+
+3. Na nova sessão:
+   "Leia .claude/docs/estado-atual.md e continue de onde paramos."
+   

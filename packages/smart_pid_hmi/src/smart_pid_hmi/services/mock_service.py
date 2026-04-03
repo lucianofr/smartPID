@@ -7,7 +7,7 @@ import math
 import random
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from queue import SimpleQueue
 
 from smart_pid_domain.dtos import (
@@ -66,7 +66,7 @@ class MockTelemetrySource:
                     "sp": round(sp, 2),
                     "co": round(co, 2),
                     "integral_val": 0.0,
-                    "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+                    "timestamp": datetime.now(tz=UTC).isoformat(),
                     "status": "GOOD",
                 }
                 self._queue.put((f"STATUS.{ctrl['id']}", frame))
@@ -127,7 +127,7 @@ class MockAPIClient:
     def get_history(
         self, controller_id: int, start: datetime, end: datetime
     ) -> HistoryResponse:
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         frames = [
             TelemetryFrameDTO(
                 timestamp=now, pv=50.0, sp=50.0, co=50.0,

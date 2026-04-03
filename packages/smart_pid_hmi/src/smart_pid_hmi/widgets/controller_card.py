@@ -4,12 +4,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal
-from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
 from smart_pid_hmi.widgets.analog_bar import AnalogBarWidget
 
 if TYPE_CHECKING:
+    from PySide6.QtGui import QMouseEvent
     from PySide6.QtWidgets import QWidget
 
     from smart_pid_hmi.themes.base import ThemeBase

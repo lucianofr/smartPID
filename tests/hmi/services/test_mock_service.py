@@ -1,5 +1,6 @@
 """Tests for mock service implementations."""
 import time
+from datetime import UTC
 
 from smart_pid_hmi.services.mock_service import MockAPIClient, MockTelemetrySource
 
@@ -68,13 +69,13 @@ def test_mock_api_set_output():
 
 
 def test_mock_api_get_history():
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     client = MockAPIClient()
     resp = client.get_history(
         1,
-        datetime(2026, 4, 3, 9, 0, tzinfo=timezone.utc),
-        datetime(2026, 4, 3, 11, 0, tzinfo=timezone.utc),
+        datetime(2026, 4, 3, 9, 0, tzinfo=UTC),
+        datetime(2026, 4, 3, 11, 0, tzinfo=UTC),
     )
     assert resp.controller_id == 1
     assert resp.count >= 0

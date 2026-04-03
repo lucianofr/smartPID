@@ -1,11 +1,11 @@
 """Service port protocols — contracts for API client and telemetry source."""
 from __future__ import annotations
 
-from queue import SimpleQueue
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from datetime import datetime
+    from queue import SimpleQueue
 
     from smart_pid_domain.dtos import (
         CommandResponse,

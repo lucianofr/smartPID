@@ -1,12 +1,12 @@
 """Tests for AlarmEvent domain model."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from smart_pid_domain.enums import AlarmPriority, AlarmType
 from smart_pid_domain.models.alarm import AlarmEvent
 
 
 def test_alarm_event_creation():
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     event = AlarmEvent(
         controller_id=1,
         controller_name="FIC-101",
@@ -26,7 +26,7 @@ def test_alarm_event_creation():
 
 
 def test_alarm_event_is_frozen():
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     event = AlarmEvent(
         controller_id=1,
         controller_name="FIC-101",

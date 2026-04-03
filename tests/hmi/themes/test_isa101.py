@@ -1,7 +1,5 @@
 """Tests for ISA-101 theme."""
-import pytest
 
-from smart_pid_hmi.themes.base import ThemeBase
 from smart_pid_hmi.themes.isa101 import ISA101Theme
 
 

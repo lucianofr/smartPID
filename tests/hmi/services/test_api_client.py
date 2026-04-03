@@ -1,4 +1,5 @@
 """Tests for REST API client using httpx mock transport."""
+from datetime import UTC
 from unittest.mock import MagicMock
 
 import httpx
@@ -66,7 +67,7 @@ def test_set_output():
 
 
 def test_get_history():
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     data = {
         "controller_id": 1,
@@ -80,8 +81,8 @@ def test_get_history():
     session = Session()
     client = APIClient(base_url="http://test:8000", session=session, transport=transport)
     resp = client.get_history(
-        1, datetime(2026, 4, 3, 9, 0, tzinfo=timezone.utc),
-        datetime(2026, 4, 3, 11, 0, tzinfo=timezone.utc),
+        1, datetime(2026, 4, 3, 9, 0, tzinfo=UTC),
+        datetime(2026, 4, 3, 11, 0, tzinfo=UTC),
     )
     assert resp.count == 1
     assert resp.frames[0].pv == 45.0

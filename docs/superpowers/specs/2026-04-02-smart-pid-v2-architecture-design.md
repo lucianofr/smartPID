@@ -543,10 +543,12 @@ First screen on launch. User provides server IP, ports (REST + ZeroMQ), username
 
 `ThemeBase(Protocol)` defines: colors, chart palette, fonts, sizes. Each theme implements `apply(app: QApplication)` via QSS stylesheet. Hot-switch without restart.
 
-Three themes:
-- **Dark Mode**: Dark room style, high contrast
-- **Material Design 3**: Google MD3 colors, elevation, Roboto typography
-- **ISA-101**: Gray tones, soft process colors, primary colors for alarms only
+Three themes (detailed visual identity specs in dedicated documents):
+- **Dark Mode**: Dark room style for mission-critical control rooms. Absolute black background, zero unnecessary light emission, monochromatic in normal state, color reserved exclusively for alarms. See [identidade_visual_Dark.md](../../identidade_visual_Dark.md).
+- **Material Design 3**: Google MD3 neutral tones, surface container elevation hierarchy, Roboto typography. Dynamic Color system disabled — only neutral tones in normal state, M3 Error Tokens for alarms. See [identidade_visual_MD3.md](../../identidade_visual_MD3.md).
+- **ISA-101**: ANSI/ISA-101.01 High Performance HMI. Gray tones, 100% flat design, no 3D elements. Colors reserved exclusively for abnormal conditions/alarms. See [identidade_visual_ISA101.md](../../identidade_visual_ISA101.md).
+
+Each visual identity document defines the complete design system: color palette, typography, semantic alarm colors, and detailed widget specifications (AnalogBarWidget, ControllerCardWidget, FaceplateWidget, TrendChartWidget, AlarmFooterWidget). These documents are the authoritative source for theme implementation in Phase 7.
 
 ### 10.5 Pages
 
@@ -809,3 +811,6 @@ Phases 4, 5, and 6 can run in parallel after Phase 3.
 - [docs/bloco_pid.md](../../bloco_pid.md) — PID block function specification
 - [docs/smartPID.md](../../smartPID.md) — Original spec V2.4 (superseded)
 - [2026-04-02-smart-pid-architecture-design.md](./2026-04-02-smart-pid-architecture-design.md) — V1 architecture (superseded)
+- [docs/identidade_visual_Dark.md](../../identidade_visual_Dark.md) — Visual identity: Dark Room theme (mission-critical control rooms)
+- [docs/identidade_visual_ISA101.md](../../identidade_visual_ISA101.md) — Visual identity: ISA-101 High Performance HMI theme
+- [docs/identidade_visual_MD3.md](../../identidade_visual_MD3.md) — Visual identity: Material Design 3 theme (neutral tones)

@@ -7,7 +7,6 @@ from queue import SimpleQueue
 import msgpack
 import zmq
 
-
 # Topics to subscribe to
 _SUBSCRIBE_TOPICS = [b"STATUS.", b"ACTION.CTRL."]
 
