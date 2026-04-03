@@ -18,6 +18,7 @@ from smart_pid_hmi.bus_bridge import BusBridge
 from smart_pid_hmi.config import HMISettings
 from smart_pid_hmi.pages.connection_page import ConnectionPage
 from smart_pid_hmi.pages.dashboard_page import DashboardPage
+from smart_pid_hmi.pages.alarm_panel import AlarmPanel
 from smart_pid_hmi.pages.simulator_page import SimulatorPage
 from smart_pid_hmi.services.session import Session
 from smart_pid_hmi.themes.isa101 import ISA101Theme
@@ -81,6 +82,10 @@ class MainWindow(QMainWindow):
             lambda: self._stack.setCurrentWidget(self._simulator_page)
         )
         self._simulator_btn.setEnabled(False)  # enabled after login if backend has simulator
+        self._alarms_btn = toolbar.addAction("Alarms")
+        self._alarms_btn.triggered.connect(
+            lambda: self._stack.setCurrentWidget(self._alarm_panel)
+        )
 
         spacer = QWidget()
         toolbar.addWidget(spacer)
@@ -96,6 +101,8 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._dashboard_page)
         self._simulator_page = SimulatorPage(theme=theme)
         self._stack.addWidget(self._simulator_page)
+        self._alarm_panel = AlarmPanel(theme=theme)
+        self._stack.addWidget(self._alarm_panel)
 
         # Wire signals
         self._connection_page.login_requested.connect(self._on_login)
@@ -108,6 +115,8 @@ class MainWindow(QMainWindow):
         bus_bridge.connection_restored.connect(
             lambda: self._conn_indicator.setStyleSheet("color: green; background: transparent;")
         )
+        bus_bridge.alarm_received.connect(self._alarm_panel.on_alarm)
+        self._alarm_panel.ack_all_requested.connect(self._send_ack_all)
         self._simulator_page.preset_changed.connect(self._send_sim_preset)
         self._simulator_page.parameters_changed.connect(self._send_sim_parameters)
         self._simulator_page.step_requested.connect(self._send_sim_step)
@@ -179,6 +188,12 @@ class MainWindow(QMainWindow):
     def _send_output(self, controller_id: int, value: float) -> None:
         threading.Thread(
             target=lambda: self._api_client.set_output(controller_id, value),
+            daemon=True,
+        ).start()
+
+    def _send_ack_all(self) -> None:
+        threading.Thread(
+            target=lambda: self._api_client.ack_all_alarms(),
             daemon=True,
         ).start()
 
