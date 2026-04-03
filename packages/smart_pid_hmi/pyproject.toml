@@ -25,5 +25,8 @@ dev = [
     "ruff>=0.4",
 ]
 
+[project.scripts]
+smart-pid-hmi = "smart_pid_hmi.main:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/smart_pid_hmi"]
