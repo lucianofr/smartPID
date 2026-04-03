@@ -9,6 +9,7 @@ import sys
 import structlog
 import uvicorn
 
+from smart_pid_core.adapters.factory import AdapterFactory
 from smart_pid_core.adapters.inbound.api.app import create_app
 from smart_pid_core.adapters.inbound.api.auth import hash_password
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
@@ -35,6 +36,16 @@ async def run_daemon(settings: CoreSettings) -> None:
     loop_manager = LoopManager(bus=bus)
     logger.info("event_bus_started")
 
+    # Phase 4: Adapter factory (simulator or OPC-UA)
+    adapter_factory = AdapterFactory(settings)
+    simulator_adapter = adapter_factory.simulator_adapter
+    if simulator_adapter is not None:
+        controllers = await repo.list_all()
+        for ctrl in controllers:
+            simulator_adapter.register_controller(ctrl.id)
+        simulator_adapter.start()
+        logger.info("simulator_started", port=settings.simulator_port)
+
     # Phase 2: User repo + seed admin
     user_repo = UserRepository(repo.db)
     users = await user_repo.list_all()
@@ -50,6 +61,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         user_repo=user_repo,
         loop_manager=loop_manager,
         settings=settings,
+        simulator_adapter=simulator_adapter,
     )
 
     # Phase 2: Telemetry Publisher
@@ -86,6 +98,8 @@ async def run_daemon(settings: CoreSettings) -> None:
     server.should_exit = True
     await server_task
     await telemetry_pub.stop()
+    if simulator_adapter is not None:
+        simulator_adapter.stop()
     loop_manager.stop_all()
     bus.stop()
     logger.info("daemon_stopped")
