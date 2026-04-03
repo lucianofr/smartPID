@@ -4,10 +4,9 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
+import structlog
 import zmq
 import zmq.asyncio
-
-import structlog
 
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import EventBus

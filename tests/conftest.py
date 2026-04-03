@@ -1,19 +1,11 @@
 """Root test configuration for the Smart PID platform."""
 from __future__ import annotations
 
-import pytest
-
-from smart_pid_domain.models.controller import PIDParams
-
-
-@pytest.fixture
-def sample_pid_params() -> PIDParams:
-    return PIDParams(gain=1.5, reset=10.0, rate=2.0, alpha=0.125, deadband=0.0)
-
-
-# --- Phase 2: API test fixtures ---
+import uuid
 
 import httpx
+import pytest
+
 from smart_pid_core.adapters.inbound.api.app import create_app
 from smart_pid_core.adapters.inbound.api.auth import create_access_token, hash_password
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
@@ -22,6 +14,12 @@ from smart_pid_core.adapters.outbound.user_repo import UserRepository
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.config import CoreSettings
+from smart_pid_domain.models.controller import PIDParams
+
+
+@pytest.fixture
+def sample_pid_params() -> PIDParams:
+    return PIDParams(gain=1.5, reset=10.0, rate=2.0, alpha=0.125, deadband=0.0)
 
 
 @pytest.fixture
@@ -32,7 +30,7 @@ async def api_deps(tmp_path):
     await repo.initialize()
     historian = SQLiteHistorian(repo.db)
     user_repo = UserRepository(repo.db)
-    bus = EventBus()
+    bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
     loop_manager = LoopManager(bus=bus)
     settings = CoreSettings(jwt_secret="test-secret-key-minimum-32-bytes!")  # type: ignore[call-arg]

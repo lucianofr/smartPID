@@ -5,10 +5,9 @@ import asyncio
 import time
 
 import msgpack
+import pytest
 import zmq
 import zmq.asyncio
-
-import pytest
 
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.telemetry_publisher import TelemetryPublisher

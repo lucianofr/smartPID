@@ -7,9 +7,16 @@ import signal
 import sys
 
 import structlog
+import uvicorn
 
+from smart_pid_core.adapters.inbound.api.app import create_app
+from smart_pid_core.adapters.inbound.api.auth import hash_password
+from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
+from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+from smart_pid_core.adapters.outbound.user_repo import UserRepository
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
+from smart_pid_core.application.telemetry_publisher import TelemetryPublisher
 from smart_pid_core.config import CoreSettings
 
 logger = structlog.get_logger()
@@ -18,10 +25,46 @@ logger = structlog.get_logger()
 async def run_daemon(settings: CoreSettings) -> None:
     """Bootstrap and run the backend daemon until interrupted."""
     logger.info("starting_daemon", api_port=settings.api_port, zmq_port=settings.zmq_publish_port)
+
+    # Phase 1 components
+    repo = SQLiteRepository(settings.db_path)
+    await repo.initialize()
+    historian = SQLiteHistorian(repo.db)
     bus = EventBus()
     bus.start()
-    logger.info("event_bus_started")
     loop_manager = LoopManager(bus=bus)
+    logger.info("event_bus_started")
+
+    # Phase 2: User repo + seed admin
+    user_repo = UserRepository(repo.db)
+    users = await user_repo.list_all()
+    if not users:
+        admin_hash = hash_password("admin")
+        await user_repo.create("admin", admin_hash, "admin")
+        logger.warning("seeded_default_admin", msg="Change default admin password!")
+
+    # Phase 2: FastAPI
+    app = create_app(
+        repo=repo,
+        historian=historian,
+        user_repo=user_repo,
+        loop_manager=loop_manager,
+        settings=settings,
+    )
+
+    # Phase 2: Telemetry Publisher
+    telemetry_pub = TelemetryPublisher(bus=bus, publish_port=settings.zmq_publish_port)
+    await telemetry_pub.start()
+
+    # Embedded uvicorn
+    uv_config = uvicorn.Config(
+        app=app,
+        host=settings.api_host,
+        port=settings.api_port,
+        log_level=settings.log_level.lower(),
+    )
+    server = uvicorn.Server(uv_config)
+
     stop_event = asyncio.Event()
 
     def handle_signal() -> None:
@@ -32,9 +75,17 @@ async def run_daemon(settings: CoreSettings) -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, handle_signal)
 
+    # Run uvicorn and wait for shutdown signal concurrently
+    server_task = asyncio.create_task(server.serve())
     logger.info("daemon_ready")
+
     await stop_event.wait()
     logger.info("shutting_down")
+
+    # Graceful shutdown in correct order
+    server.should_exit = True
+    await server_task
+    await telemetry_pub.stop()
     loop_manager.stop_all()
     bus.stop()
     logger.info("daemon_stopped")

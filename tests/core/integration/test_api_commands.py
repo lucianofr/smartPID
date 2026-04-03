@@ -4,15 +4,29 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from smart_pid_core.application.loop_manager import LoopContext
+from smart_pid_core.application.workers.pid_worker import PIDWorker
+from smart_pid_core.domain.services.pid_engine import PIDEngine
+from smart_pid_core.domain.services.pid_mode_manager import ModeManager
 from smart_pid_domain.models.controller import Controller, PIDParams
 
 
 async def _create_and_start_controller(api_deps: dict) -> int:
-    """Helper: save controller to DB and start its loop."""
+    """Helper: save controller to DB and register its loop (no thread start)."""
     repo = api_deps["repo"]
     ctrl = Controller(id=0, name="TIC-101", pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0))
     saved = await repo.save(ctrl)
-    api_deps["loop_manager"].start_loop(saved)
+    # Register loop context without starting the PIDWorker thread to avoid hangs
+    lm = api_deps["loop_manager"]
+    bus = api_deps["bus"]
+    engine = PIDEngine()
+    mode_manager = ModeManager()
+    pid_worker = PIDWorker(bus=bus, controller=saved, engine=engine, mode_manager=mode_manager)
+    # Don't call pid_worker.start() — we only need the command interface
+    ctx = LoopContext(
+        controller=saved, pid_worker=pid_worker, engine=engine, mode_manager=mode_manager,
+    )
+    lm._loops[saved.id] = ctx
     return saved.id
 
 

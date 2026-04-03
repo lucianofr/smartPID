@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from smart_pid_core.application.workers.pid_worker import PIDWorker
 from smart_pid_core.domain.services.pid_engine import PIDEngine
 from smart_pid_core.domain.services.pid_mode_manager import ModeManager
-
 from smart_pid_domain.enums import ControllerMode
 from smart_pid_domain.exceptions import ControllerNotFoundError, DomainError
 

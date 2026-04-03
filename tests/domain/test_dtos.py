@@ -1,7 +1,7 @@
 """Tests for Phase 2 DTOs."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from smart_pid_domain.dtos.auth import LoginRequest, TokenResponse, UserClaims, UserCreate
 from smart_pid_domain.dtos.commands import (
@@ -79,7 +79,7 @@ class TestControllerDTOs:
 
 class TestHistoryDTOs:
     def test_telemetry_frame_dto(self) -> None:
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         f = TelemetryFrameDTO(
             timestamp=now, pv=50.0, sp=50.0, co=25.0, mode="AUTO", status="GOOD",
         )

@@ -15,6 +15,7 @@ from smart_pid_domain.enums import (
     SignalStatus,
     UserRole,
 )
+from smart_pid_domain.exceptions import ControllerNotFoundError, DomainError
 from smart_pid_domain.models.controller import (
     PIDParams,
     ScaleConfig,
@@ -105,8 +106,6 @@ class TestControlAction:
         action = ControlAction(controller_id=1, co=45.0, integral_val=1.5, timestamp=now)
         assert action.co == 45.0
 
-
-from smart_pid_domain.exceptions import ControllerNotFoundError, DomainError
 
 
 class TestControllerNotFoundError:
