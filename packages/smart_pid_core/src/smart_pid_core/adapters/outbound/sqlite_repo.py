@@ -158,6 +158,7 @@ CREATE TABLE IF NOT EXISTS Log_Sintonia_IA (
 CREATE TABLE IF NOT EXISTS Log_Auditoria (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     usuario_id      INTEGER REFERENCES Usuarios(id),
+    username        TEXT    NOT NULL DEFAULT '',
     timestamp       TEXT    NOT NULL DEFAULT (datetime('now')),
     acao            TEXT    NOT NULL,
     entidade        TEXT    NOT NULL DEFAULT '',
