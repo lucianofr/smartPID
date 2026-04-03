@@ -12,18 +12,30 @@ from smart_pid_domain.dtos.controllers import (
     ControllerUpdate,
 )
 from smart_pid_domain.dtos.history import HistoryResponse, TelemetryFrameDTO
+from smart_pid_domain.dtos.simulator import (
+    ControllerSimStatus,
+    SimulatorDisturbanceRequest,
+    SimulatorParametersRequest,
+    SimulatorPresetRequest,
+    SimulatorStatusResponse,
+)
 from smart_pid_domain.dtos.system import SystemStatusResponse
 
 __all__ = [
     "CommandResponse",
     "ControllerCreate",
     "ControllerResponse",
+    "ControllerSimStatus",
     "ControllerUpdate",
     "HistoryResponse",
     "LoginRequest",
     "ModeCommand",
     "OutputCommand",
     "SetpointCommand",
+    "SimulatorDisturbanceRequest",
+    "SimulatorParametersRequest",
+    "SimulatorPresetRequest",
+    "SimulatorStatusResponse",
     "SystemStatusResponse",
     "TelemetryFrameDTO",
     "TokenResponse",
