@@ -7,12 +7,16 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Response, status
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
-    get_current_user,
+    get_audit_repo,
     get_repo,
     require_admin,
+    require_operator,
+    require_supervisor,
 )
+from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_domain.dtos.auth import UserClaims
+from smart_pid_domain.enums import AuditAction
 from smart_pid_domain.dtos.controllers import (
     ControllerCreate,
     ControllerResponse,
@@ -47,7 +51,7 @@ def _to_response(c: Controller) -> ControllerResponse:
 
 @router.get("", response_model=list[ControllerResponse])
 async def list_controllers(
-    _user: Annotated[UserClaims, Depends(get_current_user)],
+    _user: Annotated[UserClaims, Depends(require_operator)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> list[ControllerResponse]:
     controllers = await repo.list_all()
@@ -57,8 +61,9 @@ async def list_controllers(
 @router.post("", response_model=ControllerResponse, status_code=status.HTTP_201_CREATED)
 async def create_controller(
     body: ControllerCreate,
-    _admin: Annotated[UserClaims, Depends(require_admin)],
+    user: Annotated[UserClaims, Depends(require_supervisor)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
+    audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> ControllerResponse:
     controller = Controller(
         id=0,
@@ -72,13 +77,17 @@ async def create_controller(
         out_lo_lim=body.out_lo_lim,
     )
     saved = await repo.save(controller)
+    await audit_repo.record(
+        user.user_id, user.username, AuditAction.CREATE_CONTROLLER,
+        f"controller:{saved.id}", f'{{"name": "{saved.name}"}}',
+    )
     return _to_response(saved)
 
 
 @router.get("/{controller_id}", response_model=ControllerResponse)
 async def get_controller(
     controller_id: int,
-    _user: Annotated[UserClaims, Depends(get_current_user)],
+    _user: Annotated[UserClaims, Depends(require_operator)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> ControllerResponse:
     try:
@@ -92,8 +101,9 @@ async def get_controller(
 async def update_controller(
     controller_id: int,
     body: ControllerUpdate,
-    _admin: Annotated[UserClaims, Depends(require_admin)],
+    user: Annotated[UserClaims, Depends(require_supervisor)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
+    audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> ControllerResponse:
     try:
         controller = await repo.get(controller_id)
@@ -130,17 +140,26 @@ async def update_controller(
         controller = replace(controller, **updates)
         await repo.save(controller)
 
+    await audit_repo.record(
+        user.user_id, user.username, AuditAction.UPDATE_CONTROLLER,
+        f"controller:{controller_id}", f'{{"fields": "{list(updates.keys())}"}}',
+    )
     return _to_response(controller)
 
 
 @router.delete("/{controller_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_controller(
     controller_id: int,
-    _admin: Annotated[UserClaims, Depends(require_admin)],
+    user: Annotated[UserClaims, Depends(require_admin)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
+    audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> Response:
     try:
         await repo.delete(controller_id)
     except KeyError:
         raise ControllerNotFoundError(controller_id)
+    await audit_repo.record(
+        user.user_id, user.username, AuditAction.DELETE_CONTROLLER,
+        f"controller:{controller_id}", None,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

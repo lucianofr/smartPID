@@ -6,8 +6,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
-    get_current_user,
     get_stats_workers,
+    require_operator,
 )
 from smart_pid_domain.dtos.ai import StatsResponse
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
@@ -18,7 +18,7 @@ router = APIRouter()
 @router.get("/{controller_id}/stats", response_model=StatsResponse)
 async def get_stats(
     controller_id: int,
-    _user: Annotated[UserClaims, Depends(get_current_user)],
+    _user: Annotated[UserClaims, Depends(require_operator)],
     stats_workers: Annotated[dict, Depends(get_stats_workers)],
 ) -> StatsResponse:
     worker = stats_workers.get(controller_id)
