@@ -70,3 +70,13 @@ def require_admin(
             detail="Admin access required",
         )
     return user
+
+
+def get_simulator_adapter(request: Request):
+    adapter = getattr(request.app.state, "simulator_adapter", None)
+    if adapter is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Simulator not enabled",
+        )
+    return adapter
