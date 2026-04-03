@@ -12,12 +12,12 @@ from typing import TYPE_CHECKING
 
 from smart_pid_core.domain.services.process_models import ProcessModel
 from smart_pid_domain.dtos.simulator import ControllerSimStatus
-from smart_pid_domain.enums import ProcessPresetName, SignalStatus
 from smart_pid_domain.models.process_preset import PRESETS
 from smart_pid_domain.models.telemetry import TelemetryFrame
 
 if TYPE_CHECKING:
     from smart_pid_core.config import CoreSettings
+    from smart_pid_domain.enums import ProcessPresetName
 
 logger = logging.getLogger(__name__)
 

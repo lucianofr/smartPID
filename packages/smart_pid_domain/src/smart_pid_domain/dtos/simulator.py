@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from smart_pid_domain.enums import ProcessPresetName
+from smart_pid_domain.enums import ProcessPresetName  # noqa: TC001 - pydantic needs runtime
 
 
 class SimulatorPresetRequest(BaseModel):

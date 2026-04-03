@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from smart_pid_domain.enums import ProcessPresetName
-from smart_pid_domain.models.process_preset import PRESETS, ProcessPreset
+from smart_pid_domain.models.process_preset import PRESETS
 
 
 class TestProcessPreset:

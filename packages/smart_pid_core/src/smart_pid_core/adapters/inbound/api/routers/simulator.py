@@ -9,8 +9,8 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
     get_current_user,
     get_simulator_adapter,
 )
-from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
-from smart_pid_domain.dtos.auth import UserClaims
+from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter  # noqa: TC001
+from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
 from smart_pid_domain.dtos.commands import CommandResponse
 from smart_pid_domain.dtos.simulator import (
     SimulatorDisturbanceRequest,

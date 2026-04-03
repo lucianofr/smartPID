@@ -1,10 +1,14 @@
 """Tests for /simulator REST endpoints."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
-from httpx import AsyncClient
 
 from smart_pid_core.adapters.inbound.api.auth import create_access_token
+
+if TYPE_CHECKING:
+    from httpx import AsyncClient
 
 
 @pytest.fixture
