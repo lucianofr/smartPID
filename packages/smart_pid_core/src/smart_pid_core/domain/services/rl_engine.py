@@ -6,13 +6,14 @@ Falls back to zero-gamma when no model is trained.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from smart_pid_domain.enums import ControlObjective, ProcessSpeed
+from smart_pid_core.domain.services.fuzzy_engine import SPEED_FACTORS, AIDecision
 
-from smart_pid_core.domain.services.fuzzy_engine import AIDecision, SPEED_FACTORS
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from smart_pid_domain.enums import ControlObjective, ProcessSpeed
 
 logger = logging.getLogger(__name__)
 

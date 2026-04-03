@@ -1,8 +1,6 @@
 """Unit tests for StatsCalculator — pure domain service."""
 from __future__ import annotations
 
-import math
-
 import pytest
 
 

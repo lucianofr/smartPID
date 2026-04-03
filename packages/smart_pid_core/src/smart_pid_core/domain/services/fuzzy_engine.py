@@ -6,10 +6,6 @@ trapezoidal (extremes) membership functions, 50% overlap.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
 
 from smart_pid_domain.enums import ControlObjective, ProcessSpeed
 
