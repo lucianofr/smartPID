@@ -184,8 +184,9 @@ CREATE TABLE IF NOT EXISTS Log_Alarmes (
     prioridade      TEXT    NOT NULL DEFAULT 'WARNING',
     valor           REAL,
     limite          REAL,
+    cleared_at      TEXT,
     reconhecido     INTEGER NOT NULL DEFAULT 0,
-    reconhecido_por INTEGER REFERENCES Usuarios(id),
+    reconhecido_por TEXT,
     reconhecido_em  TEXT
 );
 """
