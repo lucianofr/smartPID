@@ -166,6 +166,16 @@ CREATE TABLE IF NOT EXISTS Log_Auditoria (
     ip_origem       TEXT    NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS Modelos_IA (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    controlador_id  INTEGER NOT NULL REFERENCES Controladores(id) ON DELETE CASCADE,
+    algoritmo       TEXT    NOT NULL DEFAULT 'SAC',
+    episodios       INTEGER NOT NULL DEFAULT 0,
+    reward_medio    REAL    NOT NULL DEFAULT 0.0,
+    caminho_modelo  TEXT    NOT NULL DEFAULT '',
+    criado_em       TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS Log_Alarmes (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     controlador_id  INTEGER NOT NULL,
