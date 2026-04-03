@@ -4,7 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from smart_pid_core.application.workers.ai_worker import AIWorker
 from smart_pid_core.application.workers.pid_worker import PIDWorker
+from smart_pid_core.application.workers.stats_worker import StatsWorker
 from smart_pid_core.domain.services.pid_engine import PIDEngine
 from smart_pid_core.domain.services.pid_mode_manager import ModeManager
 from smart_pid_domain.enums import ControllerMode
@@ -22,6 +24,8 @@ class LoopContext:
     pid_worker: PIDWorker
     engine: PIDEngine = field(default_factory=PIDEngine)
     mode_manager: ModeManager = field(default_factory=ModeManager)
+    stats_worker: StatsWorker | None = None
+    ai_worker: AIWorker | None = None
 
 
 class LoopManager:
@@ -39,16 +43,31 @@ class LoopManager:
         pid_worker = PIDWorker(
             bus=self._bus, controller=controller, engine=engine, mode_manager=mode_manager
         )
+
+        # Stats worker — always active
+        stats_worker = StatsWorker(bus=self._bus, controller=controller)
+
+        # AI worker — only if engine != NONE
+        ai_worker = AIWorker(bus=self._bus, controller=controller)
+
         ctx = LoopContext(
-            controller=controller, pid_worker=pid_worker, engine=engine, mode_manager=mode_manager
+            controller=controller, pid_worker=pid_worker,
+            engine=engine, mode_manager=mode_manager,
+            stats_worker=stats_worker, ai_worker=ai_worker,
         )
         self._loops[controller.id] = ctx
         pid_worker.start()
+        stats_worker.start()
+        ai_worker.start()  # No-op if engine=NONE
 
     def stop_loop(self, controller_id: int) -> None:
         ctx = self._loops.pop(controller_id, None)
         if ctx is None:
             return
+        if ctx.ai_worker:
+            ctx.ai_worker.stop()
+        if ctx.stats_worker:
+            ctx.stats_worker.stop()
         ctx.pid_worker.stop()
 
     def stop_all(self) -> None:
@@ -97,6 +116,22 @@ class LoopManager:
         if not transition.accepted:
             raise DomainError(transition.rejection_reason)
         ctx.pid_worker.set_mode(mode)
+
+    def get_stats_workers(self) -> dict[int, StatsWorker]:
+        """Return dict of controller_id -> StatsWorker for REST API."""
+        return {
+            cid: ctx.stats_worker
+            for cid, ctx in self._loops.items()
+            if ctx.stats_worker is not None
+        }
+
+    def get_ai_workers(self) -> dict[int, AIWorker]:
+        """Return dict of controller_id -> AIWorker for REST API."""
+        return {
+            cid: ctx.ai_worker
+            for cid, ctx in self._loops.items()
+            if ctx.ai_worker is not None and ctx.ai_worker.is_alive()
+        }
 
     def set_output(self, controller_id: int, value: float) -> None:
         """Set CO value in MAN mode only. Validates against out_limits."""

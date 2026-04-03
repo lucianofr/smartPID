@@ -54,6 +54,11 @@ async def run_daemon(settings: CoreSettings) -> None:
         await user_repo.create("admin", admin_hash, "admin")
         logger.warning("seeded_default_admin", msg="Change default admin password!")
 
+    # Phase 5: AI Repository
+    from smart_pid_core.adapters.outbound.ai_repo import AIRepository
+
+    ai_repo = AIRepository(repo.db)
+
     # Phase 2: FastAPI
     app = create_app(
         repo=repo,
@@ -62,6 +67,9 @@ async def run_daemon(settings: CoreSettings) -> None:
         loop_manager=loop_manager,
         settings=settings,
         simulator_adapter=simulator_adapter,
+        stats_workers=loop_manager.get_stats_workers(),
+        ai_workers=loop_manager.get_ai_workers(),
+        ai_repo=ai_repo,
     )
 
     # Phase 2: Telemetry Publisher
