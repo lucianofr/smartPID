@@ -146,4 +146,11 @@ class PIDWorker:
             msg = sub.recv(timeout_ms=0)
             if msg is None:
                 break
-            # AI actions will be handled in Phase 5
+            _topic, payload = msg
+            try:
+                data = msgpack.unpackb(payload)
+                new_ki = data.get("new_ki")
+                if new_ki is not None:
+                    self._controller.pid_params.reset = float(new_ki)
+            except (KeyError, ValueError, msgpack.UnpackException):
+                pass

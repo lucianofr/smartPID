@@ -80,3 +80,21 @@ def get_simulator_adapter(request: Request):
             detail="Simulator not enabled",
         )
     return adapter
+
+
+def get_stats_workers(request: Request) -> dict:
+    return getattr(request.app.state, "stats_workers", {})
+
+
+def get_ai_workers(request: Request) -> dict:
+    return getattr(request.app.state, "ai_workers", {})
+
+
+def get_ai_repo(request: Request):
+    repo = getattr(request.app.state, "ai_repo", None)
+    if repo is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="AI repository not available",
+        )
+    return repo

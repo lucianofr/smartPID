@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from smart_pid_domain.enums import ConnectionState
+    from smart_pid_domain.enums import AIEngine, ConnectionState, ControlObjective
     from smart_pid_domain.models.telemetry import TelemetryFrame
 
 
@@ -29,6 +29,36 @@ class ControlActionComputed:
     co: float
     integral_val: float
     delta_cv: float
+    timestamp: datetime
+    event_id: UUID = field(default_factory=uuid4)
+
+
+@dataclass(frozen=True)
+class AIActionComputed:
+    """Published by AI Worker after computing a Ki adjustment."""
+
+    controller_id: int
+    gamma: float
+    new_ki: float
+    engine: AIEngine
+    objective: ControlObjective
+    reasoning: str
+    timestamp: datetime
+    event_id: UUID = field(default_factory=uuid4)
+
+
+@dataclass(frozen=True)
+class StatsUpdated:
+    """Published by Stats Worker with latest performance metrics."""
+
+    controller_id: int
+    iae: float
+    itae: float
+    mse: float
+    std_dev: float
+    total_variation: float
+    variability_sp: float
+    variability_range: float
     timestamp: datetime
     event_id: UUID = field(default_factory=uuid4)
 

@@ -10,11 +10,13 @@ from fastapi import FastAPI
 
 from smart_pid_core.adapters.inbound.api.error_handlers import register_error_handlers
 from smart_pid_core.adapters.inbound.api.routers import (
+    ai,
     auth,
     commands,
     controllers,
     history,
     simulator,
+    stats,
     system,
 )
 
@@ -40,6 +42,9 @@ def create_app(
     loop_manager: LoopManager,
     settings: CoreSettings,
     simulator_adapter=None,
+    stats_workers=None,
+    ai_workers=None,
+    ai_repo=None,
 ) -> FastAPI:
     """Build and configure the FastAPI application."""
     app = FastAPI(title="Smart PID API", version="2.0.0", lifespan=_lifespan)
@@ -51,6 +56,9 @@ def create_app(
     app.state.loop_manager = loop_manager
     app.state.settings = settings
     app.state.simulator_adapter = simulator_adapter
+    app.state.stats_workers = stats_workers or {}
+    app.state.ai_workers = ai_workers or {}
+    app.state.ai_repo = ai_repo
 
     # Register routers
     app.include_router(system.router, prefix="/system", tags=["system"])
@@ -59,6 +67,8 @@ def create_app(
     app.include_router(commands.router, prefix="/command", tags=["commands"])
     app.include_router(history.router, prefix="/history", tags=["history"])
     app.include_router(simulator.router, prefix="/simulator", tags=["simulator"])
+    app.include_router(stats.router, prefix="/controllers", tags=["stats"])
+    app.include_router(ai.router, prefix="/controllers", tags=["ai"])
 
     register_error_handlers(app)
 
