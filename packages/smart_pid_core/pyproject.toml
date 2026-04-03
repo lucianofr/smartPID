@@ -15,6 +15,10 @@ dependencies = [
     "pydantic-settings>=2.3",
     "structlog>=24.0",
     "numpy>=2.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "pyjwt>=2.9",
+    "bcrypt>=4.2",
 ]
 
 [project.optional-dependencies]
@@ -25,6 +29,7 @@ dev = [
     "mypy>=1.10",
     "ruff>=0.4",
     "coverage>=7.5",
+    "httpx>=0.28",
 ]
 
 [project.scripts]

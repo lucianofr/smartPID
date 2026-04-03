@@ -1,11 +1,91 @@
 """Root test configuration for the Smart PID platform."""
 from __future__ import annotations
 
+import uuid
+
+import httpx
 import pytest
 
+from smart_pid_core.adapters.inbound.api.app import create_app
+from smart_pid_core.adapters.inbound.api.auth import create_access_token, hash_password
+from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
+from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+from smart_pid_core.adapters.outbound.user_repo import UserRepository
+from smart_pid_core.application.event_bus import EventBus
+from smart_pid_core.application.loop_manager import LoopManager
+from smart_pid_core.config import CoreSettings
 from smart_pid_domain.models.controller import PIDParams
 
 
 @pytest.fixture
 def sample_pid_params() -> PIDParams:
     return PIDParams(gain=1.5, reset=10.0, rate=2.0, alpha=0.125, deadband=0.0)
+
+
+@pytest.fixture
+async def api_deps(tmp_path):
+    """Create all Phase 2 dependencies for API testing."""
+    db_path = tmp_path / "test.spid"
+    repo = SQLiteRepository(db_path)
+    await repo.initialize()
+    historian = SQLiteHistorian(repo.db)
+    user_repo = UserRepository(repo.db)
+    bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
+    bus.start()
+    loop_manager = LoopManager(bus=bus)
+    settings = CoreSettings(jwt_secret="test-secret-key-minimum-32-bytes!")  # type: ignore[call-arg]
+
+    # Seed admin user
+    admin_hash = hash_password("admin")
+    await user_repo.create("admin", admin_hash, "admin")
+
+    yield {
+        "repo": repo,
+        "historian": historian,
+        "user_repo": user_repo,
+        "loop_manager": loop_manager,
+        "settings": settings,
+        "bus": bus,
+    }
+    loop_manager.stop_all()
+    bus.stop()
+
+
+@pytest.fixture
+async def app(api_deps):
+    """Create FastAPI app with all dependencies."""
+    return create_app(
+        repo=api_deps["repo"],
+        historian=api_deps["historian"],
+        user_repo=api_deps["user_repo"],
+        loop_manager=api_deps["loop_manager"],
+        settings=api_deps["settings"],
+    )
+
+
+@pytest.fixture
+async def client(app):
+    """httpx AsyncClient with ASGI transport."""
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+@pytest.fixture
+def admin_headers(api_deps) -> dict[str, str]:
+    """Pre-authenticated admin JWT headers."""
+    token = create_access_token(
+        user_id=1, username="admin", role="admin",
+        secret=api_deps["settings"].jwt_secret,
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def user_headers(api_deps) -> dict[str, str]:
+    """Pre-authenticated non-admin JWT headers."""
+    token = create_access_token(
+        user_id=2, username="operator", role="user",
+        secret=api_deps["settings"].jwt_secret,
+    )
+    return {"Authorization": f"Bearer {token}"}

@@ -58,8 +58,21 @@ class PIDWorker:
     def is_alive(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
+    @property
+    def current_mode(self) -> ControllerMode:
+        """Return the current operating mode."""
+        return self._mode
+
     def set_mode(self, mode: ControllerMode) -> None:
         self._mode = mode
+
+    def set_sp(self, value: float) -> None:
+        """Update the setpoint. Thread-safe (GIL)."""
+        self._last_sp = value
+
+    def set_output(self, value: float) -> None:
+        """Set manual output value. Only effective in MAN mode."""
+        self._last_co = value
 
     def _run(self) -> None:
         telem_sub = self._bus.create_subscriber(f"TELEMETRY.{self.controller_id}".encode())
