@@ -12,6 +12,7 @@ from smart_pid_core.adapters.inbound.api.error_handlers import register_error_ha
 from smart_pid_core.adapters.inbound.api.routers import (
     ai,
     alarms,
+    audit,
     auth,
     commands,
     controllers,
@@ -83,6 +84,7 @@ def create_app(
     app.include_router(ai.router, prefix="/controllers", tags=["ai"])
     app.include_router(alarms.router, prefix="/alarms", tags=["alarms"])
     app.include_router(users.router, prefix="/users", tags=["users"])
+    app.include_router(audit.router, prefix="/audit", tags=["audit"])
 
     register_error_handlers(app)
 

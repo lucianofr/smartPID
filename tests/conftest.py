@@ -91,9 +91,9 @@ def admin_headers(api_deps) -> dict[str, str]:
 
 @pytest.fixture
 def user_headers(api_deps) -> dict[str, str]:
-    """Pre-authenticated non-admin JWT headers."""
+    """Pre-authenticated operator JWT headers."""
     token = create_access_token(
-        user_id=2, username="operator", role="user",
+        user_id=2, username="operator", role="OPERATOR",
         secret=api_deps["settings"].jwt_secret,
     )
     return {"Authorization": f"Bearer {token}"}
