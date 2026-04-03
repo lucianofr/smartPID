@@ -103,3 +103,43 @@ def test_auth_header_injected():
     client.list_controllers()
     assert "authorization" in received_headers
     assert received_headers["authorization"] == "Bearer mytoken"
+
+
+def test_get_simulator_status():
+    transport = _mock_transport(200, {"enabled": True, "controllers": {}})
+    session = Session()
+    client = APIClient(base_url="http://test:8000", session=session, transport=transport)
+    result = client.get_simulator_status()
+    assert result.enabled is True
+
+
+def test_set_simulator_preset():
+    transport = _mock_transport(200, {"ok": True, "controller_id": 1, "detail": "Preset applied"})
+    session = Session()
+    client = APIClient(base_url="http://test:8000", session=session, transport=transport)
+    result = client.set_simulator_preset(1, "FLOW")
+    assert result.ok is True
+
+
+def test_set_simulator_parameters():
+    transport = _mock_transport(200, {"ok": True, "controller_id": 1, "detail": "Updated"})
+    session = Session()
+    client = APIClient(base_url="http://test:8000", session=session, transport=transport)
+    result = client.set_simulator_parameters(1, 3.0, 15.0, 8.0, 4.0)
+    assert result.ok is True
+
+
+def test_inject_simulator_disturbance():
+    transport = _mock_transport(200, {"ok": True, "controller_id": 1, "detail": "step injected"})
+    session = Session()
+    client = APIClient(base_url="http://test:8000", session=session, transport=transport)
+    result = client.inject_simulator_disturbance(1, "step", 5.0)
+    assert result.ok is True
+
+
+def test_clear_simulator_disturbance():
+    transport = _mock_transport(200, {"ok": True, "controller_id": 1, "detail": "Cleared"})
+    session = Session()
+    client = APIClient(base_url="http://test:8000", session=session, transport=transport)
+    result = client.clear_simulator_disturbance(1)
+    assert result.ok is True

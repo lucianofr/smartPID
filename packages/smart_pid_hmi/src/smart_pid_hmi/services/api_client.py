@@ -9,6 +9,7 @@ from smart_pid_domain.dtos import (
     CommandResponse,
     ControllerResponse,
     HistoryResponse,
+    SimulatorStatusResponse,
     TokenResponse,
 )
 
@@ -92,6 +93,54 @@ class APIClient:
         )
         resp.raise_for_status()
         return HistoryResponse.model_validate(resp.json())
+
+    def get_simulator_status(self) -> SimulatorStatusResponse:
+        resp = self._http.get("/simulator/status", headers=self._headers())
+        resp.raise_for_status()
+        return SimulatorStatusResponse.model_validate(resp.json())
+
+    def set_simulator_preset(self, controller_id: int, preset: str) -> CommandResponse:
+        resp = self._http.post(
+            "/simulator/preset",
+            json={"controller_id": controller_id, "preset": preset},
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return CommandResponse.model_validate(resp.json())
+
+    def set_simulator_parameters(
+        self, controller_id: int, gain: float, tau1: float,
+        tau2: float | None, dead_time: float,
+    ) -> CommandResponse:
+        resp = self._http.put(
+            "/simulator/parameters",
+            json={
+                "controller_id": controller_id, "gain": gain,
+                "tau1": tau1, "tau2": tau2, "dead_time": dead_time,
+            },
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return CommandResponse.model_validate(resp.json())
+
+    def inject_simulator_disturbance(
+        self, controller_id: int, dist_type: str, amplitude: float,
+    ) -> CommandResponse:
+        resp = self._http.post(
+            "/simulator/disturbance",
+            json={"controller_id": controller_id, "type": dist_type, "amplitude": amplitude},
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return CommandResponse.model_validate(resp.json())
+
+    def clear_simulator_disturbance(self, controller_id: int) -> CommandResponse:
+        resp = self._http.delete(
+            f"/simulator/disturbance/{controller_id}",
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return CommandResponse.model_validate(resp.json())
 
     def close(self) -> None:
         self._http.close()
