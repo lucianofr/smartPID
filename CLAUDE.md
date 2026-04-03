@@ -97,6 +97,8 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 ## Documentos de referencia
 - Spec V2: `docs/superpowers/specs/2026-04-02-smart-pid-v2-architecture-design.md`
 - Plano Phase 1: `docs/superpowers/plans/2026-04-02-phase1-foundation-domain-pid-v2.md`
+- Plano Phase 2: `docs/superpowers/plans/2026-04-03-phase2-rest-api-auth-telemetry.md`
+- Plano Phase 3a: `docs/superpowers/plans/2026-04-03-phase3a-hmi-desktop.md`
 - Review Phase 1: `docs/superpowers/reviews/2026-04-03-phase1-code-review.md`
 - Requisitos originais: `docs/smartPIDv2.md`
 - Referencia PID: `docs/bloco_pid.md`
@@ -107,13 +109,14 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 ## Fases de implementacao (seguindo V2 Spec)
 1. **Phase 1 — Foundation + Domain + PID** ✅ (merged to main)
 2. **Phase 2 — REST API + Auth + Telemetry Publisher** ✅ (merged to main)
-3. Phase 3 — PySide6 HMI + OPC-UA I/O Worker
-4. Phase 4 — Simulator (digital twin)
-5. Phase 5 — AI (Fuzzy + RL) + Statistics
-6. Phase 6 — Alarms + RBAC fine-grained
-7. Phase 7 — Executive Dashboard + Multi-Trend + Export + Themes
+3. **Phase 3a — PySide6 HMI Desktop** ✅ (merged to main, 73 tests)
+4. Phase 3b — OPC-UA I/O Worker (reads/writes reais)
+5. Phase 4 — Simulator (digital twin): backend (SimulatorAdapter + asyncua.Server) + UI basica no HMI (preset selector, param sliders, disturbance injection). SVG overlay e "Export Dynamics to Loop" deferidos para Phase 7.
+6. Phase 5 — AI (Fuzzy + RL) + Statistics
+7. Phase 6 — Alarms + RBAC fine-grained
+8. Phase 7 — Executive Dashboard + Multi-Trend + Export + Themes + Simulator SVG overlay
 
-Phases 4/5/6 sao paralelizaveis apos Phase 3.
+Phases 4/5/6 sao paralelizaveis apos Phase 3a.
 
 ## Convencoes
 - TDD: write failing test -> implement -> green -> commit

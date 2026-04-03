@@ -744,13 +744,14 @@ Main working screen + real hardware connectivity.
 
 Digital twin for offline validation.
 
-- 4 preset models + Custom SOPTD, embedded asyncua.Server
-- SimulatorAdapter, disturbance injection
-- Simulator UI panel, SVG overlay, "Export Dynamics to Loop"
+- 4 preset models (Flow/Level/Pressure/Temperature) + Custom SOPTD, embedded asyncua.Server
+- SimulatorAdapter implementing TelemetrySource port, disturbance injection (white noise, load step)
+- Basic Simulator UI page in HMI: preset selector, parameter sliders (gain, time constants, dead time), disturbance injection buttons
+- SVG process overlay and "Export Dynamics to Loop" deferred to Phase 7
 
-**Tests:** Unit: transfer functions. Integration: simulator full loop.
+**Tests:** Unit: transfer functions, Pade approximation. Integration: simulator full loop via event bus.
 
-**Deliverable:** App runs offline with simulated process.
+**Deliverable:** App runs offline with simulated process, operators can select models and inject disturbances via HMI.
 
 ### Phase 5: AI (Fuzzy + RL) + Statistics
 
@@ -784,8 +785,9 @@ Polish and completeness.
 - Export (CSV/XLSX/PDF via REST)
 - Material Design 3 + ISA-101 themes, theme selector
 - Settings panel
+- Simulator SVG process overlay and "Export Dynamics to Loop" (deferred from Phase 4)
 
-**Tests:** Integration: export valid files. HMI: themes, multi-trend sync.
+**Tests:** Integration: export valid files. HMI: themes, multi-trend sync, SVG overlay.
 
 **Deliverable:** Complete application.
 
