@@ -38,7 +38,9 @@ async def browse_children(
     try:
         children = adapter.browse_children(node_id)
     except ConnectionError as e:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e),
+        ) from e
     return OPCUABrowseResponse(
         parent_node_id=node_id,
         children=[OPCUANodeInfo(**c) for c in children],
@@ -54,7 +56,9 @@ async def search_tags(
     try:
         results = adapter.search(q)
     except ConnectionError as e:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e),
+        ) from e
     return OPCUASearchResponse(
         query=q,
         results=[OPCUANodeInfo(**r) for r in results],

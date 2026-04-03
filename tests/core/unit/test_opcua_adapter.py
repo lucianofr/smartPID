@@ -1,8 +1,6 @@
 """Unit tests for OPCUAAdapter."""
 from __future__ import annotations
 
-import pytest
-
 from smart_pid_core.config import CoreSettings
 from smart_pid_domain.enums import ConnectionState
 

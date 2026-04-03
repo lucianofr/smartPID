@@ -46,6 +46,23 @@ async def run_daemon(settings: CoreSettings) -> None:
         simulator_adapter.start()
         logger.info("simulator_started", port=settings.simulator_port)
 
+    # Phase 3b: OPC-UA adapter lifecycle
+    opcua_adapter = adapter_factory.opcua_adapter
+    if opcua_adapter is not None:
+        controllers = await repo.list_all()
+        for ctrl in controllers:
+            tb = ctrl.tag_bindings
+            if tb.node_id_pv:  # Only register if tags are configured
+                opcua_adapter.register_controller(
+                    controller_id=ctrl.id,
+                    node_id_pv=tb.node_id_pv,
+                    node_id_sp=tb.node_id_sp,
+                    node_id_co=tb.node_id_co,
+                    node_id_integral=tb.node_id_integral,
+                )
+        opcua_adapter.start()
+        logger.info("opcua_adapter_started", endpoint=settings.opcua_endpoint)
+
     # Phase 2: User repo + seed admin
     user_repo = UserRepository(repo.db)
     users = await user_repo.list_all()
@@ -62,6 +79,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         loop_manager=loop_manager,
         settings=settings,
         simulator_adapter=simulator_adapter,
+        opcua_adapter=opcua_adapter,
     )
 
     # Phase 2: Telemetry Publisher
@@ -100,6 +118,8 @@ async def run_daemon(settings: CoreSettings) -> None:
     await telemetry_pub.stop()
     if simulator_adapter is not None:
         simulator_adapter.stop()
+    if opcua_adapter is not None:
+        opcua_adapter.stop()
     loop_manager.stop_all()
     bus.stop()
     logger.info("daemon_stopped")

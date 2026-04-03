@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import threading
 import time
@@ -126,10 +127,8 @@ class OPCUAAdapter:
                 with self._lock:
                     self._state = ConnectionState.RECONNECTING
                 if self._client is not None:
-                    try:
+                    with contextlib.suppress(Exception):
                         await self._client.disconnect()
-                    except Exception:
-                        pass
                     self._client = None
 
                 # Backoff wait
@@ -212,7 +211,7 @@ class OPCUAAdapter:
             keys.append("integral")
 
         values = await client.read_values(node_ids_to_read)
-        result = dict(zip(keys, values))
+        result = dict(zip(keys, values, strict=True))
 
         return TelemetryFrame(
             controller_id=controller_id,
