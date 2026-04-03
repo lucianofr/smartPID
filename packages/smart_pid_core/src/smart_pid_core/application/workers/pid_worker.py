@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import msgpack
+import zmq
 
 from smart_pid_core.domain.services.pid_engine import PIDState
 from smart_pid_core.domain.services.pid_mode_manager import BlockStatus
@@ -68,42 +69,48 @@ class PIDWorker:
         time.sleep(0.02)  # Let subscriptions propagate
 
         while not self._stop_event.is_set():
-            tick_start = time.monotonic()
-            self._drain_telemetry(telem_sub)
-            self._drain_ai_actions(ai_sub)
+            try:
+                tick_start = time.monotonic()
+                self._drain_telemetry(telem_sub)
+                self._drain_ai_actions(ai_sub)
 
-            if self._has_telemetry and self._mode in {
-                ControllerMode.AUTO, ControllerMode.CAS, ControllerMode.RCAS
-            }:
-                params = self._controller.pid_params
-                out_limits = (self._controller.out_lo_lim, self._controller.out_hi_lim)
-                direct_acting = self._controller.control_opts.direct_acting
-                result = self._engine.compute(
-                    params=params, state=self._state, pv=self._last_pv, sp=self._last_sp,
-                    dt=scan_s, out_limits=out_limits, direct_acting=direct_acting,
-                )
-                self._state = result.new_state
-                self._last_co = result.cv
-                action_data = {
-                    "controller_id": self.controller_id, "co": result.cv,
-                    "integral_val": result.new_state.cv, "delta_cv": result.delta_cv,
-                    "timestamp": datetime.now(tz=UTC).isoformat(),
-                }
-                pub.send(f"ACTION.CTRL.{self.controller_id}".encode(), msgpack.packb(action_data))
+                if self._has_telemetry and self._mode in {
+                    ControllerMode.AUTO, ControllerMode.CAS, ControllerMode.RCAS
+                }:
+                    params = self._controller.pid_params
+                    out_limits = (self._controller.out_lo_lim, self._controller.out_hi_lim)
+                    arw_limits = (self._controller.arw_lo_lim, self._controller.arw_hi_lim)
+                    direct_acting = self._controller.control_opts.direct_acting
+                    result = self._engine.compute(
+                        params=params, state=self._state, pv=self._last_pv, sp=self._last_sp,
+                        dt=scan_s, out_limits=out_limits, direct_acting=direct_acting,
+                        arw_limits=arw_limits,
+                    )
+                    self._state = result.new_state
+                    self._last_co = result.cv
+                    action_data = {
+                        "controller_id": self.controller_id, "co": result.cv,
+                        "integral_val": result.new_state.cv, "delta_cv": result.delta_cv,
+                        "timestamp": datetime.now(tz=UTC).isoformat(),
+                    }
+                    topic = f"ACTION.CTRL.{self.controller_id}".encode()
+                    pub.send(topic, msgpack.packb(action_data))
 
-            if self._has_telemetry:
-                telem_data = {
-                    "controller_id": self.controller_id, "pv": self._last_pv,
-                    "sp": self._last_sp, "co": self._last_co,
-                    "integral_val": self._state.cv,
-                    "timestamp": datetime.now(tz=UTC).isoformat(), "status": "GOOD",
-                }
-                pub.send(f"TELEMETRY.{self.controller_id}".encode(), msgpack.packb(telem_data))
+                if self._has_telemetry:
+                    telem_data = {
+                        "controller_id": self.controller_id, "pv": self._last_pv,
+                        "sp": self._last_sp, "co": self._last_co,
+                        "integral_val": self._state.cv,
+                        "timestamp": datetime.now(tz=UTC).isoformat(), "status": "GOOD",
+                    }
+                    pub.send(f"STATUS.{self.controller_id}".encode(), msgpack.packb(telem_data))
 
-            elapsed = time.monotonic() - tick_start
-            sleep_time = scan_s - elapsed
-            if sleep_time > 0:
-                self._stop_event.wait(timeout=sleep_time)
+                elapsed = time.monotonic() - tick_start
+                sleep_time = scan_s - elapsed
+                if sleep_time > 0:
+                    self._stop_event.wait(timeout=sleep_time)
+            except zmq.ZMQError:
+                break
 
     def _drain_telemetry(self, sub) -> None:
         while True:

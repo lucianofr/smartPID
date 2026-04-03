@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import msgpack
+import zmq
 
 from smart_pid_domain.enums import SignalStatus
 from smart_pid_domain.models.telemetry import TelemetryFrame
@@ -56,16 +57,19 @@ class DBWorker:
     async def _run_async(self) -> None:
         sub = self._bus.create_subscriber(b"TELEMETRY")
         while not self._stop_event.is_set():
-            # Wait for messages up to flush interval
-            msg = sub.recv(timeout_ms=int(self._flush_interval_s * 1000))
-            if msg is not None:
-                self._process_message(msg)
-            # Drain remaining without blocking
-            while True:
-                msg = sub.recv(timeout_ms=0)
-                if msg is None:
-                    break
-                self._process_message(msg)
+            try:
+                # Wait for messages up to flush interval
+                msg = sub.recv(timeout_ms=int(self._flush_interval_s * 1000))
+                if msg is not None:
+                    self._process_message(msg)
+                # Drain remaining without blocking
+                while True:
+                    msg = sub.recv(timeout_ms=0)
+                    if msg is None:
+                        break
+                    self._process_message(msg)
+            except zmq.ZMQError:
+                break
             # Flush
             await self._flush()
         # Final flush on shutdown

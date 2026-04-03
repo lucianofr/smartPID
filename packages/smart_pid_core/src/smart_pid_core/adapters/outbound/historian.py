@@ -76,7 +76,8 @@ class SQLiteHistorian:
     async def cleanup_older_than(self, days: int) -> int:
         """Delete frames older than `days` days. Returns count deleted."""
         async with self._db.execute(
-            f"DELETE FROM Log_Processo WHERE timestamp <= datetime('now', '-{days} days')"
+            "DELETE FROM Log_Processo WHERE timestamp <= datetime('now', ?)",
+            (f"-{days} days",),
         ) as cur:
             deleted = cur.rowcount
         await self._db.commit()

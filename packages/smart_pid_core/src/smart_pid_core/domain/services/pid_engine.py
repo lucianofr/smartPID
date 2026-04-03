@@ -40,6 +40,13 @@ class PIDResult:
     new_state: PIDState
 
 
+    # Phase 1 deferred features (planned for Phase 3):
+    # - PV filter (PV_FTIME): first-order exponential filter on PV input
+    # - Feedforward (FF_VAL * FF_GAIN): additive feedforward term
+    # - 10% output over-range
+    # - Low cutoff: PV forced to 0.0 when below LOW_CUT
+    # - Increase-to-Close: output inversion via IOOpts flag
+
 class PIDEngine:
     """Stateless PID engine. All state is passed in and returned explicitly."""
 
@@ -52,9 +59,11 @@ class PIDEngine:
         dt: float,
         out_limits: tuple[float, float],
         direct_acting: bool = False,
+        arw_limits: tuple[float, float] | None = None,
     ) -> PIDResult:
         """Execute one PID scan. Returns new CV and updated state."""
         lo, hi = out_limits
+        arw_lo, arw_hi = arw_limits if arw_limits is not None else (lo, hi)
 
         # Error calculation
         error = pv - sp if direct_acting else sp - pv
@@ -71,12 +80,19 @@ class PIDEngine:
             windup_block = (
                 state.is_saturated
                 and (
-                    (state.cv >= hi and error > 0)
-                    or (state.cv <= lo and error < 0)
+                    (state.cv >= arw_hi and error > 0)
+                    or (state.cv <= arw_lo and error < 0)
                 )
             )
             if not in_deadband and not windup_block:
                 i_term = params.gain * (dt / params.reset) * error
+                # 16x faster reset recovery: if previously saturated and integral
+                # now drives output away from saturation, accelerate recovery.
+                if state.is_saturated and i_term != 0.0:
+                    reducing_hi = state.cv >= arw_hi and i_term < 0
+                    reducing_lo = state.cv <= arw_lo and i_term > 0
+                    if reducing_hi or reducing_lo:
+                        i_term *= 16.0
 
         # --- Derivative term (acts on PV, not error) ---
         d_term = 0.0
