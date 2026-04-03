@@ -8,6 +8,8 @@ import pytest
 
 from smart_pid_core.adapters.inbound.api.app import create_app
 from smart_pid_core.adapters.inbound.api.auth import create_access_token, hash_password
+from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
+from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
@@ -30,6 +32,8 @@ async def api_deps(tmp_path):
     await repo.initialize()
     historian = SQLiteHistorian(repo.db)
     user_repo = UserRepository(repo.db)
+    alarm_repo = AlarmRepository(repo.db)
+    audit_repo = AuditRepository(repo.db)
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
     loop_manager = LoopManager(bus=bus)
@@ -43,6 +47,8 @@ async def api_deps(tmp_path):
         "repo": repo,
         "historian": historian,
         "user_repo": user_repo,
+        "alarm_repo": alarm_repo,
+        "audit_repo": audit_repo,
         "loop_manager": loop_manager,
         "settings": settings,
         "bus": bus,
@@ -60,6 +66,8 @@ async def app(api_deps):
         user_repo=api_deps["user_repo"],
         loop_manager=api_deps["loop_manager"],
         settings=api_deps["settings"],
+        alarm_repo=api_deps["alarm_repo"],
+        audit_repo=api_deps["audit_repo"],
     )
 
 
