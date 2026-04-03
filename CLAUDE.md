@@ -137,6 +137,14 @@ Ao compactar, preserve:
 - Issues de code review pendentes (se houver)
 - Branch atual e se esta em worktree
 
+## OBRIGATÓRIO: Salvar estado entre tarefas
+
+**REGRA INVIOLÁVEL:** Ao concluir QUALQUER tarefa (step de um plano, feature, bugfix, etc.), o Claude DEVE:
+1. **Salvar o estado atual** em `.claude/docs/estado-atual.md` com: o que foi concluído, decisões tomadas, próximos passos, arquivos modificados
+2. **PARAR COMPLETAMENTE** e aguardar o usuário dar o próximo comando
+
+NÃO prossiga para a próxima tarefa automaticamente. NÃO encadeie tarefas. Cada tarefa é uma unidade isolada: terminou → salvou estado → parou.
+
 ## Como passar o estado entre sessões (o "onde parou")
 
 Antes de dar `/clear`, peça ao Claude para salvar o contexto importante em um arquivo markdown. Crie um diretório `.claude/docs/` no projeto e peça para ele registrar: decisões de arquitetura, o que foi feito, o que falta fazer, e qualquer detalhe crítico da implementação atual. 
@@ -155,3 +163,4 @@ Fluxo prático:
 3. Na nova sessão:
    "Leia .claude/docs/estado-atual.md e continue de onde paramos."
    
+4. **PARAR e aguardar o usuário iniciar uma nova janela de contexto.** NÃO prossiga para a próxima tarefa automaticamente.

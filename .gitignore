@@ -20,6 +20,9 @@ build/
 # Superpowers brainstorm sessions
 .superpowers/
 
+# Claude local settings (personal, not committed)
+.claude/settings.local.json
+
 # OS
 .DS_Store
 Thumbs.db

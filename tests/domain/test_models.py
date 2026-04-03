@@ -45,7 +45,7 @@ class TestEnums:
         assert len(ProcessSpeed) == 3
 
     def test_connection_state_values(self) -> None:
-        assert len(ConnectionState) == 3
+        assert len(ConnectionState) == 4
 
     def test_signal_status_values(self) -> None:
         assert len(SignalStatus) == 3

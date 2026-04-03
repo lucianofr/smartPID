@@ -45,6 +45,7 @@ class ProcessSpeed(StrEnum):
 
 class ConnectionState(StrEnum):
     OFFLINE = "OFFLINE"
+    CONNECTING = "CONNECTING"
     ONLINE = "ONLINE"
     RECONNECTING = "RECONNECTING"
 

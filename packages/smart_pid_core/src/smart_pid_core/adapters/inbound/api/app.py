@@ -15,6 +15,7 @@ from smart_pid_core.adapters.inbound.api.routers import (
     commands,
     controllers,
     history,
+    opcua,
     simulator,
     stats,
     system,
@@ -42,6 +43,7 @@ def create_app(
     loop_manager: LoopManager,
     settings: CoreSettings,
     simulator_adapter=None,
+    opcua_adapter=None,
     stats_workers=None,
     ai_workers=None,
     ai_repo=None,
@@ -56,6 +58,7 @@ def create_app(
     app.state.loop_manager = loop_manager
     app.state.settings = settings
     app.state.simulator_adapter = simulator_adapter
+    app.state.opcua_adapter = opcua_adapter
     app.state.stats_workers = stats_workers or {}
     app.state.ai_workers = ai_workers or {}
     app.state.ai_repo = ai_repo
@@ -67,6 +70,7 @@ def create_app(
     app.include_router(commands.router, prefix="/command", tags=["commands"])
     app.include_router(history.router, prefix="/history", tags=["history"])
     app.include_router(simulator.router, prefix="/simulator", tags=["simulator"])
+    app.include_router(opcua.router, prefix="/opcua", tags=["opcua"])
     app.include_router(stats.router, prefix="/controllers", tags=["stats"])
     app.include_router(ai.router, prefix="/controllers", tags=["ai"])
 
