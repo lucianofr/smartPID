@@ -104,3 +104,20 @@ class TestControlAction:
         now = datetime.now(tz=UTC)
         action = ControlAction(controller_id=1, co=45.0, integral_val=1.5, timestamp=now)
         assert action.co == 45.0
+
+
+from smart_pid_domain.exceptions import ControllerNotFoundError, DomainError
+
+
+class TestControllerNotFoundError:
+    def test_is_domain_error(self) -> None:
+        err = ControllerNotFoundError(42)
+        assert isinstance(err, DomainError)
+
+    def test_stores_controller_id(self) -> None:
+        err = ControllerNotFoundError(42)
+        assert err.controller_id == 42
+
+    def test_message(self) -> None:
+        err = ControllerNotFoundError(42)
+        assert "42" in str(err)

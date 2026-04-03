@@ -71,3 +71,9 @@ class AuthenticationError(SmartPIDError):
 
 class AuthorizationError(SmartPIDError):
     pass
+
+
+class ControllerNotFoundError(DomainError):
+    def __init__(self, controller_id: int) -> None:
+        self.controller_id = controller_id
+        super().__init__(f"Controller {controller_id} not found")
