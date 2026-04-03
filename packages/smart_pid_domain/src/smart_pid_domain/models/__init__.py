@@ -2,7 +2,13 @@
 from __future__ import annotations
 
 from smart_pid_domain.models.controller import (
-    AIConfig, ControlOpts, Controller, IOOpts, PIDParams, ScaleConfig, TagBindings,
+    AIConfig,
+    Controller,
+    ControlOpts,
+    IOOpts,
+    PIDParams,
+    ScaleConfig,
+    TagBindings,
 )
 from smart_pid_domain.models.telemetry import ControlAction, TelemetryFrame
 

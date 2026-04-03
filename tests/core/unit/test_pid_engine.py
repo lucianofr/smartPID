@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from smart_pid_domain.models.controller import PIDParams
 from smart_pid_core.domain.services.pid_engine import PIDEngine, PIDState
+from smart_pid_domain.models.controller import PIDParams
 
 
 class TestPIDCompute:

@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 import threading
 import time
+
 import msgpack
-import pytest
+
 from smart_pid_core.application.event_bus import EventBus
 
 

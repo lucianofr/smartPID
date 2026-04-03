@@ -1,6 +1,7 @@
 """Typed exception hierarchy for the Smart PID platform."""
 from __future__ import annotations
 
+
 class SmartPIDError(Exception):
     """Base exception for all Smart PID errors."""
 

@@ -1,6 +1,8 @@
 """All shared enumerations for the Smart PID platform."""
 from __future__ import annotations
+
 from enum import StrEnum
+
 
 class ControllerMode(StrEnum):
     """Operating modes for the PID block."""

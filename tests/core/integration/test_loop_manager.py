@@ -1,9 +1,10 @@
 from __future__ import annotations
+
 import time
-import pytest
-from smart_pid_domain.models.controller import Controller
+
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
+from smart_pid_domain.models.controller import Controller
 
 
 class TestLoopManager:

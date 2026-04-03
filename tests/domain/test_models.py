@@ -1,14 +1,23 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from smart_pid_domain.enums import (
-    AIEngine, ConnectionState, ControllerMode, ControlObjective,
-    ExecutionMode, IntegralType, OptimizerState, PIDStructure,
-    ProcessSpeed, SignalStatus, UserRole,
+    AIEngine,
+    ConnectionState,
+    ControllerMode,
+    ControlObjective,
+    ExecutionMode,
+    IntegralType,
+    OptimizerState,
+    PIDStructure,
+    ProcessSpeed,
+    SignalStatus,
+    UserRole,
 )
 from smart_pid_domain.models.controller import (
-    AIConfig, ControlOpts, Controller, IOOpts, PIDParams, ScaleConfig, TagBindings,
+    PIDParams,
+    ScaleConfig,
 )
 from smart_pid_domain.models.telemetry import ControlAction, TelemetryFrame
 
@@ -79,7 +88,7 @@ class TestScaleConfig:
 
 class TestTelemetryFrame:
     def test_is_frozen(self) -> None:
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         frame = TelemetryFrame(
             controller_id=1, pv=50.0, sp=50.0, co=25.0,
             integral_val=1.0, timestamp=now, status=SignalStatus.GOOD,
@@ -92,6 +101,6 @@ class TestTelemetryFrame:
 
 class TestControlAction:
     def test_construction(self) -> None:
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         action = ControlAction(controller_id=1, co=45.0, integral_val=1.5, timestamp=now)
         assert action.co == 45.0

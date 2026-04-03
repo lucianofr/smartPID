@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 import pytest
-from smart_pid_domain.models.controller import Controller
+
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+from smart_pid_domain.models.controller import Controller
 
 
 @pytest.fixture

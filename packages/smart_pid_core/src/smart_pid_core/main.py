@@ -1,10 +1,13 @@
 """Smart PID Core Engine — backend daemon entry point."""
 from __future__ import annotations
+
 import asyncio
 import logging
 import signal
 import sys
+
 import structlog
+
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.config import CoreSettings
