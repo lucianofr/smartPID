@@ -76,3 +76,11 @@ class AlarmType(StrEnum):
     LOLO = "LOLO"
     DV_HI = "DV_HI"
     DV_LO = "DV_LO"
+
+class ProcessPresetName(StrEnum):
+    """Simulator process model presets."""
+    FLOW = "FLOW"
+    PRESSURE = "PRESSURE"
+    LEVEL = "LEVEL"
+    TEMPERATURE = "TEMPERATURE"
+    CUSTOM = "CUSTOM"
