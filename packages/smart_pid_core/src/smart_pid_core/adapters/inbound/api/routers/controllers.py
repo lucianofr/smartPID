@@ -16,12 +16,12 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_domain.dtos.auth import UserClaims
-from smart_pid_domain.enums import AuditAction
 from smart_pid_domain.dtos.controllers import (
     ControllerCreate,
     ControllerResponse,
     ControllerUpdate,
 )
+from smart_pid_domain.enums import AuditAction
 from smart_pid_domain.exceptions import ControllerNotFoundError
 from smart_pid_domain.models.controller import Controller, PIDParams
 

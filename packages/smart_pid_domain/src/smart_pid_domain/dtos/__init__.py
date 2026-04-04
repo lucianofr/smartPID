@@ -1,7 +1,6 @@
 """Phase 2 DTOs — shared between core and HMI."""
 from smart_pid_domain.dtos.alarms import AlarmAckRequest, AlarmResponse
 from smart_pid_domain.dtos.auth import LoginRequest, TokenResponse, UserClaims, UserCreate
-from smart_pid_domain.dtos.users import UserResponse, UserUpdate
 from smart_pid_domain.dtos.commands import (
     CommandResponse,
     ModeCommand,
@@ -22,6 +21,7 @@ from smart_pid_domain.dtos.simulator import (
     SimulatorStatusResponse,
 )
 from smart_pid_domain.dtos.system import SystemStatusResponse
+from smart_pid_domain.dtos.users import UserResponse, UserUpdate
 
 __all__ = [
     "AlarmAckRequest",

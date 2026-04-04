@@ -16,9 +16,9 @@ from PySide6.QtWidgets import (
 
 from smart_pid_hmi.bus_bridge import BusBridge
 from smart_pid_hmi.config import HMISettings
+from smart_pid_hmi.pages.alarm_panel import AlarmPanel
 from smart_pid_hmi.pages.connection_page import ConnectionPage
 from smart_pid_hmi.pages.dashboard_page import DashboardPage
-from smart_pid_hmi.pages.alarm_panel import AlarmPanel
 from smart_pid_hmi.pages.simulator_page import SimulatorPage
 from smart_pid_hmi.services.session import Session
 from smart_pid_hmi.themes.isa101 import ISA101Theme
