@@ -28,7 +28,7 @@ def get_export_worker(request: Request):
 async def create_export(
     body: ExportRequest,
     _user: Annotated[UserClaims, Depends(require_operator)],
-    worker=Depends(get_export_worker),
+    worker: Annotated[object, Depends(get_export_worker)],
 ) -> ExportJob:
     """Create a new export job."""
     return worker.create_job(body)
@@ -38,7 +38,7 @@ async def create_export(
 async def get_export_status(
     export_id: str,
     _user: Annotated[UserClaims, Depends(require_operator)],
-    worker=Depends(get_export_worker),
+    worker: Annotated[object, Depends(get_export_worker)],
 ) -> ExportJob:
     """Get the status of an export job."""
     job = worker.get_job(export_id)
@@ -54,7 +54,7 @@ async def get_export_status(
 async def download_export(
     export_id: str,
     _user: Annotated[UserClaims, Depends(require_operator)],
-    worker=Depends(get_export_worker),
+    worker: Annotated[object, Depends(get_export_worker)],
 ) -> FileResponse:
     """Download the completed export file."""
     job = worker.get_job(export_id)

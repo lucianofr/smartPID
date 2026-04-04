@@ -75,7 +75,8 @@ class MultiTrendPage(QWidget):
             pw.showAxis("right")
             pw.setLabel("right", "CO")
 
-            co_curve = pg.PlotDataItem(pen=pg.mkPen(QPen(pg.mkColor("#4CAF50"), 2, Qt.PenStyle.DashLine)))
+            co_pen = QPen(pg.mkColor("#4CAF50"), 2, Qt.PenStyle.DashLine)
+            co_curve = pg.PlotDataItem(pen=pg.mkPen(co_pen))
             co_viewbox.addItem(co_curve)
 
             self._plots.append(pw)
