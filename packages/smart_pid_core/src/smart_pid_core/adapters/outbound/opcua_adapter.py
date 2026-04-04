@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from smart_pid_domain.enums import ConnectionState
-from smart_pid_domain.models.signal import FFSignal
+from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
 from smart_pid_domain.models.telemetry import TelemetryFrame
 
 if TYPE_CHECKING:
@@ -87,6 +87,41 @@ class OPCUAAdapter:
                 return True
             time.sleep(0.05)
         return False
+
+    @staticmethod
+    def _decode_status(status_code: int) -> FFSignalStatus:
+        """Decode OPC-UA StatusCode into FFSignalStatus."""
+        from smart_pid_domain.enums import LimitBits, SignalSeverity
+        from smart_pid_domain.models.signal import FFSignalStatus as _FSS
+
+        severity_bits = (status_code & 0xC0000000) >> 30
+        severity_map = {0: SignalSeverity.GOOD, 1: SignalSeverity.UNCERTAIN}
+        severity = severity_map.get(severity_bits, SignalSeverity.BAD)
+
+        limit_val = (status_code & 0x00000300) >> 8
+        limit_map = {
+            0: LimitBits.NONE, 1: LimitBits.LOW_LIMITED,
+            2: LimitBits.HIGH_LIMITED, 3: LimitBits.CONSTANT,
+        }
+        limit_bits = limit_map.get(limit_val, LimitBits.NONE)
+
+        return _FSS(severity=severity, limit_bits=limit_bits)
+
+    @staticmethod
+    def _encode_status(status: FFSignalStatus) -> int:
+        """Encode FFSignalStatus into OPC-UA StatusCode integer."""
+        from smart_pid_domain.enums import LimitBits, SignalSeverity
+
+        severity_map = {
+            SignalSeverity.GOOD: 0, SignalSeverity.UNCERTAIN: 1, SignalSeverity.BAD: 2,
+        }
+        limit_map = {
+            LimitBits.NONE: 0, LimitBits.LOW_LIMITED: 1,
+            LimitBits.HIGH_LIMITED: 2, LimitBits.CONSTANT: 3,
+        }
+        return (severity_map.get(status.severity, 2) << 30) | (
+            limit_map.get(status.limit_bits, 0) << 8
+        )
 
     # ---- Connection lifecycle (private) ----
 
@@ -165,6 +200,8 @@ class OPCUAAdapter:
         node_id_sp: str,
         node_id_co: str,
         node_id_integral: str = "",
+        node_id_bkcal_in: str = "",
+        node_id_bkcal_out: str = "",
     ) -> None:
         """Register a controller's OPC-UA node mappings."""
         with self._lock:
@@ -173,6 +210,8 @@ class OPCUAAdapter:
                 "sp": node_id_sp,
                 "co": node_id_co,
                 "integral": node_id_integral,
+                "bkcal_in": node_id_bkcal_in,
+                "bkcal_out": node_id_bkcal_out,
             }
 
     def read_telemetry(self, controller_id: int) -> TelemetryFrame:
@@ -199,7 +238,7 @@ class OPCUAAdapter:
         """Async batch read of OPC-UA nodes."""
         node_ids_to_read = []
         keys = []
-        for key in ("pv", "sp", "co"):
+        for key in ("pv", "sp", "co", "bkcal_in"):
             nid = nodes.get(key, "")
             if nid:
                 node_ids_to_read.append(client.get_node(nid))
@@ -220,7 +259,7 @@ class OPCUAAdapter:
             pv=FFSignal.good(float(result.get("pv", 0.0)), now),
             sp=FFSignal.good(float(result.get("sp", 0.0)), now),
             co=FFSignal.good(float(result.get("co", 0.0)), now),
-            bkcal_in=FFSignal.good(0.0, now),
+            bkcal_in=FFSignal.good(float(result.get("bkcal_in", 0.0)), now),
             integral_val=float(result.get("integral", 0.0)),
             timestamp=now,
         )
@@ -262,6 +301,40 @@ class OPCUAAdapter:
             self._loop,
         )
         future.result(timeout=self._timeout_s)
+
+    def write_bkcal_out(self, controller_id: int, signal: FFSignal) -> None:
+        """Write BKCAL_OUT value and status to the controller's BKCAL_OUT node."""
+        with self._lock:
+            if controller_id not in self._controllers:
+                raise KeyError(f"Controller {controller_id} not registered")
+            node_id = self._controllers[controller_id].get("bkcal_out", "")
+            client = self._client
+
+        if not node_id:
+            return  # No BKCAL_OUT node configured — skip silently
+        if client is None or self.state != ConnectionState.ONLINE:
+            raise ConnectionError("OPC-UA not connected")
+
+        future = asyncio.run_coroutine_threadsafe(
+            self._async_write_bkcal_out(client, node_id, signal),
+            self._loop,
+        )
+        future.result(timeout=self._timeout_s)
+
+    async def _async_write_bkcal_out(
+        self, client, node_id: str, signal: FFSignal,
+    ) -> None:
+        """Write BKCAL_OUT with encoded StatusCode."""
+        from asyncua import ua
+
+        node = client.get_node(node_id)
+        status_code = ua.StatusCode(self._encode_status(signal.status))
+        dv = ua.DataValue(
+            Value=ua.Variant(signal.value, ua.VariantType.Float),
+            StatusCode=status_code,
+            SourceTimestamp=signal.timestamp or datetime.now(UTC),
+        )
+        await node.write_data_value(dv)
 
     async def _async_write_value(self, client, node_id: str, value: float) -> None:
         """Write a float value to an OPC-UA node."""
