@@ -5,6 +5,7 @@ import asyncio
 import logging
 import signal
 import sys
+from typing import TYPE_CHECKING
 
 import structlog
 import uvicorn
@@ -19,11 +20,11 @@ from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.application.telemetry_publisher import TelemetryPublisher
 from smart_pid_core.config import CoreSettings
-from smart_pid_domain.models.alarm_config import AlarmConfig
+
+if TYPE_CHECKING:
+    from smart_pid_domain.models.alarm_config import AlarmConfig
 
 logger = structlog.get_logger()
-
-
 async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
     """Load alarm configurations from Configuracao_Alarmes table."""
     from smart_pid_domain.enums import AlarmPriority
@@ -55,8 +56,9 @@ async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
         def _get(
             name: str,
             default_priority: AlarmPriority = AlarmPriority.WARNING,
+            _alarms: dict = alarms,
         ) -> tuple[bool, float, AlarmPriority]:
-            a = alarms.get(name, {})
+            a = _alarms.get(name, {})
             return (
                 a.get("enabled", False),
                 a.get("value", 0.0),
@@ -93,8 +95,6 @@ async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
             deadband_percent=deadband,
         )
     return configs
-
-
 async def run_daemon(settings: CoreSettings) -> None:
     """Bootstrap and run the backend daemon until interrupted."""
     logger.info("starting_daemon", api_port=settings.api_port, zmq_port=settings.zmq_publish_port)
@@ -212,10 +212,11 @@ async def run_daemon(settings: CoreSettings) -> None:
     server.should_exit = True
     await server_task
     await telemetry_pub.stop()
-    if simulator_adapter is not None:
-        simulator_adapter.stop()
+    # Stop OPC-UA client BEFORE simulator (client depends on server)
     if opcua_adapter is not None:
         opcua_adapter.stop()
+    if simulator_adapter is not None:
+        simulator_adapter.stop()
     alarm_worker.stop()
     loop_manager.stop_all()
     bus.stop()
@@ -236,7 +237,5 @@ def main() -> None:
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
     )
     asyncio.run(run_daemon(settings))
-
-
 if __name__ == "__main__":
     main()
