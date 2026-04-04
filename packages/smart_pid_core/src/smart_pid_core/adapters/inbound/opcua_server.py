@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from typing import Callable
+from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ class OPCUAServer:
 
     async def _setup_and_serve(self) -> None:
         """Initialize asyncua.Server, register namespace, create nodes, run."""
-        from asyncua import Server, ua  # noqa: F811
+        from asyncua import Server  # noqa: F811
 
         self._server = Server()
         await self._server.init()

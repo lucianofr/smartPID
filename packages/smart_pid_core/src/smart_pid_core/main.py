@@ -5,6 +5,7 @@ import asyncio
 import logging
 import signal
 import sys
+from typing import TYPE_CHECKING
 
 import structlog
 import uvicorn
@@ -19,7 +20,9 @@ from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.application.telemetry_publisher import TelemetryPublisher
 from smart_pid_core.config import CoreSettings
-from smart_pid_domain.models.alarm_config import AlarmConfig
+
+if TYPE_CHECKING:
+    from smart_pid_domain.models.alarm_config import AlarmConfig
 
 logger = structlog.get_logger()
 async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
@@ -53,8 +56,9 @@ async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
         def _get(
             name: str,
             default_priority: AlarmPriority = AlarmPriority.WARNING,
+            _alarms: dict = alarms,
         ) -> tuple[bool, float, AlarmPriority]:
-            a = alarms.get(name, {})
+            a = _alarms.get(name, {})
             return (
                 a.get("enabled", False),
                 a.get("value", 0.0),

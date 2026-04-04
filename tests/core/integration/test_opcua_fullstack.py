@@ -9,7 +9,6 @@ from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
 from smart_pid_core.config import CoreSettings
 
-
 FULLSTACK_PORT = 48470
 
 
