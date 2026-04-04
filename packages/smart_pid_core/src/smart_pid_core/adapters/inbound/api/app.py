@@ -16,6 +16,7 @@ from smart_pid_core.adapters.inbound.api.routers import (
     auth,
     commands,
     controllers,
+    export,
     history,
     opcua,
     simulator,
@@ -85,6 +86,7 @@ def create_app(
     app.include_router(alarms.router, prefix="/alarms", tags=["alarms"])
     app.include_router(users.router, prefix="/users", tags=["users"])
     app.include_router(audit.router, prefix="/audit", tags=["audit"])
+    app.include_router(export.router, prefix="/export", tags=["export"])
 
     register_error_handlers(app)
 
