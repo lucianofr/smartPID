@@ -6,8 +6,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
-    get_current_user,
     get_simulator_adapter,
+    require_supervisor,
 )
 from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter  # noqa: TC001
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
@@ -24,7 +24,7 @@ router = APIRouter()
 
 @router.get("/status", response_model=SimulatorStatusResponse)
 async def get_status(
-    _user: Annotated[UserClaims, Depends(get_current_user)],
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> SimulatorStatusResponse:
     return SimulatorStatusResponse(enabled=True, controllers=adapter.get_status())
@@ -33,7 +33,7 @@ async def get_status(
 @router.post("/preset", response_model=CommandResponse)
 async def set_preset(
     body: SimulatorPresetRequest,
-    _user: Annotated[UserClaims, Depends(get_current_user)],
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
     adapter.set_preset(body.controller_id, body.preset)
@@ -43,7 +43,7 @@ async def set_preset(
 @router.put("/parameters", response_model=CommandResponse)
 async def set_parameters(
     body: SimulatorParametersRequest,
-    _user: Annotated[UserClaims, Depends(get_current_user)],
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
     adapter.set_parameters(body.controller_id, body.gain, body.tau1, body.tau2, body.dead_time)
@@ -53,7 +53,7 @@ async def set_parameters(
 @router.post("/disturbance", response_model=CommandResponse)
 async def inject_disturbance(
     body: SimulatorDisturbanceRequest,
-    _user: Annotated[UserClaims, Depends(get_current_user)],
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
     if body.type == "step":
@@ -68,7 +68,7 @@ async def inject_disturbance(
 @router.delete("/disturbance/{controller_id}", response_model=CommandResponse)
 async def clear_disturbance(
     controller_id: int,
-    _user: Annotated[UserClaims, Depends(get_current_user)],
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
     adapter.clear_disturbance(controller_id)

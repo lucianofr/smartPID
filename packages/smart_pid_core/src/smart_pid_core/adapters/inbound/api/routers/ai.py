@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_ai_repo,
     get_ai_workers,
-    get_current_user,
+    require_operator,
 )
 from smart_pid_domain.dtos.ai import AIHistoryResponse, AIStatusResponse, AITuningLogEntry
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
@@ -19,7 +19,7 @@ router = APIRouter()
 @router.get("/{controller_id}/ai/status", response_model=AIStatusResponse)
 async def get_ai_status(
     controller_id: int,
-    _user: Annotated[UserClaims, Depends(get_current_user)],
+    _user: Annotated[UserClaims, Depends(require_operator)],
     ai_workers: Annotated[dict, Depends(get_ai_workers)],
 ) -> AIStatusResponse:
     worker = ai_workers.get(controller_id)
@@ -40,7 +40,7 @@ async def get_ai_status(
 @router.get("/{controller_id}/ai/history", response_model=AIHistoryResponse)
 async def get_ai_history(
     controller_id: int,
-    _user: Annotated[UserClaims, Depends(get_current_user)],
+    _user: Annotated[UserClaims, Depends(require_operator)],
     ai_repo: Annotated[object, Depends(get_ai_repo)],
 ) -> AIHistoryResponse:
     entries = await ai_repo.get_tuning_history(controller_id=controller_id, limit=50)

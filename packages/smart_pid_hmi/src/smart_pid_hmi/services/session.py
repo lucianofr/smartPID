@@ -12,6 +12,7 @@ class Session:
     def __init__(self) -> None:
         self._token: str | None = None
         self._username: str | None = None
+        self._role: str | None = None
         self._exp: float = 0.0
 
     @property
@@ -28,6 +29,12 @@ class Session:
     def username(self) -> str | None:
         if self.is_authenticated:
             return self._username
+        return None
+
+    @property
+    def role(self) -> str | None:
+        if self.is_authenticated:
+            return self._role
         return None
 
     @property
@@ -48,13 +55,16 @@ class Session:
             payload = json.loads(base64.urlsafe_b64decode(payload_b64))
             self._token = token
             self._username = payload.get("username")
+            self._role = payload.get("role")
             self._exp = float(payload.get("exp", 0))
         except (IndexError, json.JSONDecodeError, ValueError):
             self._token = None
             self._username = None
+            self._role = None
             self._exp = 0.0
 
     def clear(self) -> None:
         self._token = None
         self._username = None
+        self._role = None
         self._exp = 0.0

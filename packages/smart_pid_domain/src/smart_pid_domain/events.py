@@ -8,7 +8,13 @@ from uuid import UUID, uuid4
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from smart_pid_domain.enums import AIEngine, ConnectionState, ControlObjective
+    from smart_pid_domain.enums import (
+        AIEngine,
+        AlarmPriority,
+        AlarmType,
+        ConnectionState,
+        ControlObjective,
+    )
     from smart_pid_domain.models.telemetry import TelemetryFrame
 
 
@@ -69,4 +75,40 @@ class SystemStateChanged:
 
     new_state: ConnectionState
     reason: str
+    event_id: UUID = field(default_factory=uuid4)
+
+
+@dataclass(frozen=True)
+class AlarmTriggered:
+    """Published by AlarmWorker when an alarm activates."""
+
+    controller_id: int
+    alarm_type: AlarmType
+    priority: AlarmPriority
+    value: float
+    limit: float
+    timestamp: datetime
+    event_id: UUID = field(default_factory=uuid4)
+
+
+@dataclass(frozen=True)
+class AlarmCleared:
+    """Published by AlarmWorker when an alarm returns to normal."""
+
+    controller_id: int
+    alarm_type: AlarmType
+    value: float
+    timestamp: datetime
+    event_id: UUID = field(default_factory=uuid4)
+
+
+@dataclass(frozen=True)
+class AlarmAcknowledged:
+    """Published when a user acknowledges an alarm."""
+
+    controller_id: int
+    alarm_type: AlarmType
+    user_id: int
+    username: str
+    timestamp: datetime
     event_id: UUID = field(default_factory=uuid4)

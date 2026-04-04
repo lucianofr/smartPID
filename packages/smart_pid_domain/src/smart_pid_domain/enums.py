@@ -78,6 +78,35 @@ class AlarmType(StrEnum):
     DV_HI = "DV_HI"
     DV_LO = "DV_LO"
 
+class AlarmState(StrEnum):
+    """ISA-18.2 alarm states for ACK workflow."""
+    UNACKNOWLEDGED = "UNACKNOWLEDGED"
+    ACKNOWLEDGED = "ACKNOWLEDGED"
+    CLEARED_UNACK = "CLEARED_UNACK"
+
+
+class AuditAction(StrEnum):
+    """Audit trail action types."""
+    LOGIN = "LOGIN"
+    LOGOUT = "LOGOUT"
+    SP_CHANGE = "SP_CHANGE"
+    MODE_CHANGE = "MODE_CHANGE"
+    OUTPUT_CHANGE = "OUTPUT_CHANGE"
+    ACK_ALARM = "ACK_ALARM"
+    ACK_ALARM_ALL = "ACK_ALARM_ALL"
+    TUNE_PID = "TUNE_PID"
+    CONFIG_AI = "CONFIG_AI"
+    CONFIG_ALARM = "CONFIG_ALARM"
+    CREATE_CONTROLLER = "CREATE_CONTROLLER"
+    UPDATE_CONTROLLER = "UPDATE_CONTROLLER"
+    DELETE_CONTROLLER = "DELETE_CONTROLLER"
+    CREATE_USER = "CREATE_USER"
+    UPDATE_USER = "UPDATE_USER"
+    DEACTIVATE_USER = "DEACTIVATE_USER"
+    SIMULATOR_CONFIG = "SIMULATOR_CONFIG"
+    OPCUA_CONFIG = "OPCUA_CONFIG"
+
+
 class ProcessPresetName(StrEnum):
     """Simulator process model presets."""
     FLOW = "FLOW"

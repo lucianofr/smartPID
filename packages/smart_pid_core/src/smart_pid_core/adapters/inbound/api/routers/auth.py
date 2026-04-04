@@ -11,10 +11,12 @@ from smart_pid_core.adapters.inbound.api.auth import (
     verify_password,
 )
 from smart_pid_core.adapters.inbound.api.dependencies import (
+    get_audit_repo,
     get_settings,
     get_user_repo,
     require_admin,
 )
+from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
 from smart_pid_core.config import CoreSettings
 from smart_pid_domain.dtos.auth import (
@@ -23,6 +25,7 @@ from smart_pid_domain.dtos.auth import (
     UserClaims,
     UserCreate,
 )
+from smart_pid_domain.enums import AuditAction
 
 router = APIRouter()
 
@@ -32,6 +35,7 @@ async def login(
     body: LoginRequest,
     user_repo: Annotated[UserRepository, Depends(get_user_repo)],
     settings: Annotated[CoreSettings, Depends(get_settings)],
+    audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> TokenResponse:
     user = await user_repo.get_by_username(body.username)
     if user is None or not verify_password(body.password, user.password_hash):
@@ -46,6 +50,7 @@ async def login(
         secret=settings.jwt_secret,
         expiry_hours=settings.jwt_expiry_hours,
     )
+    await audit_repo.record(user.id, user.username, AuditAction.LOGIN, None, None)
     return TokenResponse(access_token=token)
 
 

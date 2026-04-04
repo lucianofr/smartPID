@@ -60,11 +60,38 @@ def get_current_user(request: Request) -> UserClaims:
     )
 
 
+_ROLE_LEVEL = {"OPERATOR": 0, "SUPERVISOR": 1, "ADMIN": 2}
+
+
+def require_operator(
+    user: Annotated[UserClaims, Depends(get_current_user)],
+) -> UserClaims:
+    """Verify the current user has at least operator role."""
+    if _ROLE_LEVEL.get(user.role.upper(), -1) < _ROLE_LEVEL["OPERATOR"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operator access required",
+        )
+    return user
+
+
+def require_supervisor(
+    user: Annotated[UserClaims, Depends(get_current_user)],
+) -> UserClaims:
+    """Verify the current user has at least supervisor role."""
+    if _ROLE_LEVEL.get(user.role.upper(), -1) < _ROLE_LEVEL["SUPERVISOR"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Supervisor access required",
+        )
+    return user
+
+
 def require_admin(
     user: Annotated[UserClaims, Depends(get_current_user)],
 ) -> UserClaims:
     """Verify the current user has admin role."""
-    if user.role != "admin":
+    if _ROLE_LEVEL.get(user.role.upper(), -1) < _ROLE_LEVEL["ADMIN"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
@@ -108,3 +135,11 @@ def get_ai_repo(request: Request):
             detail="AI repository not available",
         )
     return repo
+
+
+def get_alarm_repo(request: Request):
+    return request.app.state.alarm_repo
+
+
+def get_audit_repo(request: Request):
+    return request.app.state.audit_repo

@@ -11,6 +11,8 @@ from fastapi import FastAPI
 from smart_pid_core.adapters.inbound.api.error_handlers import register_error_handlers
 from smart_pid_core.adapters.inbound.api.routers import (
     ai,
+    alarms,
+    audit,
     auth,
     commands,
     controllers,
@@ -19,9 +21,12 @@ from smart_pid_core.adapters.inbound.api.routers import (
     simulator,
     stats,
     system,
+    users,
 )
 
 if TYPE_CHECKING:
+    from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
+    from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
     from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
     from smart_pid_core.adapters.outbound.user_repo import UserRepository
@@ -47,6 +52,8 @@ def create_app(
     stats_workers=None,
     ai_workers=None,
     ai_repo=None,
+    alarm_repo: AlarmRepository | None = None,
+    audit_repo: AuditRepository | None = None,
 ) -> FastAPI:
     """Build and configure the FastAPI application."""
     app = FastAPI(title="Smart PID API", version="2.0.0", lifespan=_lifespan)
@@ -62,6 +69,8 @@ def create_app(
     app.state.stats_workers = stats_workers or {}
     app.state.ai_workers = ai_workers or {}
     app.state.ai_repo = ai_repo
+    app.state.alarm_repo = alarm_repo
+    app.state.audit_repo = audit_repo
 
     # Register routers
     app.include_router(system.router, prefix="/system", tags=["system"])
@@ -73,6 +82,9 @@ def create_app(
     app.include_router(opcua.router, prefix="/opcua", tags=["opcua"])
     app.include_router(stats.router, prefix="/controllers", tags=["stats"])
     app.include_router(ai.router, prefix="/controllers", tags=["ai"])
+    app.include_router(alarms.router, prefix="/alarms", tags=["alarms"])
+    app.include_router(users.router, prefix="/users", tags=["users"])
+    app.include_router(audit.router, prefix="/audit", tags=["audit"])
 
     register_error_handlers(app)
 

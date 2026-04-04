@@ -142,5 +142,33 @@ class APIClient:
         resp.raise_for_status()
         return CommandResponse.model_validate(resp.json())
 
+    def get_active_alarms(self, controller_id: int | None = None) -> list[dict]:
+        params: dict = {}
+        if controller_id is not None:
+            params["controller_id"] = controller_id
+        resp = self._http.get("/alarms/active", params=params, headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
+
+    def ack_alarm(self, alarm_id: int) -> dict:
+        resp = self._http.post(f"/alarms/{alarm_id}/ack", headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
+
+    def ack_all_alarms(self) -> dict:
+        resp = self._http.post("/alarms/ack-all", headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_alarm_history(
+        self, start: datetime, end: datetime, controller_id: int | None = None,
+    ) -> list[dict]:
+        params: dict = {"start": start.isoformat(), "end": end.isoformat()}
+        if controller_id is not None:
+            params["controller_id"] = controller_id
+        resp = self._http.get("/alarms/history", params=params, headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
+
     def close(self) -> None:
         self._http.close()

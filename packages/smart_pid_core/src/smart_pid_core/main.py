@@ -19,8 +19,80 @@ from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.application.telemetry_publisher import TelemetryPublisher
 from smart_pid_core.config import CoreSettings
+from smart_pid_domain.models.alarm_config import AlarmConfig
 
 logger = structlog.get_logger()
+
+
+async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
+    """Load alarm configurations from Configuracao_Alarmes table."""
+    from smart_pid_domain.enums import AlarmPriority
+    from smart_pid_domain.models.alarm_config import AlarmConfig as _AC
+
+    configs: dict[int, _AC] = {}
+    try:
+        async with db.execute("SELECT * FROM Configuracao_Alarmes ORDER BY controlador_id") as cur:
+            rows = await cur.fetchall()
+    except Exception:
+        # Table may not have data yet
+        return configs
+
+    by_controller: dict[int, dict] = {}
+    for row in rows:
+        cid = row["controlador_id"]
+        if cid not in by_controller:
+            by_controller[cid] = {}
+        atype = row["tipo_alarme"]
+        by_controller[cid][atype] = {
+            "enabled": bool(row["habilitado"]),
+            "value": row["limite"],
+            "priority": AlarmPriority(row["prioridade"]),
+            "hysteresis": row["histerese"],
+        }
+
+    for cid, alarms in by_controller.items():
+
+        def _get(
+            name: str,
+            default_priority: AlarmPriority = AlarmPriority.WARNING,
+        ) -> tuple[bool, float, AlarmPriority]:
+            a = alarms.get(name, {})
+            return (
+                a.get("enabled", False),
+                a.get("value", 0.0),
+                a.get("priority", default_priority),
+            )
+
+        hihi_e, hihi_v, hihi_p = _get("HIHI", AlarmPriority.CRITICAL)
+        hi_e, hi_v, hi_p = _get("HI")
+        lo_e, lo_v, lo_p = _get("LO")
+        lolo_e, lolo_v, lolo_p = _get("LOLO", AlarmPriority.CRITICAL)
+        dvhi_e, dvhi_v, dvhi_p = _get("DV_HI", AlarmPriority.ADVISORY)
+        dvlo_e, dvlo_v, dvlo_p = _get("DV_LO", AlarmPriority.ADVISORY)
+        deadband = max((a.get("hysteresis", 0.0) for a in alarms.values()), default=0.0)
+
+        configs[cid] = _AC(
+            hihi_enabled=hihi_e,
+            hihi_value=hihi_v,
+            hihi_priority=hihi_p,
+            hi_enabled=hi_e,
+            hi_value=hi_v,
+            hi_priority=hi_p,
+            lo_enabled=lo_e,
+            lo_value=lo_v,
+            lo_priority=lo_p,
+            lolo_enabled=lolo_e,
+            lolo_value=lolo_v,
+            lolo_priority=lolo_p,
+            dv_hi_enabled=dvhi_e,
+            dv_hi_value=dvhi_v,
+            dv_hi_priority=dvhi_p,
+            dv_lo_enabled=dvlo_e,
+            dv_lo_value=dvlo_v,
+            dv_lo_priority=dvlo_p,
+            deadband_percent=deadband,
+        )
+    return configs
 
 
 async def run_daemon(settings: CoreSettings) -> None:
@@ -76,6 +148,20 @@ async def run_daemon(settings: CoreSettings) -> None:
 
     ai_repo = AIRepository(repo.db)
 
+    # Phase 6: Alarm + Audit infrastructure
+    from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
+    from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
+    from smart_pid_core.application.workers.alarm_worker import AlarmWorker
+
+    alarm_repo = AlarmRepository(repo.db)
+    audit_repo = AuditRepository(repo.db)
+
+    # Build alarm configs from Configuracao_Alarmes table
+    alarm_configs = await _load_alarm_configs(repo.db)
+    alarm_worker = AlarmWorker(bus=bus, alarm_configs=alarm_configs)
+    alarm_worker.start()
+    logger.info("alarm_worker_started")
+
     # Phase 2: FastAPI
     app = create_app(
         repo=repo,
@@ -88,6 +174,8 @@ async def run_daemon(settings: CoreSettings) -> None:
         stats_workers=loop_manager.get_stats_workers(),
         ai_workers=loop_manager.get_ai_workers(),
         ai_repo=ai_repo,
+        alarm_repo=alarm_repo,
+        audit_repo=audit_repo,
     )
 
     # Phase 2: Telemetry Publisher
@@ -128,6 +216,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         simulator_adapter.stop()
     if opcua_adapter is not None:
         opcua_adapter.stop()
+    alarm_worker.stop()
     loop_manager.stop_all()
     bus.stop()
     logger.info("daemon_stopped")

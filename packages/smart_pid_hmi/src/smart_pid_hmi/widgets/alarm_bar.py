@@ -20,6 +20,7 @@ class AlarmBarWidget(QFrame):
         super().__init__(parent)
         self._theme = theme
         self._alarms: list[dict] = []
+        self._counts: dict[str, int] = {"CRITICAL": 0, "WARNING": 0, "ADVISORY": 0}
 
         self.setFixedHeight(_BAR_HEIGHT)
         self.setStyleSheet(
@@ -30,6 +31,13 @@ class AlarmBarWidget(QFrame):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 0, 4, 0)
         layout.setSpacing(0)
+
+        self._counter_label = QLabel("")
+        self._counter_label.setStyleSheet(
+            f"color: {theme.fg_primary}; background: transparent; "
+            f"font-size: {theme.font_size_label}px; padding: 0 8px;"
+        )
+        layout.addWidget(self._counter_label)
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
@@ -51,12 +59,25 @@ class AlarmBarWidget(QFrame):
         return len(self._alarms)
 
     def on_alarm(self, controller_id: int, alarm: dict) -> None:
+        priority = alarm.get("priority", "")
+        transition = alarm.get("transition", "")
+        if transition == "TRIGGERED" and priority in self._counts:
+            self._counts[priority] += 1
+        elif transition == "CLEARED" and priority in self._counts:
+            self._counts[priority] = max(0, self._counts[priority] - 1)
         self._alarms.insert(0, alarm)
         if len(self._alarms) > _MAX_ALARMS:
             self._alarms = self._alarms[:_MAX_ALARMS]
         self._rebuild()
 
     def _rebuild(self) -> None:
+        # Update counter label
+        parts = []
+        for name, count in self._counts.items():
+            if count > 0:
+                parts.append(f"{name}: {count}")
+        self._counter_label.setText(" | ".join(parts) if parts else "No alarms")
+
         # Clear existing labels
         while self._container_layout.count() > 1:
             item = self._container_layout.takeAt(0)
