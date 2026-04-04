@@ -44,7 +44,7 @@ class TestDBWorker:
                 1, now - timedelta(seconds=5), now + timedelta(seconds=5)
             )
             assert len(result) >= 1
-            assert result[0].pv == 55.0
+            assert result[0].pv.value == 55.0
         finally:
             worker.stop()
 

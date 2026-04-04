@@ -20,6 +20,7 @@ from smart_pid_domain.models.controller import (
     PIDParams,
     ScaleConfig,
 )
+from smart_pid_domain.models.signal import FFSignal
 from smart_pid_domain.models.telemetry import ControlAction, TelemetryFrame
 
 
@@ -91,20 +92,24 @@ class TestTelemetryFrame:
     def test_is_frozen(self) -> None:
         now = datetime.now(tz=UTC)
         frame = TelemetryFrame(
-            controller_id=1, pv=50.0, sp=50.0, co=25.0,
-            integral_val=1.0, timestamp=now, status=SignalStatus.GOOD,
+            controller_id=1, pv=FFSignal.good(50.0), sp=FFSignal.good(50.0),
+            co=FFSignal.good(25.0), bkcal_in=FFSignal.good(0.0),
+            integral_val=1.0, timestamp=now,
         )
-        assert frame.pv == 50.0
+        assert frame.pv.value == 50.0
         import pytest
         with pytest.raises(AttributeError):
-            frame.pv = 99.0  # type: ignore[misc]
+            frame.pv = FFSignal.good(99.0)  # type: ignore[misc]
 
 
 class TestControlAction:
     def test_construction(self) -> None:
         now = datetime.now(tz=UTC)
-        action = ControlAction(controller_id=1, co=45.0, integral_val=1.5, timestamp=now)
-        assert action.co == 45.0
+        action = ControlAction(
+            controller_id=1, co=FFSignal.good(45.0),
+            bkcal_out=FFSignal.good(45.0), integral_val=1.5, timestamp=now,
+        )
+        assert action.co.value == 45.0
 
 
 
@@ -120,3 +125,86 @@ class TestControllerNotFoundError:
     def test_message(self) -> None:
         err = ControllerNotFoundError(42)
         assert "42" in str(err)
+
+
+class TestTelemetryFrameFFSignal:
+    """TelemetryFrame fields are now FFSignal."""
+
+    def test_create_with_ff_signals(self) -> None:
+        from datetime import UTC, datetime
+
+        from smart_pid_domain.models.signal import FFSignal
+
+        ts = datetime.now(tz=UTC)
+        frame = TelemetryFrame(
+            controller_id=1,
+            pv=FFSignal.good(50.0, ts),
+            sp=FFSignal.good(50.0, ts),
+            co=FFSignal.good(62.0, ts),
+            bkcal_in=FFSignal.good(62.0, ts),
+            integral_val=45.0,
+            timestamp=ts,
+        )
+        assert frame.pv.value == 50.0
+        assert frame.pv.status.is_good is True
+        assert frame.bkcal_in.value == 62.0
+
+    def test_bkcal_in_with_limit_bits(self) -> None:
+        from datetime import UTC, datetime
+
+        from smart_pid_domain.enums import LimitBits
+        from smart_pid_domain.models.signal import FFSignal
+
+        ts = datetime.now(tz=UTC)
+        frame = TelemetryFrame(
+            controller_id=1,
+            pv=FFSignal.good(50.0),
+            sp=FFSignal.good(50.0),
+            co=FFSignal.with_limits(100.0, LimitBits.HIGH_LIMITED),
+            bkcal_in=FFSignal.with_limits(100.0, LimitBits.HIGH_LIMITED),
+            integral_val=45.0,
+            timestamp=ts,
+        )
+        assert frame.bkcal_in.status.is_high_limited is True
+
+
+class TestControlActionFFSignal:
+    """ControlAction fields now use FFSignal."""
+
+    def test_create_with_bkcal_out(self) -> None:
+        from datetime import UTC, datetime
+
+        from smart_pid_domain.models.signal import FFSignal
+
+        ts = datetime.now(tz=UTC)
+        action = ControlAction(
+            controller_id=1,
+            co=FFSignal.good(62.0, ts),
+            bkcal_out=FFSignal.good(62.0, ts),
+            integral_val=45.0,
+            timestamp=ts,
+        )
+        assert action.co.value == 62.0
+        assert action.bkcal_out.value == 62.0
+
+
+class TestTagBindingsFFSignal:
+    """TagBindings has BKCAL node ID fields."""
+
+    def test_bkcal_node_ids(self) -> None:
+        from smart_pid_domain.models.controller import TagBindings
+
+        tb = TagBindings(
+            node_id_pv="ns=2;s=PV",
+            node_id_bkcal_in="ns=2;s=BKCAL_IN",
+            node_id_bkcal_out="ns=2;s=BKCAL_OUT",
+        )
+        assert tb.node_id_bkcal_in == "ns=2;s=BKCAL_IN"
+        assert tb.node_id_bkcal_out == "ns=2;s=BKCAL_OUT"
+
+    def test_bkcal_defaults_empty(self) -> None:
+        from smart_pid_domain.models.controller import TagBindings
+
+        tb = TagBindings()
+        assert tb.node_id_bkcal_in == ""
+        assert tb.node_id_bkcal_out == ""

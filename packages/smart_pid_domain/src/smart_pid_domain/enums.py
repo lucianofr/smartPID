@@ -49,10 +49,32 @@ class ConnectionState(StrEnum):
     ONLINE = "ONLINE"
     RECONNECTING = "RECONNECTING"
 
-class SignalStatus(StrEnum):
+class SignalSeverity(StrEnum):
+    """OPC-UA StatusCode severity (bits 31:30)."""
     GOOD = "GOOD"
-    BAD = "BAD"
     UNCERTAIN = "UNCERTAIN"
+    BAD = "BAD"
+
+
+# Backward compatibility alias — will be removed in a future version
+SignalStatus = SignalSeverity
+
+
+class LimitBits(StrEnum):
+    """OPC-UA StatusCode limit bits (bits 9:8) for directional anti-windup."""
+    NONE = "NONE"
+    LOW_LIMITED = "LOW_LIMITED"
+    HIGH_LIMITED = "HIGH_LIMITED"
+    CONSTANT = "CONSTANT"
+
+
+class InitSubStatus(StrEnum):
+    """FF cascade handshake sub-status."""
+    NONE = "NONE"
+    NI = "NI"
+    IR = "IR"
+    IA = "IA"
+    GOOD_CASCADE = "GOOD_CASCADE"
 
 class OptimizerState(StrEnum):
     RUN = "RUN"

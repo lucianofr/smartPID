@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from smart_pid_core.application.export_worker import ExportWorker
-from smart_pid_domain.enums import SignalStatus
 from smart_pid_domain.models.export_models import ExportJob, ExportRequest
+from smart_pid_domain.models.signal import FFSignal
 from smart_pid_domain.models.telemetry import TelemetryFrame
 
 
@@ -17,12 +17,12 @@ def _make_frames(n: int = 3) -> list[TelemetryFrame]:
     return [
         TelemetryFrame(
             controller_id=1,
-            pv=50.0 + i,
-            sp=50.0,
-            co=60.0 + i,
+            pv=FFSignal.good(50.0 + i),
+            sp=FFSignal.good(50.0),
+            co=FFSignal.good(60.0 + i),
+            bkcal_in=FFSignal.good(0.0),
             integral_val=0.0,
             timestamp=datetime(2026, 4, 1, 0, 0, i, tzinfo=UTC),
-            status=SignalStatus.GOOD,
         )
         for i in range(n)
     ]

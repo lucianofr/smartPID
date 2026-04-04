@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from httpx import AsyncClient
 
-from smart_pid_domain.enums import SignalStatus
+from smart_pid_domain.models.signal import FFSignal
 from smart_pid_domain.models.telemetry import TelemetryFrame
 
 
@@ -19,9 +19,9 @@ class TestHistory:
         now = datetime.now(tz=UTC)
         frames = [
             TelemetryFrame(
-                controller_id=1, pv=50.0 + i, sp=50.0, co=25.0,
+                controller_id=1, pv=FFSignal.good(50.0 + i), sp=FFSignal.good(50.0),
+                co=FFSignal.good(25.0), bkcal_in=FFSignal.good(0.0),
                 integral_val=0.0, timestamp=now + timedelta(seconds=i),
-                status=SignalStatus.GOOD,
             )
             for i in range(5)
         ]
@@ -73,9 +73,9 @@ class TestHistory:
         now = datetime.now(tz=UTC)
         frames = [
             TelemetryFrame(
-                controller_id=2, pv=50.0, sp=50.0, co=25.0,
+                controller_id=2, pv=FFSignal.good(50.0), sp=FFSignal.good(50.0),
+                co=FFSignal.good(25.0), bkcal_in=FFSignal.good(0.0),
                 integral_val=0.0, timestamp=now + timedelta(seconds=i),
-                status=SignalStatus.GOOD,
             )
             for i in range(10)
         ]

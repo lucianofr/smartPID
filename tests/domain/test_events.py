@@ -5,14 +5,16 @@ from uuid import UUID
 
 import pytest
 
-from smart_pid_domain.enums import AIEngine, ConnectionState, ControlObjective, SignalStatus
+from smart_pid_domain.enums import AIEngine, ConnectionState, ControlObjective, InitSubStatus
 from smart_pid_domain.events import (
     AIActionComputed,
+    CascadeHandshakeChanged,
     ControlActionComputed,
     StatsUpdated,
     SystemStateChanged,
     TelemetryReceived,
 )
+from smart_pid_domain.models.signal import FFSignal
 from smart_pid_domain.models.telemetry import TelemetryFrame
 
 
@@ -20,8 +22,9 @@ class TestTelemetryReceived:
     def test_auto_generates_event_id(self) -> None:
         now = datetime.now(tz=UTC)
         frame = TelemetryFrame(
-            controller_id=1, pv=50.0, sp=50.0, co=25.0,
-            integral_val=1.0, timestamp=now, status=SignalStatus.GOOD,
+            controller_id=1, pv=FFSignal.good(50.0), sp=FFSignal.good(50.0),
+            co=FFSignal.good(25.0), bkcal_in=FFSignal.good(0.0),
+            integral_val=1.0, timestamp=now,
         )
         event = TelemetryReceived(controller_id=1, frame=frame)
         assert isinstance(event.event_id, UUID)
@@ -29,8 +32,9 @@ class TestTelemetryReceived:
     def test_is_frozen(self) -> None:
         now = datetime.now(tz=UTC)
         frame = TelemetryFrame(
-            controller_id=1, pv=50.0, sp=50.0, co=25.0,
-            integral_val=1.0, timestamp=now, status=SignalStatus.GOOD,
+            controller_id=1, pv=FFSignal.good(50.0), sp=FFSignal.good(50.0),
+            co=FFSignal.good(25.0), bkcal_in=FFSignal.good(0.0),
+            integral_val=1.0, timestamp=now,
         )
         event = TelemetryReceived(controller_id=1, frame=frame)
         with pytest.raises(AttributeError):
@@ -89,3 +93,29 @@ class TestSystemStateChanged:
             reason="Network timeout",
         )
         assert event.new_state == ConnectionState.RECONNECTING
+
+
+class TestCascadeHandshakeChanged:
+    def test_create(self) -> None:
+        evt = CascadeHandshakeChanged(
+            controller_id=1,
+            old_sub_status=InitSubStatus.NI,
+            new_sub_status=InitSubStatus.IR,
+            trigger="ir_received",
+            timestamp=datetime.now(tz=UTC),
+        )
+        assert evt.controller_id == 1
+        assert evt.old_sub_status == InitSubStatus.NI
+        assert evt.new_sub_status == InitSubStatus.IR
+        assert evt.trigger == "ir_received"
+
+    def test_frozen(self) -> None:
+        evt = CascadeHandshakeChanged(
+            controller_id=1,
+            old_sub_status=InitSubStatus.NONE,
+            new_sub_status=InitSubStatus.NI,
+            trigger="bkcal_in_bad",
+            timestamp=datetime.now(tz=UTC),
+        )
+        with pytest.raises(AttributeError):
+            evt.controller_id = 2  # type: ignore[misc]

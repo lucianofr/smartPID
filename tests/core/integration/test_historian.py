@@ -6,7 +6,7 @@ import pytest
 
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
-from smart_pid_domain.enums import SignalStatus
+from smart_pid_domain.models.signal import FFSignal
 from smart_pid_domain.models.telemetry import TelemetryFrame
 
 
@@ -20,8 +20,9 @@ async def historian(tmp_path):
 
 def _make_frame(controller_id: int, pv: float, ts: datetime) -> TelemetryFrame:
     return TelemetryFrame(
-        controller_id=controller_id, pv=pv, sp=50.0, co=25.0,
-        integral_val=1.0, timestamp=ts, status=SignalStatus.GOOD,
+        controller_id=controller_id, pv=FFSignal.good(pv), sp=FFSignal.good(50.0),
+        co=FFSignal.good(25.0), bkcal_in=FFSignal.good(0.0),
+        integral_val=1.0, timestamp=ts,
     )
 
 
@@ -33,8 +34,8 @@ class TestSQLiteHistorian:
         await historian.write_batch(frames)
         result = await historian.query(1, now - timedelta(seconds=1), now + timedelta(seconds=20))
         assert len(result) == 10
-        assert result[0].pv == 50.0
-        assert result[9].pv == 59.0
+        assert result[0].pv.value == 50.0
+        assert result[9].pv.value == 59.0
 
     @pytest.mark.asyncio
     async def test_query_filters_by_controller(self, historian) -> None:
@@ -55,7 +56,7 @@ class TestSQLiteHistorian:
         await historian.write_batch(frames)
         result = await historian.query(1, now - timedelta(hours=1), now + timedelta(hours=1))
         assert len(result) == 1
-        assert result[0].pv == 20.0
+        assert result[0].pv.value == 20.0
 
     @pytest.mark.asyncio
     async def test_cleanup_removes_old_data(self, historian) -> None:
@@ -69,7 +70,7 @@ class TestSQLiteHistorian:
         assert deleted == 1
         result = await historian.query(1, now - timedelta(days=20), now + timedelta(days=1))
         assert len(result) == 1
-        assert result[0].pv == 20.0
+        assert result[0].pv.value == 20.0
 
     @pytest.mark.asyncio
     async def test_empty_batch_is_noop(self, historian) -> None:

@@ -133,9 +133,9 @@ class TestOPCUAServerUpdateValues:
                 time.sleep(0.3)  # Allow async write to propagate
 
                 frame = client.read_telemetry(1)
-                assert frame.pv == pytest.approx(72.5, abs=0.5)
-                assert frame.sp == pytest.approx(75.0, abs=0.5)
-                assert frame.co == pytest.approx(45.0, abs=0.5)
+                assert frame.pv.value == pytest.approx(72.5, abs=0.5)
+                assert frame.sp.value == pytest.approx(75.0, abs=0.5)
+                assert frame.co.value == pytest.approx(45.0, abs=0.5)
             finally:
                 client.stop()
         finally:

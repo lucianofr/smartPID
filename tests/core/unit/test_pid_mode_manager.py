@@ -5,7 +5,8 @@ from smart_pid_core.domain.services.pid_mode_manager import (
     BlockStatus,
     ModeManager,
 )
-from smart_pid_domain.enums import ControllerMode, SignalStatus
+from smart_pid_domain.enums import ControllerMode
+from smart_pid_domain.models.signal import FFSignal
 
 
 class TestModeTransitions:
@@ -77,7 +78,7 @@ class TestForcedTransitions:
 
     def test_bad_pv_forces_manual(self) -> None:
         """Bad PV status forces transition to MAN."""
-        status = BlockStatus(pv_status=SignalStatus.BAD)
+        status = BlockStatus(pv=FFSignal.bad(0.0))
         forced = self.mgr.evaluate_forced_transitions(
             current=ControllerMode.AUTO,
             block_status=status,
@@ -95,7 +96,7 @@ class TestForcedTransitions:
 
     def test_good_pv_no_force(self) -> None:
         """Good PV and no tracking — no forced transition."""
-        status = BlockStatus(pv_status=SignalStatus.GOOD)
+        status = BlockStatus(pv=FFSignal.good(0.0))
         forced = self.mgr.evaluate_forced_transitions(
             current=ControllerMode.AUTO,
             block_status=status,

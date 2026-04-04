@@ -14,6 +14,7 @@ if TYPE_CHECKING:
         AlarmType,
         ConnectionState,
         ControlObjective,
+        InitSubStatus,
     )
     from smart_pid_domain.models.telemetry import TelemetryFrame
 
@@ -111,5 +112,17 @@ class AlarmAcknowledged:
     alarm_type: AlarmType
     user_id: int
     username: str
+    timestamp: datetime
+    event_id: UUID = field(default_factory=uuid4)
+
+
+@dataclass(frozen=True)
+class CascadeHandshakeChanged:
+    """Published by PID Worker on cascade handshake state transitions."""
+
+    controller_id: int
+    old_sub_status: InitSubStatus
+    new_sub_status: InitSubStatus
+    trigger: str
     timestamp: datetime
     event_id: UUID = field(default_factory=uuid4)
