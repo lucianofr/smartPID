@@ -5,15 +5,19 @@ Equation (derivative on PV):
     cv_new = cv_current + delta_cv
 
 Derivative filter: alpha (default Rate/8).
-Anti-windup: suppresses integral when output is saturated and error pushes further.
+Anti-windup: local (output saturation) + directional (downstream limit bits via BKCAL_IN).
 Bumpless transfer: reinitializes state to match current output on mode change.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from smart_pid_domain.enums import LimitBits
+from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
+
 if TYPE_CHECKING:
+    from smart_pid_domain.enums import SignalSeverity
     from smart_pid_domain.models.controller import PIDParams
 
 
@@ -37,37 +41,34 @@ class PIDResult:
     cv: float
     delta_cv: float
     error: float
+    bkcal_out: FFSignal
     new_state: PIDState
 
 
 class PIDEngine:
-    """Stateless PID engine. All state is passed in and returned explicitly.
-
-    Deferred features (planned for future phases):
-    - PV filter (PV_FTIME): first-order exponential filter on PV input
-    - Feedforward (FF_VAL * FF_GAIN): additive feedforward term
-    - 10% output over-range
-    - Low cutoff: PV forced to 0.0 when below LOW_CUT
-    - Increase-to-Close: output inversion via IOOpts flag
-    """
+    """Stateless PID engine. All state is passed in and returned explicitly."""
 
     def compute(
         self,
         params: PIDParams,
         state: PIDState,
-        pv: float,
-        sp: float,
+        pv: FFSignal,
+        sp: FFSignal,
+        bkcal_in: FFSignal,
         dt: float,
         out_limits: tuple[float, float],
         direct_acting: bool = False,
         arw_limits: tuple[float, float] | None = None,
     ) -> PIDResult:
-        """Execute one PID scan. Returns new CV and updated state."""
+        """Execute one PID scan. Returns new CV, BKCAL_OUT, and updated state."""
         lo, hi = out_limits
         arw_lo, arw_hi = arw_limits if arw_limits is not None else (lo, hi)
 
+        pv_val = pv.value
+        sp_val = sp.value
+
         # Error calculation
-        error = pv - sp if direct_acting else sp - pv
+        error = pv_val - sp_val if direct_acting else sp_val - pv_val
 
         # --- Proportional term (acts on error change) ---
         p_term = params.gain * (error - state.error_prev)
@@ -77,16 +78,28 @@ class PIDEngine:
         if params.reset > 0 and dt > 0:
             # Check deadband
             in_deadband = abs(error) < params.deadband if params.deadband > 0 else False
-            # Anti-windup: suppress integral if saturated AND error drives further
-            windup_block = (
+
+            # Local anti-windup: suppress integral if saturated AND error drives further
+            local_windup_block = (
                 state.is_saturated
                 and (
                     (state.cv >= arw_hi and error > 0)
                     or (state.cv <= arw_lo and error < 0)
                 )
             )
-            if not in_deadband and not windup_block:
+
+            if not in_deadband and not local_windup_block:
                 i_term = params.gain * (dt / params.reset) * error
+
+                # Directional anti-windup from downstream (BKCAL_IN limit bits)
+                limit = bkcal_in.status.limit_bits
+                if limit == LimitBits.CONSTANT:
+                    i_term = 0.0
+                elif limit == LimitBits.HIGH_LIMITED and i_term > 0:
+                    i_term = 0.0
+                elif limit == LimitBits.LOW_LIMITED and i_term < 0:
+                    i_term = 0.0
+
                 # 16x faster reset recovery: if previously saturated and integral
                 # now drives output away from saturation, accelerate recovery.
                 if state.is_saturated and i_term != 0.0:
@@ -98,7 +111,7 @@ class PIDEngine:
         # --- Derivative term (acts on PV, not error) ---
         d_term = 0.0
         if params.rate > 0 and dt > 0:
-            d2_pv = pv - 2.0 * state.pv_prev + state.pv_prev2
+            d2_pv = pv_val - 2.0 * state.pv_prev + state.pv_prev2
             d_raw = -params.gain * params.rate * (d2_pv / dt)
             # Apply derivative filter (exponential smoothing)
             alpha = min(max(params.alpha, 0.05), 1.0)
@@ -122,17 +135,69 @@ class PIDEngine:
         new_state = PIDState(
             cv=cv_new,
             error_prev=error,
-            pv_prev=pv,
+            pv_prev=pv_val,
             pv_prev2=state.pv_prev,
-            sp_working=sp,
+            sp_working=sp_val,
             derivative_filtered=d_term,
             is_saturated=is_saturated,
         )
+
+        # --- Generate BKCAL_OUT ---
+        bkcal_out = self._make_bkcal_out(cv_new, lo, hi, is_saturated)
 
         return PIDResult(
             cv=cv_new,
             delta_cv=delta_cv,
             error=error,
+            bkcal_out=bkcal_out,
+            new_state=new_state,
+        )
+
+    def compute_iman_tracking(
+        self,
+        state: PIDState,
+        pv: FFSignal,
+        sp: FFSignal,
+        bkcal_in: FFSignal,
+        direct_acting: bool = False,
+    ) -> PIDResult:
+        """IMAN tracking: force CV to match BKCAL_IN value exactly.
+
+        Used during cascade initialization handshake (IR phase).
+        The integral accumulator is forced directly -- no PID calculation.
+        PV history is updated to prevent derivative kick on return to active mode.
+        """
+        pv_val = pv.value
+        sp_val = sp.value
+        error = pv_val - sp_val if direct_acting else sp_val - pv_val
+        tracking_value = bkcal_in.value
+
+        new_state = PIDState(
+            cv=tracking_value,
+            error_prev=error,
+            pv_prev=pv_val,
+            pv_prev2=state.pv_prev,
+            sp_working=sp_val,
+            derivative_filtered=0.0,
+            is_saturated=False,
+        )
+
+        from smart_pid_domain.enums import InitSubStatus, SignalSeverity
+
+        bkcal_out = FFSignal(
+            value=tracking_value,
+            status=FFSignalStatus(
+                severity=SignalSeverity.GOOD,
+                sub_status=InitSubStatus.IA,
+            ),
+            timestamp=bkcal_in.timestamp,
+        )
+
+        return PIDResult(
+            cv=tracking_value,
+            delta_cv=0.0,
+            error=error,
+            bkcal_out=bkcal_out,
             new_state=new_state,
         )
 
@@ -182,3 +247,13 @@ class PIDEngine:
             max_change = rate_dn * dt
             return sp_current - min(abs(diff), max_change)
         return sp_target
+
+    def _make_bkcal_out(
+        self, cv: float, lo: float, hi: float, is_saturated: bool,
+    ) -> FFSignal:
+        """Build BKCAL_OUT signal reflecting current output and saturation state."""
+        if not is_saturated:
+            return FFSignal.good(cv)
+        if cv >= hi:
+            return FFSignal.with_limits(cv, LimitBits.HIGH_LIMITED)
+        return FFSignal.with_limits(cv, LimitBits.LOW_LIMITED)
