@@ -92,3 +92,33 @@ class TestSystemStateChanged:
             reason="Network timeout",
         )
         assert event.new_state == ConnectionState.RECONNECTING
+
+
+from smart_pid_domain.enums import InitSubStatus
+from smart_pid_domain.events import CascadeHandshakeChanged
+
+
+class TestCascadeHandshakeChanged:
+    def test_create(self) -> None:
+        evt = CascadeHandshakeChanged(
+            controller_id=1,
+            old_sub_status=InitSubStatus.NI,
+            new_sub_status=InitSubStatus.IR,
+            trigger="ir_received",
+            timestamp=datetime.now(tz=UTC),
+        )
+        assert evt.controller_id == 1
+        assert evt.old_sub_status == InitSubStatus.NI
+        assert evt.new_sub_status == InitSubStatus.IR
+        assert evt.trigger == "ir_received"
+
+    def test_frozen(self) -> None:
+        evt = CascadeHandshakeChanged(
+            controller_id=1,
+            old_sub_status=InitSubStatus.NONE,
+            new_sub_status=InitSubStatus.NI,
+            trigger="bkcal_in_bad",
+            timestamp=datetime.now(tz=UTC),
+        )
+        with pytest.raises(AttributeError):
+            evt.controller_id = 2  # type: ignore[misc]
