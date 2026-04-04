@@ -15,6 +15,7 @@ from smart_pid_domain.dtos import (
 
 if TYPE_CHECKING:
     from datetime import datetime
+    from pathlib import Path
 
     from smart_pid_hmi.services.session import Session
 
@@ -170,6 +171,39 @@ class APIClient:
         resp.raise_for_status()
         return resp.json()
 
+
+
+    def create_export(
+        self, controller_id: int, start: str, end: str, fmt: str = "csv",
+    ) -> dict:
+        """Create a new export job."""
+        resp = self._http.post(
+            "/export",
+            json={
+                "controller_id": controller_id,
+                "start": start,
+                "end": end,
+                "format": fmt,
+            },
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_export_status(self, export_id: str) -> dict:
+        """Get the status of an export job."""
+        resp = self._http.get(f"/export/{export_id}", headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
+
+    def download_export(self, export_id: str, dest_path: Path) -> Path:
+        """Download a completed export file to dest_path."""
+        resp = self._http.get(
+            f"/export/{export_id}/download", headers=self._headers(),
+        )
+        resp.raise_for_status()
+        dest_path.write_bytes(resp.content)
+        return dest_path
 
     def get_controller_stats(self, controller_id: int) -> dict:
         """Get performance stats for a single controller."""
