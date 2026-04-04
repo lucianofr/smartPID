@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import time
-from queue import SimpleQueue
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -56,8 +55,8 @@ def _mock_opcua_server() -> MagicMock:
 
 
 class TestSimulatorAdapterInit:
-    def test_queue_is_simple_queue(self, adapter: SimulatorAdapter) -> None:
-        assert isinstance(adapter.queue, SimpleQueue)
+    def test_no_queue_attribute(self, adapter: SimulatorAdapter) -> None:
+        assert not hasattr(adapter, "queue")
 
     def test_not_running_initially(self, adapter: SimulatorAdapter) -> None:
         assert not adapter.is_running
@@ -122,7 +121,7 @@ class TestSimulatorAdapterWriteOutput:
 
 
 class TestSimulatorAdapterRunning:
-    def test_start_stop_produces_telemetry(self, adapter: SimulatorAdapter) -> None:
+    def test_start_stop_lifecycle(self, adapter: SimulatorAdapter) -> None:
         adapter.register_controller(1)
         adapter.set_preset(1, ProcessPresetName.FLOW)
         adapter.start()
@@ -130,11 +129,6 @@ class TestSimulatorAdapterRunning:
         time.sleep(0.15)
         adapter.stop()
         assert not adapter.is_running
-        frames = []
-        while not adapter.queue.empty():
-            frames.append(adapter.queue.get_nowait())
-        assert len(frames) >= 1
-        assert frames[0].controller_id == 1
 
     def test_write_parameter_is_noop(self, adapter: SimulatorAdapter) -> None:
         """write_parameter satisfies ControlWriter protocol but is a no-op for simulator."""

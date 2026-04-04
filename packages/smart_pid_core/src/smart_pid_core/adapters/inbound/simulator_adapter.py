@@ -6,15 +6,12 @@ import random
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from queue import SimpleQueue
 from typing import TYPE_CHECKING
 
 from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 from smart_pid_core.domain.services.process_models import ProcessModel
 from smart_pid_domain.dtos.simulator import ControllerSimStatus
 from smart_pid_domain.models.process_preset import PRESETS
-from smart_pid_domain.models.telemetry import TelemetryFrame
 
 if TYPE_CHECKING:
     from smart_pid_core.config import CoreSettings
@@ -49,17 +46,12 @@ class SimulatorAdapter:
 
     def __init__(self, settings: CoreSettings) -> None:
         self._settings = settings
-        self._queue: SimpleQueue[TelemetryFrame] = SimpleQueue()
         self._controllers: dict[int, _ControllerSim] = {}
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._opcua_server = OPCUAServer(port=settings.simulator_port)
         self._opcua_server.set_on_write(self._on_opcua_write)
-
-    @property
-    def queue(self) -> SimpleQueue[TelemetryFrame]:
-        return self._queue
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -206,15 +198,6 @@ class SimulatorAdapter:
                     pv += ctrl.step_amplitude
                 if ctrl.noise_active:
                     pv += random.gauss(0, ctrl.noise_amplitude)
-                frame = TelemetryFrame(
-                    controller_id=ctrl.controller_id,
-                    pv=pv,
-                    sp=ctrl.sp,
-                    co=ctrl.last_co,
-                    integral_val=0.0,
-                    timestamp=datetime.now(UTC),
-                )
-                self._queue.put(frame)
                 self._opcua_server.update_values(
                     controller_id=ctrl.controller_id,
                     pv=pv,
