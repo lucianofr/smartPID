@@ -1,7 +1,7 @@
 # Estado Atual — Smart PID Edge Platform
 
 **Data:** 2026-04-03
-**Branch:** feature/phase6-alarms-rbac (pronto para merge em main)
+**Branch:** main (HEAD: 55fb0e5 — merge Phase 6)
 
 ---
 
