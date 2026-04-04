@@ -13,6 +13,7 @@ from smart_pid_domain.models.controller import (
     TagBindings,
 )
 from smart_pid_domain.models.process_preset import PRESETS, ProcessPreset
+from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
 from smart_pid_domain.models.telemetry import ControlAction, TelemetryFrame
 
 __all__ = [
@@ -22,6 +23,8 @@ __all__ = [
     "AlarmTransition",
     "ControlAction",
     "ControlOpts",
+    "FFSignal",
+    "FFSignalStatus",
     "Controller",
     "IOOpts",
     "PRESETS",
