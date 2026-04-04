@@ -1,10 +1,12 @@
 """Application bootstrap — QApplication, MainWindow, service wiring."""
 from __future__ import annotations
 
+import logging
 import sys
 import threading
+from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QMetaObject, Qt, Slot
+from PySide6.QtCore import QMetaObject, Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
@@ -26,16 +28,26 @@ from smart_pid_hmi.pages.simulator_page import SimulatorPage
 from smart_pid_hmi.services.session import Session
 from smart_pid_hmi.themes import DarkRoomTheme, ISA101Theme, MD3DarkTheme, ThemeManager
 
+if TYPE_CHECKING:
+    from smart_pid_hmi.services.ports import APIClientPort, TelemetrySourcePort
+
+logger = logging.getLogger(__name__)
+
 
 class MainWindow(QMainWindow):
     """Top-level window with page stack and toolbar."""
+
+    # Thread-safe signals for cross-thread communication
+    _login_error_signal = Signal(str)
+    _controllers_loaded_signal = Signal(list)
+    _api_error_signal = Signal(str)
 
     def __init__(
         self,
         settings: HMISettings,
         session: Session,
-        api_client: object,
-        telemetry_source: object,
+        api_client: APIClientPort,
+        telemetry_source: TelemetrySourcePort,
         bus_bridge: BusBridge,
     ) -> None:
         super().__init__()
@@ -44,8 +56,11 @@ class MainWindow(QMainWindow):
         self._api_client = api_client
         self._telemetry_source = telemetry_source
         self._bus_bridge = bus_bridge
-        self._login_error: str = ""
-        self._pending_controllers: list[dict] = []
+
+        # Connect thread-safe signals
+        self._login_error_signal.connect(self._on_login_error_received)
+        self._controllers_loaded_signal.connect(self._on_controllers_received)
+        self._api_error_signal.connect(self._on_api_error)
 
         self.setWindowTitle("Smart PID HMI")
         self.setMinimumSize(1024, 700)
@@ -165,10 +180,8 @@ class MainWindow(QMainWindow):
                     self, "_login_success", Qt.ConnectionType.QueuedConnection,
                 )
             except Exception as e:
-                self._login_error = str(e)
-                QMetaObject.invokeMethod(
-                    self, "_login_failed", Qt.ConnectionType.QueuedConnection,
-                )
+                logger.error("Login failed: %s", e)
+                self._login_error_signal.emit(str(e))
 
         threading.Thread(target=do_login, daemon=True).start()
 
@@ -182,52 +195,55 @@ class MainWindow(QMainWindow):
         self._stack.setCurrentWidget(self._dashboard_page)
         self._check_simulator_available()
 
-    @Slot()
-    def _login_failed(self) -> None:
-        self._connection_page.show_error(self._login_error or "Login failed")
+    @Slot(str)
+    def _on_login_error_received(self, error_msg: str) -> None:
+        """Handle login error via thread-safe signal."""
+        self._connection_page.show_error(error_msg or "Login failed")
+
+    @Slot(list)
+    def _on_controllers_received(self, controllers: list[dict]) -> None:
+        """Handle controllers loaded via thread-safe signal."""
+        self._dashboard_page.populate_controllers(controllers)
+        self._simulator_page.populate_controllers(controllers)
+
+    @Slot(str)
+    def _on_api_error(self, error_msg: str) -> None:
+        """Log API errors from background threads."""
+        logger.error("API call failed: %s", error_msg)
 
     def _load_dashboard(self) -> None:
         """Load controllers from API and populate dashboard."""
         def do_load():
             try:
                 controllers = self._api_client.list_controllers()
-                self._pending_controllers = [c.model_dump() for c in controllers]
-                QMetaObject.invokeMethod(
-                    self, "_populate_dashboard", Qt.ConnectionType.QueuedConnection,
-                )
-            except Exception:
-                pass  # Dashboard stays empty; user can retry
+                controller_dicts = [c.model_dump() for c in controllers]
+                self._controllers_loaded_signal.emit(controller_dicts)
+            except Exception as e:
+                logger.error("Failed to load controllers: %s", e)
 
         threading.Thread(target=do_load, daemon=True).start()
 
-    @Slot()
-    def _populate_dashboard(self) -> None:
-        self._dashboard_page.populate_controllers(self._pending_controllers)
-        self._simulator_page.populate_controllers(self._pending_controllers)
+    def _safe_api_call(self, func, *args) -> None:
+        """Run an API call in a background thread with error logging."""
+        def wrapper():
+            try:
+                func(*args)
+            except Exception as e:
+                self._api_error_signal.emit(str(e))
+
+        threading.Thread(target=wrapper, daemon=True).start()
 
     def _send_setpoint(self, controller_id: int, value: float) -> None:
-        threading.Thread(
-            target=lambda: self._api_client.set_setpoint(controller_id, value),
-            daemon=True,
-        ).start()
+        self._safe_api_call(self._api_client.set_setpoint, controller_id, value)
 
     def _send_mode(self, controller_id: int, mode: str) -> None:
-        threading.Thread(
-            target=lambda: self._api_client.set_mode(controller_id, mode),
-            daemon=True,
-        ).start()
+        self._safe_api_call(self._api_client.set_mode, controller_id, mode)
 
     def _send_output(self, controller_id: int, value: float) -> None:
-        threading.Thread(
-            target=lambda: self._api_client.set_output(controller_id, value),
-            daemon=True,
-        ).start()
+        self._safe_api_call(self._api_client.set_output, controller_id, value)
 
     def _send_ack_all(self) -> None:
-        threading.Thread(
-            target=lambda: self._api_client.ack_all_alarms(),
-            daemon=True,
-        ).start()
+        self._safe_api_call(self._api_client.ack_all_alarms)
 
     def _check_simulator_available(self) -> None:
         """Check if backend has simulator and enable button if so."""
@@ -251,59 +267,56 @@ class MainWindow(QMainWindow):
         cid = self._simulator_page.current_controller_id
         if cid is None:
             return
-        threading.Thread(
-            target=lambda: self._api_client.set_simulator_preset(cid, preset),
-            daemon=True,
-        ).start()
+        self._safe_api_call(self._api_client.set_simulator_preset, cid, preset)
 
-    def _send_sim_parameters(self, gain: float, tau1: float, tau2: float, dead_time: float) -> None:
+    def _send_sim_parameters(
+        self, gain: float, tau1: float, tau2: float, dead_time: float,
+    ) -> None:
         cid = self._simulator_page.current_controller_id
         if cid is None:
             return
         tau2_val = tau2 if tau2 > 0 else None
-        threading.Thread(
-            target=lambda: self._api_client.set_simulator_parameters(
-                cid, gain, tau1, tau2_val, dead_time,
-            ),
-            daemon=True,
-        ).start()
+        self._safe_api_call(
+            self._api_client.set_simulator_parameters, cid, gain, tau1, tau2_val, dead_time,
+        )
 
     def _send_sim_step(self, amplitude: float) -> None:
         cid = self._simulator_page.current_controller_id
         if cid is None:
             return
-        threading.Thread(
-            target=lambda: self._api_client.inject_simulator_disturbance(cid, "step", amplitude),
-            daemon=True,
-        ).start()
+        self._safe_api_call(
+            self._api_client.inject_simulator_disturbance, cid, "step", amplitude,
+        )
 
     def _send_sim_noise(self, amplitude: float) -> None:
         cid = self._simulator_page.current_controller_id
         if cid is None:
             return
-        threading.Thread(
-            target=lambda: self._api_client.inject_simulator_disturbance(cid, "noise", amplitude),
-            daemon=True,
-        ).start()
+        self._safe_api_call(
+            self._api_client.inject_simulator_disturbance, cid, "noise", amplitude,
+        )
 
     def _send_sim_clear(self) -> None:
         cid = self._simulator_page.current_controller_id
         if cid is None:
             return
-        threading.Thread(
-            target=lambda: self._api_client.clear_simulator_disturbance(cid),
-            daemon=True,
-        ).start()
+        self._safe_api_call(self._api_client.clear_simulator_disturbance, cid)
 
     def _on_theme_switch(self, name: str) -> None:
-        """Apply the selected theme globally."""
+        """Apply the selected theme globally and propagate to child widgets."""
         self._theme_manager.set_theme(name)
         theme = self._theme_manager.current
         theme.apply(QApplication.instance())
+        # Propagate theme to widgets that cache theme references
+        for widget in self.findChildren(QWidget):
+            if hasattr(widget, "apply_theme"):
+                widget.apply_theme(theme)
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._bus_bridge.stop()
         self._telemetry_source.stop()
+        if hasattr(self._api_client, "close"):
+            self._api_client.close()
         super().closeEvent(event)
 
 

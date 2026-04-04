@@ -12,6 +12,7 @@ from smart_pid_core.adapters.inbound.api.auth import (
 )
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_audit_repo,
+    get_current_user,
     get_settings,
     get_user_repo,
     require_admin,
@@ -69,3 +70,19 @@ async def register(
     pw_hash = hash_password(body.password)
     user = await user_repo.create(body.username, pw_hash, body.role)
     return {"id": user.id, "username": user.username, "role": user.role}
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_token(
+    current_user: Annotated[UserClaims, Depends(get_current_user)],
+    settings: Annotated[CoreSettings, Depends(get_settings)],
+) -> TokenResponse:
+    """Issue a fresh access token for an authenticated user."""
+    token = create_access_token(
+        user_id=current_user.user_id,
+        username=current_user.username,
+        role=current_user.role,
+        secret=settings.jwt_secret,
+        expiry_hours=settings.jwt_expiry_hours,
+    )
+    return TokenResponse(access_token=token)

@@ -64,6 +64,7 @@ async def opcua_api_deps(tmp_path, mock_opcua_adapter):
     yield app, headers, mock_opcua_adapter
     loop_manager.stop_all()
     bus.stop()
+    await repo.db.close()
 
 
 @pytest.fixture

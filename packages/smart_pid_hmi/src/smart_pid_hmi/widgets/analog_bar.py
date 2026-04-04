@@ -58,8 +58,13 @@ class AnalogBarWidget(QWidget):
         self._value = max(self._min, min(self._max, val))
         self.update()
 
-    def set_sp_marker(self, val: float) -> None:
+    def set_sp_marker(self, val: float | None) -> None:
         self._sp_marker = val
+        self.update()
+
+    def apply_theme(self, theme: ThemeBase) -> None:
+        """Update cached theme reference for dynamic theme switching."""
+        self._theme = theme
         self.update()
 
     def set_alarm_state(self, state: str | None) -> None:

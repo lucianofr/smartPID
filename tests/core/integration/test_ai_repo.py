@@ -54,6 +54,6 @@ class TestAIModelRepo:
         )
         history = await ai_repo.get_tuning_history(controller_id=1, limit=10)
         assert len(history) == 1
-        assert history[0]["motor"] == "FUZZY"
-        assert history[0]["ki_antes"] == pytest.approx(10.0)
-        assert history[0]["ki_depois"] == pytest.approx(11.5)
+        assert history[0]["engine"] == "FUZZY"
+        assert history[0]["ki_before"] == pytest.approx(10.0)
+        assert history[0]["ki_after"] == pytest.approx(11.5)

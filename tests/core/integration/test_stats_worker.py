@@ -49,10 +49,10 @@ class TestStatsWorker:
                     f"ACTION.CTRL.{controller.id}".encode(),
                     msgpack.packb(action),
                 )
-                time.sleep(0.15)
+                time.sleep(0.1)
 
             # Should have published at least one STATS message
-            time.sleep(0.3)
+            time.sleep(0.2)
             msg = sub.recv(timeout_ms=1000)
             assert msg is not None
             _topic, payload = msg

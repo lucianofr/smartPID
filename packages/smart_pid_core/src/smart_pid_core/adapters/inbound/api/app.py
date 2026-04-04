@@ -26,12 +26,16 @@ from smart_pid_core.adapters.inbound.api.routers import (
 )
 
 if TYPE_CHECKING:
+    from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
+    from smart_pid_core.adapters.outbound.ai_repo import AIRepository
     from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
     from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
     from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
+    from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
     from smart_pid_core.adapters.outbound.user_repo import UserRepository
     from smart_pid_core.application.loop_manager import LoopManager
+    from smart_pid_core.application.workers.stats_worker import StatsWorker
     from smart_pid_core.config import CoreSettings
 
 
@@ -48,11 +52,11 @@ def create_app(
     user_repo: UserRepository,
     loop_manager: LoopManager,
     settings: CoreSettings,
-    simulator_adapter=None,
-    opcua_adapter=None,
-    stats_workers=None,
-    ai_workers=None,
-    ai_repo=None,
+    simulator_adapter: SimulatorAdapter | None = None,
+    opcua_adapter: OPCUAAdapter | None = None,
+    stats_workers: dict[int, StatsWorker] | None = None,
+    ai_workers: dict[int, object] | None = None,
+    ai_repo: AIRepository | None = None,
     alarm_repo: AlarmRepository | None = None,
     audit_repo: AuditRepository | None = None,
 ) -> FastAPI:
@@ -76,8 +80,8 @@ def create_app(
     # Register routers
     app.include_router(system.router, prefix="/system", tags=["system"])
     app.include_router(auth.router, prefix="/auth", tags=["auth"])
-    app.include_router(controllers.router, prefix="/config/controllers", tags=["controllers"])
-    app.include_router(commands.router, prefix="/command", tags=["commands"])
+    app.include_router(controllers.router, prefix="/controllers", tags=["controllers"])
+    app.include_router(commands.router, prefix="/commands", tags=["commands"])
     app.include_router(history.router, prefix="/history", tags=["history"])
     app.include_router(simulator.router, prefix="/simulator", tags=["simulator"])
     app.include_router(opcua.router, prefix="/opcua", tags=["opcua"])

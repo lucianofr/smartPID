@@ -16,7 +16,7 @@ def test_receives_telemetry_frame():
     try:
         sub = TelemetrySub(zmq_url="tcp://127.0.0.1:15555")
         sub.start()
-        time.sleep(0.3)  # let SUB connect and subscribe
+        time.sleep(0.15)  # let SUB connect and subscribe
 
         frame_data = {
             "controller_id": 1, "pv": 45.0, "sp": 50.0,
@@ -25,7 +25,7 @@ def test_receives_telemetry_frame():
         }
         topic = b"STATUS.1"
         pub.send_multipart([topic, msgpack.packb(frame_data)])
-        time.sleep(0.2)
+        time.sleep(0.1)
 
         assert not sub.queue.empty()
         msg_topic, msg_data = sub.queue.get_nowait()

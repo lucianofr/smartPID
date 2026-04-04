@@ -56,7 +56,7 @@ class TestAIWorkerFuzzy:
                 time.sleep(0.1)
 
             # Wait for AI cycle (T_cycle = dead_time_l * 3 = 0.3s)
-            time.sleep(0.5)
+            time.sleep(0.35)
 
             msg = sub.recv(timeout_ms=2000)
             assert msg is not None

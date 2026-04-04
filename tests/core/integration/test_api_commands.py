@@ -1,4 +1,4 @@
-"""Tests for /command endpoints."""
+"""Tests for /commands endpoints."""
 from __future__ import annotations
 
 import pytest
@@ -37,7 +37,7 @@ class TestSetpointCommand:
     ) -> None:
         cid = await _create_and_start_controller(api_deps)
         resp = await client.post(
-            "/command/setpoint",
+            "/commands/setpoint",
             json={"controller_id": cid, "value": 55.0},
             headers=user_headers,
         )
@@ -50,7 +50,7 @@ class TestSetpointCommand:
     ) -> None:
         cid = await _create_and_start_controller(api_deps)
         resp = await client.post(
-            "/command/setpoint",
+            "/commands/setpoint",
             json={"controller_id": cid, "value": 150.0},
             headers=user_headers,
         )
@@ -61,7 +61,7 @@ class TestSetpointCommand:
         self, client: AsyncClient, user_headers: dict[str, str]
     ) -> None:
         resp = await client.post(
-            "/command/setpoint",
+            "/commands/setpoint",
             json={"controller_id": 9999, "value": 50.0},
             headers=user_headers,
         )
@@ -70,7 +70,7 @@ class TestSetpointCommand:
     @pytest.mark.asyncio
     async def test_setpoint_no_auth(self, client: AsyncClient) -> None:
         resp = await client.post(
-            "/command/setpoint",
+            "/commands/setpoint",
             json={"controller_id": 1, "value": 50.0},
         )
         assert resp.status_code == 401
@@ -83,7 +83,7 @@ class TestModeCommand:
     ) -> None:
         cid = await _create_and_start_controller(api_deps)
         resp = await client.post(
-            "/command/mode",
+            "/commands/mode",
             json={"controller_id": cid, "mode": "MAN"},
             headers=user_headers,
         )
@@ -96,7 +96,7 @@ class TestModeCommand:
     ) -> None:
         cid = await _create_and_start_controller(api_deps)
         resp = await client.post(
-            "/command/mode",
+            "/commands/mode",
             json={"controller_id": cid, "mode": "CAS"},
             headers=user_headers,
         )
@@ -111,7 +111,7 @@ class TestOutputCommand:
         cid = await _create_and_start_controller(api_deps)
         # Worker starts in MAN mode
         resp = await client.post(
-            "/command/output",
+            "/commands/output",
             json={"controller_id": cid, "value": 50.0},
             headers=user_headers,
         )
@@ -125,12 +125,12 @@ class TestOutputCommand:
         cid = await _create_and_start_controller(api_deps)
         # Switch to AUTO first
         await client.post(
-            "/command/mode",
+            "/commands/mode",
             json={"controller_id": cid, "mode": "AUTO"},
             headers=user_headers,
         )
         resp = await client.post(
-            "/command/output",
+            "/commands/output",
             json={"controller_id": cid, "value": 50.0},
             headers=user_headers,
         )

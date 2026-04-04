@@ -38,12 +38,12 @@ class AITuningLogEntry(BaseModel):
     id: int
     controller_id: int
     timestamp: str
-    motor: str
-    ki_antes: float | None
-    ki_depois: float | None
-    objetivo: str | None
-    metrica: float | None
-    aprovado: bool
+    engine: str
+    ki_before: float | None
+    ki_after: float | None
+    objective: str | None
+    metric: float | None
+    approved: bool
 
 
 class AIHistoryResponse(BaseModel):

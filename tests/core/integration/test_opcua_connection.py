@@ -26,6 +26,7 @@ def _make_settings(endpoint: str) -> CoreSettings:
     )  # type: ignore[call-arg]
 
 
+@pytest.mark.integration
 class TestOPCUAConnection:
     def test_connect_reaches_online(self, opcua_server: OPCUATestServer):
         settings = _make_settings(opcua_server.endpoint)
@@ -44,12 +45,13 @@ class TestOPCUAConnection:
         adapter = OPCUAAdapter(settings=settings)
         adapter.start()
         try:
-            time.sleep(2.0)
+            time.sleep(1.0)
             assert adapter.state in {ConnectionState.CONNECTING, ConnectionState.RECONNECTING}
         finally:
             adapter.stop()
 
 
+@pytest.mark.integration
 class TestOPCUATelemetryRead:
     def test_read_telemetry_returns_frame(self, opcua_server: OPCUATestServer):
         settings = _make_settings(opcua_server.endpoint)
@@ -85,6 +87,7 @@ class TestOPCUATelemetryRead:
             adapter.stop()
 
 
+@pytest.mark.integration
 class TestOPCUAControlWriter:
     def test_write_output_updates_co_node(self, opcua_server: OPCUATestServer):
         settings = _make_settings(opcua_server.endpoint)

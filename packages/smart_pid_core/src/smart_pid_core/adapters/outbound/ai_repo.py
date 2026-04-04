@@ -94,12 +94,12 @@ class AIRepository:
                 "id": r[0],
                 "controller_id": r[1],
                 "timestamp": r[2],
-                "motor": r[3],
-                "ki_antes": r[4],
-                "ki_depois": r[5],
-                "objetivo": r[6],
-                "metrica": r[7],
-                "aprovado": bool(r[8]),
+                "engine": r[3],
+                "ki_before": r[4],
+                "ki_after": r[5],
+                "objective": r[6],
+                "metric": r[7],
+                "approved": bool(r[8]),
             }
             for r in rows
         ]

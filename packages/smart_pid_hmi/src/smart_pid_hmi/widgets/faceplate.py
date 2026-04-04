@@ -105,6 +105,15 @@ class FaceplateWidget(QFrame):
         layout.addWidget(stats_label)
         layout.addStretch()
 
+    def apply_theme(self, theme: ThemeBase) -> None:
+        """Update cached theme reference for dynamic theme switching."""
+        self._theme = theme
+        self.setStyleSheet(
+            f"FaceplateWidget {{ background-color: {theme.bg_secondary}; "
+            f"border: 1px solid {theme.border}; }}"
+        )
+        self.update()
+
     def on_controller_selected(
         self, controller_id: int, tag_name: str, min_val: float, max_val: float
     ) -> None:

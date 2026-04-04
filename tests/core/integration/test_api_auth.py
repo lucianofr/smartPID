@@ -38,13 +38,13 @@ class TestRegister:
     ) -> None:
         resp = await client.post(
             "/auth/register",
-            json={"username": "newuser", "password": "pass123", "role": "user"},
+            json={"username": "newuser", "password": "pass123", "role": "OPERATOR"},
             headers=admin_headers,
         )
         assert resp.status_code == 201
         data = resp.json()
         assert data["username"] == "newuser"
-        assert data["role"] == "user"
+        assert data["role"] == "OPERATOR"
 
     @pytest.mark.asyncio
     async def test_register_without_auth_fails(self, client: AsyncClient) -> None:
@@ -80,12 +80,12 @@ class TestRegister:
 class TestJWTValidation:
     @pytest.mark.asyncio
     async def test_missing_auth_header(self, client: AsyncClient) -> None:
-        resp = await client.get("/config/controllers")
+        resp = await client.get("/controllers")
         assert resp.status_code == 401
 
     @pytest.mark.asyncio
     async def test_invalid_token(self, client: AsyncClient) -> None:
         resp = await client.get(
-            "/config/controllers", headers={"Authorization": "Bearer invalid.token.here"}
+            "/controllers", headers={"Authorization": "Bearer invalid.token.here"}
         )
         assert resp.status_code == 401

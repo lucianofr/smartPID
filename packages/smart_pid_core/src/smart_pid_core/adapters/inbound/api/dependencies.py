@@ -9,10 +9,16 @@ from smart_pid_core.adapters.inbound.api.auth import decode_access_token
 from smart_pid_domain.dtos.auth import UserClaims
 
 if TYPE_CHECKING:
+    from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
+    from smart_pid_core.adapters.outbound.ai_repo import AIRepository
+    from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
+    from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
     from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
+    from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
     from smart_pid_core.adapters.outbound.user_repo import UserRepository
     from smart_pid_core.application.loop_manager import LoopManager
+    from smart_pid_core.application.workers.stats_worker import StatsWorker
     from smart_pid_core.config import CoreSettings
 
 
@@ -56,7 +62,7 @@ def get_current_user(request: Request) -> UserClaims:
     return UserClaims(
         user_id=payload["sub"],
         username=payload["username"],
-        role=payload["role"],
+        role=payload["role"].upper(),
     )
 
 
@@ -99,7 +105,7 @@ def require_admin(
     return user
 
 
-def get_simulator_adapter(request: Request):
+def get_simulator_adapter(request: Request) -> SimulatorAdapter:
     adapter = getattr(request.app.state, "simulator_adapter", None)
     if adapter is None:
         raise HTTPException(
@@ -109,7 +115,7 @@ def get_simulator_adapter(request: Request):
     return adapter
 
 
-def get_opcua_adapter(request: Request):
+def get_opcua_adapter(request: Request) -> OPCUAAdapter:
     adapter = getattr(request.app.state, "opcua_adapter", None)
     if adapter is None:
         raise HTTPException(
@@ -119,15 +125,15 @@ def get_opcua_adapter(request: Request):
     return adapter
 
 
-def get_stats_workers(request: Request) -> dict:
+def get_stats_workers(request: Request) -> dict[int, StatsWorker]:
     return getattr(request.app.state, "stats_workers", {})
 
 
-def get_ai_workers(request: Request) -> dict:
+def get_ai_workers(request: Request) -> dict[int, object]:
     return getattr(request.app.state, "ai_workers", {})
 
 
-def get_ai_repo(request: Request):
+def get_ai_repo(request: Request) -> AIRepository:
     repo = getattr(request.app.state, "ai_repo", None)
     if repo is None:
         raise HTTPException(
@@ -137,9 +143,9 @@ def get_ai_repo(request: Request):
     return repo
 
 
-def get_alarm_repo(request: Request):
+def get_alarm_repo(request: Request) -> AlarmRepository:
     return request.app.state.alarm_repo
 
 
-def get_audit_repo(request: Request):
+def get_audit_repo(request: Request) -> AuditRepository:
     return request.app.state.audit_repo

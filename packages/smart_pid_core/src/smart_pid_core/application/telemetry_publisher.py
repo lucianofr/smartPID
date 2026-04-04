@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 # Topics to bridge from internal bus to external PUB
-_BRIDGE_TOPICS = [b"STATUS.", b"ACTION.CTRL."]
+_BRIDGE_TOPICS = [b"STATUS.", b"ACTION.CTRL.", b"EVENT.ALARM."]
 
 
 class TelemetryPublisher:
@@ -58,17 +58,25 @@ class TelemetryPublisher:
             sub = self._bus.create_subscriber(topic)
             subscribers.append(sub)
 
+        loop = asyncio.get_running_loop()
+
         try:
             while not self._stop_event.is_set():
                 for sub in subscribers:
-                    result = sub.recv(timeout_ms=10)
+                    # Use run_in_executor to avoid blocking the asyncio loop
+                    # with the synchronous ZMQ recv call
+                    result = await loop.run_in_executor(
+                        None, sub.recv, 10
+                    )
                     if result is not None:
-                        topic, payload = result
-                        await pub_socket.send_multipart([topic, payload])
+                        topic_bytes, payload = result
+                        await pub_socket.send_multipart([topic_bytes, payload])
                 await asyncio.sleep(0.001)
         except asyncio.CancelledError:
             pass
         finally:
+            for sub in subscribers:
+                sub.close()
             pub_socket.setsockopt(zmq.LINGER, 0)
             pub_socket.close()
             ctx.term()

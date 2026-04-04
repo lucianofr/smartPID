@@ -31,11 +31,12 @@ class TestAuthDTOs:
         assert resp.token_type == "bearer"
 
     def test_user_create_default_role(self) -> None:
+        from smart_pid_domain.enums import UserRole
         u = UserCreate(username="bob", password="pass")
-        assert u.role == "user"
+        assert u.role == UserRole.OPERATOR
 
     def test_user_claims(self) -> None:
-        c = UserClaims(user_id=1, username="admin", role="admin")
+        c = UserClaims(user_id=1, username="admin", role="ADMIN")
         assert c.user_id == 1
 
 

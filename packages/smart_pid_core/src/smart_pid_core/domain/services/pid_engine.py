@@ -40,15 +40,16 @@ class PIDResult:
     new_state: PIDState
 
 
-    # Phase 1 deferred features (planned for Phase 3):
-    # - PV filter (PV_FTIME): first-order exponential filter on PV input
-    # - Feedforward (FF_VAL * FF_GAIN): additive feedforward term
-    # - 10% output over-range
-    # - Low cutoff: PV forced to 0.0 when below LOW_CUT
-    # - Increase-to-Close: output inversion via IOOpts flag
-
 class PIDEngine:
-    """Stateless PID engine. All state is passed in and returned explicitly."""
+    """Stateless PID engine. All state is passed in and returned explicitly.
+
+    Deferred features (planned for future phases):
+    - PV filter (PV_FTIME): first-order exponential filter on PV input
+    - Feedforward (FF_VAL * FF_GAIN): additive feedforward term
+    - 10% output over-range
+    - Low cutoff: PV forced to 0.0 when below LOW_CUT
+    - Increase-to-Close: output inversion via IOOpts flag
+    """
 
     def compute(
         self,

@@ -58,20 +58,23 @@ class SQLiteHistorian:
         ) as cur:
             rows = await cur.fetchall()
 
-        return [
-            TelemetryFrame(
-                controller_id=row[0],
-                pv=row[2],
-                sp=row[3],
-                co=row[4],
-                integral_val=row[5],
-                timestamp=datetime.fromisoformat(row[1]).replace(tzinfo=UTC)
-                if datetime.fromisoformat(row[1]).tzinfo is None
-                else datetime.fromisoformat(row[1]),
-                status=SignalStatus.GOOD,
+        results: list[TelemetryFrame] = []
+        for row in rows:
+            ts = datetime.fromisoformat(row[1])
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=UTC)
+            results.append(
+                TelemetryFrame(
+                    controller_id=row[0],
+                    pv=row[2],
+                    sp=row[3],
+                    co=row[4],
+                    integral_val=row[5],
+                    timestamp=ts,
+                    status=SignalStatus.GOOD,
+                )
             )
-            for row in rows
-        ]
+        return results
 
     async def cleanup_older_than(self, days: int) -> int:
         """Delete frames older than `days` days. Returns count deleted."""

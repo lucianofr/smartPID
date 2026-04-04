@@ -62,7 +62,7 @@ class TestPIDWorker:
                 bus=bus, controller=controller, engine=PIDEngine(), mode_manager=ModeManager()
             )
             worker.start()
-            time.sleep(0.3)
+            time.sleep(0.15)
             assert worker.is_alive()
         finally:
             worker.stop()
@@ -96,7 +96,7 @@ class TestPIDWorkerAIIntegration:
                 f"TELEMETRY.{sample_controller.id}".encode(),
                 msgpack.packb(telem),
             )
-            time.sleep(0.2)
+            time.sleep(0.1)
 
             # Send AI action with new Ki
             ai_action = {
@@ -108,7 +108,7 @@ class TestPIDWorkerAIIntegration:
                 f"ACTION.AI.{sample_controller.id}".encode(),
                 msgpack.packb(ai_action),
             )
-            time.sleep(0.3)
+            time.sleep(0.15)
 
             # Verify Ki was updated
             assert sample_controller.pid_params.reset == pytest.approx(15.0)

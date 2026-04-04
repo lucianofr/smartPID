@@ -39,7 +39,7 @@ class TestDBWorker:
                 "integral_val": 1.2, "timestamp": now.isoformat(), "status": "GOOD",
             }
             pub.send(b"TELEMETRY.1", msgpack.packb(frame_data))
-            time.sleep(0.3)
+            time.sleep(0.2)
             result = await historian.query(
                 1, now - timedelta(seconds=5), now + timedelta(seconds=5)
             )
@@ -63,7 +63,7 @@ class TestDBWorker:
                     "integral_val": 1.0, "timestamp": now.isoformat(), "status": "GOOD",
                 }
                 pub.send(b"TELEMETRY.1", msgpack.packb(frame_data))
-            time.sleep(0.3)
+            time.sleep(0.2)
             result = await historian.query(
                 1, now - timedelta(seconds=5), now + timedelta(seconds=5)
             )

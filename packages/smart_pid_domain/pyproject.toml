@@ -9,7 +9,6 @@ description = "Smart PID — Shared domain models, events, enums"
 requires-python = ">=3.13"
 dependencies = [
     "pydantic>=2.7",
-    "msgpack>=1.0",
 ]
 
 [project.optional-dependencies]

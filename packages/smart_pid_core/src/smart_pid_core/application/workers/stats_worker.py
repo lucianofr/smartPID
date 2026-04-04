@@ -39,6 +39,7 @@ class StatsWorker:
         self._last_sp: float = 50.0
         self._last_co: float = 0.0
         self._last_pv: float = 0.0
+        self._has_telemetry: bool = False
         self._sample_count_since_publish: int = 0
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -98,8 +99,8 @@ class StatsWorker:
                 self._drain_telemetry(telem_sub)
                 self._drain_actions(action_sub)
 
-                # Add sample if we have telemetry
-                if self._last_pv != 0.0 or self._last_sp != 0.0:
+                # Add sample if we have received telemetry data
+                if self._has_telemetry:
                     error = self._last_sp - self._last_pv
                     self._calculator._setpoint = self._last_sp
                     self._calculator.add_sample(
@@ -133,6 +134,7 @@ class StatsWorker:
                 data = msgpack.unpackb(payload)
                 self._last_pv = data["pv"]
                 self._last_sp = data["sp"]
+                self._has_telemetry = True
             except (KeyError, ValueError, msgpack.UnpackException):
                 pass
 

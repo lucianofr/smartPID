@@ -31,6 +31,9 @@ plugins = ["pydantic.mypy"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "integration: marks tests requiring external services (OPC-UA servers, etc.)",
+]
 
 [dependency-groups]
 dev = [

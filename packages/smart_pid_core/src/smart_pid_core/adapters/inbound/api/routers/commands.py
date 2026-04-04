@@ -1,6 +1,7 @@
 """Command router — setpoint, mode, and output changes."""
 from __future__ import annotations
 
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -34,7 +35,7 @@ async def set_setpoint(
     lm.set_setpoint(body.controller_id, body.value)
     await audit_repo.record(
         user.user_id, user.username, AuditAction.SP_CHANGE,
-        f"controller:{body.controller_id}", f'{{"value": {body.value}}}',
+        f"controller:{body.controller_id}", json.dumps({"value": body.value}),
     )
     return CommandResponse(
         ok=True,
@@ -53,7 +54,7 @@ async def set_mode(
     lm.set_mode(body.controller_id, body.mode)
     await audit_repo.record(
         user.user_id, user.username, AuditAction.MODE_CHANGE,
-        f"controller:{body.controller_id}", f'{{"mode": "{body.mode}"}}',
+        f"controller:{body.controller_id}", json.dumps({"mode": body.mode}),
     )
     return CommandResponse(
         ok=True,
@@ -72,7 +73,7 @@ async def set_output(
     lm.set_output(body.controller_id, body.value)
     await audit_repo.record(
         user.user_id, user.username, AuditAction.OUTPUT_CHANGE,
-        f"controller:{body.controller_id}", f'{{"value": {body.value}}}',
+        f"controller:{body.controller_id}", json.dumps({"value": body.value}),
     )
     return CommandResponse(
         ok=True,

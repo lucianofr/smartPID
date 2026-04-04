@@ -35,7 +35,7 @@ async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
         async with db.execute("SELECT * FROM Configuracao_Alarmes ORDER BY controlador_id") as cur:
             rows = await cur.fetchall()
     except Exception:
-        # Table may not have data yet
+        logger.debug("alarm_configs_not_loaded", exc_info=True)
         return configs
 
     by_controller: dict[int, dict] = {}
@@ -140,8 +140,12 @@ async def run_daemon(settings: CoreSettings) -> None:
     users = await user_repo.list_all()
     if not users:
         admin_hash = hash_password("admin")
-        await user_repo.create("admin", admin_hash, "admin")
-        logger.warning("seeded_default_admin", msg="Change default admin password!")
+        await user_repo.create("admin", admin_hash, "ADMIN")
+        logger.warning(
+            "seeded_default_admin",
+            msg="SECURITY: Default admin account created with password 'admin'. "
+            "Change it immediately via the /users API or set SPID_ADMIN_PASSWORD env var.",
+        )
 
     # Phase 5: AI Repository
     from smart_pid_core.adapters.outbound.ai_repo import AIRepository
@@ -162,6 +166,36 @@ async def run_daemon(settings: CoreSettings) -> None:
     alarm_worker.start()
     logger.info("alarm_worker_started")
 
+    # I-INT-1: DBWorker — persist telemetry to SQLite
+    from smart_pid_core.application.workers.db_worker import DBWorker
+
+    db_worker = DBWorker(bus=bus, historian=historian)
+    db_worker.start()
+    logger.info("db_worker_started")
+
+    # C-INT-2: I/O Worker — read OPC-UA and publish TELEMETRY events to bus
+    from smart_pid_core.application.workers.io_worker import IOWorker
+
+    all_controllers = await repo.list_all()
+    io_controller_ids = [c.id for c in all_controllers]
+    io_worker = IOWorker(
+        bus=bus,
+        opcua_adapter=adapter_factory.opcua_adapter,
+        controller_ids=io_controller_ids,
+        scan_interval_s=settings.simulator_interval_ms / 1000.0
+        if settings.simulator_enabled
+        else 0.1,
+    )
+    io_worker.start()
+    logger.info("io_worker_started")
+
+    # C-INT-3: ExportWorker — CSV/JSON export jobs
+    from smart_pid_core.application.export_worker import ExportWorker
+
+    export_dir = str(settings.db_path.parent / "exports")
+    export_worker = ExportWorker(historian=historian, export_dir=export_dir)
+    logger.info("export_worker_created", export_dir=export_dir)
+
     # Phase 2: FastAPI
     app = create_app(
         repo=repo,
@@ -177,6 +211,9 @@ async def run_daemon(settings: CoreSettings) -> None:
         alarm_repo=alarm_repo,
         audit_repo=audit_repo,
     )
+
+    # Set export_worker on app.state so the export router can use it
+    app.state.export_worker = export_worker
 
     # Phase 2: Telemetry Publisher
     telemetry_pub = TelemetryPublisher(bus=bus, publish_port=settings.zmq_publish_port)
@@ -212,6 +249,8 @@ async def run_daemon(settings: CoreSettings) -> None:
     server.should_exit = True
     await server_task
     await telemetry_pub.stop()
+    io_worker.stop()
+    db_worker.stop()
     # Stop OPC-UA client BEFORE simulator (client depends on server)
     if opcua_adapter is not None:
         opcua_adapter.stop()
@@ -220,6 +259,8 @@ async def run_daemon(settings: CoreSettings) -> None:
     alarm_worker.stop()
     loop_manager.stop_all()
     bus.stop()
+    # I-INT-3: Close SQLite connection to finalize WAL
+    await repo.close()
     logger.info("daemon_stopped")
 
 

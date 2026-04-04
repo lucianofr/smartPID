@@ -117,6 +117,14 @@ class AlarmEngine:
 
         return transitions
 
+    def remove_controller(self, controller_id: int) -> None:
+        """Remove all alarm states for a controller (cleanup on delete)."""
+        keys_to_remove = [
+            key for key in self._states if key[0] == controller_id
+        ]
+        for key in keys_to_remove:
+            del self._states[key]
+
     def _get_state(self, controller_id: int, alarm_type: AlarmType) -> _PointState:
         key = (controller_id, alarm_type)
         if key not in self._states:

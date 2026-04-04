@@ -2,12 +2,29 @@
 from __future__ import annotations
 
 import time
+from typing import Any, Callable
 
 import pytest
 
 from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
 from smart_pid_core.config import CoreSettings
+
+
+def _poll_until(
+    predicate: Callable[[], Any],
+    timeout_s: float = 2.0,
+    interval_s: float = 0.05,
+) -> Any:
+    """Poll predicate until truthy or timeout. Returns last result."""
+    deadline = time.monotonic() + timeout_s
+    result = None
+    while time.monotonic() < deadline:
+        result = predicate()
+        if result:
+            return result
+        time.sleep(interval_s)
+    return result
 
 FULLSTACK_PORT = 48470
 
@@ -53,9 +70,13 @@ class TestOPCUAFullStack:
     ) -> None:
         """Client can read PV/SP/CO values that the server publishes."""
         opcua_server.update_values(controller_id=1, pv=72.5, sp=75.0, co=45.0)
-        time.sleep(0.3)  # Allow async update to propagate
 
-        frame = opcua_client.read_telemetry(1)
+        def _pv_updated():
+            f = opcua_client.read_telemetry(1)
+            return f if f.pv == pytest.approx(72.5, abs=0.1) else None
+
+        frame = _poll_until(_pv_updated)
+        assert frame is not None
         assert frame.controller_id == 1
         assert frame.pv == pytest.approx(72.5, abs=0.1)
         assert frame.sp == pytest.approx(75.0, abs=0.1)
@@ -66,10 +87,13 @@ class TestOPCUAFullStack:
     ) -> None:
         """Client can write CO value back to the server node."""
         opcua_client.write_output(controller_id=1, co=65.0)
-        time.sleep(0.3)  # Allow async write to propagate
 
-        # Read back via client to verify
-        frame = opcua_client.read_telemetry(1)
+        def _co_updated():
+            f = opcua_client.read_telemetry(1)
+            return f if f.co == pytest.approx(65.0, abs=0.1) else None
+
+        frame = _poll_until(_co_updated)
+        assert frame is not None
         assert frame.co == pytest.approx(65.0, abs=0.1)
 
     def test_update_and_read_cycle(
@@ -78,17 +102,25 @@ class TestOPCUAFullStack:
         """Full cycle: server updates PV, client reads it, client writes CO."""
         # Server sets initial process values
         opcua_server.update_values(controller_id=1, pv=50.0, sp=60.0, co=30.0)
-        time.sleep(0.3)
 
-        frame1 = opcua_client.read_telemetry(1)
+        def _pv_set():
+            f = opcua_client.read_telemetry(1)
+            return f if f.pv == pytest.approx(50.0, abs=0.1) else None
+
+        frame1 = _poll_until(_pv_set)
+        assert frame1 is not None
         assert frame1.pv == pytest.approx(50.0, abs=0.1)
         assert frame1.sp == pytest.approx(60.0, abs=0.1)
 
         # Client writes new CO
         opcua_client.write_output(controller_id=1, co=55.0)
-        time.sleep(0.3)
 
-        frame2 = opcua_client.read_telemetry(1)
+        def _co_set():
+            f = opcua_client.read_telemetry(1)
+            return f if f.co == pytest.approx(55.0, abs=0.1) else None
+
+        frame2 = _poll_until(_co_set)
+        assert frame2 is not None
         assert frame2.co == pytest.approx(55.0, abs=0.1)
 
     def test_shutdown_order_client_before_server(

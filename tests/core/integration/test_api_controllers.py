@@ -1,4 +1,4 @@
-"""Tests for /config/controllers CRUD endpoints."""
+"""Tests for /controllers CRUD endpoints (route prefix changed from /config/controllers)."""
 from __future__ import annotations
 
 import pytest
@@ -10,13 +10,13 @@ class TestListControllers:
     async def test_list_empty(
         self, client: AsyncClient, user_headers: dict[str, str]
     ) -> None:
-        resp = await client.get("/config/controllers", headers=user_headers)
+        resp = await client.get("/controllers", headers=user_headers)
         assert resp.status_code == 200
         assert resp.json() == []
 
     @pytest.mark.asyncio
     async def test_list_requires_auth(self, client: AsyncClient) -> None:
-        resp = await client.get("/config/controllers")
+        resp = await client.get("/controllers")
         assert resp.status_code == 401
 
 
@@ -26,7 +26,7 @@ class TestCreateController:
         self, client: AsyncClient, admin_headers: dict[str, str]
     ) -> None:
         resp = await client.post(
-            "/config/controllers",
+            "/controllers",
             json={"name": "TIC-101", "description": "Temperature loop"},
             headers=admin_headers,
         )
@@ -40,7 +40,7 @@ class TestCreateController:
         self, client: AsyncClient, user_headers: dict[str, str]
     ) -> None:
         resp = await client.post(
-            "/config/controllers",
+            "/controllers",
             json={"name": "TIC-101"},
             headers=user_headers,
         )
@@ -53,12 +53,12 @@ class TestGetController:
         self, client: AsyncClient, admin_headers: dict[str, str], user_headers: dict[str, str]
     ) -> None:
         create_resp = await client.post(
-            "/config/controllers",
+            "/controllers",
             json={"name": "TIC-101"},
             headers=admin_headers,
         )
         cid = create_resp.json()["id"]
-        resp = await client.get(f"/config/controllers/{cid}", headers=user_headers)
+        resp = await client.get(f"/controllers/{cid}", headers=user_headers)
         assert resp.status_code == 200
         assert resp.json()["name"] == "TIC-101"
 
@@ -66,7 +66,7 @@ class TestGetController:
     async def test_get_not_found(
         self, client: AsyncClient, user_headers: dict[str, str]
     ) -> None:
-        resp = await client.get("/config/controllers/9999", headers=user_headers)
+        resp = await client.get("/controllers/9999", headers=user_headers)
         assert resp.status_code == 404
 
 
@@ -76,13 +76,13 @@ class TestUpdateController:
         self, client: AsyncClient, admin_headers: dict[str, str]
     ) -> None:
         create_resp = await client.post(
-            "/config/controllers",
+            "/controllers",
             json={"name": "TIC-101"},
             headers=admin_headers,
         )
         cid = create_resp.json()["id"]
         resp = await client.put(
-            f"/config/controllers/{cid}",
+            f"/controllers/{cid}",
             json={"description": "Updated"},
             headers=admin_headers,
         )
@@ -96,17 +96,17 @@ class TestDeleteController:
         self, client: AsyncClient, admin_headers: dict[str, str]
     ) -> None:
         create_resp = await client.post(
-            "/config/controllers",
+            "/controllers",
             json={"name": "TIC-101"},
             headers=admin_headers,
         )
         cid = create_resp.json()["id"]
-        resp = await client.delete(f"/config/controllers/{cid}", headers=admin_headers)
+        resp = await client.delete(f"/controllers/{cid}", headers=admin_headers)
         assert resp.status_code == 204
 
     @pytest.mark.asyncio
     async def test_delete_not_found(
         self, client: AsyncClient, admin_headers: dict[str, str]
     ) -> None:
-        resp = await client.delete("/config/controllers/9999", headers=admin_headers)
+        resp = await client.delete("/controllers/9999", headers=admin_headers)
         assert resp.status_code == 404
