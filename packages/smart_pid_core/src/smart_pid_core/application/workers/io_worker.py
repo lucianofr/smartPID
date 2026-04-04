@@ -75,14 +75,32 @@ class IOWorker:
                         topic = f"TELEMETRY.{cid}".encode()
                         payload = msgpack.packb({
                             "controller_id": frame.controller_id,
-                            "pv": frame.pv,
-                            "sp": frame.sp,
-                            "co": frame.co,
+                            "pv": {
+                                "value": frame.pv.value,
+                                "severity": frame.pv.status.severity.value,
+                                "limit_bits": frame.pv.status.limit_bits.value,
+                                "sub_status": frame.pv.status.sub_status.value,
+                            },
+                            "sp": {
+                                "value": frame.sp.value,
+                                "severity": frame.sp.status.severity.value,
+                                "limit_bits": frame.sp.status.limit_bits.value,
+                                "sub_status": frame.sp.status.sub_status.value,
+                            },
+                            "co": {
+                                "value": frame.co.value,
+                                "severity": frame.co.status.severity.value,
+                                "limit_bits": frame.co.status.limit_bits.value,
+                                "sub_status": frame.co.status.sub_status.value,
+                            },
+                            "bkcal_in": {
+                                "value": frame.bkcal_in.value,
+                                "severity": frame.bkcal_in.status.severity.value,
+                                "limit_bits": frame.bkcal_in.status.limit_bits.value,
+                                "sub_status": frame.bkcal_in.status.sub_status.value,
+                            },
                             "integral_val": frame.integral_val,
                             "timestamp": frame.timestamp.isoformat(),
-                            "status": str(frame.status.value)
-                            if hasattr(frame.status, "value")
-                            else "GOOD",
                         })
                         pub.send(topic, payload)
                     except (KeyError, ConnectionError):
