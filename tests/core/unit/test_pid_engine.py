@@ -4,9 +4,9 @@ from __future__ import annotations
 import pytest
 
 from smart_pid_core.domain.services.pid_engine import PIDEngine, PIDState
-from smart_pid_domain.enums import LimitBits
+from smart_pid_domain.enums import InitSubStatus, LimitBits
 from smart_pid_domain.models.controller import PIDParams
-from smart_pid_domain.models.signal import FFSignal
+from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
 
 
 class TestPIDCompute:
@@ -339,3 +339,66 @@ class TestDirectionalAntiWindup:
         )
         # Local ARW blocks positive integration when saturated high
         assert result.cv == pytest.approx(100.0, abs=1e-6)
+
+
+class TestIMANTracking:
+    """IMAN mode: force CV to match BKCAL_IN value for cascade handshake."""
+
+    def setup_method(self) -> None:
+        self.engine = PIDEngine()
+
+    def test_cv_matches_bkcal_in_value(self) -> None:
+        """Output must exactly match BKCAL_IN value during tracking."""
+        state = PIDState(cv=50.0, pv_prev=45.0, pv_prev2=45.0)
+        bkcal_in = FFSignal(
+            value=72.5,
+            status=FFSignalStatus(sub_status=InitSubStatus.IR),
+        )
+        result = self.engine.compute_iman_tracking(
+            state=state,
+            pv=FFSignal.good(45.0),
+            sp=FFSignal.good(50.0),
+            bkcal_in=bkcal_in,
+        )
+        assert result.cv == pytest.approx(72.5, abs=1e-10)
+        assert result.delta_cv == 0.0
+
+    def test_bkcal_out_has_ia_substatus(self) -> None:
+        """BKCAL_OUT must carry IA sub-status to acknowledge initialization."""
+        state = PIDState(cv=50.0, pv_prev=45.0, pv_prev2=45.0)
+        bkcal_in = FFSignal(
+            value=72.5,
+            status=FFSignalStatus(sub_status=InitSubStatus.IR),
+        )
+        result = self.engine.compute_iman_tracking(
+            state=state,
+            pv=FFSignal.good(45.0),
+            sp=FFSignal.good(50.0),
+            bkcal_in=bkcal_in,
+        )
+        assert result.bkcal_out.value == pytest.approx(72.5, abs=1e-10)
+        assert result.bkcal_out.status.sub_status == InitSubStatus.IA
+
+    def test_pv_history_updated(self) -> None:
+        """PV history must be updated to prevent derivative kick on return."""
+        state = PIDState(cv=50.0, pv_prev=40.0, pv_prev2=38.0)
+        result = self.engine.compute_iman_tracking(
+            state=state,
+            pv=FFSignal.good(45.0),
+            sp=FFSignal.good(50.0),
+            bkcal_in=FFSignal.good(72.5),
+        )
+        assert result.new_state.pv_prev == pytest.approx(45.0)
+        assert result.new_state.pv_prev2 == pytest.approx(40.0)
+        assert result.new_state.derivative_filtered == 0.0
+
+    def test_state_cv_set_to_tracking_value(self) -> None:
+        """State CV must be set to BKCAL_IN value for seamless transition."""
+        state = PIDState(cv=30.0)
+        result = self.engine.compute_iman_tracking(
+            state=state,
+            pv=FFSignal.good(45.0),
+            sp=FFSignal.good(50.0),
+            bkcal_in=FFSignal.good(80.0),
+        )
+        assert result.new_state.cv == pytest.approx(80.0)
