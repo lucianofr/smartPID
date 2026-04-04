@@ -67,3 +67,17 @@ def test_manager_current_raises_if_none(qtbot):
     mgr = ThemeManager()
     with pytest.raises(RuntimeError, match="No theme set"):
         _ = mgr.current
+
+
+def test_themes_init_exports():
+    from smart_pid_hmi.themes import (
+        DarkRoomTheme,
+        ISA101Theme,
+        MD3DarkTheme,
+        ThemeManager,
+    )
+
+    assert ISA101Theme is not None
+    assert DarkRoomTheme is not None
+    assert MD3DarkTheme is not None
+    assert ThemeManager is not None
