@@ -1,11 +1,10 @@
 """Tests for ISA-101 theme."""
-
+from smart_pid_hmi.themes.base import ThemeColors, ThemeFonts
 from smart_pid_hmi.themes.isa101 import ISA101Theme
 
 
 def test_isa101_implements_protocol():
     theme = ISA101Theme()
-    # Structural check: all required attributes exist
     assert theme.name == "isa101"
     assert isinstance(theme.bg_primary, str)
     assert isinstance(theme.fg_primary, str)
@@ -39,4 +38,35 @@ def test_apply_no_crash(qtbot):
     app = QApplication.instance()
     assert app is not None
     theme.apply(app)
-    # No crash = pass
+
+
+def test_isa101_has_colors_dataclass():
+    """ISA-101 exposes ThemeColors via .colors property."""
+    theme = ISA101Theme()
+    assert hasattr(theme, "colors")
+    colors = theme.colors
+    assert isinstance(colors, ThemeColors)
+    assert colors.bg_primary == "#808080"
+    assert colors.alarm_critical == "#FF0000"
+
+
+def test_isa101_has_fonts_dataclass():
+    """ISA-101 exposes ThemeFonts via .fonts property."""
+    theme = ISA101Theme()
+    assert hasattr(theme, "fonts")
+    fonts = theme.fonts
+    assert isinstance(fonts, ThemeFonts)
+    assert fonts.family == "Segoe UI"
+    assert fonts.size_normal == 12
+
+
+def test_isa101_has_chart_palette():
+    """ISA-101 exposes a chart_palette list for multi-trend."""
+    theme = ISA101Theme()
+    assert hasattr(theme, "chart_palette")
+    palette = theme.chart_palette
+    assert isinstance(palette, list)
+    assert len(palette) >= 4
+    for color in palette:
+        assert isinstance(color, str)
+        assert color.startswith("#")

@@ -1,4 +1,4 @@
-"""ISA-101 concrete theme — gray-scale, color = alarm only."""
+"""MD3 Dark theme — Material Design 3 with neutral tones and rounded corners."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -9,52 +9,56 @@ if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication
 
 _COLORS = ThemeColors(
-    bg_primary="#808080",
-    bg_secondary="#999999",
-    bg_widget="#B0B0B0",
-    fg_primary="#1A1A1A",
-    fg_secondary="#4D4D4D",
-    border="#666666",
-    alarm_critical="#FF0000",
-    alarm_warning="#FFCC00",
-    alarm_text="#FFFFFF",
-    bar_pv="#404040",
-    bar_sp="#606060",
-    bar_co="#505050",
-    chart_pv="#333333",
-    chart_sp="#666666",
-    chart_co="#505050",
-    chart_grid="#999999",
-    chart_bg="#B0B0B0",
+    bg_primary="#141218",       # Surface
+    bg_secondary="#211F26",     # Surface Container
+    bg_widget="#1D1B20",        # Surface Container Low
+    fg_primary="#E6E0E9",       # On-Surface
+    fg_secondary="#938F99",     # Outline
+    border="#49454F",           # Outline Variant
+    alarm_critical="#8C1D18",   # Error Container
+    alarm_warning="#4D3300",    # Warning Container
+    alarm_text="#F9DEDC",       # On-Error Container
+    bar_pv="#938F99",           # Outline (normal fill)
+    bar_sp="#CAC4D0",           # On-Surface Variant
+    bar_co="#79747E",           # Outline Variant
+    chart_pv="#E6E0E9",         # On-Surface
+    chart_sp="#CAC4D0",         # On-Surface Variant
+    chart_co="#938F99",         # Outline
+    chart_grid="#2B2930",       # Surface Container High
+    chart_bg="#141218",         # Surface
 )
 
 _FONTS = ThemeFonts(
-    family="Segoe UI",
-    size_normal=12,
-    size_label=10,
-    size_value=14,
-    size_title=16,
+    family="Roboto",
+    size_normal=14,
+    size_label=12,
+    size_value=16,
+    size_title=18,
 )
 
-# Multi-trend chart palette (ISA-101: muted grays + alarm colors)
 _CHART_PALETTE = [
-    "#333333",  # dark gray
-    "#666666",  # medium gray
-    "#505050",  # gray
-    "#888888",  # light gray
-    "#FF0000",  # alarm red
-    "#FFCC00",  # alarm yellow
-    "#404040",  # PV gray
-    "#999999",  # grid gray
+    "#E6E0E9",  # on-surface
+    "#CAC4D0",  # on-surface-variant
+    "#938F99",  # outline
+    "#79747E",  # outline-variant
+    "#F9DEDC",  # error light
+    "#FFDC99",  # warning light
+    "#D0BCFF",  # primary light (muted purple)
+    "#B0B0B8",  # neutral
 ]
 
 
-class ISA101Theme:
-    """ISA-101 HMI theme: 100% flat, gray-scale, color only for alarms."""
+class MD3DarkTheme:
+    """Material Design 3 Dark theme with neutral tones and rounded corners.
 
-    name = "isa101"
+    Design spec: docs/identidade_visual_MD3.md
+    - Surface tonal elevation instead of shadows
+    - Color ONLY for alarms
+    - Rounded corners (12px cards)
+    """
 
-    # Backward-compatible flat attributes (all existing widgets use these)
+    name = "md3_dark"
+
     bg_primary = _COLORS.bg_primary
     bg_secondary = _COLORS.bg_secondary
     bg_widget = _COLORS.bg_widget
@@ -99,7 +103,7 @@ class ISA101Theme:
         QMainWindow, QWidget {{
             background-color: {self.bg_primary};
             color: {self.fg_primary};
-            font-family: "{self.font_family}", "Arial", sans-serif;
+            font-family: "{self.font_family}", "Google Sans", "Segoe UI", sans-serif;
             font-size: {self.font_size_normal}px;
         }}
         QLabel {{
@@ -107,73 +111,89 @@ class ISA101Theme:
             background: transparent;
         }}
         QPushButton {{
-            background-color: {self.bg_widget};
+            background-color: {self.bg_secondary};
             color: {self.fg_primary};
             border: 1px solid {self.border};
-            padding: 6px 16px;
+            border-radius: 12px;
+            padding: 8px 20px;
             font-size: {self.font_size_normal}px;
         }}
         QPushButton:hover {{
-            background-color: {self.bg_secondary};
+            background-color: #2B2930;
         }}
         QPushButton:pressed {{
-            background-color: {self.border};
+            background-color: #36343B;
         }}
         QLineEdit {{
             background-color: {self.bg_widget};
             color: {self.fg_primary};
             border: 1px solid {self.border};
-            padding: 4px 8px;
+            border-radius: 8px;
+            padding: 8px 12px;
             font-size: {self.font_size_normal}px;
         }}
         QComboBox {{
             background-color: {self.bg_widget};
             color: {self.fg_primary};
             border: 1px solid {self.border};
-            padding: 4px 8px;
+            border-radius: 8px;
+            padding: 6px 12px;
+        }}
+        QComboBox QAbstractItemView {{
+            background-color: {self.bg_secondary};
+            color: {self.fg_primary};
+            selection-background-color: #2B2930;
+            border-radius: 8px;
         }}
         QScrollArea {{
             border: none;
             background: transparent;
         }}
         QTableWidget {{
-            background-color: {self.bg_widget};
+            background-color: {self.bg_secondary};
             color: {self.fg_primary};
             gridline-color: {self.border};
             border: 1px solid {self.border};
+            border-radius: 12px;
             font-size: {self.font_size_normal}px;
         }}
         QHeaderView::section {{
-            background-color: {self.bg_secondary};
+            background-color: #2B2930;
             color: {self.fg_primary};
             border: 1px solid {self.border};
-            padding: 4px;
+            padding: 6px;
             font-weight: bold;
         }}
         QGroupBox {{
             border: 1px solid {self.border};
+            border-radius: 12px;
             margin-top: 8px;
-            padding-top: 12px;
+            padding-top: 16px;
             color: {self.fg_primary};
         }}
         QGroupBox::title {{
             subcontrol-origin: margin;
-            left: 10px;
+            left: 16px;
             color: {self.fg_secondary};
         }}
         QSlider::groove:horizontal {{
-            background: {self.bg_widget};
+            background: {self.bg_secondary};
             height: 6px;
-            border: 1px solid {self.border};
+            border-radius: 3px;
         }}
         QSlider::handle:horizontal {{
             background: {self.fg_secondary};
-            width: 14px;
-            margin: -4px 0;
+            width: 16px;
+            margin: -5px 0;
+            border-radius: 8px;
         }}
         QRadioButton {{
             color: {self.fg_primary};
-            spacing: 8px;
+            spacing: 10px;
+        }}
+        QToolBar {{
+            background-color: {self.bg_widget};
+            border-bottom: 1px solid {self.border};
         }}
         """
 

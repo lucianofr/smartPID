@@ -1,4 +1,4 @@
-"""ISA-101 concrete theme — gray-scale, color = alarm only."""
+"""DarkRoom theme — ultra-dark for control room environments."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -9,52 +9,56 @@ if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication
 
 _COLORS = ThemeColors(
-    bg_primary="#808080",
-    bg_secondary="#999999",
-    bg_widget="#B0B0B0",
-    fg_primary="#1A1A1A",
-    fg_secondary="#4D4D4D",
-    border="#666666",
-    alarm_critical="#FF0000",
-    alarm_warning="#FFCC00",
+    bg_primary="#000000",
+    bg_secondary="#0D0D11",
+    bg_widget="#050508",
+    fg_primary="#B0B0B8",
+    fg_secondary="#666670",
+    border="#222228",
+    alarm_critical="#D92525",
+    alarm_warning="#D9A000",
     alarm_text="#FFFFFF",
-    bar_pv="#404040",
-    bar_sp="#606060",
-    bar_co="#505050",
-    chart_pv="#333333",
-    chart_sp="#666666",
-    chart_co="#505050",
-    chart_grid="#999999",
-    chart_bg="#B0B0B0",
+    bar_pv="#4A4A52",
+    bar_sp="#888890",
+    bar_co="#3A3A42",
+    chart_pv="#B0B0B8",
+    chart_sp="#888890",
+    chart_co="#666670",
+    chart_grid="#1A1A20",
+    chart_bg="#000000",
 )
 
 _FONTS = ThemeFonts(
-    family="Segoe UI",
-    size_normal=12,
-    size_label=10,
-    size_value=14,
-    size_title=16,
+    family="Fira Code",
+    size_normal=13,
+    size_label=11,
+    size_value=15,
+    size_title=17,
 )
 
-# Multi-trend chart palette (ISA-101: muted grays + alarm colors)
 _CHART_PALETTE = [
-    "#333333",  # dark gray
-    "#666666",  # medium gray
-    "#505050",  # gray
-    "#888888",  # light gray
-    "#FF0000",  # alarm red
-    "#FFCC00",  # alarm yellow
-    "#404040",  # PV gray
-    "#999999",  # grid gray
+    "#B0B0B8",  # primary gray
+    "#888890",  # medium gray
+    "#666670",  # dim gray
+    "#4A4A52",  # dark gray
+    "#D92525",  # alarm red
+    "#D9A000",  # alarm amber
+    "#555560",  # muted
+    "#9999A0",  # light
 ]
 
 
-class ISA101Theme:
-    """ISA-101 HMI theme: 100% flat, gray-scale, color only for alarms."""
+class DarkRoomTheme:
+    """Ultra-dark theme for control room (Dark Room) environments.
 
-    name = "isa101"
+    Design spec: docs/identidade_visual_Dark.md
+    - Background: pure black (#000000)
+    - Color ONLY for alarms
+    - Monospaced font for readability in low light
+    """
 
-    # Backward-compatible flat attributes (all existing widgets use these)
+    name = "dark_room"
+
     bg_primary = _COLORS.bg_primary
     bg_secondary = _COLORS.bg_secondary
     bg_widget = _COLORS.bg_widget
@@ -99,7 +103,7 @@ class ISA101Theme:
         QMainWindow, QWidget {{
             background-color: {self.bg_primary};
             color: {self.fg_primary};
-            font-family: "{self.font_family}", "Arial", sans-serif;
+            font-family: "{self.font_family}", "JetBrains Mono", "Consolas", monospace;
             font-size: {self.font_size_normal}px;
         }}
         QLabel {{
@@ -107,14 +111,14 @@ class ISA101Theme:
             background: transparent;
         }}
         QPushButton {{
-            background-color: {self.bg_widget};
+            background-color: {self.bg_secondary};
             color: {self.fg_primary};
             border: 1px solid {self.border};
             padding: 6px 16px;
             font-size: {self.font_size_normal}px;
         }}
         QPushButton:hover {{
-            background-color: {self.bg_secondary};
+            background-color: #15151A;
         }}
         QPushButton:pressed {{
             background-color: {self.border};
@@ -132,19 +136,24 @@ class ISA101Theme:
             border: 1px solid {self.border};
             padding: 4px 8px;
         }}
+        QComboBox QAbstractItemView {{
+            background-color: {self.bg_secondary};
+            color: {self.fg_primary};
+            selection-background-color: {self.border};
+        }}
         QScrollArea {{
             border: none;
             background: transparent;
         }}
         QTableWidget {{
-            background-color: {self.bg_widget};
+            background-color: {self.bg_secondary};
             color: {self.fg_primary};
             gridline-color: {self.border};
             border: 1px solid {self.border};
             font-size: {self.font_size_normal}px;
         }}
         QHeaderView::section {{
-            background-color: {self.bg_secondary};
+            background-color: #15151A;
             color: {self.fg_primary};
             border: 1px solid {self.border};
             padding: 4px;
@@ -174,6 +183,10 @@ class ISA101Theme:
         QRadioButton {{
             color: {self.fg_primary};
             spacing: 8px;
+        }}
+        QToolBar {{
+            background-color: {self.bg_secondary};
+            border-bottom: 1px solid {self.border};
         }}
         """
 

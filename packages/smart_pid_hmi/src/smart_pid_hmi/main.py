@@ -19,9 +19,12 @@ from smart_pid_hmi.config import HMISettings
 from smart_pid_hmi.pages.alarm_panel import AlarmPanel
 from smart_pid_hmi.pages.connection_page import ConnectionPage
 from smart_pid_hmi.pages.dashboard_page import DashboardPage
+from smart_pid_hmi.pages.executive_dashboard import ExecutiveDashboardPage
+from smart_pid_hmi.pages.multi_trend_page import MultiTrendPage
+from smart_pid_hmi.pages.settings_page import SettingsPage
 from smart_pid_hmi.pages.simulator_page import SimulatorPage
 from smart_pid_hmi.services.session import Session
-from smart_pid_hmi.themes.isa101 import ISA101Theme
+from smart_pid_hmi.themes import DarkRoomTheme, ISA101Theme, MD3DarkTheme, ThemeManager
 
 
 class MainWindow(QMainWindow):
@@ -47,8 +50,14 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Smart PID HMI")
         self.setMinimumSize(1024, 700)
 
-        # Theme
-        theme = ISA101Theme()
+        # Theme manager
+        self._theme_manager = ThemeManager()
+        isa_theme = ISA101Theme()
+        self._theme_manager.register(isa_theme)
+        self._theme_manager.register(DarkRoomTheme())
+        self._theme_manager.register(MD3DarkTheme())
+        self._theme_manager.set_theme("isa101")
+        theme = isa_theme
         theme.apply(QApplication.instance())
 
         # Toolbar
@@ -86,6 +95,18 @@ class MainWindow(QMainWindow):
         self._alarms_btn.triggered.connect(
             lambda: self._stack.setCurrentWidget(self._alarm_panel)
         )
+        self._executive_btn = toolbar.addAction("Executive")
+        self._executive_btn.triggered.connect(
+            lambda: self._stack.setCurrentWidget(self._executive_page)
+        )
+        self._trends_btn = toolbar.addAction("Trends")
+        self._trends_btn.triggered.connect(
+            lambda: self._stack.setCurrentWidget(self._multi_trend_page)
+        )
+        self._settings_btn = toolbar.addAction("Settings")
+        self._settings_btn.triggered.connect(
+            lambda: self._stack.setCurrentWidget(self._settings_page)
+        )
 
         spacer = QWidget()
         toolbar.addWidget(spacer)
@@ -103,6 +124,16 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._simulator_page)
         self._alarm_panel = AlarmPanel(theme=theme)
         self._stack.addWidget(self._alarm_panel)
+        self._executive_page = ExecutiveDashboardPage()
+        self._stack.addWidget(self._executive_page)
+        self._multi_trend_page = MultiTrendPage()
+        self._stack.addWidget(self._multi_trend_page)
+        self._settings_page = SettingsPage(
+            theme_manager=self._theme_manager,
+            server_url=settings.server_url,
+            zmq_url=settings.zmq_url,
+        )
+        self._stack.addWidget(self._settings_page)
 
         # Wire signals
         self._connection_page.login_requested.connect(self._on_login)
@@ -122,6 +153,7 @@ class MainWindow(QMainWindow):
         self._simulator_page.step_requested.connect(self._send_sim_step)
         self._simulator_page.noise_requested.connect(self._send_sim_noise)
         self._simulator_page.clear_disturbance_requested.connect(self._send_sim_clear)
+        self._settings_page.theme_changed.connect(self._on_theme_switch)
 
     def _on_login(self, server_url: str, username: str, password: str) -> None:
         """Handle login in background thread."""
@@ -262,6 +294,12 @@ class MainWindow(QMainWindow):
             target=lambda: self._api_client.clear_simulator_disturbance(cid),
             daemon=True,
         ).start()
+
+    def _on_theme_switch(self, name: str) -> None:
+        """Apply the selected theme globally."""
+        self._theme_manager.set_theme(name)
+        theme = self._theme_manager.current
+        theme.apply(QApplication.instance())
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._bus_bridge.stop()
