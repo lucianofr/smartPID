@@ -5,9 +5,10 @@ from uuid import UUID
 
 import pytest
 
-from smart_pid_domain.enums import AIEngine, ConnectionState, ControlObjective, SignalStatus
+from smart_pid_domain.enums import AIEngine, ConnectionState, ControlObjective, InitSubStatus
 from smart_pid_domain.events import (
     AIActionComputed,
+    CascadeHandshakeChanged,
     ControlActionComputed,
     StatsUpdated,
     SystemStateChanged,
@@ -92,10 +93,6 @@ class TestSystemStateChanged:
             reason="Network timeout",
         )
         assert event.new_state == ConnectionState.RECONNECTING
-
-
-from smart_pid_domain.enums import InitSubStatus
-from smart_pid_domain.events import CascadeHandshakeChanged
 
 
 class TestCascadeHandshakeChanged:

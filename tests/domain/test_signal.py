@@ -1,7 +1,10 @@
 """Tests for FF signal enums and value objects."""
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from smart_pid_domain.enums import InitSubStatus, LimitBits, SignalSeverity
+from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
 
 
 class TestSignalSeverity:
@@ -29,11 +32,6 @@ class TestInitSubStatus:
         assert InitSubStatus.IR == "IR"
         assert InitSubStatus.IA == "IA"
         assert InitSubStatus.GOOD_CASCADE == "GOOD_CASCADE"
-
-
-from datetime import UTC, datetime
-
-from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
 
 
 class TestFFSignalStatus:

@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import EventBus
     from smart_pid_core.domain.services.pid_engine import PIDEngine
     from smart_pid_core.domain.services.pid_mode_manager import ModeManager
-    from smart_pid_domain.enums import LimitBits, SignalSeverity
     from smart_pid_domain.models.controller import Controller
 
 

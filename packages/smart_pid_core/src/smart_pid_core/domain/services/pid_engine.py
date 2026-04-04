@@ -10,14 +10,13 @@ Bumpless transfer: reinitializes state to match current output on mode change.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from smart_pid_domain.enums import LimitBits
 from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
 
 if TYPE_CHECKING:
-    from smart_pid_domain.enums import SignalSeverity
     from smart_pid_domain.models.controller import PIDParams
 
 
@@ -93,11 +92,11 @@ class PIDEngine:
 
                 # Directional anti-windup from downstream (BKCAL_IN limit bits)
                 limit = bkcal_in.status.limit_bits
-                if limit == LimitBits.CONSTANT:
-                    i_term = 0.0
-                elif limit == LimitBits.HIGH_LIMITED and i_term > 0:
-                    i_term = 0.0
-                elif limit == LimitBits.LOW_LIMITED and i_term < 0:
+                if (
+                    limit == LimitBits.CONSTANT
+                    or (limit == LimitBits.HIGH_LIMITED and i_term > 0)
+                    or (limit == LimitBits.LOW_LIMITED and i_term < 0)
+                ):
                     i_term = 0.0
 
                 # 16x faster reset recovery: if previously saturated and integral

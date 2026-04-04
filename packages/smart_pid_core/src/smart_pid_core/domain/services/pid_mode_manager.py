@@ -15,10 +15,9 @@ Rules from bloco_pid.md + FF spec:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from smart_pid_domain.enums import ControllerMode, InitSubStatus
-from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
+from smart_pid_domain.models.signal import FFSignal
 
 # Modes that require bumpless transfer when entering
 _BUMPLESS_REQUIRED_TARGETS = {ControllerMode.AUTO, ControllerMode.CAS, ControllerMode.RCAS}

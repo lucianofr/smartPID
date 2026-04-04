@@ -4,10 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from smart_pid_domain.models.signal import FFSignal
-
 if TYPE_CHECKING:
     from datetime import datetime
+
+    from smart_pid_domain.models.signal import FFSignal
 
 
 @dataclass(frozen=True)
