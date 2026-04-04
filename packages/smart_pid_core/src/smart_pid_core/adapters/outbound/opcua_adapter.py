@@ -235,32 +235,40 @@ class OPCUAAdapter:
     async def _async_read_telemetry(
         self, client, controller_id: int, nodes: dict[str, str],
     ) -> TelemetryFrame:
-        """Async batch read of OPC-UA nodes."""
-        node_ids_to_read = []
-        keys = []
+        """Async batch read of OPC-UA DataValues with StatusCode decoding."""
+        signal_keys = []
+        signal_nodes = []
         for key in ("pv", "sp", "co", "bkcal_in"):
             nid = nodes.get(key, "")
             if nid:
-                node_ids_to_read.append(client.get_node(nid))
-                keys.append(key)
+                signal_nodes.append(client.get_node(nid))
+                signal_keys.append(key)
 
-        # Integral node is optional
+        # Read DataValues (value + StatusCode + timestamps) instead of plain values
+        signals: dict[str, FFSignal] = {}
+        for key, node in zip(signal_keys, signal_nodes, strict=True):
+            dv = await node.read_data_value()
+            value = float(dv.Value.Value) if dv.Value is not None else 0.0
+            status = self._decode_status(dv.StatusCode.value)
+            ts = dv.SourceTimestamp or datetime.now(UTC)
+            signals[key] = FFSignal(value=value, status=status, timestamp=ts)
+
+        # Integral node is optional — plain value read (no signal semantics)
+        integral_val = 0.0
         integral_nid = nodes.get("integral", "")
         if integral_nid:
-            node_ids_to_read.append(client.get_node(integral_nid))
-            keys.append("integral")
-
-        values = await client.read_values(node_ids_to_read)
-        result = dict(zip(keys, values, strict=True))
+            integral_node = client.get_node(integral_nid)
+            integral_val = float(await integral_node.read_value())
 
         now = datetime.now(UTC)
+        default_signal = FFSignal.good(0.0, now)
         return TelemetryFrame(
             controller_id=controller_id,
-            pv=FFSignal.good(float(result.get("pv", 0.0)), now),
-            sp=FFSignal.good(float(result.get("sp", 0.0)), now),
-            co=FFSignal.good(float(result.get("co", 0.0)), now),
-            bkcal_in=FFSignal.good(float(result.get("bkcal_in", 0.0)), now),
-            integral_val=float(result.get("integral", 0.0)),
+            pv=signals.get("pv", default_signal),
+            sp=signals.get("sp", default_signal),
+            co=signals.get("co", default_signal),
+            bkcal_in=signals.get("bkcal_in", default_signal),
+            integral_val=integral_val,
             timestamp=now,
         )
 
