@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import msgpack
 import zmq
 
-from smart_pid_domain.enums import SignalStatus
+from smart_pid_domain.models.signal import FFSignal
 from smart_pid_domain.models.telemetry import TelemetryFrame
 
 if TYPE_CHECKING:
@@ -79,12 +79,15 @@ class DBWorker:
         _topic, payload = msg
         try:
             data = msgpack.unpackb(payload)
+            ts = datetime.fromisoformat(data["timestamp"]).replace(tzinfo=UTC)
             frame = TelemetryFrame(
                 controller_id=data["controller_id"],
-                pv=data["pv"], sp=data["sp"], co=data["co"],
+                pv=FFSignal.good(data["pv"], ts),
+                sp=FFSignal.good(data["sp"], ts),
+                co=FFSignal.good(data["co"], ts),
+                bkcal_in=FFSignal.good(data.get("bkcal_in", 0.0), ts),
                 integral_val=data["integral_val"],
-                timestamp=datetime.fromisoformat(data["timestamp"]).replace(tzinfo=UTC),
-                status=SignalStatus(data.get("status", "GOOD")),
+                timestamp=ts,
             )
             self._buffer.append(frame)
         except (KeyError, ValueError, msgpack.UnpackException):

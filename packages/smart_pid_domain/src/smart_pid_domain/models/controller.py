@@ -63,6 +63,8 @@ class TagBindings:
     node_id_sp: str = ""
     node_id_co: str = ""
     node_id_integral: str = ""
+    node_id_bkcal_in: str = ""
+    node_id_bkcal_out: str = ""
 
 
 @dataclass

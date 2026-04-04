@@ -35,11 +35,11 @@ async def query_history(
     frame_dtos = [
         TelemetryFrameDTO(
             timestamp=f.timestamp,
-            pv=f.pv,
-            sp=f.sp,
-            co=f.co,
+            pv=f.pv.value,
+            sp=f.sp.value,
+            co=f.co.value,
             mode="AUTO",
-            status=str(f.status),
+            status="GOOD" if f.pv.status.is_good else "BAD",
         )
         for f in frames
     ]

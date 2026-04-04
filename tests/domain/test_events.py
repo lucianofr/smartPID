@@ -13,6 +13,7 @@ from smart_pid_domain.events import (
     SystemStateChanged,
     TelemetryReceived,
 )
+from smart_pid_domain.models.signal import FFSignal
 from smart_pid_domain.models.telemetry import TelemetryFrame
 
 
@@ -20,8 +21,9 @@ class TestTelemetryReceived:
     def test_auto_generates_event_id(self) -> None:
         now = datetime.now(tz=UTC)
         frame = TelemetryFrame(
-            controller_id=1, pv=50.0, sp=50.0, co=25.0,
-            integral_val=1.0, timestamp=now, status=SignalStatus.GOOD,
+            controller_id=1, pv=FFSignal.good(50.0), sp=FFSignal.good(50.0),
+            co=FFSignal.good(25.0), bkcal_in=FFSignal.good(0.0),
+            integral_val=1.0, timestamp=now,
         )
         event = TelemetryReceived(controller_id=1, frame=frame)
         assert isinstance(event.event_id, UUID)
@@ -29,8 +31,9 @@ class TestTelemetryReceived:
     def test_is_frozen(self) -> None:
         now = datetime.now(tz=UTC)
         frame = TelemetryFrame(
-            controller_id=1, pv=50.0, sp=50.0, co=25.0,
-            integral_val=1.0, timestamp=now, status=SignalStatus.GOOD,
+            controller_id=1, pv=FFSignal.good(50.0), sp=FFSignal.good(50.0),
+            co=FFSignal.good(25.0), bkcal_in=FFSignal.good(0.0),
+            integral_val=1.0, timestamp=now,
         )
         event = TelemetryReceived(controller_id=1, frame=frame)
         with pytest.raises(AttributeError):

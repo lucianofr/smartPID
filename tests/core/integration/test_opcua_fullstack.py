@@ -73,14 +73,14 @@ class TestOPCUAFullStack:
 
         def _pv_updated():
             f = opcua_client.read_telemetry(1)
-            return f if f.pv == pytest.approx(72.5, abs=0.1) else None
+            return f if f.pv.value == pytest.approx(72.5, abs=0.1) else None
 
         frame = _poll_until(_pv_updated)
         assert frame is not None
         assert frame.controller_id == 1
-        assert frame.pv == pytest.approx(72.5, abs=0.1)
-        assert frame.sp == pytest.approx(75.0, abs=0.1)
-        assert frame.co == pytest.approx(45.0, abs=0.1)
+        assert frame.pv.value == pytest.approx(72.5, abs=0.1)
+        assert frame.sp.value == pytest.approx(75.0, abs=0.1)
+        assert frame.co.value == pytest.approx(45.0, abs=0.1)
 
     def test_write_co_back_to_server(
         self, opcua_server: OPCUAServer, opcua_client: OPCUAAdapter,
@@ -90,11 +90,11 @@ class TestOPCUAFullStack:
 
         def _co_updated():
             f = opcua_client.read_telemetry(1)
-            return f if f.co == pytest.approx(65.0, abs=0.1) else None
+            return f if f.co.value == pytest.approx(65.0, abs=0.1) else None
 
         frame = _poll_until(_co_updated)
         assert frame is not None
-        assert frame.co == pytest.approx(65.0, abs=0.1)
+        assert frame.co.value == pytest.approx(65.0, abs=0.1)
 
     def test_update_and_read_cycle(
         self, opcua_server: OPCUAServer, opcua_client: OPCUAAdapter,
@@ -105,23 +105,23 @@ class TestOPCUAFullStack:
 
         def _pv_set():
             f = opcua_client.read_telemetry(1)
-            return f if f.pv == pytest.approx(50.0, abs=0.1) else None
+            return f if f.pv.value == pytest.approx(50.0, abs=0.1) else None
 
         frame1 = _poll_until(_pv_set)
         assert frame1 is not None
-        assert frame1.pv == pytest.approx(50.0, abs=0.1)
-        assert frame1.sp == pytest.approx(60.0, abs=0.1)
+        assert frame1.pv.value == pytest.approx(50.0, abs=0.1)
+        assert frame1.sp.value == pytest.approx(60.0, abs=0.1)
 
         # Client writes new CO
         opcua_client.write_output(controller_id=1, co=55.0)
 
         def _co_set():
             f = opcua_client.read_telemetry(1)
-            return f if f.co == pytest.approx(55.0, abs=0.1) else None
+            return f if f.co.value == pytest.approx(55.0, abs=0.1) else None
 
         frame2 = _poll_until(_co_set)
         assert frame2 is not None
-        assert frame2.co == pytest.approx(55.0, abs=0.1)
+        assert frame2.co.value == pytest.approx(55.0, abs=0.1)
 
     def test_shutdown_order_client_before_server(
         self, opcua_server: OPCUAServer,

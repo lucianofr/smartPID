@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import aiosqlite
 
-from smart_pid_domain.enums import SignalStatus
+from smart_pid_domain.models.signal import FFSignal
 from smart_pid_domain.models.telemetry import TelemetryFrame
 
 
@@ -28,9 +28,9 @@ class SQLiteHistorian:
             (
                 f.controller_id,
                 f.timestamp.isoformat(),
-                f.pv,
-                f.sp,
-                f.co,
+                f.pv.value,
+                f.sp.value,
+                f.co.value,
                 f.integral_val,
             )
             for f in frames
@@ -66,12 +66,12 @@ class SQLiteHistorian:
             results.append(
                 TelemetryFrame(
                     controller_id=row[0],
-                    pv=row[2],
-                    sp=row[3],
-                    co=row[4],
+                    pv=FFSignal.good(row[2], ts),
+                    sp=FFSignal.good(row[3], ts),
+                    co=FFSignal.good(row[4], ts),
+                    bkcal_in=FFSignal.good(0.0, ts),
                     integral_val=row[5],
                     timestamp=ts,
-                    status=SignalStatus.GOOD,
                 )
             )
         return results

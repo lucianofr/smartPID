@@ -93,9 +93,9 @@ class ExportWorker:
                 writer.writerow([
                     fr.timestamp.isoformat(),
                     fr.controller_id,
-                    fr.pv,
-                    fr.sp,
-                    fr.co,
+                    fr.pv.value,
+                    fr.sp.value,
+                    fr.co.value,
                     fr.integral_val,
                 ])
 
@@ -106,9 +106,9 @@ class ExportWorker:
             {
                 "timestamp": fr.timestamp.isoformat(),
                 "controller_id": fr.controller_id,
-                "pv": fr.pv,
-                "sp": fr.sp,
-                "co": fr.co,
+                "pv": fr.pv.value,
+                "sp": fr.sp.value,
+                "co": fr.co.value,
                 "integral_val": fr.integral_val,
             }
             for fr in frames

@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from smart_pid_domain.enums import ConnectionState
+from smart_pid_domain.models.signal import FFSignal
 from smart_pid_domain.models.telemetry import TelemetryFrame
 
 if TYPE_CHECKING:
@@ -213,13 +214,15 @@ class OPCUAAdapter:
         values = await client.read_values(node_ids_to_read)
         result = dict(zip(keys, values, strict=True))
 
+        now = datetime.now(UTC)
         return TelemetryFrame(
             controller_id=controller_id,
-            pv=float(result.get("pv", 0.0)),
-            sp=float(result.get("sp", 0.0)),
-            co=float(result.get("co", 0.0)),
+            pv=FFSignal.good(float(result.get("pv", 0.0)), now),
+            sp=FFSignal.good(float(result.get("sp", 0.0)), now),
+            co=FFSignal.good(float(result.get("co", 0.0)), now),
+            bkcal_in=FFSignal.good(0.0, now),
             integral_val=float(result.get("integral", 0.0)),
-            timestamp=datetime.now(UTC),
+            timestamp=now,
         )
 
     # ---- ControlWriter ----
