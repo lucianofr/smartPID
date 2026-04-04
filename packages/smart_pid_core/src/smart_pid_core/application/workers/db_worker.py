@@ -80,12 +80,20 @@ class DBWorker:
         try:
             data = msgpack.unpackb(payload)
             ts = datetime.fromisoformat(data["timestamp"]).replace(tzinfo=UTC)
+
+            def _to_signal(raw: object) -> FFSignal:
+                if isinstance(raw, (float, int)):
+                    return FFSignal.good(float(raw), ts)
+                if isinstance(raw, dict):
+                    return FFSignal.good(float(raw.get("value", 0.0)), ts)
+                return FFSignal.good(0.0, ts)
+
             frame = TelemetryFrame(
                 controller_id=data["controller_id"],
-                pv=FFSignal.good(data["pv"], ts),
-                sp=FFSignal.good(data["sp"], ts),
-                co=FFSignal.good(data["co"], ts),
-                bkcal_in=FFSignal.good(data.get("bkcal_in", 0.0), ts),
+                pv=_to_signal(data["pv"]),
+                sp=_to_signal(data["sp"]),
+                co=_to_signal(data["co"]),
+                bkcal_in=_to_signal(data.get("bkcal_in", 0.0)),
                 integral_val=data["integral_val"],
                 timestamp=ts,
             )
