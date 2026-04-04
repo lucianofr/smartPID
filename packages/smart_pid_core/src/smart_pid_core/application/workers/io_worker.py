@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING
 
 import msgpack
 
+from smart_pid_domain.enums import InitSubStatus, LimitBits, SignalSeverity
+from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
+
 if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
     from smart_pid_core.application.event_bus import EventBus
@@ -59,9 +62,23 @@ class IOWorker:
             self._thread = None
         logger.info("io_worker_stopped")
 
+    @staticmethod
+    def _deserialize_bkcal_out(data: dict) -> FFSignal:
+        """Deserialize BKCAL_OUT from an ACTION.CTRL msgpack dict."""
+        raw = data.get("bkcal_out", {})
+        if isinstance(raw, (float, int)):
+            return FFSignal.good(float(raw))
+        status = FFSignalStatus(
+            severity=SignalSeverity(raw.get("severity", "GOOD")),
+            limit_bits=LimitBits(raw.get("limit_bits", "NONE")),
+            sub_status=InitSubStatus(raw.get("sub_status", "NONE")),
+        )
+        return FFSignal(value=float(raw.get("value", 0.0)), status=status)
+
     def _run(self) -> None:
-        """Main loop: read from OPC-UA, publish to bus."""
+        """Main loop: read from OPC-UA, publish to bus, write BKCAL_OUT back."""
         pub = self._bus.create_publisher()
+        action_sub = self._bus.create_subscriber(b"ACTION.CTRL")
         # Wait briefly for bus subscriptions to propagate
         time.sleep(0.05)
 
@@ -111,7 +128,27 @@ class IOWorker:
                             "io_worker_read_error controller_id=%s", cid,
                         )
 
+                # Drain ACTION.CTRL.* messages and write BKCAL_OUT to OPC-UA
+                self._drain_and_write_bkcal(action_sub)
+
             elapsed = time.monotonic() - tick_start
             sleep_time = self._scan_interval_s - elapsed
             if sleep_time > 0:
                 self._stop_event.wait(timeout=sleep_time)
+
+    def _drain_and_write_bkcal(self, action_sub) -> None:
+        """Drain ACTION.CTRL.* messages from bus and write BKCAL_OUT to OPC-UA."""
+        while True:
+            msg = action_sub.recv(timeout_ms=0)
+            if msg is None:
+                break
+            _topic, payload = msg
+            try:
+                data = msgpack.unpackb(payload)
+                cid = data["controller_id"]
+                bkcal_out = self._deserialize_bkcal_out(data)
+                self._opcua.write_bkcal_out(cid, bkcal_out)
+            except (KeyError, ConnectionError):
+                pass
+            except Exception:
+                logger.exception("io_worker_bkcal_write_error")

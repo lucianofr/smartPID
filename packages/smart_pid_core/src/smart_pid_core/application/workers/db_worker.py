@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING
 import msgpack
 import zmq
 
-from smart_pid_domain.models.signal import FFSignal
+from smart_pid_domain.enums import InitSubStatus, LimitBits, SignalSeverity
+from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
 from smart_pid_domain.models.telemetry import TelemetryFrame
 
 if TYPE_CHECKING:
@@ -85,7 +86,16 @@ class DBWorker:
                 if isinstance(raw, (float, int)):
                     return FFSignal.good(float(raw), ts)
                 if isinstance(raw, dict):
-                    return FFSignal.good(float(raw.get("value", 0.0)), ts)
+                    status = FFSignalStatus(
+                        severity=SignalSeverity(raw.get("severity", "GOOD")),
+                        limit_bits=LimitBits(raw.get("limit_bits", "NONE")),
+                        sub_status=InitSubStatus(raw.get("sub_status", "NONE")),
+                    )
+                    return FFSignal(
+                        value=float(raw.get("value", 0.0)),
+                        status=status,
+                        timestamp=ts,
+                    )
                 return FFSignal.good(0.0, ts)
 
             frame = TelemetryFrame(
