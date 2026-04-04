@@ -16,6 +16,14 @@ class TestCoreSettings:
         assert settings.simulator_enabled is False
         assert settings.log_level == "INFO"
 
+    def test_opcua_retry_max_s_default(self) -> None:
+        settings = CoreSettings(jwt_secret="test-secret")
+        assert settings.opcua_retry_max_s == 30.0
+
+    def test_opcua_retry_max_s_override(self) -> None:
+        settings = CoreSettings(jwt_secret="test-secret", opcua_retry_max_s=15.0)
+        assert settings.opcua_retry_max_s == 15.0
+
     def test_jwt_secret_required(self) -> None:
         import pytest
         from pydantic import ValidationError

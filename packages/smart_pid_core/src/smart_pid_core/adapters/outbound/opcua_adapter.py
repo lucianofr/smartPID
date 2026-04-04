@@ -27,12 +27,12 @@ class OPCUAAdapter:
 
     # Backoff constants
     _BACKOFF_BASE_S = 1.0
-    _BACKOFF_MAX_S = 60.0
 
     def __init__(self, settings: CoreSettings) -> None:
         self._settings = settings
         self._endpoint = settings.opcua_endpoint
         self._timeout_s = settings.opcua_timeout_s
+        self._backoff_max_s = settings.opcua_retry_max_s
         self._state = ConnectionState.OFFLINE
         self._lock = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -136,7 +136,7 @@ class OPCUAAdapter:
                     if self._stop_event.is_set():
                         return
                     await asyncio.sleep(0.1)
-                backoff_s = min(backoff_s * 2, self._BACKOFF_MAX_S)
+                backoff_s = min(backoff_s * 2, self._backoff_max_s)
 
     async def _watchdog_loop(self) -> None:
         """Periodically read ServerStatus to detect connection loss."""

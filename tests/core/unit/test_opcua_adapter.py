@@ -26,3 +26,19 @@ class TestOPCUAAdapterInit:
         settings = _make_settings(opcua_endpoint="opc.tcp://10.0.0.1:4840")
         adapter = OPCUAAdapter(settings=settings)
         assert adapter.endpoint == "opc.tcp://10.0.0.1:4840"
+
+
+class TestOPCUAAdapterBackoff:
+    def test_backoff_max_from_settings(self):
+        from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
+
+        settings = _make_settings(opcua_retry_max_s=15.0)
+        adapter = OPCUAAdapter(settings=settings)
+        assert adapter._backoff_max_s == 15.0
+
+    def test_backoff_max_default(self):
+        from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
+
+        settings = _make_settings()
+        adapter = OPCUAAdapter(settings=settings)
+        assert adapter._backoff_max_s == 30.0

@@ -12,6 +12,7 @@ class CoreSettings(BaseSettings):
     # OPC-UA
     opcua_endpoint: str = "opc.tcp://localhost:4840"
     opcua_timeout_s: int = 5
+    opcua_retry_max_s: float = 30.0
 
     # ZeroMQ
     zmq_internal_url: str = "inproc://bus"
