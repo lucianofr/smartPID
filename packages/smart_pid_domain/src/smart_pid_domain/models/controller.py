@@ -22,6 +22,11 @@ class ScaleConfig:
     eu_max: float
     unit: str = ""
 
+    def __post_init__(self) -> None:
+        if self.eu_min >= self.eu_max:
+            msg = f"eu_min ({self.eu_min}) must be less than eu_max ({self.eu_max})"
+            raise ValueError(msg)
+
     @property
     def span(self) -> float:
         return self.eu_max - self.eu_min
@@ -62,7 +67,12 @@ class TagBindings:
 
 @dataclass
 class ControlOpts:
-    """Control strategy options (CONTROL_OPTS from bloco_pid.md)."""
+    """Control strategy options (CONTROL_OPTS from bloco_pid.md).
+
+    Note: ``sp_pv_track_in_lo_or_iman`` and ``sp_pv_track_in_man`` also appear
+    in ``IOOpts``.  Per ISA / bloco_pid.md these are independent bits in separate
+    option words (CONTROL_OPTS vs IO_OPTS) and must remain separate.
+    """
 
     no_out_limits_in_manual: bool = False
     obey_sp_limits_if_cas: bool = False
@@ -77,7 +87,12 @@ class ControlOpts:
 
 @dataclass
 class IOOpts:
-    """I/O processing options (IO_OPTS from bloco_pid.md)."""
+    """I/O processing options (IO_OPTS from bloco_pid.md).
+
+    Note: ``sp_pv_track_in_lo_or_iman`` and ``sp_pv_track_in_man`` also appear
+    in ``ControlOpts``.  Per ISA / bloco_pid.md these are independent bits in
+    separate option words and must remain separate.
+    """
 
     low_cutoff: bool = False
     target_to_man_if_fault: bool = False

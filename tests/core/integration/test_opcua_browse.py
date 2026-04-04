@@ -23,6 +23,7 @@ def _make_settings(endpoint: str) -> CoreSettings:
     )  # type: ignore[call-arg]
 
 
+@pytest.mark.integration
 class TestTagBrowser:
     def test_browse_root_objects(self, opcua_server: OPCUATestServer):
         settings = _make_settings(opcua_server.endpoint)

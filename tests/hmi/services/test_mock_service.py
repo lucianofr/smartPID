@@ -8,7 +8,7 @@ from smart_pid_hmi.services.mock_service import MockAPIClient, MockTelemetrySour
 def test_mock_telemetry_generates_frames():
     source = MockTelemetrySource(interval_ms=50)
     source.start()
-    time.sleep(0.3)
+    time.sleep(0.15)
     source.stop()
 
     assert not source.queue.empty()
@@ -23,7 +23,7 @@ def test_mock_telemetry_generates_frames():
 def test_mock_telemetry_three_controllers():
     source = MockTelemetrySource(interval_ms=50)
     source.start()
-    time.sleep(0.5)
+    time.sleep(0.25)
     source.stop()
 
     seen_ids: set[int] = set()

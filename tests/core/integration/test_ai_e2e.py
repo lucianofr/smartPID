@@ -73,7 +73,7 @@ class TestEndToEndAITuning:
                 time.sleep(0.1)
 
             # Wait for AI cycle
-            time.sleep(1.0)
+            time.sleep(0.5)
 
             # Check that ACTION.AI was published
             msg = ai_sub.recv(timeout_ms=2000)

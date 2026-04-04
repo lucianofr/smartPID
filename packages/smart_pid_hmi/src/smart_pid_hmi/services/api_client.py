@@ -47,6 +47,14 @@ class APIClient:
         resp.raise_for_status()
         return TokenResponse.model_validate(resp.json())
 
+    def refresh_token(self) -> TokenResponse:
+        """Refresh the current access token before it expires."""
+        resp = self._http.post("/auth/refresh", headers=self._headers())
+        resp.raise_for_status()
+        token_resp = TokenResponse.model_validate(resp.json())
+        self._session.store_token(token_resp.access_token)
+        return token_resp
+
     def list_controllers(self) -> list[ControllerResponse]:
         resp = self._http.get("/controllers", headers=self._headers())
         resp.raise_for_status()

@@ -41,7 +41,7 @@ async def api_deps(tmp_path):
 
     # Seed admin user
     admin_hash = hash_password("admin")
-    await user_repo.create("admin", admin_hash, "admin")
+    await user_repo.create("admin", admin_hash, "ADMIN")
 
     yield {
         "repo": repo,
@@ -55,6 +55,7 @@ async def api_deps(tmp_path):
     }
     loop_manager.stop_all()
     bus.stop()
+    await repo.db.close()
 
 
 @pytest.fixture
@@ -83,7 +84,7 @@ async def client(app):
 def admin_headers(api_deps) -> dict[str, str]:
     """Pre-authenticated admin JWT headers."""
     token = create_access_token(
-        user_id=1, username="admin", role="admin",
+        user_id=1, username="admin", role="ADMIN",
         secret=api_deps["settings"].jwt_secret,
     )
     return {"Authorization": f"Bearer {token}"}
@@ -117,7 +118,7 @@ async def sim_api_deps(tmp_path):
     )  # type: ignore[call-arg]
 
     admin_hash = hash_password("admin")
-    await user_repo.create("admin", admin_hash, "admin")
+    await user_repo.create("admin", admin_hash, "ADMIN")
 
     from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
     simulator_adapter = SimulatorAdapter(settings=settings)
@@ -135,6 +136,7 @@ async def sim_api_deps(tmp_path):
     simulator_adapter.stop()
     loop_manager.stop_all()
     bus.stop()
+    await repo.db.close()
 
 
 @pytest.fixture

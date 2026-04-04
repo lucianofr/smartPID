@@ -54,6 +54,15 @@ class AlarmBarWidget(QFrame):
         self._scroll.setWidget(self._container)
         layout.addWidget(self._scroll)
 
+    def apply_theme(self, theme: ThemeBase) -> None:
+        """Update cached theme reference for dynamic theme switching."""
+        self._theme = theme
+        self.setStyleSheet(
+            f"AlarmBarWidget {{ background-color: {theme.bg_secondary}; "
+            f"border-top: 1px solid {theme.border}; }}"
+        )
+        self._rebuild()
+
     @property
     def alarm_count(self) -> int:
         return len(self._alarms)

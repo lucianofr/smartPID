@@ -15,6 +15,12 @@ class BusPublisher:
     def send(self, topic: bytes, payload: bytes) -> None:
         self._socket.send_multipart([topic, payload])
 
+    def close(self) -> None:
+        """Close the underlying ZMQ socket."""
+        with contextlib.suppress(zmq.ZMQError):
+            self._socket.setsockopt(zmq.LINGER, 0)
+            self._socket.close()
+
 
 class BusSubscriber:
     """Wrapper around a ZMQ SUB socket connected to the bus."""
@@ -27,6 +33,12 @@ class BusSubscriber:
             if len(parts) == 2:
                 return (parts[0], parts[1])
         return None
+
+    def close(self) -> None:
+        """Close the underlying ZMQ socket."""
+        with contextlib.suppress(zmq.ZMQError):
+            self._socket.setsockopt(zmq.LINGER, 0)
+            self._socket.close()
 
 
 class EventBus:
@@ -42,6 +54,8 @@ class EventBus:
         self._url_backend = f"{url_prefix}_xpub"
         self._proxy_thread: threading.Thread | None = None
         self._running = False
+        self._xsub: zmq.Socket[bytes] | None = None
+        self._xpub: zmq.Socket[bytes] | None = None
 
     def start(self) -> None:
         if self._running:
@@ -66,6 +80,14 @@ class EventBus:
         if not self._running:
             return
         self._running = False
+        # Close proxy sockets before destroying context to avoid dangling sockets
+        for sock in (self._xsub, self._xpub):
+            if sock is not None:
+                with contextlib.suppress(zmq.ZMQError):
+                    sock.setsockopt(zmq.LINGER, 0)
+                    sock.close()
+        self._xsub = None
+        self._xpub = None
         self._ctx.destroy(linger=0)
 
     def create_publisher(self) -> BusPublisher:

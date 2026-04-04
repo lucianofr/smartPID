@@ -73,7 +73,7 @@ class TestAIActionComputed:
 class TestStatsUpdated:
     def test_frozen(self):
         event = StatsUpdated(
-            controller_id=1, iae=1.0, itae=2.0, mse=0.5,
+            controller_id=1, iae=1.0, itae=2.0, ise=0.3, mse=0.5,
             std_dev=0.1, total_variation=3.0,
             variability_sp=0.02, variability_range=0.01,
             timestamp=datetime.now(UTC),

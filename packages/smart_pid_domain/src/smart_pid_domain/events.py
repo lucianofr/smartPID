@@ -60,6 +60,7 @@ class StatsUpdated:
     controller_id: int
     iae: float
     itae: float
+    ise: float
     mse: float
     std_dev: float
     total_variation: float

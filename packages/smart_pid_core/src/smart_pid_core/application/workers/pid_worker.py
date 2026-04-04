@@ -1,6 +1,7 @@
 """PID Worker — high-priority daemon thread executing PID at the controller's scan rate."""
 from __future__ import annotations
 
+import dataclasses
 import threading
 import time
 from datetime import UTC, datetime
@@ -35,6 +36,7 @@ class PIDWorker:
         self._last_sp: float = 0.0
         self._last_co: float = 0.0
         self._has_telemetry = False
+        self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -64,15 +66,18 @@ class PIDWorker:
         return self._mode
 
     def set_mode(self, mode: ControllerMode) -> None:
-        self._mode = mode
+        with self._lock:
+            self._mode = mode
 
     def set_sp(self, value: float) -> None:
-        """Update the setpoint. Thread-safe (GIL)."""
-        self._last_sp = value
+        """Update the setpoint. Thread-safe via lock."""
+        with self._lock:
+            self._last_sp = value
 
     def set_output(self, value: float) -> None:
         """Set manual output value. Only effective in MAN mode."""
-        self._last_co = value
+        with self._lock:
+            self._last_co = value
 
     def _run(self) -> None:
         telem_sub = self._bus.create_subscriber(f"TELEMETRY.{self.controller_id}".encode())
@@ -151,6 +156,9 @@ class PIDWorker:
                 data = msgpack.unpackb(payload)
                 new_ki = data.get("new_ki")
                 if new_ki is not None:
-                    self._controller.pid_params.reset = float(new_ki)
+                    with self._lock:
+                        self._controller.pid_params = dataclasses.replace(
+                            self._controller.pid_params, reset=float(new_ki)
+                        )
             except (KeyError, ValueError, msgpack.UnpackException):
                 pass

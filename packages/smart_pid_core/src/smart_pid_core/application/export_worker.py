@@ -24,7 +24,7 @@ class ExportWorker:
         self._jobs: dict[str, ExportJob] = {}
 
     def create_job(self, request: ExportRequest) -> ExportJob:
-        """Create a new pending export job from a request."""
+        """Create a new pending export job and schedule its execution."""
         job = ExportJob(
             id=str(uuid.uuid4()),
             controller_id=request.controller_id,
@@ -33,6 +33,15 @@ class ExportWorker:
             format=request.format,
         )
         self._jobs[job.id] = job
+        # Schedule the export to run in the background
+        import asyncio
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self.run_export(job))
+        except RuntimeError:
+            # No running event loop — run synchronously in a new loop
+            asyncio.run(self.run_export(job))
         return job
 
     def get_job(self, export_id: str) -> ExportJob | None:

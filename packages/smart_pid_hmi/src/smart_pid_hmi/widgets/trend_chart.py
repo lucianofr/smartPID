@@ -82,11 +82,19 @@ class TrendChartWidget(QWidget):
                 pen=pg.mkPen(color=theme.chart_co, width=1),
             )
             self._y2.addItem(self._co_curve)
+
+            # Sync Y2 viewbox geometry on resize
+            self._plot_widget.plotItem.vb.sigResized.connect(self._sync_y2_geometry)
         else:
             self._pv_curve = self._plot_widget.plot(pen="w", name="PV")
             self._sp_curve = self._plot_widget.plot(pen="y", name="SP")
             self._y2 = None
             self._co_curve = None
+
+    def _sync_y2_geometry(self) -> None:
+        """Sync Y2 ViewBox geometry with the main plot area."""
+        if self._y2 is not None:
+            self._y2.setGeometry(self._plot_widget.plotItem.vb.sceneBoundingRect())
 
     def on_controller_selected(self, controller_id: int) -> None:
         self._controller_id = controller_id

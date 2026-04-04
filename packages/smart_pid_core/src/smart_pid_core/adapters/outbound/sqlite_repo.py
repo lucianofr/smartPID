@@ -431,3 +431,7 @@ class SQLiteRepository:
         async with self.db.execute("PRAGMA journal_mode") as cur:
             row = await cur.fetchone()
         return str(row[0]) if row else ""
+
+    async def close(self) -> None:
+        """Close the SQLite connection, finalizing WAL."""
+        await self.db.close()

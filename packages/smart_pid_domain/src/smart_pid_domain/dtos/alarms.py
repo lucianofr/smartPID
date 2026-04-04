@@ -3,12 +3,14 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from smart_pid_domain.enums import AlarmPriority, AlarmType  # noqa: TC001
+
 
 class AlarmResponse(BaseModel):
     id: int
     controller_id: int
-    alarm_type: str
-    priority: str
+    alarm_type: AlarmType
+    priority: AlarmPriority
     value: float
     limit_value: float
     triggered_at: str

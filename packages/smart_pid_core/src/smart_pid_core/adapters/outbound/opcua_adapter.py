@@ -322,15 +322,14 @@ class OPCUAAdapter:
             children = await node.get_children()
             for child in children:
                 display_name = (await child.read_display_name()).Text
+                node_class = await child.read_node_class()
                 if query_lower in display_name.lower():
-                    node_class = await child.read_node_class()
                     results.append({
                         "node_id": child.nodeid.to_string(),
                         "display_name": display_name,
                         "node_class": node_class.name,
                     })
                 # Recurse into folders/objects
-                node_class = await child.read_node_class()
                 if node_class in {ua.NodeClass.Object, ua.NodeClass.ObjectType}:
                     await _walk(child, depth + 1)
 

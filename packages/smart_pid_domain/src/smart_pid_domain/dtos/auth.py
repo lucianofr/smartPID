@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from smart_pid_domain.enums import UserRole  # noqa: TC001
+
 
 class LoginRequest(BaseModel):
     username: str
@@ -17,10 +19,10 @@ class TokenResponse(BaseModel):
 class UserCreate(BaseModel):
     username: str
     password: str
-    role: str = "user"
+    role: UserRole = UserRole.OPERATOR
 
 
 class UserClaims(BaseModel):
     user_id: int
     username: str
-    role: str
+    role: UserRole

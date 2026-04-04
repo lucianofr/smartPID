@@ -73,10 +73,9 @@ class AlarmPanel(QWidget):
                 **alarm,
                 "status": "UNACKNOWLEDGED",
             }
-        elif transition == "CLEARED":
-            if key in self._active_alarms:
-                self._active_alarms[key]["status"] = "CLEARED_UNACK"
-                self._active_alarms[key]["transition"] = "CLEARED"
+        elif transition == "CLEARED" and key in self._active_alarms:
+            self._active_alarms[key]["status"] = "CLEARED_UNACK"
+            self._active_alarms[key]["transition"] = "CLEARED"
 
         self._rebuild_table()
 
@@ -96,6 +95,7 @@ class AlarmPanel(QWidget):
             ]
             priority = alarm.get("priority", "")
             color = _PRIORITY_COLORS.get(priority, "#757575")
+            alarm_id = alarm.get("alarm_id")
             for col, text in enumerate(items):
                 item = QTableWidgetItem(text)
                 item.setForeground(Qt.GlobalColor.white)
@@ -103,12 +103,16 @@ class AlarmPanel(QWidget):
                 if col == 2:  # Priority column
                     item.setBackground(QColor(color))
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                if col == 0 and alarm_id is not None:
+                    item.setData(Qt.ItemDataRole.UserRole, alarm_id)
                 self.active_table.setItem(row, col, item)
 
     def _on_ack_selected(self) -> None:
         selected = self.active_table.selectedItems()
         if selected:
             row = selected[0].row()
-            alarm_id_text = self.active_table.item(row, 0)
-            if alarm_id_text:
-                self.ack_requested.emit(row)
+            first_item = self.active_table.item(row, 0)
+            if first_item is not None:
+                alarm_id = first_item.data(Qt.ItemDataRole.UserRole)
+                if alarm_id is not None:
+                    self.ack_requested.emit(int(alarm_id))
