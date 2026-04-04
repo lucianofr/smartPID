@@ -170,5 +170,21 @@ class APIClient:
         resp.raise_for_status()
         return resp.json()
 
+
+    def get_controller_stats(self, controller_id: int) -> dict:
+        """Get performance stats for a single controller."""
+        resp = self._http.get(
+            f"/controllers/{controller_id}/stats",
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_all_stats(self) -> list[dict]:
+        """Get performance stats for all controllers."""
+        resp = self._http.get("/controllers/stats", headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
+
     def close(self) -> None:
         self._http.close()
