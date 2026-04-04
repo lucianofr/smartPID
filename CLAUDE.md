@@ -1,5 +1,9 @@
 # Projeto: Smart PID Edge Platform
 
+## Agentes
+- Todos os subagentes (Agent tool) DEVEM usar `model: "opus"` para garantir Claude Opus 4.6
+- Nao usar haiku ou sonnet para subagentes neste projeto
+
 ## Stack e padroes
 - Python 3.13, uv workspace (hatchling), monorepo
 - PySide6 (HMI desktop), ZeroMQ (msgpack), aiosqlite (WAL mode)
