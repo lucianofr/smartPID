@@ -1,10 +1,48 @@
 """ThemeBase Protocol — contract for all themes."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication
+
+
+@dataclass(frozen=True)
+class ThemeColors:
+    """Immutable color palette for a theme."""
+
+    bg_primary: str
+    bg_secondary: str
+    bg_widget: str
+    fg_primary: str
+    fg_secondary: str
+    border: str
+
+    alarm_critical: str
+    alarm_warning: str
+    alarm_text: str
+
+    bar_pv: str
+    bar_sp: str
+    bar_co: str
+
+    chart_pv: str
+    chart_sp: str
+    chart_co: str
+    chart_grid: str
+    chart_bg: str
+
+
+@dataclass(frozen=True)
+class ThemeFonts:
+    """Immutable font settings for a theme."""
+
+    family: str
+    size_normal: int
+    size_label: int
+    size_value: int
+    size_title: int
 
 
 class ThemeBase(Protocol):
