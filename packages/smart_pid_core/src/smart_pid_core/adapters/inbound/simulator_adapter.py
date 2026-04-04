@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from queue import SimpleQueue
 from typing import TYPE_CHECKING
 
+from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 from smart_pid_core.domain.services.process_models import ProcessModel
 from smart_pid_domain.dtos.simulator import ControllerSimStatus
 from smart_pid_domain.models.process_preset import PRESETS
@@ -53,6 +54,8 @@ class SimulatorAdapter:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+        self._opcua_server = OPCUAServer(port=settings.simulator_port)
+        self._opcua_server.set_on_write(self._on_opcua_write)
 
     @property
     def queue(self) -> SimpleQueue[TelemetryFrame]:
@@ -62,6 +65,7 @@ class SimulatorAdapter:
         if self._thread is not None and self._thread.is_alive():
             return
         self._stop_event.clear()
+        self._opcua_server.start()
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name="simulator")
         self._thread.start()
         logger.info("Simulator started (interval=%dms)", self._settings.simulator_interval_ms)
@@ -71,11 +75,23 @@ class SimulatorAdapter:
         if self._thread is not None:
             self._thread.join(timeout=2.0)
             self._thread = None
+        self._opcua_server.stop()
         logger.info("Simulator stopped")
 
     @property
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
+
+    def _on_opcua_write(self, controller_id: int, param: str, value: float) -> None:
+        """Handle writes from OPC-UA clients (e.g., OPCUAAdapter writing CO)."""
+        with self._lock:
+            ctrl = self._controllers.get(controller_id)
+            if ctrl is None:
+                return
+            if param == "co":
+                ctrl.last_co = value
+            elif param == "sp":
+                ctrl.sp = value
 
     def write_output(self, controller_id: int, co: float) -> None:
         with self._lock:
@@ -90,6 +106,7 @@ class SimulatorAdapter:
         with self._lock:
             if controller_id not in self._controllers:
                 self._controllers[controller_id] = _ControllerSim(controller_id=controller_id)
+                self._opcua_server.register_controller(controller_id)
 
     def set_preset(self, controller_id: int, preset: ProcessPresetName) -> None:
         with self._lock:
@@ -198,3 +215,9 @@ class SimulatorAdapter:
                     timestamp=datetime.now(UTC),
                 )
                 self._queue.put(frame)
+                self._opcua_server.update_values(
+                    controller_id=ctrl.controller_id,
+                    pv=pv,
+                    sp=ctrl.sp,
+                    co=ctrl.last_co,
+                )

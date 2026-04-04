@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 from queue import SimpleQueue
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -22,9 +23,36 @@ def settings() -> CoreSettings:
 
 @pytest.fixture
 def adapter(settings: CoreSettings) -> SimulatorAdapter:
-    a = SimulatorAdapter(settings=settings)
-    yield a
-    a.stop()
+    with patch(
+        "smart_pid_core.adapters.inbound.simulator_adapter.OPCUAServer",
+        return_value=_mock_opcua_server(),
+    ):
+        a = SimulatorAdapter(settings=settings)
+        yield a
+        a.stop()
+
+
+def _mock_opcua_server() -> MagicMock:
+    """Create a mock OPCUAServer with the same interface."""
+    mock = MagicMock()
+    mock.is_running = False
+    mock.controller_node_ids = {}
+
+    def _start() -> None:
+        mock.is_running = True
+
+    def _stop() -> None:
+        mock.is_running = False
+
+    def _register(cid: int) -> dict[str, str]:
+        node_ids = {"pv": f"ns=2;s=PV_{cid}", "sp": f"ns=2;s=SP_{cid}", "co": f"ns=2;s=CO_{cid}"}
+        mock.controller_node_ids[cid] = node_ids
+        return node_ids
+
+    mock.start.side_effect = _start
+    mock.stop.side_effect = _stop
+    mock.register_controller.side_effect = _register
+    return mock
 
 
 class TestSimulatorAdapterInit:
@@ -112,3 +140,62 @@ class TestSimulatorAdapterRunning:
         """write_parameter satisfies ControlWriter protocol but is a no-op for simulator."""
         adapter.register_controller(1)
         adapter.write_parameter(1, "gain", 2.0)  # Should not raise
+
+
+class TestSimulatorAdapterOPCUA:
+    """Tests for OPC-UA integration in SimulatorAdapter."""
+
+    @pytest.fixture
+    def mock_adapter(self, settings: CoreSettings) -> SimulatorAdapter:
+        with patch(
+            "smart_pid_core.adapters.inbound.simulator_adapter.OPCUAServer",
+            return_value=_mock_opcua_server(),
+        ):
+            a = SimulatorAdapter(settings=settings)
+            yield a
+            a.stop()
+
+    def test_opcua_server_attribute(self, mock_adapter: SimulatorAdapter) -> None:
+        assert hasattr(mock_adapter, "_opcua_server")
+        assert mock_adapter._opcua_server is not None
+
+    def test_start_starts_opcua_server(self, mock_adapter: SimulatorAdapter) -> None:
+        mock_adapter.register_controller(1)
+        mock_adapter.start()
+        assert mock_adapter._opcua_server.is_running
+        mock_adapter.stop()
+
+    def test_stop_stops_opcua_server(self, mock_adapter: SimulatorAdapter) -> None:
+        mock_adapter.register_controller(1)
+        mock_adapter.start()
+        mock_adapter.stop()
+        assert not mock_adapter._opcua_server.is_running
+
+    def test_register_controller_creates_opcua_nodes(
+        self, mock_adapter: SimulatorAdapter,
+    ) -> None:
+        mock_adapter.register_controller(1)
+        mock_adapter._opcua_server.register_controller.assert_called_once_with(1)
+        assert 1 in mock_adapter._opcua_server.controller_node_ids
+
+    def test_tick_calls_update_values(self, mock_adapter: SimulatorAdapter) -> None:
+        mock_adapter.register_controller(1)
+        mock_adapter._tick(0.1)
+        mock_adapter._opcua_server.update_values.assert_called_once()
+        call_kwargs = mock_adapter._opcua_server.update_values.call_args
+        assert call_kwargs.kwargs["controller_id"] == 1
+
+    def test_on_opcua_write_updates_co(self, mock_adapter: SimulatorAdapter) -> None:
+        mock_adapter.register_controller(1)
+        mock_adapter._on_opcua_write(1, "co", 75.0)
+        assert mock_adapter._controllers[1].last_co == 75.0
+
+    def test_on_opcua_write_updates_sp(self, mock_adapter: SimulatorAdapter) -> None:
+        mock_adapter.register_controller(1)
+        mock_adapter._on_opcua_write(1, "sp", 60.0)
+        assert mock_adapter._controllers[1].sp == 60.0
+
+    def test_on_opcua_write_ignores_unknown_controller(
+        self, mock_adapter: SimulatorAdapter,
+    ) -> None:
+        mock_adapter._on_opcua_write(999, "co", 50.0)  # Should not raise
