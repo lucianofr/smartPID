@@ -11,6 +11,7 @@ from smart_pid_domain.enums import (
     IntegralType,
     PIDStructure,
     ProcessSpeed,
+    TuningWriteMode,
 )
 
 
@@ -65,6 +66,10 @@ class TagBindings:
     node_id_integral: str = ""
     node_id_bkcal_in: str = ""
     node_id_bkcal_out: str = ""
+    node_id_kp: str = ""
+    node_id_ti: str = ""
+    node_id_td: str = ""
+    node_id_mode: str = ""
 
 
 @dataclass
@@ -122,6 +127,8 @@ class Controller:
     control_opts: ControlOpts = field(default_factory=ControlOpts)
     io_opts: IOOpts = field(default_factory=IOOpts)
     ai_config: AIConfig = field(default_factory=AIConfig)
+    tuning_write_mode: TuningWriteMode = TuningWriteMode.APPROVAL_REQUIRED
+    max_tuning_change_pct: float = 10.0
     permitted_modes: set[ControllerMode] = field(
         default_factory=lambda: {ControllerMode.MAN, ControllerMode.AUTO}
     )
