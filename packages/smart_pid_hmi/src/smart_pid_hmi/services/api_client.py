@@ -36,6 +36,12 @@ class APIClient:
             kwargs["transport"] = transport
         self._http = httpx.Client(**kwargs)
 
+    def set_base_url(self, url: str) -> None:
+        """Replace the HTTP client with a new base URL (from connection page)."""
+        old = self._http
+        self._http = httpx.Client(base_url=url, timeout=old.timeout)
+        old.close()
+
     def _headers(self) -> dict[str, str]:
         return self._session.auth_header
 
@@ -54,6 +60,11 @@ class APIClient:
         token_resp = TokenResponse.model_validate(resp.json())
         self._session.store_token(token_resp.access_token)
         return token_resp
+
+    def create_controller(self, data: dict) -> ControllerResponse:
+        resp = self._http.post("/controllers", json=data, headers=self._headers())
+        resp.raise_for_status()
+        return ControllerResponse.model_validate(resp.json())
 
     def list_controllers(self) -> list[ControllerResponse]:
         resp = self._http.get("/controllers", headers=self._headers())

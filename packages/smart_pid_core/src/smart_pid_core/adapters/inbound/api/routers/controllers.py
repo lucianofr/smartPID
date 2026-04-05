@@ -93,7 +93,7 @@ async def get_controller(
     try:
         controller = await repo.get(controller_id)
     except KeyError:
-        raise ControllerNotFoundError(controller_id)
+        raise ControllerNotFoundError(controller_id) from None
     return _to_response(controller)
 
 
@@ -108,7 +108,7 @@ async def update_controller(
     try:
         controller = await repo.get(controller_id)
     except KeyError:
-        raise ControllerNotFoundError(controller_id)
+        raise ControllerNotFoundError(controller_id) from None
 
     updates: dict = {}
     if body.name is not None:
@@ -157,7 +157,7 @@ async def delete_controller(
     try:
         await repo.delete(controller_id)
     except KeyError:
-        raise ControllerNotFoundError(controller_id)
+        raise ControllerNotFoundError(controller_id) from None
     await audit_repo.record(
         user.user_id, user.username, AuditAction.DELETE_CONTROLLER,
         f"controller:{controller_id}", None,

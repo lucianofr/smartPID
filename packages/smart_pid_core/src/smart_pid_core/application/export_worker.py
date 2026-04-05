@@ -4,7 +4,7 @@ from __future__ import annotations
 import csv
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 

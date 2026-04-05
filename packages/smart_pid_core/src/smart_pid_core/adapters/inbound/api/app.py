@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import time
-from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -26,6 +25,8 @@ from smart_pid_core.adapters.inbound.api.routers import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
     from smart_pid_core.adapters.outbound.ai_repo import AIRepository
     from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository

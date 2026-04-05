@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QMetaObject, Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QLabel,
     QMainWindow,
     QStackedWidget,
@@ -97,6 +98,10 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self._user_label)
 
         toolbar.addSeparator()
+        self._add_ctrl_btn = toolbar.addAction("+ Add Loop")
+        self._add_ctrl_btn.triggered.connect(self._on_add_controller)
+        self._add_ctrl_btn.setEnabled(False)  # enabled after login
+        toolbar.addSeparator()
         self._dashboard_btn = toolbar.addAction("Dashboard")
         self._dashboard_btn.triggered.connect(
             lambda: self._stack.setCurrentWidget(self._dashboard_page)
@@ -172,6 +177,10 @@ class MainWindow(QMainWindow):
 
     def _on_login(self, server_url: str, username: str, password: str) -> None:
         """Handle login in background thread."""
+        # Update API client base URL to match what the user typed
+        if hasattr(self._api_client, "set_base_url"):
+            self._api_client.set_base_url(server_url)
+
         def do_login():
             try:
                 resp = self._api_client.login(username, password)
@@ -189,6 +198,7 @@ class MainWindow(QMainWindow):
     def _login_success(self) -> None:
         self._conn_indicator.setStyleSheet("color: green; background: transparent;")
         self._user_label.setText(self._session.username or "")
+        self._add_ctrl_btn.setEnabled(True)
         self._telemetry_source.start()
         self._bus_bridge.start()
         self._load_dashboard()
@@ -199,6 +209,25 @@ class MainWindow(QMainWindow):
     def _on_login_error_received(self, error_msg: str) -> None:
         """Handle login error via thread-safe signal."""
         self._connection_page.show_error(error_msg or "Login failed")
+
+    def _on_add_controller(self) -> None:
+        """Open dialog to create a new controller, then refresh dashboard."""
+        from smart_pid_hmi.widgets.add_controller_dialog import AddControllerDialog
+
+        dialog = AddControllerDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        data = dialog.get_data()
+
+        def do_create():
+            try:
+                self._api_client.create_controller(data)
+                self._load_dashboard()
+            except Exception as e:
+                logger.error("Failed to create controller: %s", e)
+                self._api_error_signal.emit(str(e))
+
+        threading.Thread(target=do_create, daemon=True).start()
 
     @Slot(list)
     def _on_controllers_received(self, controllers: list[dict]) -> None:

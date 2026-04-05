@@ -14,7 +14,7 @@ from tests.core.fixtures.opcua_server import OPCUATestServer
 
 @pytest.fixture(scope="module")
 def opcua_server():
-    server = OPCUATestServer(port=48410)
+    server = OPCUATestServer()
     server.start()
     yield server
     server.stop()

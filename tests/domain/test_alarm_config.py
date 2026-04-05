@@ -46,7 +46,7 @@ def test_alarm_config_is_frozen():
     )
     try:
         config.hihi_enabled = True  # type: ignore[misc]
-        assert False, "Should be frozen"
+        raise AssertionError("Should be frozen")
     except AttributeError:
         pass
 

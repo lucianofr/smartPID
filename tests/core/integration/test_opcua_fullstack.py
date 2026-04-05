@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
 from smart_pid_core.config import CoreSettings
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def _poll_until(
@@ -26,13 +29,18 @@ def _poll_until(
         time.sleep(interval_s)
     return result
 
-FULLSTACK_PORT = 48470
+def _get_free_port() -> int:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 @pytest.fixture
 def opcua_server():
     """Start an embedded OPCUAServer on a unique port."""
-    server = OPCUAServer(port=FULLSTACK_PORT)
+    port = _get_free_port()
+    server = OPCUAServer(port=port)
     server.register_controller(1)
     server.start()
     yield server
@@ -45,7 +53,7 @@ def opcua_client(opcua_server: OPCUAServer):
     node_ids = opcua_server.controller_node_ids[1]
     settings = CoreSettings(
         jwt_secret="test-secret-key-minimum-32-bytes!",
-        opcua_endpoint=f"opc.tcp://localhost:{FULLSTACK_PORT}",
+        opcua_endpoint=f"opc.tcp://localhost:{opcua_server.port}",
     )  # type: ignore[call-arg]
     adapter = OPCUAAdapter(settings=settings)
     adapter.register_controller(
@@ -129,7 +137,7 @@ class TestOPCUAFullStack:
         """Verify stopping client before server does not raise."""
         settings = CoreSettings(
             jwt_secret="test-secret-key-minimum-32-bytes!",
-            opcua_endpoint=f"opc.tcp://localhost:{FULLSTACK_PORT}",
+            opcua_endpoint=f"opc.tcp://localhost:{opcua_server.port}",
         )  # type: ignore[call-arg]
         node_ids = opcua_server.controller_node_ids[1]
         client = OPCUAAdapter(settings=settings)

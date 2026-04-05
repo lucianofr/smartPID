@@ -52,6 +52,6 @@ def test_alarm_events_are_frozen():
     )
     try:
         e.value = 99.0  # type: ignore[misc]
-        assert False, "Should be frozen"
+        raise AssertionError("Should be frozen")
     except AttributeError:
         pass

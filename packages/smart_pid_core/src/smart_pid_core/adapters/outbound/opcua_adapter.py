@@ -70,10 +70,12 @@ class OPCUAAdapter:
     def stop(self) -> None:
         """Stop the client and disconnect."""
         self._stop_event.set()
-        if self._loop is not None:
-            self._loop.call_soon_threadsafe(self._loop.stop)
         if self._thread is not None:
             self._thread.join(timeout=5.0)
+            # Force-stop if graceful shutdown didn't finish
+            if self._thread.is_alive() and self._loop is not None:
+                self._loop.call_soon_threadsafe(self._loop.stop)
+                self._thread.join(timeout=3.0)
             self._thread = None
         with self._lock:
             self._state = ConnectionState.OFFLINE

@@ -19,9 +19,9 @@ async def query_history(
     controller_id: int,
     _user: Annotated[UserClaims, Depends(require_operator)],
     historian: Annotated[SQLiteHistorian, Depends(get_historian)],
-    start: datetime | None = Query(default=None),
-    end: datetime | None = Query(default=None),
-    limit: int = Query(default=1000, ge=1, le=10000),
+    start: Annotated[datetime | None, Query()] = None,
+    end: Annotated[datetime | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
 ) -> HistoryResponse:
     now = datetime.now(tz=UTC)
     if start is None:

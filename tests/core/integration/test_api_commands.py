@@ -1,14 +1,18 @@
 """Tests for /commands endpoints."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
-from httpx import AsyncClient
 
 from smart_pid_core.application.loop_manager import LoopContext
 from smart_pid_core.application.workers.pid_worker import PIDWorker
 from smart_pid_core.domain.services.pid_engine import PIDEngine
 from smart_pid_core.domain.services.pid_mode_manager import ModeManager
 from smart_pid_domain.models.controller import Controller, PIDParams
+
+if TYPE_CHECKING:
+    from httpx import AsyncClient
 
 
 async def _create_and_start_controller(api_deps: dict) -> int:

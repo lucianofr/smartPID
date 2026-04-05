@@ -4,7 +4,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -73,10 +76,8 @@ class OPCUAServer:
     def stop(self) -> None:
         """Stop the server and join the thread."""
         self._stop_event.set()
-        if self._loop is not None:
-            self._loop.call_soon_threadsafe(self._loop.stop)
         if self._thread is not None:
-            self._thread.join(timeout=5.0)
+            self._thread.join(timeout=10.0)
             self._thread = None
         self._server = None
         logger.info("opcua_server_stopped")

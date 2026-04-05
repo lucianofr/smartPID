@@ -2,9 +2,17 @@
 from __future__ import annotations
 
 import asyncio
+import socket
 import threading
 
 from asyncua import Server, ua
+
+
+def get_free_port() -> int:
+    """Ask the OS for an ephemeral port that is currently free."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 class OPCUATestServer:
@@ -16,12 +24,13 @@ class OPCUATestServer:
 
     URI = "urn:smartpid:test"
 
-    def __init__(self, port: int = 4841) -> None:
-        self._port = port
+    def __init__(self, port: int = 0) -> None:
+        self._port = port if port != 0 else get_free_port()
         self._server: Server | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._ready = threading.Event()
+        self._stop_event = threading.Event()
         self.node_ids: dict[str, str] = {}
 
     @property
@@ -29,6 +38,7 @@ class OPCUATestServer:
         return f"opc.tcp://localhost:{self._port}"
 
     def start(self) -> None:
+        self._stop_event.clear()
         self._thread = threading.Thread(
             target=self._run, daemon=True, name="opcua-test-server",
         )
@@ -37,16 +47,21 @@ class OPCUATestServer:
             raise RuntimeError("OPC-UA test server failed to start")
 
     def stop(self) -> None:
-        if self._loop is not None:
-            self._loop.call_soon_threadsafe(self._loop.stop)
+        self._stop_event.set()
         if self._thread is not None:
-            self._thread.join(timeout=5.0)
+            self._thread.join(timeout=10.0)
             self._thread = None
 
     def _run(self) -> None:
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
-        self._loop.run_until_complete(self._setup_and_serve())
+        try:
+            self._loop.run_until_complete(self._setup_and_serve())
+        except Exception:
+            pass
+        finally:
+            self._loop.close()
+            self._loop = None
 
     async def _setup_and_serve(self) -> None:
         self._server = Server()
@@ -78,5 +93,5 @@ class OPCUATestServer:
 
         async with self._server:
             self._ready.set()
-            while True:
+            while not self._stop_event.is_set():
                 await asyncio.sleep(0.1)

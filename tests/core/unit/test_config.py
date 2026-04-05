@@ -7,7 +7,7 @@ from smart_pid_core.config import CoreSettings
 
 class TestCoreSettings:
     def test_defaults(self) -> None:
-        settings = CoreSettings(jwt_secret="test-secret")
+        settings = CoreSettings(jwt_secret="test-secret-key-minimum-32-bytes!")
         assert settings.api_port == 8000
         assert settings.api_host == "0.0.0.0"
         assert settings.zmq_internal_url == "inproc://bus"
@@ -19,11 +19,14 @@ class TestCoreSettings:
         assert settings.log_level == "INFO"
 
     def test_opcua_retry_max_s_default(self) -> None:
-        settings = CoreSettings(jwt_secret="test-secret")
+        settings = CoreSettings(jwt_secret="test-secret-key-minimum-32-bytes!")
         assert settings.opcua_retry_max_s == 30.0
 
     def test_opcua_retry_max_s_override(self) -> None:
-        settings = CoreSettings(jwt_secret="test-secret", opcua_retry_max_s=15.0)
+        settings = CoreSettings(
+            jwt_secret="test-secret-key-minimum-32-bytes!",
+            opcua_retry_max_s=15.0,
+        )
         assert settings.opcua_retry_max_s == 15.0
 
     def test_jwt_secret_required(self) -> None:
