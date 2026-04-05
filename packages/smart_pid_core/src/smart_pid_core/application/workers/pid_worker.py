@@ -111,6 +111,9 @@ class PIDWorker:
     def _run(self) -> None:
         telem_sub = self._bus.create_subscriber(f"TELEMETRY.{self.controller_id}".encode())
         ai_sub = self._bus.create_subscriber(f"ACTION.AI.{self.controller_id}".encode())
+        reconnect_sub = self._bus.create_subscriber(
+            f"SYS.RECONNECT.{self.controller_id}".encode(),
+        )
         pub = self._bus.create_publisher()
         scan_s = self._controller.scan_rate_ms / 1000.0
         time.sleep(0.02)
@@ -118,6 +121,7 @@ class PIDWorker:
         while not self._stop_event.is_set():
             try:
                 tick_start = time.monotonic()
+                self._drain_reconnect(reconnect_sub)
                 self._drain_telemetry(telem_sub)
                 self._drain_ai_actions(ai_sub)
 
@@ -229,6 +233,26 @@ class PIDWorker:
                 if not self._has_telemetry:
                     self._last_co = _deserialize_ff_signal(data.get("co", 0.0))
                 self._has_telemetry = True
+            except (KeyError, ValueError, msgpack.UnpackException):
+                pass
+
+    def _drain_reconnect(self, sub) -> None:  # noqa: ANN001
+        """Drain SYS.RECONNECT messages and perform bumpless transfer."""
+        while True:
+            msg = sub.recv(timeout_ms=0)
+            if msg is None:
+                break
+            _topic, payload = msg
+            try:
+                data = msgpack.unpackb(payload)
+                co = float(data.get("co", 0.0))
+                pv = float(data.get("pv", 0.0))
+                self._state = self._engine.bumpless_transfer(
+                    state=self._state,
+                    current_pv=pv,
+                    current_co=co,
+                    params=self._controller.pid_params,
+                )
             except (KeyError, ValueError, msgpack.UnpackException):
                 pass
 

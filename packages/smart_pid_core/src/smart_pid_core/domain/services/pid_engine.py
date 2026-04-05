@@ -31,6 +31,8 @@ class PIDState:
     sp_working: float = 0.0
     derivative_filtered: float = 0.0
     is_saturated: bool = False
+    pv_filtered: float = 0.0
+    sp_filtered: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,15 @@ class PIDEngine:
         out_limits: tuple[float, float],
         direct_acting: bool = False,
         arw_limits: tuple[float, float] | None = None,
+        *,
+        pv_ftime: float = 0.0,
+        sp_ftime: float = 0.0,
+        ff_enable: bool = False,
+        ff_val: float = 0.0,
+        ff_gain: float = 1.0,
+        low_cutoff_enabled: bool = False,
+        low_cut: float = 0.0,
+        out_scale_span: float = 0.0,
     ) -> PIDResult:
         """Execute one PID scan. Returns new CV, BKCAL_OUT, and updated state."""
         lo, hi = out_limits
@@ -65,6 +76,22 @@ class PIDEngine:
 
         pv_val = pv.value
         sp_val = sp.value
+
+        # --- Low cutoff: force PV to 0 when below threshold ---
+        if low_cutoff_enabled and pv_val < low_cut:
+            pv_val = 0.0
+
+        # --- PV filter: first-order exponential ---
+        if pv_ftime > 0 and dt > 0:
+            alpha_pv = dt / (pv_ftime + dt)
+            pv_val = alpha_pv * pv_val + (1.0 - alpha_pv) * state.pv_filtered
+        pv_filtered = pv_val
+
+        # --- SP filter: first-order exponential ---
+        if sp_ftime > 0 and dt > 0:
+            alpha_sp = dt / (sp_ftime + dt)
+            sp_val = alpha_sp * sp_val + (1.0 - alpha_sp) * state.sp_filtered
+        sp_filtered = sp_val
 
         # Error calculation
         error = pv_val - sp_val if direct_acting else sp_val - pv_val
@@ -119,16 +146,27 @@ class PIDEngine:
         # --- Total increment ---
         delta_cv = p_term + i_term + d_term
 
-        # --- Apply to output ---
+        # --- Apply to output (with optional feedforward) ---
         cv_new = state.cv + delta_cv
+        if ff_enable:
+            cv_new += ff_val * ff_gain
+
+        # --- Compute effective output limits (with optional 10% over-range) ---
+        if out_scale_span > 0:
+            overrange = 0.1 * out_scale_span
+            eff_lo = lo - overrange
+            eff_hi = hi + overrange
+        else:
+            eff_lo = lo
+            eff_hi = hi
 
         # --- Clamp output ---
         is_saturated = False
-        if cv_new > hi:
-            cv_new = hi
+        if cv_new > eff_hi:
+            cv_new = eff_hi
             is_saturated = True
-        elif cv_new < lo:
-            cv_new = lo
+        elif cv_new < eff_lo:
+            cv_new = eff_lo
             is_saturated = True
 
         new_state = PIDState(
@@ -139,10 +177,12 @@ class PIDEngine:
             sp_working=sp_val,
             derivative_filtered=d_term,
             is_saturated=is_saturated,
+            pv_filtered=pv_filtered,
+            sp_filtered=sp_filtered,
         )
 
         # --- Generate BKCAL_OUT ---
-        bkcal_out = self._make_bkcal_out(cv_new, lo, hi, is_saturated)
+        bkcal_out = self._make_bkcal_out(cv_new, eff_lo, eff_hi, is_saturated)
 
         return PIDResult(
             cv=cv_new,

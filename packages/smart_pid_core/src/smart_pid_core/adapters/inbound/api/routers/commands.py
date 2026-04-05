@@ -96,6 +96,37 @@ async def set_output(
     )
 
 
+@router.get("/tuning-recommendations/{controller_id}")
+async def get_tuning_recommendation(
+    controller_id: int,
+    request: Request,
+    user: Annotated[UserClaims, Depends(require_operator)],
+) -> dict:
+    """Return the current tuning recommendation for a controller."""
+    from smart_pid_domain.dtos.ai import TuningRecommendationResponse
+
+    recs: dict = getattr(request.app.state, "tuning_recommendations", {})
+    rec = recs.get(controller_id)
+    if rec is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No tuning recommendation for controller {controller_id}",
+        )
+    return TuningRecommendationResponse(
+        controller_id=rec.controller_id,
+        current_kp=rec.current_kp,
+        current_ti=rec.current_ti,
+        current_td=rec.current_td,
+        recommended_kp=rec.recommended_kp,
+        recommended_ti=rec.recommended_ti,
+        recommended_td=rec.recommended_td,
+        reason=rec.reason,
+        timestamp=rec.timestamp,
+        status=rec.status,
+        source=getattr(rec, "source", None),
+    ).model_dump()
+
+
 @router.post("/apply-tuning/{controller_id}")
 async def apply_tuning(
     controller_id: int,

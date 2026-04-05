@@ -168,7 +168,7 @@ async def run_daemon(settings: CoreSettings) -> None:
 
     # Build alarm configs from Configuracao_Alarmes table
     alarm_configs = await _load_alarm_configs(repo.db)
-    alarm_worker = AlarmWorker(bus=bus, alarm_configs=alarm_configs)
+    alarm_worker = AlarmWorker(bus=bus, alarm_configs=alarm_configs, alarm_repo=alarm_repo)
     alarm_worker.start()
     logger.info("alarm_worker_started")
 

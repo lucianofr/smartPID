@@ -155,6 +155,10 @@ class Controller:
     # Low cutoff
     low_cut: float = 0.0
 
+    # Feedforward
+    ff_enable: bool = False
+    ff_gain: float = 1.0
+
     # Shed (connection loss)
     shed_opt: ControllerMode = ControllerMode.MAN
     shed_time_s: float = 10.0

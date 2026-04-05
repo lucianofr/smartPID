@@ -1,9 +1,10 @@
 """AlarmWorker — daemon thread evaluating alarms from telemetry bus."""
 from __future__ import annotations
 
+import logging
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import msgpack
 
@@ -12,17 +13,49 @@ from smart_pid_domain.models.alarm_config import AlarmConfig
 
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import EventBus
+    from smart_pid_domain.models.alarm_config import AlarmTransition
+
+logger = logging.getLogger(__name__)
 
 
 class AlarmWorker:
     """Subscribes to STATUS.* and evaluates alarm limits."""
 
-    def __init__(self, bus: EventBus, alarm_configs: dict[int, AlarmConfig]) -> None:
+    def __init__(
+        self,
+        bus: EventBus,
+        alarm_configs: dict[int, AlarmConfig],
+        alarm_repo: Any = None,
+    ) -> None:
         self._bus = bus
         self._alarm_configs = alarm_configs
+        self._alarm_repo = alarm_repo
         self._engine = AlarmEngine()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+
+    async def _persist_alarm(self, transition: AlarmTransition) -> None:
+        """Persist alarm transition to DB. No-op if repo is None."""
+        if self._alarm_repo is None:
+            return
+        try:
+            if transition.transition == "TRIGGERED":
+                await self._alarm_repo.insert_alarm(
+                    controller_id=transition.controller_id,
+                    alarm_type=transition.alarm_type,
+                    priority=transition.priority,
+                    value=transition.value,
+                    limit_value=transition.limit,
+                    triggered_at=transition.timestamp,
+                )
+            elif transition.transition == "CLEARED":
+                await self._alarm_repo.mark_cleared(
+                    controller_id=transition.controller_id,
+                    alarm_type=transition.alarm_type,
+                    cleared_at=transition.timestamp,
+                )
+        except Exception:
+            logger.exception("alarm_persist_error")
 
     def update_config(self, controller_id: int, config: AlarmConfig) -> None:
         """Update alarm config for a controller (thread-safe via GIL)."""

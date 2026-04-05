@@ -40,6 +40,8 @@ class IOWorker:
         self._scan_interval_s = scan_interval_s
         self._execution_mode = execution_mode
         self._skip_bkcal_write = execution_mode == "monitor"
+        self._was_connected: bool = False
+        self._ever_connected: bool = False
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -89,8 +91,18 @@ class IOWorker:
 
         while not self._stop_event.is_set():
             tick_start = time.monotonic()
+            is_connected = self._opcua.is_connected
 
-            if self._opcua.is_connected:
+            # Detect reconnect: was disconnected, now connected, and had connected before
+            if is_connected and not self._was_connected and self._ever_connected:
+                self._publish_reconnect_events(pub)
+
+            if is_connected:
+                self._ever_connected = True
+
+            self._was_connected = is_connected
+
+            if is_connected:
                 for cid in self._controller_ids:
                     try:
                         frame = self._opcua.read_telemetry(cid)
@@ -141,6 +153,26 @@ class IOWorker:
             sleep_time = self._scan_interval_s - elapsed
             if sleep_time > 0:
                 self._stop_event.wait(timeout=sleep_time)
+
+    def _publish_reconnect_events(self, pub) -> None:  # noqa: ANN001
+        """Publish SYS.RECONNECT.{cid} for each controller after OPC-UA reconnect."""
+        reconnect_pub = pub
+        for cid in self._controller_ids:
+            try:
+                frame = self._opcua.read_telemetry(cid)
+                data = {
+                    "controller_id": cid,
+                    "co": frame.co.value,
+                    "pv": frame.pv.value,
+                    "sp": frame.sp.value,
+                }
+                reconnect_pub.send(
+                    f"SYS.RECONNECT.{cid}".encode(),
+                    msgpack.packb(data),
+                )
+                logger.info("reconnect_event_published controller_id=%s", cid)
+            except Exception:
+                logger.exception("reconnect_read_error controller_id=%s", cid)
 
     def _drain_and_write_bkcal(self, action_sub) -> None:
         """Drain ACTION.CTRL.* messages from bus and write BKCAL_OUT to OPC-UA."""

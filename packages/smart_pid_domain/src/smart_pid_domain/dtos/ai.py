@@ -3,7 +3,12 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from smart_pid_domain.enums import AIEngine, ControlObjective, ProcessSpeed  # noqa: TC001
+from smart_pid_domain.enums import (  # noqa: TC001
+    AIEngine,
+    ControlObjective,
+    ProcessSpeed,
+    TuningRecStatus,
+)
 
 
 class StatsResponse(BaseModel):
@@ -49,3 +54,17 @@ class AITuningLogEntry(BaseModel):
 class AIHistoryResponse(BaseModel):
     controller_id: int
     entries: list[AITuningLogEntry]
+
+
+class TuningRecommendationResponse(BaseModel):
+    controller_id: int
+    current_kp: float
+    current_ti: float
+    current_td: float
+    recommended_kp: float
+    recommended_ti: float
+    recommended_td: float
+    reason: str
+    timestamp: float
+    status: TuningRecStatus
+    source: str | None = None
