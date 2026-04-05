@@ -8,6 +8,7 @@ import pytest
 from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
 from smart_pid_core.config import CoreSettings
 from smart_pid_domain.enums import ConnectionState
+from smart_pid_domain.models.signal import FFSignal
 from tests.core.fixtures.opcua_server import OPCUATestServer
 
 
@@ -67,11 +68,11 @@ class TestOPCUATelemetryRead:
             adapter.wait_connected(timeout_s=5.0)
             frame = adapter.read_telemetry(controller_id=1)
             assert frame.controller_id == 1
-            assert isinstance(frame.pv, float)
-            assert isinstance(frame.sp, float)
-            assert isinstance(frame.co, float)
-            assert frame.pv == pytest.approx(50.0, abs=0.1)
-            assert frame.sp == pytest.approx(50.0, abs=0.1)
+            assert isinstance(frame.pv, FFSignal)
+            assert isinstance(frame.sp, FFSignal)
+            assert isinstance(frame.co, FFSignal)
+            assert frame.pv.value == pytest.approx(50.0, abs=0.1)
+            assert frame.sp.value == pytest.approx(50.0, abs=0.1)
         finally:
             adapter.stop()
 
@@ -103,7 +104,7 @@ class TestOPCUAControlWriter:
             adapter.wait_connected(timeout_s=5.0)
             adapter.write_output(controller_id=1, co=75.5)
             frame = adapter.read_telemetry(controller_id=1)
-            assert frame.co == pytest.approx(75.5, abs=0.1)
+            assert frame.co.value == pytest.approx(75.5, abs=0.1)
         finally:
             adapter.stop()
 
@@ -121,6 +122,6 @@ class TestOPCUAControlWriter:
             adapter.wait_connected(timeout_s=5.0)
             adapter.write_parameter(controller_id=1, param="sp", value=65.0)
             frame = adapter.read_telemetry(controller_id=1)
-            assert frame.sp == pytest.approx(65.0, abs=0.1)
+            assert frame.sp.value == pytest.approx(65.0, abs=0.1)
         finally:
             adapter.stop()
