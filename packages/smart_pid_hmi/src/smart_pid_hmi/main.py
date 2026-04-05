@@ -25,8 +25,8 @@ from smart_pid_hmi.pages.dashboard_page import DashboardPage
 from smart_pid_hmi.pages.executive_dashboard import ExecutiveDashboardPage
 from smart_pid_hmi.pages.multi_trend_page import MultiTrendPage
 from smart_pid_hmi.pages.settings_page import SettingsPage
-from smart_pid_hmi.pages.user_management_page import UserManagementPage
 from smart_pid_hmi.pages.simulator_page import SimulatorPage
+from smart_pid_hmi.pages.user_management_page import UserManagementPage
 from smart_pid_hmi.services.session import Session
 from smart_pid_hmi.themes import DarkRoomTheme, ISA101Theme, MD3DarkTheme, ThemeManager
 
