@@ -1,36 +1,41 @@
-# Estado Atual — Monitor + Supervisor Mode
+# Estado Atual — User Management HMI (Task 4 concluida)
 
 **Data:** 2026-04-05
-**Branch:** `feature/monitor-supervisor` (worktree em `.worktrees/monitor-supervisor`)
+**Branch:** feat/user-management-post-active
 
 ---
 
-## Concluido — 14 Tasks (todas)
+## Concluido — Task 4: MainWindow Integration (Toolbar + Wiring)
 
-### Domain (Tasks 1-4)
-- 3 novos StrEnums: `TuningWriteMode`, `TuningRecStatus`, `SystemExecutionMode`
-- 2 novos modelos: `PIDParamsRead`, `TuningRecommendation` (frozen dataclasses)
-- 2 novos eventos: `TuningRecommended`, `TuningApplied`
-- TagBindings expandido: `node_id_kp/ti/td/mode`
-- Controller expandido: `tuning_write_mode`, `max_tuning_change_pct`
+### Alteracoes
+- **main.py**: Integrado UserManagementPage no MainWindow:
+  - Import de UserManagementPage
+  - Signal `_users_loaded_signal` para thread-safe user list reload
+  - Botao "Users" na toolbar (visivel apenas para ADMIN)
+  - UserManagementPage adicionada ao stack
+  - Signals CRUD wired: create, update, deactivate, reactivate
+  - `_show_admin_controls()` chamado apos login
+  - Metodos: _show_admin_controls, _show_users_page, _load_users, _on_users_loaded, _create_user, _update_user, _deactivate_user, _reactivate_user
+- **test_main_window_users.py**: 4 testes — visibilidade do botao Users por role
 
-### Core (Tasks 5-10)
-- `CoreSettings.execution_mode` (default: `"monitor"`)
-- `tuning_guardrails.py`: `clamp_tuning_change()` e `clamp_tuning_params()`
-- **MonitorWorker** (novo): subscreve TELEMETRY, enriquece, publica STATUS
-- **OPCUAAdapter**: `read_pid_params()`, `write_pid_params()`, `read_external_mode()`
-- **LoopManager**: branch por execution_mode
-- **IOWorker**: skip BKCAL write em monitor mode
+### Arquivos modificados/criados
+- `packages/smart_pid_hmi/src/smart_pid_hmi/main.py` (modificado)
+- `tests/hmi/test_main_window_users.py` (criado)
 
-### API + Wiring (Tasks 11-13)
-- Commands router: 409 em monitor mode para SP/mode/output
-- Novo: `POST /commands/apply-tuning/{controller_id}` com guardrails
-- `main.py` wired
+### Testes
+- 4/4 passando
 
-### Regression (Task 14)
-- 642 testes passando, 0 falhas introduzidas
-- `test_user_repo.py` trava (pre-existente)
+### Decisoes
+- Segue padrao existente: threading.Thread para API calls, Qt Signals para UI thread
+- Admin check: `session.role.upper() == "ADMIN"`
+- Reload automatico apos cada operacao CRUD
+
+## Historico
+- Task 1: Backend user endpoints (concluida)
+- Task 2: HMI API Client user CRUD (concluida)
+- Task 3: User Management Page (concluida)
+- Task 4: MainWindow Integration (concluida) <-- atual
 
 ## Proximos Passos
-- Code review final + merge para main
-- Phase 5: AIWorker monitor-mode, IOWorker PARAMS publishing, GET tuning-recommendations
+- Task 5+ conforme plano de User Management
+- Mudancas pre-existentes na main preservadas no working tree

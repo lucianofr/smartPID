@@ -25,6 +25,7 @@ from smart_pid_hmi.pages.dashboard_page import DashboardPage
 from smart_pid_hmi.pages.executive_dashboard import ExecutiveDashboardPage
 from smart_pid_hmi.pages.multi_trend_page import MultiTrendPage
 from smart_pid_hmi.pages.settings_page import SettingsPage
+from smart_pid_hmi.pages.user_management_page import UserManagementPage
 from smart_pid_hmi.pages.simulator_page import SimulatorPage
 from smart_pid_hmi.services.session import Session
 from smart_pid_hmi.themes import DarkRoomTheme, ISA101Theme, MD3DarkTheme, ThemeManager
@@ -42,6 +43,7 @@ class MainWindow(QMainWindow):
     _login_error_signal = Signal(str)
     _controllers_loaded_signal = Signal(list)
     _api_error_signal = Signal(str)
+    _users_loaded_signal = Signal(list)
 
     def __init__(
         self,
@@ -62,6 +64,7 @@ class MainWindow(QMainWindow):
         self._login_error_signal.connect(self._on_login_error_received)
         self._controllers_loaded_signal.connect(self._on_controllers_received)
         self._api_error_signal.connect(self._on_api_error)
+        self._users_loaded_signal.connect(self._on_users_loaded)
 
         self.setWindowTitle("Smart PID HMI")
         self.setMinimumSize(1024, 700)
@@ -127,6 +130,11 @@ class MainWindow(QMainWindow):
         self._settings_btn.triggered.connect(
             lambda: self._stack.setCurrentWidget(self._settings_page)
         )
+        self._users_btn = toolbar.addAction("Users")
+        self._users_btn.triggered.connect(
+            lambda: self._show_users_page()
+        )
+        self._users_btn.setVisible(False)
 
         spacer = QWidget()
         toolbar.addWidget(spacer)
@@ -154,6 +162,8 @@ class MainWindow(QMainWindow):
             zmq_url=settings.zmq_url,
         )
         self._stack.addWidget(self._settings_page)
+        self._user_mgmt_page = UserManagementPage(theme=theme)
+        self._stack.addWidget(self._user_mgmt_page)
 
         # Wire signals
         self._connection_page.login_requested.connect(self._on_login)
@@ -174,6 +184,10 @@ class MainWindow(QMainWindow):
         self._simulator_page.noise_requested.connect(self._send_sim_noise)
         self._simulator_page.clear_disturbance_requested.connect(self._send_sim_clear)
         self._settings_page.theme_changed.connect(self._on_theme_switch)
+        self._user_mgmt_page.user_create_requested.connect(self._create_user)
+        self._user_mgmt_page.user_update_requested.connect(self._update_user)
+        self._user_mgmt_page.user_deactivate_requested.connect(self._deactivate_user)
+        self._user_mgmt_page.user_reactivate_requested.connect(self._reactivate_user)
 
     def _on_login(self, server_url: str, username: str, password: str) -> None:
         """Handle login in background thread."""
@@ -204,6 +218,7 @@ class MainWindow(QMainWindow):
         self._load_dashboard()
         self._stack.setCurrentWidget(self._dashboard_page)
         self._check_simulator_available()
+        self._show_admin_controls()
 
     @Slot(str)
     def _on_login_error_received(self, error_msg: str) -> None:
@@ -340,6 +355,72 @@ class MainWindow(QMainWindow):
         for widget in self.findChildren(QWidget):
             if hasattr(widget, "apply_theme"):
                 widget.apply_theme(theme)
+
+    def _show_admin_controls(self) -> None:
+        """Show admin-only UI elements based on session role."""
+        is_admin = self._session.role and self._session.role.upper() == "ADMIN"
+        self._users_btn.setVisible(is_admin)
+
+    def _show_users_page(self) -> None:
+        """Switch to user management page and refresh user list."""
+        self._stack.setCurrentWidget(self._user_mgmt_page)
+        self._load_users()
+
+    def _load_users(self) -> None:
+        """Load users from API and populate user management page."""
+        def do_load():
+            try:
+                users = self._api_client.list_users()
+                user_dicts = [u.model_dump() for u in users]
+                self._users_loaded_signal.emit(user_dicts)
+            except Exception as e:
+                logger.error("Failed to load users: %s", e)
+
+        threading.Thread(target=do_load, daemon=True).start()
+
+    @Slot(list)
+    def _on_users_loaded(self, users: list[dict]) -> None:
+        """Populate user management page with loaded data."""
+        self._user_mgmt_page.populate_users(users)
+        self._user_mgmt_page.set_status(f"Loaded {len(users)} users")
+
+    def _create_user(self, username: str, password: str, role: str) -> None:
+        def do_create():
+            try:
+                self._api_client.create_user(username, password, role)
+                self._load_users()
+            except Exception as e:
+                self._api_error_signal.emit(str(e))
+        threading.Thread(target=do_create, daemon=True).start()
+
+    def _update_user(self, user_id: int, role: str, password: str, active: object) -> None:
+        def do_update():
+            try:
+                pw = password if password else None
+                active_val = active if isinstance(active, bool) else None
+                self._api_client.update_user(user_id, role=role, password=pw, active=active_val)
+                self._load_users()
+            except Exception as e:
+                self._api_error_signal.emit(str(e))
+        threading.Thread(target=do_update, daemon=True).start()
+
+    def _deactivate_user(self, user_id: int) -> None:
+        def do_deactivate():
+            try:
+                self._api_client.deactivate_user(user_id)
+                self._load_users()
+            except Exception as e:
+                self._api_error_signal.emit(str(e))
+        threading.Thread(target=do_deactivate, daemon=True).start()
+
+    def _reactivate_user(self, user_id: int) -> None:
+        def do_reactivate():
+            try:
+                self._api_client.update_user(user_id, active=True)
+                self._load_users()
+            except Exception as e:
+                self._api_error_signal.emit(str(e))
+        threading.Thread(target=do_reactivate, daemon=True).start()
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._bus_bridge.stop()
