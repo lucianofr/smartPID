@@ -17,3 +17,4 @@ class UserResponse(BaseModel):
 class UserUpdate(BaseModel):
     role: UserRole | None = None
     password: str | None = None
+    active: bool | None = None

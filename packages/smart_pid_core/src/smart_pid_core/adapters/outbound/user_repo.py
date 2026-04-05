@@ -94,6 +94,7 @@ class UserRepository:
         user_id: int,
         role: str | None = None,
         password_hash: str | None = None,
+        active: bool | None = None,
     ) -> User | None:
         """Update user fields. Returns updated user or None if not found."""
         updates: list[str] = []
@@ -104,6 +105,9 @@ class UserRepository:
         if password_hash is not None:
             updates.append("senha_hash = ?")
             params.append(password_hash)
+        if active is not None:
+            updates.append("ativo = ?")
+            params.append(1 if active else 0)
         if not updates:
             return await self.get_by_id(user_id)
         params.append(user_id)
