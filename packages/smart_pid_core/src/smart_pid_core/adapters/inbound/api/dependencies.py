@@ -143,6 +143,10 @@ def get_ai_repo(request: Request) -> AIRepository:
     return repo
 
 
+def get_execution_mode(request: Request) -> str:
+    return getattr(request.app.state, "execution_mode", "monitor")
+
+
 def get_alarm_repo(request: Request) -> AlarmRepository:
     return request.app.state.alarm_repo
 

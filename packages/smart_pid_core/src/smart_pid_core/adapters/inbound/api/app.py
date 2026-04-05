@@ -76,6 +76,7 @@ def create_app(
     app.state.ai_repo = ai_repo
     app.state.alarm_repo = alarm_repo
     app.state.audit_repo = audit_repo
+    app.state.execution_mode = settings.execution_mode
 
     # Register routers
     app.include_router(system.router, prefix="/system", tags=["system"])
