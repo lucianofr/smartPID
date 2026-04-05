@@ -44,6 +44,8 @@ class TestUserRepository:
 
     @pytest.mark.asyncio
     async def test_create_duplicate_username_raises(self, user_repo: UserRepository) -> None:
+        from sqlite3 import IntegrityError
+
         await user_repo.create("alice", "h1", "admin")
-        with pytest.raises(Exception):
+        with pytest.raises(IntegrityError):
             await user_repo.create("alice", "h2", "user")

@@ -1,68 +1,61 @@
-# Estado Atual - FF Signals & BKCAL
+# Estado Atual — User Management HMI (COMPLETO)
 
-**Data:** 2026-04-04
-**Branch:** ff-signals-bkcal (worktree)
+**Data:** 2026-04-05
+**Branch:** feat/user-management-post-active (6 commits acima de fbbc570)
 
 ---
 
-## Concluido
+## Implementação Completa — 5 Tasks
 
-### Tasks 1-2: FFSignal, FFSignalStatus, enums (pre-existente)
-- `FFSignal` and `FFSignalStatus` in `packages/smart_pid_domain/src/smart_pid_domain/models/signal.py`
-- `LimitBits`, `SignalSeverity`, `InitSubStatus` enums in `enums.py`
+### Task 1: Backend — POST /users + active toggle
+- `POST /users` endpoint admin-only (201, 409 duplicado, 403 não-admin)
+- `active: bool | None` no `UserUpdate` DTO
+- `UserRepository.update()` aceita `active`
+- Audit log usa `json.dumps()` (seguro contra injection)
+- 5 novos testes (16 total no test_user_api.py)
 
-### Task 3: Update TelemetryFrame, ControlAction, TagBindings (commit 81f9af8)
-- **TelemetryFrame**: pv/sp/co changed from `float` to `FFSignal`, added `bkcal_in: FFSignal`, removed `status: SignalStatus`
-- **ControlAction**: co changed from `float` to `FFSignal`, added `bkcal_out: FFSignal`
-- **TagBindings**: added `node_id_bkcal_in` and `node_id_bkcal_out` fields
-- Fixed 15 files (7 production + 8 test files)
-- 553 tests pass, 9 pre-existing OPC-UA setup errors
+### Task 2: HMI API Client — user CRUD
+- `list_users`, `create_user`, `update_user`, `deactivate_user` em APIClient, Port e Mock
+- 4 testes com httpx MockTransport
 
-## Arquivos Modificados (Task 3)
+### Task 3: User Management Page
+- `UserManagementPage` com tabela 5 colunas, botão "+ New User"
+- `CreateUserDialog` (username, password, role + validação)
+- `EditUserDialog` (role, password opcional)
+- Botões Edit/Deactivate/Reactivate por linha
+- 8 testes
 
-### Domain models
-- `packages/smart_pid_domain/src/smart_pid_domain/models/telemetry.py`
-- `packages/smart_pid_domain/src/smart_pid_domain/models/controller.py`
+### Task 4: MainWindow Integration
+- Botão "Users" na toolbar (hidden por default, visível só para ADMIN)
+- `_users_loaded_signal` para thread-safe reload
+- Signals CRUD wired entre page e API client
+- 4 testes de visibilidade por role
 
-### Production code (adapters using .value)
-- `packages/smart_pid_core/src/smart_pid_core/adapters/outbound/historian.py`
-- `packages/smart_pid_core/src/smart_pid_core/adapters/outbound/opcua_adapter.py`
-- `packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/routers/history.py`
-- `packages/smart_pid_core/src/smart_pid_core/application/export_worker.py`
-- `packages/smart_pid_core/src/smart_pid_core/application/workers/db_worker.py`
+### Task 5: Lint + Verificação
+- Import order fix em main.py (ruff)
+- 32/32 testes passando
 
-### Tests
-- `tests/domain/test_models.py` (5 new tests + 2 fixed)
-- `tests/domain/test_events.py` (2 fixed)
-- `tests/core/integration/test_historian.py` (4 fixed)
-- `tests/core/integration/test_api_history.py` (2 fixed)
-- `tests/core/integration/test_db_worker.py` (2 fixed)
-- `tests/core/integration/test_opcua_fullstack.py` (3 fixed)
-- `tests/core/unit/test_export_worker.py` (2 fixed)
-- `tests/core/unit/test_opcua_server.py` (1 fixed)
+## Commits
+- b15bf35 feat(api): add POST /users endpoint and active toggle on PUT /users/{id}
+- 1060e11 fix(api): use json.dumps for audit details, include active field
+- c76239b feat(hmi): add user CRUD methods to APIClient and MockAPIClient
+- 5dea966 feat(hmi): add UserManagementPage with create/edit dialogs
+- 554a4f2 feat(hmi): integrate UserManagementPage into MainWindow with admin-only visibility
+- c3611e3 chore: fix import order in main.py (ruff)
 
-### Task 4: PID Engine — FFSignal-aware compute (commit 482a5b6)
-- PID engine `compute()` now takes `pv: FFSignal, sp: FFSignal, bkcal_in: FFSignal`
-- Directional anti-windup via BKCAL_IN limit bits
-- Returns `bkcal_out: FFSignal` in PIDResult
+## Arquivos criados/modificados
+- `packages/smart_pid_domain/src/smart_pid_domain/dtos/users.py` (edit)
+- `packages/smart_pid_core/src/smart_pid_core/adapters/outbound/user_repo.py` (edit)
+- `packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/routers/users.py` (edit)
+- `packages/smart_pid_hmi/src/smart_pid_hmi/services/ports.py` (edit)
+- `packages/smart_pid_hmi/src/smart_pid_hmi/services/api_client.py` (edit)
+- `packages/smart_pid_hmi/src/smart_pid_hmi/services/mock_service.py` (edit)
+- `packages/smart_pid_hmi/src/smart_pid_hmi/pages/user_management_page.py` (create)
+- `packages/smart_pid_hmi/src/smart_pid_hmi/main.py` (edit)
+- `tests/core/integration/test_user_api.py` (edit)
+- `tests/hmi/services/test_api_client_users.py` (create)
+- `tests/hmi/pages/test_user_management_page.py` (create)
+- `tests/hmi/test_main_window_users.py` (create)
 
-### Task 5: PID Engine — IMAN tracking (commit 2393e7e)
-- `compute_iman_tracking()` forces CV to match BKCAL_IN value
-
-### Task 6: Mode Manager — Cascade handshake (commit e9daf58)
-- `evaluate_cascade_handshake()` returns `CascadeAction`
-
-### Task 7: CascadeHandshakeChanged event (commit 3352343)
-- Audit event for cascade handshake transitions
-
-### Task 8: PIDWorker — FFSignal integration (commit 0bf30c9)
-- Replaced float fields with FFSignal: `_last_pv`, `_last_sp`, `_last_co`
-- Added `_last_bkcal_in` and `_last_bkcal_out` FFSignal fields
-- `_drain_telemetry` deserializes FFSignal (backward compat with plain floats)
-- Cascade handshake evaluation before PID compute
-- IMAN tracking mode support
-- Serialized FFSignal in published messages (co, bkcal_out as dicts)
-- 578 tests pass, 9 pre-existing OPC-UA setup errors
-
-## Proximos Passos
-- Task 9+ from the FF signals plan (check docs/spec_ff.md)
+## Próximos Passos
+- Merge para main (aguardando autorização do usuário)

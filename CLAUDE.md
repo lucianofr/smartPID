@@ -123,6 +123,7 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 Phases 4/5/6 sao paralelizaveis apos Phase 3a.
 
 ## Convencoes
+- **Branching obrigatorio**: Toda modificacao de codigo, correcao de bug ou introducao de novo recurso DEVE ser feita em uma nova branch (nunca direto na main). O merge para main so acontece com autorizacao explicita do usuario.
 - TDD: write failing test -> implement -> green -> commit
 - Commits convencionais: feat(scope), fix(scope), chore(scope)
 - Hexagonal: domain NUNCA importa de adapters/application

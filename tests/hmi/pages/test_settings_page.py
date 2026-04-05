@@ -2,9 +2,9 @@
 from PySide6.QtWidgets import QComboBox, QSpinBox
 
 from smart_pid_hmi.pages.settings_page import SettingsPage
-from smart_pid_hmi.themes.manager import ThemeManager
-from smart_pid_hmi.themes.isa101 import ISA101Theme
 from smart_pid_hmi.themes.dark_room import DarkRoomTheme
+from smart_pid_hmi.themes.isa101 import ISA101Theme
+from smart_pid_hmi.themes.manager import ThemeManager
 
 
 def _make_manager():

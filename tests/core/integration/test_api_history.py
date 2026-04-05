@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import pytest
-from httpx import AsyncClient
 
 from smart_pid_domain.models.signal import FFSignal
 from smart_pid_domain.models.telemetry import TelemetryFrame
+
+if TYPE_CHECKING:
+    from httpx import AsyncClient
 
 
 class TestHistory:

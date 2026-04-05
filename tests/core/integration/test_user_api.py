@@ -125,3 +125,84 @@ class TestDeactivateUser:
         await user_repo.deactivate(2)
         user = await user_repo.get_by_username("op1")
         assert user is None
+
+
+class TestCreateUser:
+    @pytest.mark.asyncio
+    async def test_create_user_as_admin(
+        self,
+        client: AsyncClient,
+        admin_headers: dict[str, str],
+    ) -> None:
+        resp = await client.post(
+            "/users",
+            json={"username": "newuser", "password": "secret123", "role": "OPERATOR"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["username"] == "newuser"
+        assert data["role"] == "OPERATOR"
+        assert data["active"] is True
+
+    @pytest.mark.asyncio
+    async def test_create_user_duplicate_username(
+        self,
+        client: AsyncClient,
+        admin_headers: dict[str, str],
+    ) -> None:
+        await client.post(
+            "/users",
+            json={"username": "dupuser", "password": "pass1"},
+            headers=admin_headers,
+        )
+        resp = await client.post(
+            "/users",
+            json={"username": "dupuser", "password": "pass2"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_create_user_as_operator_forbidden(
+        self,
+        client: AsyncClient,
+        user_headers: dict[str, str],
+    ) -> None:
+        resp = await client.post(
+            "/users",
+            json={"username": "blocked", "password": "pass"},
+            headers=user_headers,
+        )
+        assert resp.status_code == 403
+
+
+class TestReactivateUser:
+    @pytest.mark.asyncio
+    async def test_reactivate_user(
+        self,
+        client: AsyncClient,
+        admin_headers: dict[str, str],
+        user_repo: UserRepository,
+    ) -> None:
+        await user_repo.create("deact1", hash_password("pass"), "OPERATOR")
+        await user_repo.deactivate(2)
+        resp = await client.put(
+            "/users/2", json={"active": True}, headers=admin_headers
+        )
+        assert resp.status_code == 200
+        assert resp.json()["active"] is True
+
+    @pytest.mark.asyncio
+    async def test_deactivate_via_put(
+        self,
+        client: AsyncClient,
+        admin_headers: dict[str, str],
+        user_repo: UserRepository,
+    ) -> None:
+        await user_repo.create("act1", hash_password("pass"), "OPERATOR")
+        resp = await client.put(
+            "/users/2", json={"active": False}, headers=admin_headers
+        )
+        assert resp.status_code == 200
+        assert resp.json()["active"] is False

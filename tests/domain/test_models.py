@@ -17,8 +17,10 @@ from smart_pid_domain.enums import (
 )
 from smart_pid_domain.exceptions import ControllerNotFoundError, DomainError
 from smart_pid_domain.models.controller import (
+    Controller,
     PIDParams,
     ScaleConfig,
+    TagBindings,
 )
 from smart_pid_domain.models.signal import FFSignal
 from smart_pid_domain.models.telemetry import ControlAction, TelemetryFrame
@@ -208,3 +210,44 @@ class TestTagBindingsFFSignal:
         tb = TagBindings()
         assert tb.node_id_bkcal_in == ""
         assert tb.node_id_bkcal_out == ""
+
+
+class TestTagBindingsExpanded:
+    def test_new_fields_default_empty(self) -> None:
+        tb = TagBindings()
+        assert tb.node_id_kp == ""
+        assert tb.node_id_ti == ""
+        assert tb.node_id_td == ""
+        assert tb.node_id_mode == ""
+
+    def test_new_fields_set(self) -> None:
+        tb = TagBindings(
+            node_id_kp="ns=2;s=PID1.KP",
+            node_id_ti="ns=2;s=PID1.TI",
+            node_id_td="ns=2;s=PID1.TD",
+            node_id_mode="ns=2;s=PID1.MODE",
+        )
+        assert tb.node_id_kp == "ns=2;s=PID1.KP"
+        assert tb.node_id_mode == "ns=2;s=PID1.MODE"
+
+
+class TestControllerTuningFields:
+    def test_default_tuning_write_mode(self) -> None:
+        from smart_pid_domain.enums import TuningWriteMode
+        c = Controller(id=1, name="test")
+        assert c.tuning_write_mode == TuningWriteMode.APPROVAL_REQUIRED
+
+    def test_default_max_tuning_change_pct(self) -> None:
+        c = Controller(id=1, name="test")
+        assert c.max_tuning_change_pct == 10.0
+
+    def test_custom_tuning_config(self) -> None:
+        from smart_pid_domain.enums import TuningWriteMode
+        c = Controller(
+            id=1,
+            name="test",
+            tuning_write_mode=TuningWriteMode.AUTO_APPLY,
+            max_tuning_change_pct=5.0,
+        )
+        assert c.tuning_write_mode == TuningWriteMode.AUTO_APPLY
+        assert c.max_tuning_change_pct == 5.0

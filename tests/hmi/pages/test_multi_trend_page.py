@@ -1,5 +1,4 @@
 """Tests for MultiTrendPage."""
-import numpy as np
 import pyqtgraph as pg
 from PySide6.QtWidgets import QComboBox, QPushButton
 

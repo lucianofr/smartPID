@@ -37,7 +37,7 @@ async def api_deps(tmp_path):
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
     loop_manager = LoopManager(bus=bus)
-    settings = CoreSettings(jwt_secret="test-secret-key-minimum-32-bytes!")  # type: ignore[call-arg]
+    settings = CoreSettings(jwt_secret="test-secret-key-minimum-32-bytes!", execution_mode="execute")  # type: ignore[call-arg]
 
     # Seed admin user
     admin_hash = hash_password("admin")

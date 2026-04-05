@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import time
-from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -26,6 +25,8 @@ from smart_pid_core.adapters.inbound.api.routers import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
     from smart_pid_core.adapters.outbound.ai_repo import AIRepository
     from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
@@ -76,6 +77,7 @@ def create_app(
     app.state.ai_repo = ai_repo
     app.state.alarm_repo = alarm_repo
     app.state.audit_repo = audit_repo
+    app.state.execution_mode = settings.execution_mode
 
     # Register routers
     app.include_router(system.router, prefix="/system", tags=["system"])

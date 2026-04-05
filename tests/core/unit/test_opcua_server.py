@@ -1,34 +1,43 @@
 """Unit tests for OPCUAServer wrapper."""
 from __future__ import annotations
 
+import socket
 import time
 
 import pytest
+
+
+def _get_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 class TestOPCUAServerInit:
     def test_initial_state_not_running(self) -> None:
         from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 
-        server = OPCUAServer(port=48420)
+        server = OPCUAServer(port=_get_free_port())
         assert not server.is_running
 
     def test_port_stored(self) -> None:
         from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 
-        server = OPCUAServer(port=48421)
-        assert server.port == 48421
+        port = _get_free_port()
+        server = OPCUAServer(port=port)
+        assert server.port == port
 
     def test_endpoint_format(self) -> None:
         from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 
-        server = OPCUAServer(port=48422)
-        assert server.endpoint == "opc.tcp://0.0.0.0:48422"
+        port = _get_free_port()
+        server = OPCUAServer(port=port)
+        assert server.endpoint == f"opc.tcp://0.0.0.0:{port}"
 
     def test_no_controllers_initially(self) -> None:
         from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 
-        server = OPCUAServer(port=48423)
+        server = OPCUAServer(port=_get_free_port())
         assert server.controller_node_ids == {}
 
 
@@ -36,7 +45,7 @@ class TestOPCUAServerLifecycle:
     def test_start_and_stop(self) -> None:
         from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 
-        server = OPCUAServer(port=48424)
+        server = OPCUAServer(port=_get_free_port())
         server.start()
         try:
             assert server.is_running
@@ -47,7 +56,7 @@ class TestOPCUAServerLifecycle:
     def test_double_start_is_idempotent(self) -> None:
         from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 
-        server = OPCUAServer(port=48425)
+        server = OPCUAServer(port=_get_free_port())
         server.start()
         try:
             server.start()  # Should not raise
@@ -58,7 +67,7 @@ class TestOPCUAServerLifecycle:
     def test_stop_when_not_started_is_safe(self) -> None:
         from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 
-        server = OPCUAServer(port=48426)
+        server = OPCUAServer(port=_get_free_port())
         server.stop()  # Should not raise
 
 
@@ -66,14 +75,14 @@ class TestOPCUAServerRegisterController:
     def test_register_before_start_stores_controller(self) -> None:
         from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 
-        server = OPCUAServer(port=48427)
+        server = OPCUAServer(port=_get_free_port())
         server.register_controller(1)
         assert 1 in server.controller_node_ids
 
     def test_register_after_start_creates_nodes(self) -> None:
         from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 
-        server = OPCUAServer(port=48428)
+        server = OPCUAServer(port=_get_free_port())
         server.start()
         try:
             node_ids = server.register_controller(1)
@@ -89,7 +98,7 @@ class TestOPCUAServerRegisterController:
     def test_pre_registered_controllers_get_nodes_after_start(self) -> None:
         from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 
-        server = OPCUAServer(port=48429)
+        server = OPCUAServer(port=_get_free_port())
         server.register_controller(1)
         server.start()
         try:
@@ -106,7 +115,8 @@ class TestOPCUAServerUpdateValues:
         from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
         from smart_pid_core.config import CoreSettings
 
-        server = OPCUAServer(port=48430)
+        port = _get_free_port()
+        server = OPCUAServer(port=port)
         server.register_controller(1)
         server.start()
         try:
@@ -114,7 +124,7 @@ class TestOPCUAServerUpdateValues:
 
             settings = CoreSettings(
                 jwt_secret="test-secret-key-minimum-32-bytes!",
-                opcua_endpoint="opc.tcp://localhost:48430",
+                opcua_endpoint=f"opc.tcp://localhost:{port}",
             )  # type: ignore[call-arg]
             client = OPCUAAdapter(settings=settings)
             client.register_controller(
@@ -169,7 +179,8 @@ class TestOPCUAServerWriteCallback:
         def on_write(controller_id: int, param: str, value: float) -> None:
             received.append((controller_id, param, value))
 
-        server = OPCUAServer(port=48431)
+        port = _get_free_port()
+        server = OPCUAServer(port=port)
         server.set_on_write(on_write)
         server.register_controller(1)
         server.start()
@@ -178,7 +189,7 @@ class TestOPCUAServerWriteCallback:
 
             settings = CoreSettings(
                 jwt_secret="test-secret-key-minimum-32-bytes!",
-                opcua_endpoint="opc.tcp://localhost:48431",
+                opcua_endpoint=f"opc.tcp://localhost:{port}",
             )  # type: ignore[call-arg]
             client = OPCUAAdapter(settings=settings)
             client.register_controller(
@@ -216,7 +227,8 @@ class TestOPCUAServerWriteCallback:
         def on_write(controller_id: int, param: str, value: float) -> None:
             received.append((controller_id, param, value))
 
-        server = OPCUAServer(port=48432)
+        port = _get_free_port()
+        server = OPCUAServer(port=port)
         server.set_on_write(on_write)
         server.register_controller(1)
         server.start()
@@ -225,7 +237,7 @@ class TestOPCUAServerWriteCallback:
 
             settings = CoreSettings(
                 jwt_secret="test-secret-key-minimum-32-bytes!",
-                opcua_endpoint="opc.tcp://localhost:48432",
+                opcua_endpoint=f"opc.tcp://localhost:{port}",
             )  # type: ignore[call-arg]
             client = OPCUAAdapter(settings=settings)
             client.register_controller(

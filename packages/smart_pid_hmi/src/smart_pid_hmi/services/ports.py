@@ -15,6 +15,7 @@ if TYPE_CHECKING:
         SimulatorStatusResponse,
         TokenResponse,
     )
+    from smart_pid_domain.dtos.users import UserResponse
 
 
 class TelemetrySourcePort(Protocol):
@@ -79,6 +80,17 @@ class APIClientPort(Protocol):
     # Stats
     def get_controller_stats(self, controller_id: int) -> dict: ...
     def get_all_stats(self) -> list[dict]: ...
+
+    # User management
+    def list_users(self) -> list[UserResponse]: ...
+    def create_user(
+        self, username: str, password: str, role: str,
+    ) -> UserResponse: ...
+    def update_user(
+        self, user_id: int, role: str | None = ...,
+        password: str | None = ..., active: bool | None = ...,
+    ) -> UserResponse: ...
+    def deactivate_user(self, user_id: int) -> UserResponse: ...
 
     # Lifecycle
     def close(self) -> None: ...

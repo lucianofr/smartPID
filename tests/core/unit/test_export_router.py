@@ -1,14 +1,11 @@
 """Tests for the export router."""
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from smart_pid_core.adapters.inbound.api.routers import export as export_module
 from smart_pid_core.adapters.inbound.api.routers.export import get_export_worker, router
 from smart_pid_domain.models.export_models import ExportJob
 

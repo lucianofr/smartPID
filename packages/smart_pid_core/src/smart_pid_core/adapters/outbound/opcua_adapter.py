@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from smart_pid_domain.enums import ConnectionState
 from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
 from smart_pid_domain.models.telemetry import TelemetryFrame
+from smart_pid_domain.models.tuning import PIDParamsRead
 
 if TYPE_CHECKING:
     from smart_pid_core.config import CoreSettings
@@ -69,10 +70,12 @@ class OPCUAAdapter:
     def stop(self) -> None:
         """Stop the client and disconnect."""
         self._stop_event.set()
-        if self._loop is not None:
-            self._loop.call_soon_threadsafe(self._loop.stop)
         if self._thread is not None:
             self._thread.join(timeout=5.0)
+            # Force-stop if graceful shutdown didn't finish
+            if self._thread.is_alive() and self._loop is not None:
+                self._loop.call_soon_threadsafe(self._loop.stop)
+                self._thread.join(timeout=3.0)
             self._thread = None
         with self._lock:
             self._state = ConnectionState.OFFLINE
@@ -202,6 +205,10 @@ class OPCUAAdapter:
         node_id_integral: str = "",
         node_id_bkcal_in: str = "",
         node_id_bkcal_out: str = "",
+        node_id_kp: str = "",
+        node_id_ti: str = "",
+        node_id_td: str = "",
+        node_id_mode: str = "",
     ) -> None:
         """Register a controller's OPC-UA node mappings."""
         with self._lock:
@@ -212,6 +219,10 @@ class OPCUAAdapter:
                 "integral": node_id_integral,
                 "bkcal_in": node_id_bkcal_in,
                 "bkcal_out": node_id_bkcal_out,
+                "kp": node_id_kp,
+                "ti": node_id_ti,
+                "td": node_id_td,
+                "mode": node_id_mode,
             }
 
     def read_telemetry(self, controller_id: int) -> TelemetryFrame:
@@ -351,6 +362,113 @@ class OPCUAAdapter:
         node = client.get_node(node_id)
         dv = ua.DataValue(ua.Variant(value, ua.VariantType.Float))
         await node.write_value(dv)
+
+    # ---- Tuning Read/Write ----
+
+    def read_pid_params(self, controller_id: int) -> PIDParamsRead | None:
+        """Read Kp, Ti, Td from external DCS. Returns None if no tuning tags mapped."""
+        with self._lock:
+            tags = self._controllers.get(controller_id, {})
+            kp_id = tags.get("kp", "")
+            ti_id = tags.get("ti", "")
+            td_id = tags.get("td", "")
+            client = self._client
+
+        if not kp_id and not ti_id and not td_id:
+            return None
+        if client is None or self.state != ConnectionState.ONLINE:
+            return None
+
+        future = asyncio.run_coroutine_threadsafe(
+            self._async_read_pid_params(client, kp_id, ti_id, td_id),
+            self._loop,
+        )
+        return future.result(timeout=self._timeout_s)
+
+    async def _async_read_pid_params(
+        self, client, kp_id: str, ti_id: str, td_id: str,
+    ) -> PIDParamsRead:
+        """Async read of tuning parameter nodes."""
+        kp: float | None = None
+        ti: float | None = None
+        td: float | None = None
+
+        if kp_id:
+            node = client.get_node(kp_id)
+            kp = float(await node.read_value())
+        if ti_id:
+            node = client.get_node(ti_id)
+            ti = float(await node.read_value())
+        if td_id:
+            node = client.get_node(td_id)
+            td = float(await node.read_value())
+
+        return PIDParamsRead(kp=kp, ti=ti, td=td, timestamp=time.time())
+
+    def write_pid_params(
+        self, controller_id: int, kp: float | None, ti: float | None, td: float | None,
+    ) -> None:
+        """Write tuning parameters to DCS. Only writes non-None values."""
+        with self._lock:
+            tags = self._controllers.get(controller_id, {})
+            client = self._client
+
+        pairs: list[tuple[str, float]] = []
+        if kp is not None:
+            nid = tags.get("kp", "")
+            if nid:
+                pairs.append((nid, kp))
+        if ti is not None:
+            nid = tags.get("ti", "")
+            if nid:
+                pairs.append((nid, ti))
+        if td is not None:
+            nid = tags.get("td", "")
+            if nid:
+                pairs.append((nid, td))
+
+        if not pairs:
+            return
+
+        if client is None or self.state != ConnectionState.ONLINE:
+            raise ConnectionError("OPC-UA not connected")
+
+        future = asyncio.run_coroutine_threadsafe(
+            self._async_write_pid_params(client, pairs),
+            self._loop,
+        )
+        future.result(timeout=self._timeout_s)
+
+    async def _async_write_pid_params(
+        self, client, pairs: list[tuple[str, float]],
+    ) -> None:
+        """Async write of tuning parameter nodes."""
+        for node_id, value in pairs:
+            await self._async_write_value(client, node_id, value)
+
+    def read_external_mode(self, controller_id: int) -> str | None:
+        """Read PID mode from DCS. Returns None if node_id_mode not mapped."""
+        with self._lock:
+            tags = self._controllers.get(controller_id, {})
+            mode_id = tags.get("mode", "")
+            client = self._client
+
+        if not mode_id or not self.is_connected:
+            return None
+        if client is None:
+            return None
+
+        future = asyncio.run_coroutine_threadsafe(
+            self._async_read_mode(client, mode_id),
+            self._loop,
+        )
+        return future.result(timeout=self._timeout_s)
+
+    async def _async_read_mode(self, client, mode_id: str) -> str:
+        """Async read of mode node, returning string representation."""
+        node = client.get_node(mode_id)
+        value = await node.read_value()
+        return str(value)
 
     # ---- TagBrowser ----
 

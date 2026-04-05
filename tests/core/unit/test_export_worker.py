@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from smart_pid_core.application.export_worker import ExportWorker
-from smart_pid_domain.models.export_models import ExportJob, ExportRequest
+from smart_pid_domain.models.export_models import ExportRequest
 from smart_pid_domain.models.signal import FFSignal
 from smart_pid_domain.models.telemetry import TelemetryFrame
 

@@ -126,3 +126,33 @@ class CascadeHandshakeChanged:
     trigger: str
     timestamp: datetime
     event_id: UUID = field(default_factory=uuid4)
+
+
+@dataclass(frozen=True)
+class TuningRecommended:
+    """AI engine produced a tuning recommendation."""
+
+    controller_id: int
+    current_kp: float
+    current_ti: float
+    current_td: float
+    recommended_kp: float
+    recommended_ti: float
+    recommended_td: float
+    reason: str
+    timestamp: float
+    event_id: UUID = field(default_factory=uuid4)
+
+
+@dataclass(frozen=True)
+class TuningApplied:
+    """Tuning parameters were written to the external DCS."""
+
+    controller_id: int
+    recommendation_id: UUID
+    applied_kp: float
+    applied_ti: float
+    applied_td: float
+    clamped: bool
+    timestamp: float
+    event_id: UUID = field(default_factory=uuid4)

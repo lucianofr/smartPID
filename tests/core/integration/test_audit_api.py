@@ -30,7 +30,10 @@ async def app_fixture(tmp_path):
     bus = EventBus()
     bus.start()
     loop_manager = LoopManager(bus=bus)
-    settings = CoreSettings(jwt_secret="test-secret", db_path=tmp_path / "test.db")
+    settings = CoreSettings(
+        jwt_secret="test-secret-key-minimum-32-bytes!",
+        db_path=tmp_path / "test.db",
+    )
     app = create_app(
         repo=repo, historian=historian, user_repo=user_repo,
         loop_manager=loop_manager, settings=settings,

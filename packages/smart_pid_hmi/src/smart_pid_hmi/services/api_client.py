@@ -12,6 +12,7 @@ from smart_pid_domain.dtos import (
     SimulatorStatusResponse,
     TokenResponse,
 )
+from smart_pid_domain.dtos.users import UserResponse
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -36,6 +37,12 @@ class APIClient:
             kwargs["transport"] = transport
         self._http = httpx.Client(**kwargs)
 
+    def set_base_url(self, url: str) -> None:
+        """Replace the HTTP client with a new base URL (from connection page)."""
+        old = self._http
+        self._http = httpx.Client(base_url=url, timeout=old.timeout)
+        old.close()
+
     def _headers(self) -> dict[str, str]:
         return self._session.auth_header
 
@@ -54,6 +61,11 @@ class APIClient:
         token_resp = TokenResponse.model_validate(resp.json())
         self._session.store_token(token_resp.access_token)
         return token_resp
+
+    def create_controller(self, data: dict) -> ControllerResponse:
+        resp = self._http.post("/controllers", json=data, headers=self._headers())
+        resp.raise_for_status()
+        return ControllerResponse.model_validate(resp.json())
 
     def list_controllers(self) -> list[ControllerResponse]:
         resp = self._http.get("/controllers", headers=self._headers())
@@ -227,6 +239,42 @@ class APIClient:
         resp = self._http.get("/controllers/stats", headers=self._headers())
         resp.raise_for_status()
         return resp.json()
+
+    def list_users(self) -> list[UserResponse]:
+        resp = self._http.get("/users", headers=self._headers())
+        resp.raise_for_status()
+        return [UserResponse.model_validate(u) for u in resp.json()]
+
+    def create_user(self, username: str, password: str, role: str) -> UserResponse:
+        resp = self._http.post(
+            "/users",
+            json={"username": username, "password": password, "role": role},
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return UserResponse.model_validate(resp.json())
+
+    def update_user(
+        self, user_id: int, role: str | None = None,
+        password: str | None = None, active: bool | None = None,
+    ) -> UserResponse:
+        body: dict = {}
+        if role is not None:
+            body["role"] = role
+        if password is not None:
+            body["password"] = password
+        if active is not None:
+            body["active"] = active
+        resp = self._http.put(
+            f"/users/{user_id}", json=body, headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return UserResponse.model_validate(resp.json())
+
+    def deactivate_user(self, user_id: int) -> UserResponse:
+        resp = self._http.delete(f"/users/{user_id}", headers=self._headers())
+        resp.raise_for_status()
+        return UserResponse.model_validate(resp.json())
 
     def close(self) -> None:
         self._http.close()

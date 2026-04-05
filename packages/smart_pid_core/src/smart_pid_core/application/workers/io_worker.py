@@ -32,11 +32,14 @@ class IOWorker:
         opcua_adapter: OPCUAAdapter,
         controller_ids: list[int],
         scan_interval_s: float = 0.1,
+        execution_mode: str = "execute",
     ) -> None:
         self._bus = bus
         self._opcua = opcua_adapter
         self._controller_ids = list(controller_ids)
         self._scan_interval_s = scan_interval_s
+        self._execution_mode = execution_mode
+        self._skip_bkcal_write = execution_mode == "monitor"
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -78,7 +81,9 @@ class IOWorker:
     def _run(self) -> None:
         """Main loop: read from OPC-UA, publish to bus, write BKCAL_OUT back."""
         pub = self._bus.create_publisher()
-        action_sub = self._bus.create_subscriber(b"ACTION.CTRL")
+        action_sub = None
+        if not self._skip_bkcal_write:
+            action_sub = self._bus.create_subscriber(b"ACTION.CTRL")
         # Wait briefly for bus subscriptions to propagate
         time.sleep(0.05)
 
@@ -129,7 +134,8 @@ class IOWorker:
                         )
 
                 # Drain ACTION.CTRL.* messages and write BKCAL_OUT to OPC-UA
-                self._drain_and_write_bkcal(action_sub)
+                if action_sub is not None:
+                    self._drain_and_write_bkcal(action_sub)
 
             elapsed = time.monotonic() - tick_start
             sleep_time = self._scan_interval_s - elapsed

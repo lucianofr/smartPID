@@ -58,7 +58,7 @@ def get_current_user(request: Request) -> UserClaims:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
-        )
+        ) from None
     return UserClaims(
         user_id=payload["sub"],
         username=payload["username"],
@@ -141,6 +141,10 @@ def get_ai_repo(request: Request) -> AIRepository:
             detail="AI repository not available",
         )
     return repo
+
+
+def get_execution_mode(request: Request) -> str:
+    return getattr(request.app.state, "execution_mode", "monitor")
 
 
 def get_alarm_repo(request: Request) -> AlarmRepository:
