@@ -136,3 +136,24 @@ class ProcessPresetName(StrEnum):
     LEVEL = "LEVEL"
     TEMPERATURE = "TEMPERATURE"
     CUSTOM = "CUSTOM"
+
+
+class TuningWriteMode(StrEnum):
+    """How AI tuning recommendations are applied to PID parameters."""
+    AUTO_APPLY = "auto_apply"
+    APPROVAL_REQUIRED = "approval_required"
+    DISABLED = "disabled"
+
+
+class TuningRecStatus(StrEnum):
+    """Lifecycle status of an AI tuning recommendation."""
+    PENDING = "pending"
+    APPLIED = "applied"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
+class SystemExecutionMode(StrEnum):
+    """System-wide execution mode: monitor-only or full execute."""
+    MONITOR = "monitor"
+    EXECUTE = "execute"
