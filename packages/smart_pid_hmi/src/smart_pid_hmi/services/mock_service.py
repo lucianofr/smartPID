@@ -17,6 +17,7 @@ from smart_pid_domain.dtos import (
     TelemetryFrameDTO,
     TokenResponse,
 )
+from smart_pid_domain.dtos.users import UserResponse
 
 # Mock controller definitions
 _MOCK_CONTROLLERS = [
@@ -135,3 +136,33 @@ class MockAPIClient:
             )
         ]
         return HistoryResponse(controller_id=controller_id, frames=frames, count=len(frames))
+
+    def list_users(self) -> list[UserResponse]:
+        return [
+            UserResponse(
+                id=1, username="admin", role="ADMIN", active=True, created_at="2026-01-01",
+            ),
+            UserResponse(
+                id=2, username="operator", role="OPERATOR", active=True, created_at="2026-01-02",
+            ),
+            UserResponse(
+                id=3, username="inactive", role="OPERATOR", active=False, created_at="2026-01-03",
+            ),
+        ]
+
+    def create_user(self, username: str, password: str, role: str) -> UserResponse:
+        return UserResponse(id=99, username=username, role=role, active=True, created_at="")
+
+    def update_user(
+        self, user_id: int, role: str | None = None,
+        password: str | None = None, active: bool | None = None,
+    ) -> UserResponse:
+        return UserResponse(
+            id=user_id, username="user", role=role or "OPERATOR",
+            active=active if active is not None else True, created_at="",
+        )
+
+    def deactivate_user(self, user_id: int) -> UserResponse:
+        return UserResponse(
+            id=user_id, username="user", role="OPERATOR", active=False, created_at="",
+        )
