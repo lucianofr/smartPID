@@ -1,7 +1,7 @@
 """Loop Manager — lifecycle management for controller PID loops."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from smart_pid_core.application.workers.ai_worker import AIWorker
