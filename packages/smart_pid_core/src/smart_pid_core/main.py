@@ -97,7 +97,13 @@ async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
     return configs
 async def run_daemon(settings: CoreSettings) -> None:
     """Bootstrap and run the backend daemon until interrupted."""
-    logger.info("starting_daemon", api_port=settings.api_port, zmq_port=settings.zmq_publish_port)
+    logger.info(
+        "starting_daemon",
+        api_port=settings.api_port,
+        zmq_port=settings.zmq_publish_port,
+        execution_mode=settings.execution_mode,
+    )
+    logger.info("SmartPID daemon starting in %s mode", settings.execution_mode)
 
     # Phase 1 components
     repo = SQLiteRepository(settings.db_path)
@@ -105,7 +111,7 @@ async def run_daemon(settings: CoreSettings) -> None:
     historian = SQLiteHistorian(repo.db)
     bus = EventBus()
     bus.start()
-    loop_manager = LoopManager(bus=bus)
+    loop_manager = LoopManager(bus=bus, execution_mode=settings.execution_mode)
     logger.info("event_bus_started")
 
     # Phase 4: Adapter factory (simulator or OPC-UA)
@@ -185,6 +191,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         scan_interval_s=settings.simulator_interval_ms / 1000.0
         if settings.simulator_enabled
         else 0.1,
+        execution_mode=settings.execution_mode,
     )
     io_worker.start()
     logger.info("io_worker_started")
