@@ -1,6 +1,7 @@
 """User management router — admin only."""
 from __future__ import annotations
 
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -52,7 +53,7 @@ async def create_user(
     user = await user_repo.create(body.username, pw_hash, body.role)
     await audit_repo.record(
         admin.user_id, admin.username, AuditAction.CREATE_USER,
-        f"user:{user.id}", f'{{"username": "{user.username}", "role": "{user.role}"}}',
+        f"user:{user.id}", json.dumps({"username": user.username, "role": user.role}),
     )
     return UserResponse(
         id=user.id, username=user.username, role=user.role,
@@ -89,9 +90,16 @@ async def update_user(
     )
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    detail: dict = {}
+    if body.role is not None:
+        detail["role"] = user.role
+    if body.password is not None:
+        detail["password_changed"] = True
+    if body.active is not None:
+        detail["active"] = user.active
     await audit_repo.record(
         admin.user_id, admin.username, AuditAction.UPDATE_USER,
-        f"user:{user_id}", f'{{"role": "{user.role}"}}',
+        f"user:{user_id}", json.dumps(detail),
     )
     return UserResponse(
         id=user.id, username=user.username, role=user.role,
