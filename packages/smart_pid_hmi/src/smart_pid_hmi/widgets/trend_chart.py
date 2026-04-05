@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPen
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -50,6 +51,8 @@ class TrendChartWidget(QWidget):
         self._time_data: deque[float] = deque(maxlen=buffer_size)
         self._tick = 0
         self._auto_scale = True
+        self._ai_markers: list[pg.InfiniteLine] = []
+        self._ai_marker_color = "#FF9800"  # orange default
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -124,7 +127,11 @@ class TrendChartWidget(QWidget):
         self._plot_widget = pg.PlotWidget()
         layout.addWidget(self._plot_widget)
 
+        self._theme = theme
         if theme:
+            accent = getattr(theme, "accent", "")
+            if accent:
+                self._ai_marker_color = accent
             self._plot_widget.setBackground(theme.chart_bg)
             self._plot_widget.getAxis("bottom").setPen(theme.fg_primary)
             self._plot_widget.getAxis("left").setPen(theme.fg_primary)
@@ -185,6 +192,10 @@ class TrendChartWidget(QWidget):
         self._sp_curve.clear()
         if self._co_curve:
             self._co_curve.clear()
+        # Remove AI markers
+        for line in self._ai_markers:
+            self._plot_widget.removeItem(line)
+        self._ai_markers.clear()
 
     def on_telemetry(self, controller_id: int, frame: dict) -> None:
         if self._controller_id is None or controller_id != self._controller_id:
@@ -265,3 +276,38 @@ class TrendChartWidget(QWidget):
                 strict=True,
             ):
                 writer.writerow([t, pv, sp, co])
+
+    # -- Gap #31: AI action markers ----------------------------------------
+
+    def add_ai_marker(self, timestamp: float) -> None:
+        """Draw a vertical marker on the trend at *timestamp* (tick-based)."""
+        pen = QPen(pg.mkColor(self._ai_marker_color), 1.5, Qt.PenStyle.DashLine)
+        line = pg.InfiniteLine(
+            pos=timestamp, angle=90, pen=pen, movable=False,
+        )
+        self._plot_widget.addItem(line)
+        self._ai_markers.append(line)
+
+    # -- Gap #48: apply_theme ----------------------------------------------
+
+    def apply_theme(self, theme: ThemeBase) -> None:
+        """Update cached theme and re-apply colors."""
+        self._theme = theme
+        accent = getattr(theme, "accent", "")
+        if accent:
+            self._ai_marker_color = accent
+        self._plot_widget.setBackground(theme.chart_bg)
+        self._plot_widget.getAxis("bottom").setPen(theme.fg_primary)
+        self._plot_widget.getAxis("left").setPen(theme.fg_primary)
+        self._pv_curve.setPen(pg.mkPen(
+            color=theme.chart_pv, width=2,
+            style=Qt.PenStyle.SolidLine,
+        ))
+        self._sp_curve.setPen(pg.mkPen(
+            color=theme.chart_sp, width=1,
+            style=Qt.PenStyle.DashLine,
+        ))
+        if self._co_curve:
+            self._co_curve.setPen(pg.mkPen(
+                color=theme.chart_co, width=1,
+            ))

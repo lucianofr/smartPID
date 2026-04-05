@@ -110,6 +110,45 @@ class AlarmRepository:
             rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
+    async def get_alarm_config(self, controller_id: int) -> list[dict]:
+        """Return all alarm threshold configs for a controller."""
+        async with self._db.execute(
+            """SELECT id, controlador_id as controller_id, tipo_alarme as alarm_type,
+                      prioridade as priority, limite as "limit", habilitado as enabled,
+                      histerese as deadband
+               FROM Configuracao_Alarmes WHERE controlador_id = ?
+               ORDER BY tipo_alarme""",
+            (controller_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def save_alarm_config(
+        self,
+        controller_id: int,
+        thresholds: list[dict],
+    ) -> None:
+        """Replace all alarm thresholds for a controller (delete + insert)."""
+        await self._db.execute(
+            "DELETE FROM Configuracao_Alarmes WHERE controlador_id = ?",
+            (controller_id,),
+        )
+        for t in thresholds:
+            await self._db.execute(
+                """INSERT INTO Configuracao_Alarmes
+                   (controlador_id, tipo_alarme, prioridade, limite, habilitado, histerese)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    controller_id,
+                    t["alarm_type"],
+                    t["priority"],
+                    t["limit"],
+                    1 if t.get("enabled", True) else 0,
+                    t.get("deadband", 0.0),
+                ),
+            )
+        await self._db.commit()
+
     async def get_history(
         self,
         start: datetime,

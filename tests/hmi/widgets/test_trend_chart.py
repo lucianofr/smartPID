@@ -170,3 +170,38 @@ def test_write_csv_empty(qtbot, theme, tmp_path):
     with open(csv_path) as fh:
         reader = list(csv.reader(fh))
     assert reader == [["time", "PV", "SP", "CO"]]
+
+
+# --- Gap #31: AI markers ---
+
+def test_add_ai_marker(qtbot, theme):
+    """add_ai_marker() adds an InfiniteLine to the plot."""
+    trend = TrendChartWidget(theme=theme)
+    qtbot.addWidget(trend)
+    assert len(trend._ai_markers) == 0
+    trend.add_ai_marker(42.0)
+    assert len(trend._ai_markers) == 1
+    trend.add_ai_marker(84.0)
+    assert len(trend._ai_markers) == 2
+
+
+def test_ai_markers_cleared_on_controller_change(qtbot, theme):
+    """Selecting a new controller clears AI markers."""
+    trend = TrendChartWidget(theme=theme)
+    qtbot.addWidget(trend)
+    trend.on_controller_selected(1)
+    trend.add_ai_marker(10.0)
+    trend.add_ai_marker(20.0)
+    assert len(trend._ai_markers) == 2
+    trend.on_controller_selected(2)
+    assert len(trend._ai_markers) == 0
+
+
+# --- Gap #48: apply_theme ---
+
+def test_apply_theme(qtbot, theme):
+    """apply_theme() does not crash and updates theme reference."""
+    trend = TrendChartWidget(theme=theme)
+    qtbot.addWidget(trend)
+    trend.apply_theme(theme)
+    assert trend._theme is theme

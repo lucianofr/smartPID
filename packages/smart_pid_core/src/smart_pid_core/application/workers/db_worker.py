@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import threading
 from collections import deque
 from datetime import UTC, datetime
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
 
 
 class DBWorker:
-    """Daemon thread that subscribes to TELEMETRY.* and flushes batches to SQLite."""
+    """Daemon thread that subscribes to TELEMETRY.* and LOG.AI.*, flushing to SQLite."""
 
     def __init__(
         self,
@@ -34,6 +35,7 @@ class DBWorker:
         self._flush_interval_s = flush_interval_s
         self._batch_size = batch_size
         self._buffer: deque[TelemetryFrame] = deque(maxlen=10_000)
+        self._ai_log_buffer: deque[dict] = deque(maxlen=1_000)
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -56,25 +58,34 @@ class DBWorker:
             loop.close()
 
     async def _run_async(self) -> None:
-        sub = self._bus.create_subscriber(b"TELEMETRY")
+        telem_sub = self._bus.create_subscriber(b"TELEMETRY")
+        ai_sub = self._bus.create_subscriber(b"LOG.AI.")
         while not self._stop_event.is_set():
             try:
-                # Wait for messages up to flush interval
-                msg = sub.recv(timeout_ms=int(self._flush_interval_s * 1000))
+                # Wait for telemetry messages up to flush interval
+                msg = telem_sub.recv(timeout_ms=int(self._flush_interval_s * 1000))
                 if msg is not None:
                     self._process_message(msg)
-                # Drain remaining without blocking
+                # Drain remaining telemetry without blocking
                 while True:
-                    msg = sub.recv(timeout_ms=0)
+                    msg = telem_sub.recv(timeout_ms=0)
                     if msg is None:
                         break
                     self._process_message(msg)
+                # Drain AI log messages without blocking
+                while True:
+                    msg = ai_sub.recv(timeout_ms=0)
+                    if msg is None:
+                        break
+                    self._process_ai_log(msg)
             except zmq.ZMQError:
                 break
-            # Flush
+            # Flush both buffers
             await self._flush()
+            await self._flush_ai_logs()
         # Final flush on shutdown
         await self._flush()
+        await self._flush_ai_logs()
 
     def _process_message(self, msg: tuple[bytes, bytes]) -> None:
         _topic, payload = msg
@@ -110,6 +121,23 @@ class DBWorker:
             self._buffer.append(frame)
         except (KeyError, ValueError, msgpack.UnpackException):
             pass
+
+    def _process_ai_log(self, msg: tuple[bytes, bytes]) -> None:
+        _topic, payload = msg
+        try:
+            data = msgpack.unpackb(payload)
+            self._ai_log_buffer.append(data)
+        except (ValueError, msgpack.UnpackException):
+            pass
+
+    async def _flush_ai_logs(self) -> None:
+        if not self._ai_log_buffer:
+            return
+        batch = list(self._ai_log_buffer)
+        self._ai_log_buffer.clear()
+        for entry in batch:
+            with contextlib.suppress(Exception):
+                await self._historian.write_ai_log(entry)
 
     async def _flush(self) -> None:
         if not self._buffer:

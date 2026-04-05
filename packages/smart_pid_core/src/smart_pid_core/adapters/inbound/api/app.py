@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
     from smart_pid_core.adapters.outbound.user_repo import UserRepository
+    from smart_pid_core.application.event_bus import EventBus
     from smart_pid_core.application.loop_manager import LoopManager
     from smart_pid_core.application.workers.stats_worker import StatsWorker
     from smart_pid_core.config import CoreSettings
@@ -60,6 +61,7 @@ def create_app(
     ai_repo: AIRepository | None = None,
     alarm_repo: AlarmRepository | None = None,
     audit_repo: AuditRepository | None = None,
+    event_bus: EventBus | None = None,
 ) -> FastAPI:
     """Build and configure the FastAPI application."""
     app = FastAPI(title="Smart PID API", version="2.0.0", lifespan=_lifespan)
@@ -77,6 +79,7 @@ def create_app(
     app.state.ai_repo = ai_repo
     app.state.alarm_repo = alarm_repo
     app.state.audit_repo = audit_repo
+    app.state.event_bus = event_bus
     app.state.execution_mode = settings.execution_mode
 
     # Register routers

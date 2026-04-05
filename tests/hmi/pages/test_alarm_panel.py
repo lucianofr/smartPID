@@ -187,7 +187,8 @@ def test_ai_log_dark_style():
     theme = ISA101Theme()
     panel = AlarmPanel(theme=theme)
     style = panel.ai_log_widget.styleSheet()
-    assert "#1a1a2e" in style
+    # AI log uses theme-aware colors (bg_card + accent)
+    assert theme.bg_card.lower() in style.lower()
 
 
 # --- Gap #45: Load History tests ---

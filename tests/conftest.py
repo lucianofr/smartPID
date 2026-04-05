@@ -69,6 +69,7 @@ async def app(api_deps):
         settings=api_deps["settings"],
         alarm_repo=api_deps["alarm_repo"],
         audit_repo=api_deps["audit_repo"],
+        event_bus=api_deps["bus"],
     )
 
 
@@ -95,6 +96,16 @@ def user_headers(api_deps) -> dict[str, str]:
     """Pre-authenticated operator JWT headers."""
     token = create_access_token(
         user_id=2, username="operator", role="OPERATOR",
+        secret=api_deps["settings"].jwt_secret,
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def supervisor_headers(api_deps) -> dict[str, str]:
+    """Pre-authenticated supervisor JWT headers."""
+    token = create_access_token(
+        user_id=3, username="supervisor", role="SUPERVISOR",
         secret=api_deps["settings"].jwt_secret,
     )
     return {"Authorization": f"Bearer {token}"}

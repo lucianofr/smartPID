@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
     from smart_pid_core.adapters.outbound.user_repo import UserRepository
+    from smart_pid_core.application.event_bus import EventBus
     from smart_pid_core.application.loop_manager import LoopManager
     from smart_pid_core.application.workers.stats_worker import StatsWorker
     from smart_pid_core.config import CoreSettings
@@ -145,6 +146,16 @@ def get_ai_repo(request: Request) -> AIRepository:
 
 def get_execution_mode(request: Request) -> str:
     return getattr(request.app.state, "execution_mode", "monitor")
+
+
+def get_event_bus(request: Request) -> EventBus:
+    bus = getattr(request.app.state, "event_bus", None)
+    if bus is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Event bus not available",
+        )
+    return bus
 
 
 def get_alarm_repo(request: Request) -> AlarmRepository:

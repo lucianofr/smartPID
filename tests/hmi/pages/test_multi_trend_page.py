@@ -68,3 +68,20 @@ def test_clear_data(qtbot):
     page.update_plot(0, [0.0, 1.0], [10.0, 11.0], [10.0, 10.0], [50.0, 55.0])
     page.clear_data(0)
     # Should not crash; plot items should be cleared
+
+
+# --- Gap #36: time-sync ---
+
+def test_x_range_sync_guard(qtbot):
+    """Multi-trend page has a sync guard flag."""
+    page = MultiTrendPage()
+    qtbot.addWidget(page)
+    assert hasattr(page, "_syncing_x_range")
+    assert page._syncing_x_range is False
+
+
+def test_x_range_sync_method_exists(qtbot):
+    """_on_x_range_changed method exists."""
+    page = MultiTrendPage()
+    qtbot.addWidget(page)
+    assert callable(getattr(page, "_on_x_range_changed", None))

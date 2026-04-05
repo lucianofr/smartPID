@@ -98,7 +98,7 @@ class MainWindow(QMainWindow):
         self._toolbar.setStyleSheet(
             f"QToolBar {{ background-color: {theme.bg_toolbar};"
             f" border-bottom: 1px solid {theme.border};"
-            " spacing: 0px; }}"
+            " }}"
         )
 
         # --- Left: app title ---
@@ -176,9 +176,14 @@ class MainWindow(QMainWindow):
 
         self.addToolBar(self._toolbar)
 
-        # Backward-compat action references for _enable_simulator
+        # Backward-compat references used by tests
         self._simulator_btn = self._simulator_nav
         self._users_btn = self._users_nav
+        self._dashboard_btn = self._dashboard_nav
+        self._alarms_btn = self._alarms_nav
+        self._executive_btn = self._executive_nav
+        self._trends_btn = self._trends_nav
+        self._settings_btn = self._settings_nav
 
         # Pages
         self._stack = QStackedWidget()
@@ -295,7 +300,6 @@ class MainWindow(QMainWindow):
         )
         self._set_active_nav(self._dashboard_nav)
         self._user_label.setText(self._session.username or "")
-        self._add_ctrl_btn.setEnabled(True)
         self._telemetry_source.start()
         self._bus_bridge.start()
         self._load_dashboard()
@@ -539,20 +543,94 @@ class MainWindow(QMainWindow):
             ai_active=ai_active,
         )
 
+    @staticmethod
+    def _nav_btn_style(theme, active: bool) -> str:
+        """Return stylesheet for a navigation button."""
+        if active:
+            return (
+                f"QPushButton {{ background-color: {theme.accent};"
+                f" color: {theme.bg_primary};"
+                f" border: 1px solid {theme.accent};"
+                f" border-radius: {theme.border_radius};"
+                " font-weight: bold;"
+                f" font-size: {theme.font_size_normal}px;"
+                " padding: 4px 14px; }}"
+            )
+        return (
+            f"QPushButton {{ background-color: transparent;"
+            f" color: {theme.fg_secondary};"
+            f" border: 1px solid transparent;"
+            f" border-radius: {theme.border_radius};"
+            f" font-size: {theme.font_size_normal}px;"
+            " padding: 4px 14px; }\n"
+            f"QPushButton:hover {{ background-color:"
+            f" {theme.bg_hover};"
+            f" color: {theme.fg_primary};"
+            f" border-color: {theme.border}; }}\n"
+            f"QPushButton:disabled {{ color:"
+            f" {theme.fg_muted}; }}"
+        )
+
+    def _set_active_nav(self, btn: QPushButton) -> None:
+        """Highlight the active nav button and reset others."""
+        theme = self._theme_manager.current
+        for b in self._nav_buttons:
+            is_active = b is btn
+            b.setChecked(is_active)
+            b.setStyleSheet(self._nav_btn_style(theme, is_active))
+        self._active_nav_btn = btn
+
     def _on_theme_switch(self, name: str) -> None:
         """Apply the selected theme globally and propagate to child widgets."""
         self._theme_manager.set_theme(name)
         theme = self._theme_manager.current
         theme.apply(QApplication.instance())
+        # Update toolbar styling
+        self._toolbar.setStyleSheet(
+            f"QToolBar {{ background-color: {theme.bg_toolbar};"
+            f" border-bottom: 1px solid {theme.border};"
+            " }}"
+        )
+        self._app_label.setStyleSheet(
+            f"font-weight: bold;"
+            f" font-size: {theme.font_size_title + 2}px;"
+            f" color: {theme.fg_primary};"
+            " background: transparent; padding: 0 12px;"
+        )
+        self._user_label.setStyleSheet(
+            f"color: {theme.fg_secondary};"
+            " background: transparent; padding: 0 12px;"
+        )
+        # Re-highlight active nav button
+        if self._active_nav_btn is not None:
+            self._set_active_nav(self._active_nav_btn)
+        else:
+            for b in self._nav_buttons:
+                b.setStyleSheet(
+                    self._nav_btn_style(theme, False),
+                )
         # Propagate theme to widgets that cache theme references
         for widget in self.findChildren(QWidget):
             if hasattr(widget, "apply_theme"):
                 widget.apply_theme(theme)
 
     def _show_admin_controls(self) -> None:
-        """Show admin-only UI elements based on session role."""
-        is_admin = self._session.role and self._session.role.upper() == "ADMIN"
+        """Show/hide and enable/disable UI elements based on session role.
+
+        Role hierarchy:
+        - OPERATOR: view, change SP/CO/mode
+        - SUPERVISOR: + apply tuning, manage alarms, settings
+        - ADMIN: + user management
+        """
+        role = (self._session.role or "").upper()
+        is_admin = role == "ADMIN"
+        is_supervisor = role in ("SUPERVISOR", "ADMIN")
+
+        # Admin-only: user management tab
         self._users_btn.setVisible(is_admin)
+
+        # Supervisor+: add controller button requires supervisor
+        self._add_ctrl_btn.setEnabled(is_supervisor)
 
     def _show_users_page(self) -> None:
         """Switch to user management page and refresh user list."""

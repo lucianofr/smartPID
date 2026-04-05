@@ -60,18 +60,26 @@ class AIRepository:
         self,
         controller_id: int,
         engine: str,
-        gamma: float,
         old_ki: float,
         new_ki: float,
         objective: str,
-        reasoning: str,
+        metric: float = 0.0,
     ) -> None:
-        """Log a Ki adjustment in Log_Sintonia_IA."""
+        """Log a Ki adjustment in Log_Sintonia_IA.
+
+        Args:
+            controller_id: Controller ID (FK to Controladores).
+            engine: AI engine name (e.g. "FUZZY", "RL").
+            old_ki: Ki value before adjustment.
+            new_ki: Ki value after adjustment.
+            objective: Control objective name.
+            metric: Computed metric value (e.g. gamma).
+        """
         await self._db.execute(
             "INSERT INTO Log_Sintonia_IA "
             "(controlador_id, motor, ki_antes, ki_depois, objetivo, metrica, aprovado) "
             "VALUES (?, ?, ?, ?, ?, ?, 1)",
-            (controller_id, engine, old_ki, new_ki, objective, gamma),
+            (controller_id, engine, old_ki, new_ki, objective, metric),
         )
         await self._db.commit()
 

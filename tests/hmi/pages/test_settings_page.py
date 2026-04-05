@@ -1,5 +1,5 @@
 """Tests for SettingsPage."""
-from PySide6.QtWidgets import QComboBox, QSpinBox
+from PySide6.QtWidgets import QComboBox, QLabel, QLineEdit, QPushButton, QSpinBox
 
 from smart_pid_hmi.pages.settings_page import SettingsPage
 from smart_pid_hmi.themes.dark_room import DarkRoomTheme
@@ -70,3 +70,58 @@ def test_refresh_rate_changed_signal(qtbot):
     spinbox.setValue(500)
 
     assert 500 in values
+
+
+# --- Gap #46: OPC-UA settings ---
+
+def test_opcua_endpoint_field_exists(qtbot):
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+    endpoint = page.findChild(QLineEdit, "opcua_endpoint")
+    assert endpoint is not None
+    assert "opc.tcp" in endpoint.text()
+
+
+def test_opcua_status_label_exists(qtbot):
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+    status = page.findChild(QLabel, "opcua_status")
+    assert status is not None
+    assert status.text() == "Unknown"
+
+
+def test_opcua_reconnect_button_exists(qtbot):
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+    btn = page.findChild(QPushButton, "opcua_reconnect_btn")
+    assert btn is not None
+
+
+def test_set_opcua_status_connected(qtbot):
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+    page.set_opcua_status(True)
+    assert page._opcua_status.text() == "Connected"
+
+
+def test_set_opcua_status_disconnected(qtbot):
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+    page.set_opcua_status(False)
+    assert page._opcua_status.text() == "Disconnected"
+
+
+def test_opcua_reconnect_signal(qtbot):
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+    received = []
+    page.opcua_reconnect_requested.connect(received.append)
+    page._opcua_endpoint.setText("opc.tcp://myserver:4840")
+    page._opcua_reconnect_btn.click()
+    assert received == ["opc.tcp://myserver:4840"]

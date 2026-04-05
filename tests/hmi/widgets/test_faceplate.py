@@ -116,3 +116,48 @@ def test_update_stats_zero(qtbot, theme):
     qtbot.addWidget(fp)
     fp.update_stats(iae=0.0, variability=0.0)
     assert fp._stats_label.text() == "IAE: 0.00 | 2\u03c3/Range: 0.0%"
+
+
+# --- Gap #24: optimizer buttons ---
+
+def test_optimizer_run_signal(qtbot, theme):
+    """RUN button emits optimizer_run_requested."""
+    fp = FaceplateWidget(theme=theme)
+    qtbot.addWidget(fp)
+    fp.on_controller_selected(1, "FIC-101", 0.0, 100.0)
+    received = []
+    fp.optimizer_run_requested.connect(lambda cid: received.append(cid))
+    qtbot.mouseClick(fp._btn_opt_run, Qt.MouseButton.LeftButton)
+    assert received == [1]
+
+
+def test_optimizer_pause_signal(qtbot, theme):
+    """PAUSE button emits optimizer_pause_requested."""
+    fp = FaceplateWidget(theme=theme)
+    qtbot.addWidget(fp)
+    fp.on_controller_selected(1, "FIC-101", 0.0, 100.0)
+    received = []
+    fp.optimizer_pause_requested.connect(lambda cid: received.append(cid))
+    qtbot.mouseClick(fp._btn_opt_pause, Qt.MouseButton.LeftButton)
+    assert received == [1]
+
+
+def test_optimizer_stop_signal(qtbot, theme):
+    """STOP button emits optimizer_stop_requested."""
+    fp = FaceplateWidget(theme=theme)
+    qtbot.addWidget(fp)
+    fp.on_controller_selected(1, "FIC-101", 0.0, 100.0)
+    received = []
+    fp.optimizer_stop_requested.connect(lambda cid: received.append(cid))
+    qtbot.mouseClick(fp._btn_opt_stop, Qt.MouseButton.LeftButton)
+    assert received == [1]
+
+
+def test_optimizer_buttons_no_emit_without_controller(qtbot, theme):
+    """Optimizer buttons do nothing when no controller is selected."""
+    fp = FaceplateWidget(theme=theme)
+    qtbot.addWidget(fp)
+    received = []
+    fp.optimizer_run_requested.connect(lambda cid: received.append(cid))
+    qtbot.mouseClick(fp._btn_opt_run, Qt.MouseButton.LeftButton)
+    assert received == []

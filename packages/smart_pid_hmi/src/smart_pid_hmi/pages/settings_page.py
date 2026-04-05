@@ -8,14 +8,17 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
 if TYPE_CHECKING:
+    from smart_pid_hmi.themes.base import ThemeBase
     from smart_pid_hmi.themes.manager import ThemeManager
 
 
@@ -24,6 +27,7 @@ class SettingsPage(QWidget):
 
     theme_changed = Signal(str)
     refresh_rate_changed = Signal(int)
+    opcua_reconnect_requested = Signal(str)  # (endpoint_url)
 
     def __init__(
         self,
@@ -86,7 +90,65 @@ class SettingsPage(QWidget):
         refresh_form.addRow("Refresh Rate:", self._refresh_spin)
 
         layout.addWidget(refresh_group)
+
+        # OPC-UA group (Gap #46)
+        opcua_group = QGroupBox("OPC-UA Server")
+        opcua_form = QFormLayout(opcua_group)
+
+        self._opcua_endpoint = QLineEdit("opc.tcp://localhost:4840")
+        self._opcua_endpoint.setObjectName("opcua_endpoint")
+        opcua_form.addRow("Endpoint URL:", self._opcua_endpoint)
+
+        status_row = QHBoxLayout()
+        self._opcua_status = QLabel("Unknown")
+        self._opcua_status.setObjectName("opcua_status")
+        self._opcua_status.setStyleSheet(
+            "color: #888; font-weight: bold; padding: 2px 8px;"
+        )
+        status_row.addWidget(self._opcua_status)
+
+        self._opcua_reconnect_btn = QPushButton("Reconnect")
+        self._opcua_reconnect_btn.setObjectName("opcua_reconnect_btn")
+        self._opcua_reconnect_btn.clicked.connect(self._on_opcua_reconnect)
+        status_row.addWidget(self._opcua_reconnect_btn)
+        status_row.addStretch()
+
+        opcua_form.addRow("Status:", status_row)
+        layout.addWidget(opcua_group)
+
         layout.addStretch()
+
+    def set_opcua_endpoint(self, url: str) -> None:
+        """Set the OPC-UA endpoint URL externally."""
+        self._opcua_endpoint.setText(url)
+
+    def set_opcua_status(self, connected: bool) -> None:
+        """Update the OPC-UA connection status indicator."""
+        if connected:
+            self._opcua_status.setText("Connected")
+            self._opcua_status.setStyleSheet(
+                "color: #4CAF50; font-weight: bold; padding: 2px 8px;"
+            )
+        else:
+            self._opcua_status.setText("Disconnected")
+            self._opcua_status.setStyleSheet(
+                "color: #F44336; font-weight: bold; padding: 2px 8px;"
+            )
+
+    def _on_opcua_reconnect(self) -> None:
+        url = self._opcua_endpoint.text().strip()
+        if url:
+            self.opcua_reconnect_requested.emit(url)
 
     def _on_theme_changed(self, name: str) -> None:
         self.theme_changed.emit(name)
+
+    def apply_theme(self, theme: ThemeBase) -> None:
+        """Update styles for dynamic theme switching."""
+        self.setStyleSheet(
+            f"QGroupBox {{ color: {theme.fg_primary}; "
+            f"font-weight: bold; border: 1px solid {theme.border}; "
+            f"border-radius: 4px; margin-top: 8px; padding-top: 16px; }}"
+            f"QGroupBox::title {{ subcontrol-origin: margin; left: 8px; }}"
+            f"QLabel {{ color: {theme.fg_primary}; }}"
+        )

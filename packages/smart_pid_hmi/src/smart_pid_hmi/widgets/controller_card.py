@@ -1,16 +1,17 @@
 """ControllerCardWidget — compact summary card per controller loop."""
 from __future__ import annotations
 
+from collections import deque
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from smart_pid_hmi.widgets.analog_bar import AnalogBarWidget
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QMouseEvent
-    from PySide6.QtWidgets import QWidget
 
     from smart_pid_hmi.themes.base import ThemeBase
 
@@ -23,6 +24,89 @@ def _theme_attr(theme: ThemeBase, attr: str, fallback: str) -> str:
     """Return theme attribute if non-empty, else fallback."""
     val = getattr(theme, attr, "")
     return val if val else fallback
+
+
+_SPARKLINE_HEIGHT = 32
+_SPARKLINE_BUFFER = 30
+
+
+class SparklineWidget(QWidget):
+    """Mini trend showing last N PV values via QPainter."""
+
+    def __init__(
+        self,
+        theme: ThemeBase,
+        buffer_size: int = _SPARKLINE_BUFFER,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._theme = theme
+        self._data: deque[float] = deque(maxlen=buffer_size)
+        self.setFixedHeight(_SPARKLINE_HEIGHT)
+
+    @property
+    def data(self) -> deque[float]:
+        return self._data
+
+    def add_value(self, val: float) -> None:
+        self._data.append(val)
+        self.update()
+
+    def clear_data(self) -> None:
+        self._data.clear()
+        self.update()
+
+    def apply_theme(self, theme: ThemeBase) -> None:
+        self._theme = theme
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        if len(self._data) < 2:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w = self.width()
+        h = self.height()
+        margin = 2
+
+        values = list(self._data)
+        v_min = min(values)
+        v_max = max(values)
+        v_range = v_max - v_min if v_max != v_min else 1.0
+
+        # Draw background
+        bg = _theme_attr(self._theme, "bg_input", self._theme.bg_widget)
+        br = _theme_attr(self._theme, "border_radius", "0px")
+        try:
+            radius = int(br.replace("px", ""))
+        except (ValueError, AttributeError):
+            radius = 0
+        rect = QRectF(0, 0, w, h)
+        p.setBrush(QColor(bg))
+        p.setPen(Qt.PenStyle.NoPen)
+        if radius > 0:
+            p.drawRoundedRect(rect, min(radius, h // 2), min(radius, h // 2))
+        else:
+            p.fillRect(rect, QColor(bg))
+
+        # Build polyline
+        n = len(values)
+        step_x = (w - 2 * margin) / max(n - 1, 1)
+        path = QPainterPath()
+        for i, v in enumerate(values):
+            x = margin + i * step_x
+            y = margin + (h - 2 * margin) * (1.0 - (v - v_min) / v_range)
+            pt = QPointF(x, y)
+            if i == 0:
+                path.moveTo(pt)
+            else:
+                path.lineTo(pt)
+
+        pen = QPen(QColor(self._theme.chart_pv), 1.5)
+        p.setPen(pen)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawPath(path)
+        p.end()
 
 
 class ControllerCardWidget(QFrame):
@@ -113,6 +197,10 @@ class ControllerCardWidget(QFrame):
         layout.addWidget(self._bar_pv)
         layout.addWidget(self._bar_sp)
         layout.addWidget(self._bar_co)
+
+        # Sparkline (mini PV trend)
+        self._sparkline = SparklineWidget(theme)
+        layout.addWidget(self._sparkline)
         layout.addStretch()
 
     def _apply_card_style(
@@ -163,15 +251,18 @@ class ControllerCardWidget(QFrame):
         self._bar_pv.apply_theme(theme)
         self._bar_sp.apply_theme(theme)
         self._bar_co.apply_theme(theme)
+        self._sparkline.apply_theme(theme)
         self.update()
 
     def on_telemetry(self, controller_id: int, frame: dict) -> None:
         if controller_id != self._controller_id:
             return
-        self._bar_pv.set_value(frame.get("pv", 0.0))
+        pv = frame.get("pv", 0.0)
+        self._bar_pv.set_value(pv)
         self._bar_pv.set_sp_marker(frame.get("sp"))
         self._bar_sp.set_value(frame.get("sp", 0.0))
         self._bar_co.set_value(frame.get("co", 0.0))
+        self._sparkline.add_value(pv)
         mode = frame.get("mode")
         if mode:
             self._mode_label.setText(str(mode))

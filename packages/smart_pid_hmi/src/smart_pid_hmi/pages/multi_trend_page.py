@@ -115,6 +115,14 @@ class MultiTrendPage(QWidget):
             row, col = divmod(i, 2)
             grid.addLayout(container, row, col)
 
+        # Gap #36: Synchronize X-axis zoom/pan across all 4 plots
+        self._syncing_x_range = False
+        for i in range(4):
+            vb = self._plots[i].plotItem.vb
+            vb.sigXRangeChanged.connect(
+                lambda _vb, x_range, idx=i: self._on_x_range_changed(idx, x_range)
+            )
+
         root.addLayout(grid, stretch=1)
 
     def update_plot(
@@ -147,6 +155,20 @@ class MultiTrendPage(QWidget):
             self._pv_curves[index].setData([], [])
             self._sp_curves[index].setData([], [])
             self._co_curves[index].setData([], [])
+
+    def _on_x_range_changed(self, source_idx: int, x_range: list) -> None:
+        """Sync X-axis range from *source_idx* to all other plots."""
+        if self._syncing_x_range:
+            return
+        self._syncing_x_range = True
+        try:
+            for i in range(4):
+                if i != source_idx:
+                    self._plots[i].plotItem.vb.setXRange(
+                        x_range[0], x_range[1], padding=0,
+                    )
+        finally:
+            self._syncing_x_range = False
 
     def apply_theme(self, theme: ThemeBase) -> None:
         """Re-apply theme colors to plots."""

@@ -125,6 +125,7 @@ class MonitorWorker:
             "pv": telem["pv"],
             "sp": telem["sp"],
             "co": telem["co"],
+            "mode": telem.get("mode", "UNKNOWN"),
             "bkcal_in": telem.get("bkcal_in", dict(_DEFAULT_SIGNAL)),
             "bkcal_out": telem.get("bkcal_out", dict(_DEFAULT_SIGNAL)),
             "integral_val": telem.get("integral_val", 0.0),
