@@ -1,6 +1,8 @@
 """MultiTrendPage — 2x2 grid of pyqtgraph trend plots with loop selectors."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPen
@@ -13,14 +15,29 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+if TYPE_CHECKING:
+    from smart_pid_hmi.themes.base import ThemeBase
+
 _TIME_RANGES = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}
 
 
 class MultiTrendPage(QWidget):
     """2x2 grid of trend plots with time range and live mode controls."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        theme: ThemeBase | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
+        self._theme = theme
+
+        # Resolve curve colors from theme or fallback
+        pv_color = theme.chart_pv if theme else "#00BCD4"
+        sp_color = theme.chart_sp if theme else "#FFC107"
+        co_color = theme.chart_co if theme else "#4CAF50"
+        grid_bg = theme.chart_bg if theme else "#1E1E1E"
+        grid_color = theme.chart_grid if theme else "#333337"
 
         root = QVBoxLayout(self)
 
@@ -48,6 +65,7 @@ class MultiTrendPage(QWidget):
         self._pv_curves: list[pg.PlotDataItem] = []
         self._sp_curves: list[pg.PlotDataItem] = []
         self._co_curves: list[pg.PlotDataItem] = []
+        self._co_viewboxes: list[pg.ViewBox] = []
 
         for i in range(4):
             container = QVBoxLayout()
@@ -58,14 +76,21 @@ class MultiTrendPage(QWidget):
             self._loop_combos.append(loop_combo)
 
             pw = pg.PlotWidget()
+            pw.setBackground(grid_bg)
             pw.showGrid(x=True, y=True, alpha=0.3)
+            pw.getAxis("bottom").setPen(pg.mkPen(grid_color))
+            pw.getAxis("left").setPen(pg.mkPen(grid_color))
             pw.setLabel("bottom", "Time", units="s")
             pw.setLabel("left", "PV / SP")
             container.addWidget(pw)
 
-            # Primary curves: PV (cyan) and SP (yellow)
-            pv_curve = pw.plot(pen=pg.mkPen("#00BCD4", width=2), name="PV")
-            sp_curve = pw.plot(pen=pg.mkPen("#FFC107", width=2), name="SP")
+            # Primary curves: PV and SP
+            pv_curve = pw.plot(
+                pen=pg.mkPen(pv_color, width=2), name="PV",
+            )
+            sp_curve = pw.plot(
+                pen=pg.mkPen(sp_color, width=2), name="SP",
+            )
 
             # Secondary Y axis for CO
             co_viewbox = pg.ViewBox()
@@ -75,7 +100,9 @@ class MultiTrendPage(QWidget):
             pw.showAxis("right")
             pw.setLabel("right", "CO")
 
-            co_pen = QPen(pg.mkColor("#4CAF50"), 2, Qt.PenStyle.DashLine)
+            co_pen = QPen(
+                pg.mkColor(co_color), 2, Qt.PenStyle.DashLine,
+            )
             co_curve = pg.PlotDataItem(pen=pg.mkPen(co_pen))
             co_viewbox.addItem(co_curve)
 
@@ -83,9 +110,18 @@ class MultiTrendPage(QWidget):
             self._pv_curves.append(pv_curve)
             self._sp_curves.append(sp_curve)
             self._co_curves.append(co_curve)
+            self._co_viewboxes.append(co_viewbox)
 
             row, col = divmod(i, 2)
             grid.addLayout(container, row, col)
+
+        # Gap #36: Synchronize X-axis zoom/pan across all 4 plots
+        self._syncing_x_range = False
+        for i in range(4):
+            vb = self._plots[i].plotItem.vb
+            vb.sigXRangeChanged.connect(
+                lambda _vb, x_range, idx=i: self._on_x_range_changed(idx, x_range)
+            )
 
         root.addLayout(grid, stretch=1)
 
@@ -119,3 +155,40 @@ class MultiTrendPage(QWidget):
             self._pv_curves[index].setData([], [])
             self._sp_curves[index].setData([], [])
             self._co_curves[index].setData([], [])
+
+    def _on_x_range_changed(self, source_idx: int, x_range: list) -> None:
+        """Sync X-axis range from *source_idx* to all other plots."""
+        if self._syncing_x_range:
+            return
+        self._syncing_x_range = True
+        try:
+            for i in range(4):
+                if i != source_idx:
+                    self._plots[i].plotItem.vb.setXRange(
+                        x_range[0], x_range[1], padding=0,
+                    )
+        finally:
+            self._syncing_x_range = False
+
+    def apply_theme(self, theme: ThemeBase) -> None:
+        """Re-apply theme colors to plots."""
+        self._theme = theme
+        pv_color = theme.chart_pv
+        sp_color = theme.chart_sp
+        co_color = theme.chart_co
+        grid_bg = theme.chart_bg
+        grid_color = theme.chart_grid
+
+        for i in range(4):
+            pw = self._plots[i]
+            pw.setBackground(grid_bg)
+            pw.getAxis("bottom").setPen(pg.mkPen(grid_color))
+            pw.getAxis("left").setPen(pg.mkPen(grid_color))
+
+            self._pv_curves[i].setPen(pg.mkPen(pv_color, width=2))
+            self._sp_curves[i].setPen(pg.mkPen(sp_color, width=2))
+
+            co_pen = QPen(
+                pg.mkColor(co_color), 2, Qt.PenStyle.DashLine,
+            )
+            self._co_curves[i].setPen(pg.mkPen(co_pen))

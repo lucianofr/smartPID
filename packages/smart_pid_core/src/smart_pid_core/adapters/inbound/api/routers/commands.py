@@ -12,6 +12,7 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
     get_execution_mode,
     get_loop_manager,
     require_operator,
+    require_supervisor,
 )
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.application.loop_manager import LoopManager
@@ -131,7 +132,7 @@ async def get_tuning_recommendation(
 async def apply_tuning(
     controller_id: int,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_operator)],
+    user: Annotated[UserClaims, Depends(require_supervisor)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> dict:

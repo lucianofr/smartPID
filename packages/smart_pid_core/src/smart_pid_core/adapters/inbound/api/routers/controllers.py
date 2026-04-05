@@ -1,20 +1,28 @@
 """Controller CRUD router."""
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response, status
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
+    get_alarm_repo,
     get_audit_repo,
     get_repo,
     require_admin,
     require_operator,
     require_supervisor,
 )
+from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository  # noqa: TC001
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+from smart_pid_domain.dtos.alarms import (
+    AlarmConfigResponse,
+    AlarmConfigUpdate,
+    AlarmThreshold,
+)
 from smart_pid_domain.dtos.auth import UserClaims
 from smart_pid_domain.dtos.controllers import (
     ControllerCreate,
@@ -136,13 +144,32 @@ async def update_controller(
     if pid_updates:
         updates["pid_params"] = replace(controller.pid_params, **pid_updates)
 
+    # Capture old values for audit trail before applying updates
+    old_values: dict = {}
+    new_values: dict = {}
+    for key in updates:
+        if key == "pid_params":
+            old_pid = controller.pid_params
+            new_pid = updates["pid_params"]
+            for pf in ("gain", "reset", "rate"):
+                if getattr(old_pid, pf) != getattr(new_pid, pf):
+                    old_values[pf] = getattr(old_pid, pf)
+                    new_values[pf] = getattr(new_pid, pf)
+        else:
+            old_values[key] = getattr(controller, key)
+            new_values[key] = updates[key]
+
     if updates:
         controller = replace(controller, **updates)
         await repo.save(controller)
 
+    audit_detail = json.dumps({
+        "old": old_values,
+        "new": new_values,
+    })
     await audit_repo.record(
         user.user_id, user.username, AuditAction.UPDATE_CONTROLLER,
-        f"controller:{controller_id}", f'{{"fields": "{list(updates.keys())}"}}',
+        f"controller:{controller_id}", audit_detail,
     )
     return _to_response(controller)
 
@@ -163,3 +190,62 @@ async def delete_controller(
         f"controller:{controller_id}", None,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{controller_id}/alarm-config", response_model=AlarmConfigResponse)
+async def get_alarm_config(
+    controller_id: int,
+    _user: Annotated[UserClaims, Depends(require_operator)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
+    alarm_repo: Annotated[AlarmRepository, Depends(get_alarm_repo)],
+) -> AlarmConfigResponse:
+    """Get alarm thresholds for a controller."""
+    try:
+        await repo.get(controller_id)
+    except KeyError:
+        raise ControllerNotFoundError(controller_id) from None
+    rows = await alarm_repo.get_alarm_config(controller_id)
+    thresholds = [
+        AlarmThreshold(
+            alarm_type=r["alarm_type"],
+            priority=r["priority"],
+            limit=r["limit"],
+            enabled=bool(r["enabled"]),
+            deadband=r["deadband"],
+        )
+        for r in rows
+    ]
+    return AlarmConfigResponse(controller_id=controller_id, thresholds=thresholds)
+
+
+@router.put("/{controller_id}/alarm-config", response_model=AlarmConfigResponse)
+async def update_alarm_config(
+    controller_id: int,
+    body: AlarmConfigUpdate,
+    user: Annotated[UserClaims, Depends(require_supervisor)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
+    alarm_repo: Annotated[AlarmRepository, Depends(get_alarm_repo)],
+    audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+) -> AlarmConfigResponse:
+    """Update alarm thresholds for a controller (requires supervisor)."""
+    try:
+        await repo.get(controller_id)
+    except KeyError:
+        raise ControllerNotFoundError(controller_id) from None
+    threshold_dicts = [
+        {
+            "alarm_type": str(t.alarm_type),
+            "priority": str(t.priority),
+            "limit": t.limit,
+            "enabled": t.enabled,
+            "deadband": t.deadband,
+        }
+        for t in body.thresholds
+    ]
+    await alarm_repo.save_alarm_config(controller_id, threshold_dicts)
+    await audit_repo.record(
+        user.user_id, user.username, AuditAction.CONFIG_ALARM,
+        f"controller:{controller_id}",
+        f'{{"thresholds": {len(body.thresholds)}}}',
+    )
+    return AlarmConfigResponse(controller_id=controller_id, thresholds=body.thresholds)

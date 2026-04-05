@@ -3,7 +3,7 @@ import pytest
 from PySide6.QtCore import Qt
 
 from smart_pid_hmi.themes.isa101 import ISA101Theme
-from smart_pid_hmi.widgets.controller_card import ControllerCardWidget
+from smart_pid_hmi.widgets.controller_card import ControllerCardWidget, SparklineWidget
 
 
 @pytest.fixture
@@ -78,3 +78,44 @@ def test_mode_badge_update(qtbot, theme):
     }
     card.on_telemetry(1, frame)
     assert card._mode_label.text() == "AUTO"
+
+
+# --- Gap #30: sparkline ---
+
+def test_sparkline_creation(qtbot, theme):
+    """SparklineWidget can be created and sized."""
+    spark = SparklineWidget(theme=theme)
+    qtbot.addWidget(spark)
+    assert spark.maximumHeight() == 32
+    assert len(spark.data) == 0
+
+
+def test_sparkline_add_value(qtbot, theme):
+    """add_value() appends to buffer."""
+    spark = SparklineWidget(theme=theme, buffer_size=5)
+    qtbot.addWidget(spark)
+    for v in [1.0, 2.0, 3.0]:
+        spark.add_value(v)
+    assert list(spark.data) == [1.0, 2.0, 3.0]
+
+
+def test_sparkline_buffer_overflow(qtbot, theme):
+    """Buffer is capped at buffer_size."""
+    spark = SparklineWidget(theme=theme, buffer_size=3)
+    qtbot.addWidget(spark)
+    for v in [1.0, 2.0, 3.0, 4.0, 5.0]:
+        spark.add_value(v)
+    assert list(spark.data) == [3.0, 4.0, 5.0]
+
+
+def test_card_sparkline_fed_on_telemetry(qtbot, theme):
+    """on_telemetry feeds the sparkline with PV values."""
+    card = ControllerCardWidget(
+        controller_id=1, tag_name="FIC-101",
+        min_val=0.0, max_val=100.0, theme=theme,
+    )
+    qtbot.addWidget(card)
+    for pv in [10.0, 20.0, 30.0]:
+        frame = {"pv": pv, "sp": 50.0, "co": 50.0}
+        card.on_telemetry(1, frame)
+    assert list(card._sparkline.data) == [10.0, 20.0, 30.0]

@@ -100,3 +100,7 @@ class ConnectionPage(QWidget):
     def clear_error(self) -> None:
         self._status_label.setText("")
         self._status_label.setVisible(False)
+
+    def apply_theme(self, theme: ThemeBase) -> None:
+        """Re-apply theme colors to dynamic elements."""
+        self._theme = theme

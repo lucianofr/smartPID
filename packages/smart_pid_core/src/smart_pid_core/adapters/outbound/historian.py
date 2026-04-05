@@ -76,6 +76,24 @@ class SQLiteHistorian:
             )
         return results
 
+    async def write_ai_log(self, entry: dict) -> None:
+        """Insert a single AI tuning log entry into Log_Sintonia_IA."""
+        await self._db.execute(
+            "INSERT INTO Log_Sintonia_IA "
+            "(controlador_id, timestamp, motor, ki_antes, ki_depois, objetivo, metrica, aprovado)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+            (
+                entry["controller_id"],
+                entry.get("timestamp", ""),
+                entry.get("engine", "NONE"),
+                entry.get("old_ki"),
+                entry.get("new_ki"),
+                entry.get("objective", ""),
+                entry.get("gamma"),
+            ),
+        )
+        await self._db.commit()
+
     async def cleanup_older_than(self, days: int) -> int:
         """Delete frames older than `days` days. Returns count deleted."""
         async with self._db.execute(

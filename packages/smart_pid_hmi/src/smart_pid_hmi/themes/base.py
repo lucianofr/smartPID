@@ -33,6 +33,18 @@ class ThemeColors:
     chart_grid: str
     chart_bg: str
 
+    # Extended palette (Phase 3b+)
+    bg_card: str = ""
+    bg_input: str = ""
+    bg_toolbar: str = ""
+    bg_hover: str = ""
+    fg_muted: str = ""
+    border_focus: str = ""
+    border_radius: str = "0px"
+    accent: str = ""
+    alarm_critical_bg: str = ""
+    alarm_warning_bg: str = ""
+
 
 @dataclass(frozen=True)
 class ThemeFonts:
@@ -74,6 +86,18 @@ class ThemeBase(Protocol):
     chart_co: str
     chart_grid: str
     chart_bg: str
+
+    # Extended palette
+    bg_card: str
+    bg_input: str
+    bg_toolbar: str
+    bg_hover: str
+    fg_muted: str
+    border_focus: str
+    border_radius: str
+    accent: str
+    alarm_critical_bg: str
+    alarm_warning_bg: str
 
     # Typography
     font_family: str

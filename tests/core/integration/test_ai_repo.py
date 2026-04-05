@@ -46,11 +46,10 @@ class TestAIModelRepo:
         await ai_repo.log_tuning_action(
             controller_id=1,
             engine="FUZZY",
-            gamma=0.5,
             old_ki=10.0,
             new_ki=11.5,
             objective="SP_TRACKING",
-            reasoning="test action",
+            metric=0.5,
         )
         history = await ai_repo.get_tuning_history(controller_id=1, limit=10)
         assert len(history) == 1

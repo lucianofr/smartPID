@@ -41,25 +41,26 @@ def _make_window() -> tuple[MainWindow, Session]:
 
 def test_users_button_hidden_by_default():
     window, _ = _make_window()
-    assert not window._users_btn.isVisible()
+    # Use isHidden() since window is not shown (isVisible checks ancestors)
+    assert window._users_btn.isHidden()
 
 
 def test_users_button_visible_for_admin():
     window, session = _make_window()
     session.store_token(_make_token("ADMIN"))
     window._show_admin_controls()
-    assert window._users_btn.isVisible()
+    assert not window._users_btn.isHidden()
 
 
 def test_users_button_hidden_for_operator():
     window, session = _make_window()
     session.store_token(_make_token("OPERATOR"))
     window._show_admin_controls()
-    assert not window._users_btn.isVisible()
+    assert window._users_btn.isHidden()
 
 
 def test_users_button_hidden_for_supervisor():
     window, session = _make_window()
     session.store_token(_make_token("SUPERVISOR"))
     window._show_admin_controls()
-    assert not window._users_btn.isVisible()
+    assert window._users_btn.isHidden()

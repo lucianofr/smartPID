@@ -26,6 +26,8 @@ class IOWorker:
     reach the PID workers, DB worker, or telemetry publisher.
     """
 
+    _PARAMS_READ_INTERVAL_S: float = 10.0
+
     def __init__(
         self,
         bus: EventBus,
@@ -44,6 +46,7 @@ class IOWorker:
         self._ever_connected: bool = False
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._last_params_read: float = 0.0
 
     def add_controller(self, controller_id: int) -> None:
         """Register an additional controller for scanning."""
@@ -145,6 +148,12 @@ class IOWorker:
                             "io_worker_read_error controller_id=%s", cid,
                         )
 
+                # Read tuning params every 10s and publish PARAMS.{id}
+                now = time.monotonic()
+                if now - self._last_params_read >= self._PARAMS_READ_INTERVAL_S:
+                    self._last_params_read = now
+                    self._read_and_publish_params(pub)
+
                 # Drain ACTION.CTRL.* messages and write BKCAL_OUT to OPC-UA
                 if action_sub is not None:
                     self._drain_and_write_bkcal(action_sub)
@@ -173,6 +182,29 @@ class IOWorker:
                 logger.info("reconnect_event_published controller_id=%s", cid)
             except Exception:
                 logger.exception("reconnect_read_error controller_id=%s", cid)
+
+    def _read_and_publish_params(self, pub) -> None:  # noqa: ANN001
+        """Read Kp/Ti/Td from OPC-UA for each controller and publish PARAMS.{id}."""
+        for cid in self._controller_ids:
+            try:
+                params = self._opcua.read_pid_params(cid)
+                if params is None:
+                    continue
+                topic = f"PARAMS.{cid}".encode()
+                payload = msgpack.packb({
+                    "controller_id": cid,
+                    "kp": params.kp,
+                    "ti": params.ti,
+                    "td": params.td,
+                    "timestamp": params.timestamp,
+                })
+                pub.send(topic, payload)
+            except (KeyError, ConnectionError):
+                pass
+            except Exception:
+                logger.exception(
+                    "io_worker_params_read_error controller_id=%s", cid,
+                )
 
     def _drain_and_write_bkcal(self, action_sub) -> None:
         """Drain ACTION.CTRL.* messages from bus and write BKCAL_OUT to OPC-UA."""

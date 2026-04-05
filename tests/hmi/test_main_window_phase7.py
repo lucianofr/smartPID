@@ -75,17 +75,17 @@ def test_settings_btn_exists(main_window):
 
 
 def test_executive_btn_switches_page(main_window):
-    main_window._executive_btn.trigger()
+    main_window._executive_btn.click()
     assert main_window._stack.currentWidget() is main_window._executive_page
 
 
 def test_trends_btn_switches_page(main_window):
-    main_window._trends_btn.trigger()
+    main_window._trends_btn.click()
     assert main_window._stack.currentWidget() is main_window._multi_trend_page
 
 
 def test_settings_btn_switches_page(main_window):
-    main_window._settings_btn.trigger()
+    main_window._settings_btn.click()
     assert main_window._stack.currentWidget() is main_window._settings_page
 
 

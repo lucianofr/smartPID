@@ -3,19 +3,28 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
 if TYPE_CHECKING:
     from smart_pid_hmi.themes.base import ThemeBase
 
-_BAR_HEIGHT = 20
-_WIDGET_HEIGHT = 36
+_BAR_HEIGHT = 28
+_WIDGET_HEIGHT = 40
+_LABEL_WIDTH = 40
+_VALUE_WIDTH = 90
+
+
+def _theme_attr(theme: ThemeBase, attr: str, fallback: str) -> str:
+    """Return theme attribute if non-empty, else fallback."""
+    val = getattr(theme, attr, "")
+    return val if val else fallback
 
 
 class AnalogBarWidget(QWidget):
-    """Horizontal continuous bar with label, value, SP marker, and alarm coloring."""
+    """Horizontal continuous bar with label, value, SP marker,
+    and alarm coloring."""
 
     def __init__(
         self,
@@ -78,60 +87,112 @@ class AnalogBarWidget(QWidget):
             return QColor(self._theme.alarm_warning)
         return QColor(self._theme.bar_pv)
 
+    def _border_radius(self) -> int:
+        """Parse border_radius from theme (e.g. '12px' -> 12)."""
+        raw = _theme_attr(self._theme, "border_radius", "0px")
+        try:
+            return int(raw.replace("px", ""))
+        except (ValueError, AttributeError):
+            return 0
+
     def paintEvent(self, event) -> None:  # noqa: N802
         p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing, False)  # flat ISA-101
+        br = self._border_radius()
+        use_aa = br > 0
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, use_aa)
         w = self.width()
+        t = self._theme
 
-        # Label text (left)
-        label_font = QFont(self._theme.font_family, self._theme.font_size_label)
+        # -- Label text (left, fixed width) --
+        label_font = QFont(t.font_family, t.font_size_label)
+        label_font.setBold(True)
         p.setFont(label_font)
-        p.setPen(QColor(self._theme.fg_secondary))
-        label_rect = QRectF(0, 0, 30, _WIDGET_HEIGHT)
+        p.setPen(QColor(t.fg_secondary))
+        label_rect = QRectF(0, 0, _LABEL_WIDTH, _WIDGET_HEIGHT)
         p.drawText(label_rect, Qt.AlignmentFlag.AlignVCenter, self._label)
 
-        # Value text (right)
-        value_font = QFont(self._theme.font_family, self._theme.font_size_value)
+        # -- Value text (right, monospaced, fixed width) --
+        value_font = QFont("Fira Code", t.font_size_value)
+        value_font.setStyleHint(QFont.StyleHint.Monospace)
         p.setFont(value_font)
-        p.setPen(QColor(self._theme.fg_primary))
-        value_text = f"{self._value:.1f} {self._unit}"
-        value_rect = QRectF(w - 80, 0, 80, _WIDGET_HEIGHT)
+        p.setPen(QColor(t.fg_primary))
+        value_text = f"{self._value:.1f}"
+        if self._unit:
+            value_text += f" {self._unit}"
+        value_rect = QRectF(
+            w - _VALUE_WIDTH, 0, _VALUE_WIDTH, _WIDGET_HEIGHT
+        )
         p.drawText(
             value_rect,
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
             value_text,
         )
 
-        # Bar area
-        bar_x = 34
-        bar_w = w - 120
-        bar_y = (_WIDGET_HEIGHT - _BAR_HEIGHT) / 2
+        # -- Bar area --
+        bar_x = _LABEL_WIDTH + 4
+        bar_w = w - _LABEL_WIDTH - _VALUE_WIDTH - 12
+        bar_y = (_WIDGET_HEIGHT - _BAR_HEIGHT) / 2.0
 
         if bar_w <= 0:
             p.end()
             return
 
-        # Bar background
-        p.fillRect(
-            QRectF(bar_x, bar_y, bar_w, _BAR_HEIGHT), QColor(self._theme.bg_widget)
-        )
+        bar_rect = QRectF(bar_x, bar_y, bar_w, _BAR_HEIGHT)
+        bar_radius = min(br, _BAR_HEIGHT // 2) if br > 0 else 0
+
+        # Bar background (use bg_input for subtle contrast)
+        bg_input = _theme_attr(t, "bg_input", t.bg_widget)
+        if bar_radius > 0:
+            p.setBrush(QColor(bg_input))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawRoundedRect(bar_rect, bar_radius, bar_radius)
+        else:
+            p.fillRect(bar_rect, QColor(bg_input))
 
         # Bar fill
         span = self._max - self._min
         if span > 0:
             frac = (self._value - self._min) / span
             fill_w = bar_w * frac
-            p.fillRect(QRectF(bar_x, bar_y, fill_w, _BAR_HEIGHT), self._fill_color())
+            fill_rect = QRectF(bar_x, bar_y, fill_w, _BAR_HEIGHT)
+            if bar_radius > 0:
+                # Clip to bar shape
+                clip_path = QPainterPath()
+                clip_path.addRoundedRect(bar_rect, bar_radius, bar_radius)
+                p.setClipPath(clip_path)
+                p.fillRect(fill_rect, self._fill_color())
+                p.setClipping(False)
+            else:
+                p.fillRect(fill_rect, self._fill_color())
 
-        # SP marker (thin vertical line)
+        # SP marker (2px line + triangular notch at top)
         if self._sp_marker is not None and span > 0:
             sp_frac = (self._sp_marker - self._min) / span
+            sp_frac = max(0.0, min(1.0, sp_frac))
             sp_x = bar_x + bar_w * sp_frac
-            p.setPen(QColor(self._theme.bar_sp))
-            p.drawLine(int(sp_x), int(bar_y), int(sp_x), int(bar_y + _BAR_HEIGHT))
+            pen = QPen(QColor(t.bar_sp), 2.0)
+            p.setPen(pen)
+            p.drawLine(
+                QPointF(sp_x, bar_y),
+                QPointF(sp_x, bar_y + _BAR_HEIGHT),
+            )
+            # Small triangular notch at top
+            notch_size = 4.0
+            notch = QPolygonF([
+                QPointF(sp_x - notch_size, bar_y - 1),
+                QPointF(sp_x + notch_size, bar_y - 1),
+                QPointF(sp_x, bar_y + notch_size),
+            ])
+            p.setBrush(QColor(t.bar_sp))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawPolygon(notch)
 
         # Border
-        p.setPen(QColor(self._theme.border))
-        p.drawRect(QRectF(bar_x, bar_y, bar_w, _BAR_HEIGHT))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QColor(t.border))
+        if bar_radius > 0:
+            p.drawRoundedRect(bar_rect, bar_radius, bar_radius)
+        else:
+            p.drawRect(bar_rect)
 
         p.end()

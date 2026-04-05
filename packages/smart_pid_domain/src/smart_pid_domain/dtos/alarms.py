@@ -22,3 +22,23 @@ class AlarmResponse(BaseModel):
 
 class AlarmAckRequest(BaseModel):
     """No body needed — user comes from JWT."""
+
+
+class AlarmThreshold(BaseModel):
+    """A single alarm threshold configuration."""
+    alarm_type: AlarmType
+    priority: AlarmPriority = AlarmPriority.WARNING
+    limit: float = 0.0
+    enabled: bool = True
+    deadband: float = 0.0
+
+
+class AlarmConfigResponse(BaseModel):
+    """Full alarm configuration for a controller."""
+    controller_id: int
+    thresholds: list[AlarmThreshold]
+
+
+class AlarmConfigUpdate(BaseModel):
+    """Update request for alarm thresholds."""
+    thresholds: list[AlarmThreshold]
