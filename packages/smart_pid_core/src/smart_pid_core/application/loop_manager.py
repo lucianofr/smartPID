@@ -1,10 +1,11 @@
 """Loop Manager — lifecycle management for controller PID loops."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from smart_pid_core.application.workers.ai_worker import AIWorker
+from smart_pid_core.application.workers.monitor_worker import MonitorWorker
 from smart_pid_core.application.workers.pid_worker import PIDWorker
 from smart_pid_core.application.workers.stats_worker import StatsWorker
 from smart_pid_core.domain.services.pid_engine import PIDEngine
@@ -21,28 +22,25 @@ if TYPE_CHECKING:
 class LoopContext:
     """Holds references to all active components for one control loop."""
     controller: Controller
-    pid_worker: PIDWorker
-    engine: PIDEngine = field(default_factory=PIDEngine)
-    mode_manager: ModeManager = field(default_factory=ModeManager)
+    pid_worker: PIDWorker | None = None
+    engine: PIDEngine | None = None
+    mode_manager: ModeManager | None = None
     stats_worker: StatsWorker | None = None
     ai_worker: AIWorker | None = None
+    monitor_worker: MonitorWorker | None = None
 
 
 class LoopManager:
     """Manages the lifecycle of PID control loops."""
 
-    def __init__(self, bus: EventBus) -> None:
+    def __init__(self, bus: EventBus, execution_mode: str = "execute") -> None:
         self._bus = bus
+        self._execution_mode = execution_mode
         self._loops: dict[int, LoopContext] = {}
 
     def start_loop(self, controller: Controller) -> None:
         if controller.id in self._loops:
             return
-        engine = PIDEngine()
-        mode_manager = ModeManager()
-        pid_worker = PIDWorker(
-            bus=self._bus, controller=controller, engine=engine, mode_manager=mode_manager
-        )
 
         # Stats worker — always active
         stats_worker = StatsWorker(bus=self._bus, controller=controller)
@@ -50,15 +48,38 @@ class LoopManager:
         # AI worker — only if engine != NONE
         ai_worker = AIWorker(bus=self._bus, controller=controller)
 
-        ctx = LoopContext(
-            controller=controller, pid_worker=pid_worker,
-            engine=engine, mode_manager=mode_manager,
-            stats_worker=stats_worker, ai_worker=ai_worker,
-        )
-        self._loops[controller.id] = ctx
-        pid_worker.start()
-        stats_worker.start()
-        ai_worker.start()  # No-op if engine=NONE
+        if self._execution_mode == "monitor":
+            monitor_worker = MonitorWorker(
+                bus=self._bus,
+                controller_id=controller.id,
+                scan_rate_ms=controller.scan_rate_ms,
+            )
+            ctx = LoopContext(
+                controller=controller,
+                monitor_worker=monitor_worker,
+                stats_worker=stats_worker,
+                ai_worker=ai_worker,
+            )
+            self._loops[controller.id] = ctx
+            monitor_worker.start()
+            stats_worker.start()
+            ai_worker.start()
+        else:
+            engine = PIDEngine()
+            mode_manager = ModeManager()
+            pid_worker = PIDWorker(
+                bus=self._bus, controller=controller,
+                engine=engine, mode_manager=mode_manager,
+            )
+            ctx = LoopContext(
+                controller=controller, pid_worker=pid_worker,
+                engine=engine, mode_manager=mode_manager,
+                stats_worker=stats_worker, ai_worker=ai_worker,
+            )
+            self._loops[controller.id] = ctx
+            pid_worker.start()
+            stats_worker.start()
+            ai_worker.start()  # No-op if engine=NONE
 
     def stop_loop(self, controller_id: int) -> None:
         ctx = self._loops.pop(controller_id, None)
@@ -68,7 +89,10 @@ class LoopManager:
             ctx.ai_worker.stop()
         if ctx.stats_worker:
             ctx.stats_worker.stop()
-        ctx.pid_worker.stop()
+        if ctx.monitor_worker:
+            ctx.monitor_worker.stop()
+        if ctx.pid_worker:
+            ctx.pid_worker.stop()
 
     def stop_all(self) -> None:
         for controller_id in list(self._loops.keys()):
@@ -76,7 +100,13 @@ class LoopManager:
 
     def is_loop_running(self, controller_id: int) -> bool:
         ctx = self._loops.get(controller_id)
-        return ctx is not None and ctx.pid_worker.is_alive()
+        if ctx is None:
+            return False
+        if ctx.pid_worker is not None:
+            return ctx.pid_worker.is_alive()
+        if ctx.monitor_worker is not None:
+            return ctx.monitor_worker.is_alive()
+        return False
 
     def get_context(self, controller_id: int) -> LoopContext | None:
         return self._loops.get(controller_id)
@@ -90,6 +120,10 @@ class LoopManager:
 
     def set_setpoint(self, controller_id: int, value: float) -> None:
         """Set SP value. Validates against sp_limits."""
+        if self._execution_mode == "monitor":
+            raise DomainError(
+                "Cannot set setpoint in monitor mode — PID is controlled by external DCS"
+            )
         ctx = self._loops.get(controller_id)
         if ctx is None:
             raise ControllerNotFoundError(controller_id)
@@ -102,6 +136,10 @@ class LoopManager:
 
     def set_mode(self, controller_id: int, mode: ControllerMode) -> None:
         """Request mode transition. Raises DomainError if rejected."""
+        if self._execution_mode == "monitor":
+            raise DomainError(
+                "Cannot set mode in monitor mode — PID is controlled by external DCS"
+            )
         ctx = self._loops.get(controller_id)
         if ctx is None:
             raise ControllerNotFoundError(controller_id)
@@ -135,6 +173,10 @@ class LoopManager:
 
     def set_output(self, controller_id: int, value: float) -> None:
         """Set CO value in MAN mode only. Validates against out_limits."""
+        if self._execution_mode == "monitor":
+            raise DomainError(
+                "Cannot set output in monitor mode — PID is controlled by external DCS"
+            )
         ctx = self._loops.get(controller_id)
         if ctx is None:
             raise ControllerNotFoundError(controller_id)

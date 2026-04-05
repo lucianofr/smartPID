@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from smart_pid_core.config import CoreSettings
 
 
@@ -29,3 +31,16 @@ class TestCoreSettings:
         from pydantic import ValidationError
         with pytest.raises(ValidationError):
             CoreSettings()  # type: ignore[call-arg]
+
+
+class TestExecutionMode:
+    def test_default_monitor(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SPID_JWT_SECRET", "test-secret")
+        s = CoreSettings()
+        assert s.execution_mode == "monitor"
+
+    def test_set_execute(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SPID_JWT_SECRET", "test-secret")
+        monkeypatch.setenv("SPID_EXECUTION_MODE", "execute")
+        s = CoreSettings()
+        assert s.execution_mode == "execute"
