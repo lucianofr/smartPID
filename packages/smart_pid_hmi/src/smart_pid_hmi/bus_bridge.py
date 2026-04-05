@@ -40,6 +40,12 @@ class BusBridge(QObject):
     def stop(self) -> None:
         self._timer.stop()
 
+    def set_refresh_ms(self, ms: int) -> None:
+        """Update the drain interval (milliseconds)."""
+        self._refresh_ms = ms
+        if self._timer.isActive():
+            self._timer.setInterval(ms)
+
     def latest(self, controller_id: int) -> dict | None:
         return self._latest.get(controller_id)
 

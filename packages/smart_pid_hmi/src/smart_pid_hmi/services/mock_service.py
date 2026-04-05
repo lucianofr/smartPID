@@ -14,6 +14,7 @@ from smart_pid_domain.dtos import (
     CommandResponse,
     ControllerResponse,
     HistoryResponse,
+    SimulatorStatusResponse,
     TelemetryFrameDTO,
     TokenResponse,
 )
@@ -166,3 +167,69 @@ class MockAPIClient:
         return UserResponse(
             id=user_id, username="user", role="OPERATOR", active=False, created_at="",
         )
+
+    # Alarms
+    def get_active_alarms(self, controller_id: int | None = None) -> list[dict]:
+        return []
+
+    def ack_alarm(self, alarm_id: int) -> dict:
+        return {"ok": True, "alarm_id": alarm_id}
+
+    def ack_all_alarms(self) -> dict:
+        return {"ok": True}
+
+    def get_alarm_history(
+        self, start: datetime, end: datetime, controller_id: int | None = None,
+    ) -> list[dict]:
+        return []
+
+    # Simulator
+    def get_simulator_status(self) -> SimulatorStatusResponse:
+        return SimulatorStatusResponse(enabled=False)
+
+    def set_simulator_preset(
+        self, controller_id: int, preset: str,
+    ) -> CommandResponse:
+        return CommandResponse(ok=True, controller_id=controller_id, detail="mock")
+
+    def set_simulator_parameters(
+        self, controller_id: int, gain: float, tau1: float,
+        tau2: float | None, dead_time: float,
+    ) -> CommandResponse:
+        return CommandResponse(ok=True, controller_id=controller_id, detail="mock")
+
+    def inject_simulator_disturbance(
+        self, controller_id: int, dist_type: str, amplitude: float,
+    ) -> CommandResponse:
+        return CommandResponse(ok=True, controller_id=controller_id, detail="mock")
+
+    def clear_simulator_disturbance(self, controller_id: int) -> CommandResponse:
+        return CommandResponse(ok=True, controller_id=controller_id, detail="mock")
+
+    # Stats
+    def get_controller_stats(self, controller_id: int) -> dict:
+        return {"controller_id": controller_id, "iae": 0.0, "ise": 0.0}
+
+    def get_all_stats(self) -> list[dict]:
+        return [
+            {"controller_id": c["id"], "iae": 0.0, "ise": 0.0}
+            for c in _MOCK_CONTROLLERS
+        ]
+
+    # Export (stubs)
+    def create_export(
+        self, controller_id: int, start: str, end: str, fmt: str = "csv",
+    ) -> dict:
+        return {"export_id": "mock-001", "status": "complete"}
+
+    def get_export_status(self, export_id: str) -> dict:
+        return {"export_id": export_id, "status": "complete"}
+
+    def download_export(self, export_id: str, dest_path: object) -> object:
+        return dest_path
+
+    def set_base_url(self, url: str) -> None:
+        pass
+
+    def close(self) -> None:
+        pass

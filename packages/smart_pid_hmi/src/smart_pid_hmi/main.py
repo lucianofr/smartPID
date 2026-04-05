@@ -6,12 +6,15 @@ import sys
 import threading
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QMetaObject, Qt, Signal, Slot
+from PySide6.QtCore import QMetaObject, Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QHBoxLayout,
     QLabel,
     QMainWindow,
+    QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QToolBar,
     QWidget,
@@ -44,6 +47,7 @@ class MainWindow(QMainWindow):
     _controllers_loaded_signal = Signal(list)
     _api_error_signal = Signal(str)
     _users_loaded_signal = Signal(list)
+    _kpi_data_signal = Signal(dict)  # KPI + performance data from background
 
     def __init__(
         self,
@@ -65,6 +69,14 @@ class MainWindow(QMainWindow):
         self._controllers_loaded_signal.connect(self._on_controllers_received)
         self._api_error_signal.connect(self._on_api_error)
         self._users_loaded_signal.connect(self._on_users_loaded)
+        self._kpi_data_signal.connect(self._on_kpi_data_received)
+
+        # Cached controller list for KPI computation
+        self._cached_controllers: list[dict] = []
+
+        # KPI refresh timer (started after login)
+        self._kpi_timer = QTimer(self)
+        self._kpi_timer.timeout.connect(self._refresh_kpis)
 
         self.setWindowTitle("Smart PID HMI")
         self.setMinimumSize(1024, 700)
@@ -79,82 +91,114 @@ class MainWindow(QMainWindow):
         theme = isa_theme
         theme.apply(QApplication.instance())
 
-        # Toolbar
-        toolbar = QToolBar("Main")
-        toolbar.setMovable(False)
-        app_label = QLabel("  Smart PID  ")
-        app_label.setStyleSheet(
-            f"font-weight: bold; font-size: {theme.font_size_title}px; "
-            f"color: {theme.fg_primary}; background: transparent;"
+        # Toolbar — polished header bar
+        self._toolbar = QToolBar("Main")
+        self._toolbar.setMovable(False)
+        self._toolbar.setFixedHeight(48)
+        self._toolbar.setStyleSheet(
+            f"QToolBar {{ background-color: {theme.bg_toolbar};"
+            f" border-bottom: 1px solid {theme.border};"
+            " spacing: 0px; }}"
         )
-        toolbar.addWidget(app_label)
-        toolbar.addSeparator()
 
+        # --- Left: app title ---
+        app_label = QLabel(
+            "\u2699 Smart PID Edge Optimizer"
+        )
+        app_label.setStyleSheet(
+            f"font-weight: bold;"
+            f" font-size: {theme.font_size_title + 2}px;"
+            f" color: {theme.fg_primary};"
+            " background: transparent;"
+            " padding: 0 12px;"
+        )
+        self._toolbar.addWidget(app_label)
+        self._app_label = app_label
+
+        # --- Connection indicator (larger dot) ---
         self._conn_indicator = QLabel(" \u25cf ")
-        self._conn_indicator.setStyleSheet("color: red; background: transparent;")
-        toolbar.addWidget(self._conn_indicator)
+        self._conn_indicator.setStyleSheet(
+            "color: red; background: transparent;"
+            " font-size: 18px; padding: 0 4px;"
+        )
+        self._toolbar.addWidget(self._conn_indicator)
+
+        # --- Center: navigation buttons ---
+        nav_container = QWidget()
+        nav_container.setStyleSheet("background: transparent;")
+        nav_layout = QHBoxLayout(nav_container)
+        nav_layout.setContentsMargins(8, 0, 8, 0)
+        nav_layout.setSpacing(2)
+
+        self._nav_buttons: list[QPushButton] = []
+        self._active_nav_btn: QPushButton | None = None
+
+        def _make_nav_btn(label: str) -> QPushButton:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setStyleSheet(self._nav_btn_style(theme, False))
+            btn.setFixedHeight(34)
+            btn.setMinimumWidth(80)
+            self._nav_buttons.append(btn)
+            nav_layout.addWidget(btn)
+            return btn
+
+        self._dashboard_nav = _make_nav_btn("Dashboard")
+        self._simulator_nav = _make_nav_btn("Simulator")
+        self._simulator_nav.setEnabled(False)
+        self._alarms_nav = _make_nav_btn("Alarms")
+        self._executive_nav = _make_nav_btn("Executive")
+        self._trends_nav = _make_nav_btn("Multi-Trend")
+        self._settings_nav = _make_nav_btn("Settings")
+        self._users_nav = _make_nav_btn("Admin")
+        self._users_nav.setVisible(False)
+
+        self._toolbar.addWidget(nav_container)
+
+        # --- Right side spacer + user label + add loop ---
+        right_spacer = QWidget()
+        right_spacer.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred,
+        )
+        right_spacer.setStyleSheet("background: transparent;")
+        self._toolbar.addWidget(right_spacer)
+
+        self._add_ctrl_btn = self._toolbar.addAction("+ Add Loop")
+        self._add_ctrl_btn.triggered.connect(self._on_add_controller)
+        self._add_ctrl_btn.setEnabled(False)
 
         self._user_label = QLabel("")
         self._user_label.setStyleSheet(
-            f"color: {theme.fg_secondary}; background: transparent; padding-left: 8px;"
+            f"color: {theme.fg_secondary};"
+            " background: transparent; padding: 0 12px;"
         )
-        toolbar.addWidget(self._user_label)
+        self._toolbar.addWidget(self._user_label)
 
-        toolbar.addSeparator()
-        self._add_ctrl_btn = toolbar.addAction("+ Add Loop")
-        self._add_ctrl_btn.triggered.connect(self._on_add_controller)
-        self._add_ctrl_btn.setEnabled(False)  # enabled after login
-        toolbar.addSeparator()
-        self._dashboard_btn = toolbar.addAction("Dashboard")
-        self._dashboard_btn.triggered.connect(
-            lambda: self._stack.setCurrentWidget(self._dashboard_page)
-        )
-        self._simulator_btn = toolbar.addAction("Simulator")
-        self._simulator_btn.triggered.connect(
-            lambda: self._stack.setCurrentWidget(self._simulator_page)
-        )
-        self._simulator_btn.setEnabled(False)  # enabled after login if backend has simulator
-        self._alarms_btn = toolbar.addAction("Alarms")
-        self._alarms_btn.triggered.connect(
-            lambda: self._stack.setCurrentWidget(self._alarm_panel)
-        )
-        self._executive_btn = toolbar.addAction("Executive")
-        self._executive_btn.triggered.connect(
-            lambda: self._stack.setCurrentWidget(self._executive_page)
-        )
-        self._trends_btn = toolbar.addAction("Trends")
-        self._trends_btn.triggered.connect(
-            lambda: self._stack.setCurrentWidget(self._multi_trend_page)
-        )
-        self._settings_btn = toolbar.addAction("Settings")
-        self._settings_btn.triggered.connect(
-            lambda: self._stack.setCurrentWidget(self._settings_page)
-        )
-        self._users_btn = toolbar.addAction("Users")
-        self._users_btn.triggered.connect(
-            lambda: self._show_users_page()
-        )
-        self._users_btn.setVisible(False)
+        self.addToolBar(self._toolbar)
 
-        spacer = QWidget()
-        toolbar.addWidget(spacer)
-        self.addToolBar(toolbar)
+        # Backward-compat action references for _enable_simulator
+        self._simulator_btn = self._simulator_nav
+        self._users_btn = self._users_nav
 
         # Pages
         self._stack = QStackedWidget()
         self.setCentralWidget(self._stack)
 
-        self._connection_page = ConnectionPage(theme=theme, default_url=settings.server_url)
-        self._dashboard_page = DashboardPage(theme=theme, bus_bridge=bus_bridge)
+        self._connection_page = ConnectionPage(
+            theme=theme, default_url=settings.server_url,
+        )
+        self._dashboard_page = DashboardPage(
+            theme=theme, bus_bridge=bus_bridge,
+        )
         self._stack.addWidget(self._connection_page)
         self._stack.addWidget(self._dashboard_page)
         self._simulator_page = SimulatorPage(theme=theme)
         self._stack.addWidget(self._simulator_page)
         self._alarm_panel = AlarmPanel(theme=theme)
         self._stack.addWidget(self._alarm_panel)
-        self._executive_page = ExecutiveDashboardPage()
+        self._executive_page = ExecutiveDashboardPage(theme=theme)
         self._stack.addWidget(self._executive_page)
-        self._multi_trend_page = MultiTrendPage()
+        self._multi_trend_page = MultiTrendPage(theme=theme)
         self._stack.addWidget(self._multi_trend_page)
         self._settings_page = SettingsPage(
             theme_manager=self._theme_manager,
@@ -165,25 +209,60 @@ class MainWindow(QMainWindow):
         self._user_mgmt_page = UserManagementPage(theme=theme)
         self._stack.addWidget(self._user_mgmt_page)
 
+        # Nav button -> page mapping and wiring
+        self._nav_page_map: dict[QPushButton, QWidget] = {
+            self._dashboard_nav: self._dashboard_page,
+            self._simulator_nav: self._simulator_page,
+            self._alarms_nav: self._alarm_panel,
+            self._executive_nav: self._executive_page,
+            self._trends_nav: self._multi_trend_page,
+            self._settings_nav: self._settings_page,
+            self._users_nav: self._user_mgmt_page,
+        }
+        for btn, page in self._nav_page_map.items():
+            if btn is self._users_nav:
+                btn.clicked.connect(
+                    lambda _=False, b=btn: (
+                        self._set_active_nav(b),
+                        self._show_users_page(),
+                    )
+                )
+            else:
+                btn.clicked.connect(
+                    lambda _=False, p=page, b=btn: (
+                        self._set_active_nav(b),
+                        self._stack.setCurrentWidget(p),
+                    )
+                )
+
         # Wire signals
         self._connection_page.login_requested.connect(self._on_login)
         self._dashboard_page.setpoint_requested.connect(self._send_setpoint)
         self._dashboard_page.mode_requested.connect(self._send_mode)
         self._dashboard_page.output_requested.connect(self._send_output)
         bus_bridge.connection_lost.connect(
-            lambda: self._conn_indicator.setStyleSheet("color: red; background: transparent;")
+            lambda: self._conn_indicator.setStyleSheet(
+                "color: red; background: transparent;"
+                " font-size: 18px; padding: 0 4px;"
+            )
         )
         bus_bridge.connection_restored.connect(
-            lambda: self._conn_indicator.setStyleSheet("color: green; background: transparent;")
+            lambda: self._conn_indicator.setStyleSheet(
+                "color: #00C853; background: transparent;"
+                " font-size: 18px; padding: 0 4px;"
+            )
         )
         bus_bridge.alarm_received.connect(self._alarm_panel.on_alarm)
         self._alarm_panel.ack_all_requested.connect(self._send_ack_all)
+        self._alarm_panel.ack_requested.connect(self._send_ack_single)
         self._simulator_page.preset_changed.connect(self._send_sim_preset)
         self._simulator_page.parameters_changed.connect(self._send_sim_parameters)
         self._simulator_page.step_requested.connect(self._send_sim_step)
         self._simulator_page.noise_requested.connect(self._send_sim_noise)
         self._simulator_page.clear_disturbance_requested.connect(self._send_sim_clear)
         self._settings_page.theme_changed.connect(self._on_theme_switch)
+        self._settings_page.refresh_rate_changed.connect(self._on_refresh_rate_changed)
+        bus_bridge.telemetry_received.connect(self._on_telemetry_for_trends)
         self._user_mgmt_page.user_create_requested.connect(self._create_user)
         self._user_mgmt_page.user_update_requested.connect(self._update_user)
         self._user_mgmt_page.user_deactivate_requested.connect(self._deactivate_user)
@@ -210,7 +289,11 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _login_success(self) -> None:
-        self._conn_indicator.setStyleSheet("color: green; background: transparent;")
+        self._conn_indicator.setStyleSheet(
+            "color: #00C853; background: transparent;"
+            " font-size: 18px; padding: 0 4px;"
+        )
+        self._set_active_nav(self._dashboard_nav)
         self._user_label.setText(self._session.username or "")
         self._add_ctrl_btn.setEnabled(True)
         self._telemetry_source.start()
@@ -219,6 +302,8 @@ class MainWindow(QMainWindow):
         self._stack.setCurrentWidget(self._dashboard_page)
         self._check_simulator_available()
         self._show_admin_controls()
+        # Start periodic KPI refresh (every 30 seconds)
+        self._kpi_timer.start(30_000)
 
     @Slot(str)
     def _on_login_error_received(self, error_msg: str) -> None:
@@ -247,8 +332,41 @@ class MainWindow(QMainWindow):
     @Slot(list)
     def _on_controllers_received(self, controllers: list[dict]) -> None:
         """Handle controllers loaded via thread-safe signal."""
+        self._cached_controllers = controllers
         self._dashboard_page.populate_controllers(controllers)
         self._simulator_page.populate_controllers(controllers)
+
+        # Feed multi-trend page with available loop names
+        loop_names = [c.get("name", f"Loop-{c.get('id', '?')}") for c in controllers]
+        self._multi_trend_page.set_available_loops(loop_names)
+
+        # Feed executive dashboard performance table
+        perf_rows = []
+        for c in controllers:
+            sp = c.get("sp", 0.0)
+            pv = c.get("pv", 0.0)
+            sp_range = c.get("sp_hi_lim", 100.0) - c.get("sp_lo_lim", 0.0)
+            error_pct = (abs(pv - sp) / sp_range * 100.0) if sp_range else 0.0
+            perf_rows.append({
+                "loop": c.get("name", ""),
+                "mode": c.get("mode", ""),
+                "pv": pv,
+                "sp": sp,
+                "error_pct": round(error_pct, 1),
+                "iae": 0.0,
+                "status": "OK" if c.get("mode") != "OOS" else "OOS",
+            })
+        self._executive_page.update_performance_table(perf_rows)
+
+        # Also compute initial KPIs from controller data
+        total = len(controllers)
+        in_auto = sum(1 for c in controllers if c.get("mode") == "AUTO")
+        self._executive_page.update_kpis(
+            total=total,
+            in_auto=in_auto,
+            active_alarms=0,
+            ai_active=0,
+        )
 
     @Slot(str)
     def _on_api_error(self, error_msg: str) -> None:
@@ -285,6 +403,10 @@ class MainWindow(QMainWindow):
 
     def _send_output(self, controller_id: int, value: float) -> None:
         self._safe_api_call(self._api_client.set_output, controller_id, value)
+
+    def _send_ack_single(self, alarm_id: int) -> None:
+        """ACK a single alarm by id."""
+        self._safe_api_call(self._api_client.ack_alarm, alarm_id)
 
     def _send_ack_all(self) -> None:
         self._safe_api_call(self._api_client.ack_all_alarms)
@@ -345,6 +467,77 @@ class MainWindow(QMainWindow):
         if cid is None:
             return
         self._safe_api_call(self._api_client.clear_simulator_disturbance, cid)
+
+    def _on_refresh_rate_changed(self, ms: int) -> None:
+        """Update BusBridge refresh interval when user changes setting."""
+        self._bus_bridge.set_refresh_ms(ms)
+
+    def _on_telemetry_for_trends(self, controller_id: int, frame: object) -> None:
+        """Forward telemetry to multi-trend page for matching plots."""
+        if not isinstance(frame, dict):
+            return
+        # Find which plot panels are showing this controller
+        name = ""
+        for c in self._cached_controllers:
+            if c.get("id") == controller_id:
+                name = c.get("name", "")
+                break
+        if not name:
+            return
+        for i, combo in enumerate(self._multi_trend_page._loop_combos):
+            if combo.currentText() == name:
+                # Append to internal buffer and update plot
+                if not hasattr(self, "_trend_buffers"):
+                    self._trend_buffers: dict[int, dict] = {}
+                buf = self._trend_buffers.setdefault(i, {
+                    "ts": [], "pvs": [], "sps": [], "cos": [],
+                })
+                buf["ts"].append(len(buf["ts"]))
+                buf["pvs"].append(frame.get("pv", 0.0))
+                buf["sps"].append(frame.get("sp", 0.0))
+                buf["cos"].append(frame.get("co", 0.0))
+                # Keep max 3600 points
+                max_pts = 3600
+                if len(buf["ts"]) > max_pts:
+                    for k in buf:
+                        buf[k] = buf[k][-max_pts:]
+                self._multi_trend_page.update_plot(
+                    i, buf["ts"], buf["pvs"], buf["sps"], buf["cos"],
+                )
+
+    def _refresh_kpis(self) -> None:
+        """Fetch KPI data from API in a background thread."""
+        def do_fetch():
+            try:
+                alarms = self._api_client.get_active_alarms()
+                stats = self._api_client.get_all_stats()
+                self._kpi_data_signal.emit({
+                    "active_alarms": len(alarms),
+                    "stats": stats,
+                })
+            except Exception as e:
+                logger.debug("KPI refresh failed: %s", e)
+
+        threading.Thread(target=do_fetch, daemon=True).start()
+
+    @Slot(dict)
+    def _on_kpi_data_received(self, data: dict) -> None:
+        """Update executive dashboard with KPI data from background fetch."""
+        active_alarms = data.get("active_alarms", 0)
+        total = len(self._cached_controllers)
+        in_auto = sum(
+            1 for c in self._cached_controllers if c.get("mode") == "AUTO"
+        )
+        ai_active = sum(
+            1 for c in self._cached_controllers
+            if c.get("ai_mode") and c.get("ai_mode") != "NONE"
+        )
+        self._executive_page.update_kpis(
+            total=total,
+            in_auto=in_auto,
+            active_alarms=active_alarms,
+            ai_active=ai_active,
+        )
 
     def _on_theme_switch(self, name: str) -> None:
         """Apply the selected theme globally and propagate to child widgets."""
@@ -423,6 +616,7 @@ class MainWindow(QMainWindow):
         threading.Thread(target=do_reactivate, daemon=True).start()
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        self._kpi_timer.stop()
         self._bus_bridge.stop()
         self._telemetry_source.stop()
         if hasattr(self._api_client, "close"):

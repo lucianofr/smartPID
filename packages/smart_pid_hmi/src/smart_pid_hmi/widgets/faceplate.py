@@ -21,6 +21,23 @@ if TYPE_CHECKING:
     from smart_pid_hmi.themes.base import ThemeBase
 
 
+def _theme_attr(theme: ThemeBase, attr: str, fallback: str) -> str:
+    """Return theme attribute if non-empty, else fallback."""
+    val = getattr(theme, attr, "")
+    return val if val else fallback
+
+
+def _separator(theme: ThemeBase) -> QFrame:
+    """Create a horizontal separator line."""
+    line = QFrame()
+    line.setFrameShape(QFrame.Shape.HLine)
+    line.setFixedHeight(1)
+    line.setStyleSheet(
+        f"background-color: {theme.border}; border: none;"
+    )
+    return line
+
+
 class FaceplateWidget(QFrame):
     """Detailed control panel for a single controller."""
 
@@ -28,31 +45,35 @@ class FaceplateWidget(QFrame):
     mode_requested = Signal(int, str)          # (controller_id, mode)
     output_requested = Signal(int, float)      # (controller_id, value)
 
-    def __init__(self, theme: ThemeBase, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, theme: ThemeBase, parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self._theme = theme
         self._controller_id: int | None = None
+        self._active_mode: str = ""
+        self._separators: list[QFrame] = []
 
-        self.setFrameShape(QFrame.Shape.Box)
-        self.setStyleSheet(
-            f"FaceplateWidget {{ background-color: {theme.bg_secondary}; "
-            f"border: 1px solid {theme.border}; }}"
-        )
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self._apply_frame_style(theme)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(8)
 
-        # Header
+        # -- Header --
         self._tag_label = QLabel("\u2014")
         self._tag_label.setStyleSheet(
-            f"font-size: {theme.font_size_title}px; font-weight: bold; "
+            f"font-size: {theme.font_size_title + 2}px; "
+            f"font-weight: bold; "
             f"color: {theme.fg_primary}; background: transparent;"
         )
         self._mode_label = QLabel("\u2014")
         self._mode_label.setStyleSheet(
-            f"font-size: {theme.font_size_label}px; color: {theme.fg_secondary}; "
-            f"background: transparent; padding: 2px 6px; border: 1px solid {theme.border};"
+            f"font-size: {theme.font_size_label}px; "
+            f"color: {theme.fg_secondary}; "
+            f"background: transparent; padding: 2px 8px; "
+            f"border: 1px solid {theme.border};"
         )
         header = QHBoxLayout()
         header.addWidget(self._tag_label)
@@ -60,7 +81,12 @@ class FaceplateWidget(QFrame):
         header.addWidget(self._mode_label)
         layout.addLayout(header)
 
-        # Bars (created with defaults, replaced on controller select)
+        # -- Separator --
+        sep1 = _separator(theme)
+        self._separators.append(sep1)
+        layout.addWidget(sep1)
+
+        # -- Bars (created with defaults, replaced on controller select) --
         self._bar_pv = AnalogBarWidget("PV", "", 0.0, 100.0, theme)
         self._bar_sp = AnalogBarWidget("SP", "", 0.0, 100.0, theme)
         self._bar_co = AnalogBarWidget("CO", "%", 0.0, 100.0, theme)
@@ -68,67 +94,191 @@ class FaceplateWidget(QFrame):
         layout.addWidget(self._bar_sp)
         layout.addWidget(self._bar_co)
 
-        # SP input
+        # -- Separator --
+        sep2 = _separator(theme)
+        self._separators.append(sep2)
+        layout.addWidget(sep2)
+
+        # -- SP input --
         sp_row = QHBoxLayout()
-        sp_row.addWidget(QLabel("SP:"))
+        sp_row.setSpacing(8)
+        sp_lbl = QLabel("SP Local:")
+        sp_lbl.setStyleSheet(
+            f"color: {theme.fg_secondary}; background: transparent; "
+            f"font-size: {theme.font_size_label}px; font-weight: bold;"
+        )
+        sp_lbl.setFixedWidth(70)
+        sp_row.addWidget(sp_lbl)
         self._sp_input = QLineEdit()
         self._sp_input.setPlaceholderText("Enter SP")
+        self._apply_input_style(self._sp_input, theme)
         self._sp_input.returnPressed.connect(self._on_sp_enter)
         sp_row.addWidget(self._sp_input)
         layout.addLayout(sp_row)
 
-        # CO input
+        # -- CO input --
         co_row = QHBoxLayout()
-        co_row.addWidget(QLabel("CO:"))
+        co_row.setSpacing(8)
+        co_lbl = QLabel("CO (MAN):")
+        co_lbl.setStyleSheet(
+            f"color: {theme.fg_secondary}; background: transparent; "
+            f"font-size: {theme.font_size_label}px; font-weight: bold;"
+        )
+        co_lbl.setFixedWidth(70)
+        co_row.addWidget(co_lbl)
         self._co_input = QLineEdit()
-        self._co_input.setPlaceholderText("Enter CO (MAN)")
+        self._co_input.setPlaceholderText("Enter CO")
+        self._apply_input_style(self._co_input, theme)
         self._co_input.returnPressed.connect(self._on_co_enter)
         co_row.addWidget(self._co_input)
         layout.addLayout(co_row)
 
-        # Mode buttons
+        # -- Separator --
+        sep3 = _separator(theme)
+        self._separators.append(sep3)
+        layout.addWidget(sep3)
+
+        # -- PID Mode toggle buttons --
         mode_row = QHBoxLayout()
-        self._btn_auto = QPushButton("Auto")
-        self._btn_man = QPushButton("Man")
+        mode_row.setSpacing(8)
+        mode_lbl = QLabel("PID Mode:")
+        mode_lbl.setStyleSheet(
+            f"color: {theme.fg_secondary}; background: transparent; "
+            f"font-size: {theme.font_size_label}px; font-weight: bold;"
+        )
+        mode_row.addWidget(mode_lbl)
+        self._btn_auto = QPushButton("AUTO")
+        self._btn_man = QPushButton("MAN")
+        self._btn_auto.setFixedHeight(32)
+        self._btn_man.setFixedHeight(32)
         self._btn_auto.clicked.connect(lambda: self._on_mode("AUTO"))
         self._btn_man.clicked.connect(lambda: self._on_mode("MAN"))
+        self._apply_toggle_style(theme)
         mode_row.addWidget(self._btn_auto)
         mode_row.addWidget(self._btn_man)
+        mode_row.addStretch()
         layout.addLayout(mode_row)
 
-        # Stats placeholder
-        stats_label = QLabel("IAE: \u2014 | 2\u03c3/Range: \u2014")
-        stats_label.setStyleSheet(
-            f"font-size: {theme.font_size_label}px; color: {theme.fg_secondary}; "
+        # -- Separator --
+        sep4 = _separator(theme)
+        self._separators.append(sep4)
+        layout.addWidget(sep4)
+
+        # -- Stats row --
+        self._stats_label = QLabel("IAE: \u2014 | 2\u03c3/Range: \u2014")
+        fg_muted = _theme_attr(theme, "fg_muted", theme.fg_secondary)
+        self._stats_label.setStyleSheet(
+            f"font-size: {theme.font_size_label}px; "
+            f"color: {fg_muted}; "
             f"background: transparent;"
         )
-        layout.addWidget(stats_label)
+        layout.addWidget(self._stats_label)
         layout.addStretch()
+
+    def _apply_frame_style(self, theme: ThemeBase) -> None:
+        bg = _theme_attr(theme, "bg_card", theme.bg_secondary)
+        br = _theme_attr(theme, "border_radius", "0px")
+        self.setStyleSheet(
+            f"FaceplateWidget {{ background-color: {bg}; "
+            f"border: 1px solid {theme.border}; "
+            f"border-radius: {br}; }}"
+        )
+
+    def _apply_input_style(
+        self, widget: QLineEdit, theme: ThemeBase,
+    ) -> None:
+        bg = _theme_attr(theme, "bg_input", theme.bg_widget)
+        br = _theme_attr(theme, "border_radius", "0px")
+        focus = _theme_attr(theme, "border_focus", theme.fg_secondary)
+        widget.setStyleSheet(
+            f"QLineEdit {{ "
+            f"background-color: {bg}; "
+            f"color: {theme.fg_primary}; "
+            f"border: 1px solid {theme.border}; "
+            f"border-radius: {br}; "
+            f"padding: 4px 8px; "
+            f"font-size: {theme.font_size_normal}px; }} "
+            f"QLineEdit:focus {{ "
+            f"border: 1px solid {focus}; }}"
+        )
+
+    def _apply_toggle_style(self, theme: ThemeBase) -> None:
+        """Style mode buttons as flat toggle switches."""
+        accent = _theme_attr(theme, "accent", theme.fg_secondary)
+        br = _theme_attr(theme, "border_radius", "0px")
+        bg_dim = _theme_attr(theme, "bg_input", theme.bg_widget)
+        fg_muted = _theme_attr(theme, "fg_muted", theme.fg_secondary)
+        for btn, is_active in [
+            (self._btn_auto, self._active_mode == "AUTO"),
+            (self._btn_man, self._active_mode == "MAN"),
+        ]:
+            if is_active:
+                btn.setStyleSheet(
+                    f"QPushButton {{ "
+                    f"background-color: {accent}; "
+                    f"color: {theme.fg_primary}; "
+                    f"border: 1px solid {accent}; "
+                    f"border-radius: {br}; "
+                    f"padding: 4px 16px; "
+                    f"font-weight: bold; "
+                    f"font-size: {theme.font_size_normal}px; }}"
+                )
+            else:
+                btn.setStyleSheet(
+                    f"QPushButton {{ "
+                    f"background-color: {bg_dim}; "
+                    f"color: {fg_muted}; "
+                    f"border: 1px solid {theme.border}; "
+                    f"border-radius: {br}; "
+                    f"padding: 4px 16px; "
+                    f"font-size: {theme.font_size_normal}px; }}"
+                )
 
     def apply_theme(self, theme: ThemeBase) -> None:
         """Update cached theme reference for dynamic theme switching."""
         self._theme = theme
-        self.setStyleSheet(
-            f"FaceplateWidget {{ background-color: {theme.bg_secondary}; "
-            f"border: 1px solid {theme.border}; }}"
+        self._apply_frame_style(theme)
+        self._bar_pv.apply_theme(theme)
+        self._bar_sp.apply_theme(theme)
+        self._bar_co.apply_theme(theme)
+        self._apply_input_style(self._sp_input, theme)
+        self._apply_input_style(self._co_input, theme)
+        self._apply_toggle_style(theme)
+        for sep in self._separators:
+            sep.setStyleSheet(
+                f"background-color: {theme.border}; border: none;"
+            )
+        fg_muted = _theme_attr(theme, "fg_muted", theme.fg_secondary)
+        self._stats_label.setStyleSheet(
+            f"font-size: {theme.font_size_label}px; "
+            f"color: {fg_muted}; background: transparent;"
         )
         self.update()
 
     def on_controller_selected(
-        self, controller_id: int, tag_name: str, min_val: float, max_val: float
+        self,
+        controller_id: int,
+        tag_name: str,
+        min_val: float,
+        max_val: float,
     ) -> None:
         self._controller_id = controller_id
         self._tag_label.setText(tag_name)
         self._mode_label.setText("\u2014")
+        self._active_mode = ""
+        self._apply_toggle_style(self._theme)
         # Reset bars with new range
         for bar in [self._bar_pv, self._bar_sp]:
-            bar._min = min_val
-            bar._max = max_val
+            bar._min = min_val  # noqa: SLF001
+            bar._max = max_val  # noqa: SLF001
             bar.set_value(0.0)
         self._bar_co.set_value(0.0)
 
     def on_telemetry(self, controller_id: int, frame: dict) -> None:
-        if self._controller_id is None or controller_id != self._controller_id:
+        if (
+            self._controller_id is None
+            or controller_id != self._controller_id
+        ):
             return
         self._bar_pv.set_value(frame.get("pv", 0.0))
         self._bar_pv.set_sp_marker(frame.get("sp"))
@@ -136,7 +286,11 @@ class FaceplateWidget(QFrame):
         self._bar_co.set_value(frame.get("co", 0.0))
         mode = frame.get("mode")
         if mode:
-            self._mode_label.setText(str(mode))
+            mode_str = str(mode).upper()
+            self._mode_label.setText(mode_str)
+            if mode_str != self._active_mode:
+                self._active_mode = mode_str
+                self._apply_toggle_style(self._theme)
 
     def _on_sp_enter(self) -> None:
         if self._controller_id is None:
@@ -155,6 +309,17 @@ class FaceplateWidget(QFrame):
             self.output_requested.emit(self._controller_id, val)
         except ValueError:
             pass
+
+    def update_stats(self, iae: float, variability: float) -> None:
+        """Update performance stats display.
+
+        Args:
+            iae: Integral of Absolute Error.
+            variability: 2-sigma / range expressed as percentage.
+        """
+        self._stats_label.setText(
+            f"IAE: {iae:.2f} | 2\u03c3/Range: {variability:.1f}%"
+        )
 
     def _on_mode(self, mode: str) -> None:
         if self._controller_id is not None:

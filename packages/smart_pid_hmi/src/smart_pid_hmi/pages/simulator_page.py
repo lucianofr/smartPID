@@ -198,3 +198,7 @@ class SimulatorPage(QWidget):
     def current_controller_id(self) -> int | None:
         data = self._controller_combo.currentData()
         return data if isinstance(data, int) else None
+
+    def apply_theme(self, theme: ThemeBase) -> None:
+        """Re-apply theme colors to dynamic elements."""
+        self._theme = theme
