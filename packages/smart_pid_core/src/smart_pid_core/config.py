@@ -40,3 +40,6 @@ class CoreSettings(BaseSettings):
 
     # Logging
     log_level: str = "INFO"
+
+    # Execution
+    execution_mode: str = "monitor"
