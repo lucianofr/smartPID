@@ -4,9 +4,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QGridLayout,
+    QHBoxLayout,
     QLabel,
+    QScrollArea,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -20,9 +22,6 @@ from smart_pid_hmi.widgets.trend_chart import TrendChartWidget
 if TYPE_CHECKING:
     from smart_pid_hmi.bus_bridge import BusBridge
     from smart_pid_hmi.themes.base import ThemeBase
-
-_GRID_COLS = 4
-
 
 class DashboardPage(QWidget):
     """Main operational dashboard with cards, trend, faceplate, alarm bar."""
@@ -60,12 +59,23 @@ class DashboardPage(QWidget):
         )
         layout.addWidget(self._overview_label)
 
-        # Top: cards in horizontal layout (no scroll, fixed height)
+        # Top: cards in horizontal row, left-justified, scrollable
+        self._cards_scroll = QScrollArea()
+        self._cards_scroll.setWidgetResizable(True)
+        self._cards_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        )
+        self._cards_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded,
+        )
+        self._cards_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         self._cards_container = QWidget()
-        self._cards_layout = QGridLayout(self._cards_container)
-        self._cards_layout.setSpacing(8)
+        self._cards_layout = QHBoxLayout(self._cards_container)
+        self._cards_layout.setSpacing(6)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._cards_container)
+        self._cards_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self._cards_scroll.setWidget(self._cards_container)
+        layout.addWidget(self._cards_scroll)
 
         # Section title: detail
         self._detail_label = QLabel(
@@ -126,9 +136,7 @@ class DashboardPage(QWidget):
             )
             card.controller_selected.connect(self._on_card_selected)
             card.settings_requested.connect(self.settings_requested)
-            row = idx // _GRID_COLS
-            col = idx % _GRID_COLS
-            self._cards_layout.addWidget(card, row, col)
+            self._cards_layout.addWidget(card)
             self._cards.append(card)
 
         # Auto-select first

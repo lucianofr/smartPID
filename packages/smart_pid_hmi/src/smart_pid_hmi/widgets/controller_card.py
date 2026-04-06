@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -21,8 +20,7 @@ if TYPE_CHECKING:
 
     from smart_pid_hmi.themes.base import ThemeBase
 
-_CARD_MIN_WIDTH = 220
-_CARD_MAX_WIDTH = 400
+_CARD_WIDTH = 280
 _CARD_MIN_HEIGHT = 140
 _ALARM_STRIP_HEIGHT = 4
 
@@ -57,12 +55,8 @@ class ControllerCardWidget(QFrame):
         self._theme = theme
         self._alarm_priority: str | None = None
 
-        self.setMinimumWidth(_CARD_MIN_WIDTH)
-        self.setMaximumWidth(_CARD_MAX_WIDTH)
+        self.setFixedWidth(_CARD_WIDTH)
         self.setMinimumHeight(_CARD_MIN_HEIGHT)
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred,
-        )
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._apply_card_style(theme)
