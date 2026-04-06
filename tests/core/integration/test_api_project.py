@@ -19,55 +19,45 @@ class TestGetCurrentProject:
 
 class TestNewProject:
     async def test_creates_project(
-        self, client: httpx.AsyncClient, tmp_path,
+        self, client: httpx.AsyncClient,
     ) -> None:
-        dest = str(tmp_path / "new_api.spid")
         resp = await client.post(
-            "/project/new", json={"name": "API Test", "path": dest},
+            "/project/new", json={"name": "API Test"},
         )
         assert resp.status_code == 200
         data = resp.json()
         assert data["name"] == "API Test"
-        assert data["path"] == dest
+        assert data["path"] == "API Test.spid"
         assert data["controller_count"] == 0
+
+    async def test_conflict_returns_409(
+        self, client: httpx.AsyncClient,
+    ) -> None:
+        await client.post("/project/new", json={"name": "dup"})
+        resp = await client.post("/project/new", json={"name": "dup"})
+        assert resp.status_code == 409
 
 
 class TestOpenProject:
     async def test_opens_existing(
-        self, client: httpx.AsyncClient, tmp_path,
+        self, client: httpx.AsyncClient, api_deps,
     ) -> None:
-        # Create a valid .spid file
-        existing = tmp_path / "open_api.spid"
-        prep = SQLiteRepository(existing)
-        await prep.initialize()
-        await prep.set_meta("nome", "OpenMe")
-        await prep.close()
-
+        # Create a project via the API first
+        await client.post("/project/new", json={"name": "openme"})
+        # Now create another project so "openme" is no longer active
+        await client.post("/project/new", json={"name": "other"})
+        # Open the first project
         resp = await client.post(
-            "/project/open", json={"path": str(existing)},
+            "/project/open", json={"name": "openme"},
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["name"] == "OpenMe"
+        assert data["name"] == "openme"
 
     async def test_returns_404_for_missing(
-        self, client: httpx.AsyncClient, tmp_path,
+        self, client: httpx.AsyncClient,
     ) -> None:
-        missing = str(tmp_path / "nope.spid")
         resp = await client.post(
-            "/project/open", json={"path": missing},
+            "/project/open", json={"name": "nonexistent"},
         )
         assert resp.status_code == 404
-
-
-class TestSaveAs:
-    async def test_copies_project(
-        self, client: httpx.AsyncClient, tmp_path,
-    ) -> None:
-        dest = str(tmp_path / "saved.spid")
-        resp = await client.post(
-            "/project/save-as", json={"path": dest},
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["path"] == dest

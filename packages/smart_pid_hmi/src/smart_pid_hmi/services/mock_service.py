@@ -212,6 +212,12 @@ class MockAPIClient:
         return []
 
     # Simulator
+    def start_simulator(self) -> CommandResponse:
+        return CommandResponse(ok=True, detail="mock start")
+
+    def stop_simulator(self) -> CommandResponse:
+        return CommandResponse(ok=True, detail="mock stop")
+
     def get_simulator_status(self) -> SimulatorStatusResponse:
         return SimulatorStatusResponse(enabled=False)
 
@@ -246,6 +252,11 @@ class MockAPIClient:
 
     def set_simulator_pid_mode(
         self, controller_id: int, mode: str,
+    ) -> CommandResponse:
+        return CommandResponse(ok=True, controller_id=controller_id, detail="mock")
+
+    def set_simulator_pid_sp(
+        self, controller_id: int, sp: float,
     ) -> CommandResponse:
         return CommandResponse(ok=True, controller_id=controller_id, detail="mock")
 

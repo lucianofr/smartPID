@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QMetaObject, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import Q_ARG, QMetaObject, Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -295,6 +295,9 @@ class MainWindow(QMainWindow):
         self._simulator_page.pid_mode_changed.connect(self._send_sim_pid_mode)
         self._simulator_page.auto_sp_changed.connect(self._send_sim_auto_sp)
         self._simulator_page.auto_disturbance_changed.connect(self._send_sim_auto_dist)
+        self._simulator_page.sim_start_requested.connect(self._send_sim_start)
+        self._simulator_page.sim_stop_requested.connect(self._send_sim_stop)
+        self._simulator_page.pid_sp_changed.connect(self._send_sim_pid_sp)
         self._settings_page.theme_changed.connect(self._on_theme_switch)
         self._settings_page.refresh_rate_changed.connect(self._on_refresh_rate_changed)
         self._settings_page.project_new_requested.connect(self._on_project_new)
@@ -600,6 +603,38 @@ class MainWindow(QMainWindow):
         self._safe_api_call(
             self._api_client.set_simulator_auto_disturbance, cid, enabled, max_amplitude_pct,
         )
+
+    def _send_sim_start(self) -> None:
+        def do_start():
+            try:
+                self._api_client.start_simulator()
+                QMetaObject.invokeMethod(
+                    self._simulator_page, "set_sim_running",
+                    Qt.ConnectionType.QueuedConnection,
+                    Q_ARG(bool, True),
+                )
+            except Exception as e:
+                self._api_error_signal.emit(str(e))
+        threading.Thread(target=do_start, daemon=True).start()
+
+    def _send_sim_stop(self) -> None:
+        def do_stop():
+            try:
+                self._api_client.stop_simulator()
+                QMetaObject.invokeMethod(
+                    self._simulator_page, "set_sim_running",
+                    Qt.ConnectionType.QueuedConnection,
+                    Q_ARG(bool, False),
+                )
+            except Exception as e:
+                self._api_error_signal.emit(str(e))
+        threading.Thread(target=do_stop, daemon=True).start()
+
+    def _send_sim_pid_sp(self, sp: float) -> None:
+        cid = self._simulator_page.current_controller_id
+        if cid is None:
+            return
+        self._safe_api_call(self._api_client.set_simulator_pid_sp, cid, sp)
 
     def _on_refresh_rate_changed(self, ms: int) -> None:
         """Update BusBridge refresh interval when user changes setting."""

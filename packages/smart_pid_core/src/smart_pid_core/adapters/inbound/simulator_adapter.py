@@ -139,6 +139,11 @@ class SimulatorAdapter:
                     params=ctrl.pid_params,
                 )
 
+    def set_pid_sp(self, controller_id: int, sp: float) -> None:
+        with self._lock:
+            ctrl = self._controllers[controller_id]
+            ctrl.sp = sp
+
     def set_pid_params(self, controller_id: int, kp: float, ti: float, td: float) -> None:
         with self._lock:
             ctrl = self._controllers[controller_id]

@@ -1,23 +1,29 @@
-"""Tests for ProjectService — project lifecycle orchestration."""
+"""Tests for ProjectService with projects_dir."""
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
+import aiosqlite
 import pytest
 
-from smart_pid_core.application.project_service import ProjectService
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+from smart_pid_core.application.project_service import ProjectService
 
 
 @pytest.fixture
-async def repo(tmp_path: Path):
-    db_path = tmp_path / "test.spid"
+async def projects_dir(tmp_path):
+    d = tmp_path / "projects"
+    d.mkdir()
+    return d
+
+
+@pytest.fixture
+async def repo(tmp_path):
+    db_path = tmp_path / "active.spid"
     r = SQLiteRepository(db_path)
     await r.initialize()
-    yield r
-    await r.close()
+    return r
 
 
 @pytest.fixture
@@ -28,134 +34,136 @@ def loop_manager():
 
 
 @pytest.fixture
-def simulator_adapter():
-    sa = MagicMock()
-    sa.stop = MagicMock()
-    return sa
-
-
-@pytest.fixture
-def service(repo, loop_manager, simulator_adapter):
+def service(repo, loop_manager, projects_dir):
     return ProjectService(
-        repo=repo, loop_manager=loop_manager,
-        simulator_adapter=simulator_adapter,
+        repo=repo,
+        loop_manager=loop_manager,
+        projects_dir=projects_dir,
     )
 
 
-class TestGetCurrent:
-    async def test_empty_project(self, service: ProjectService) -> None:
-        resp = await service.get_current()
-        assert resp.controller_count == 0
-
-    async def test_returns_name_from_meta(
-        self, service: ProjectService, repo: SQLiteRepository,
-    ) -> None:
-        await repo.set_meta("nome", "My Project")
-        resp = await service.get_current()
-        assert resp.name == "My Project"
-
-    async def test_returns_db_path(self, service: ProjectService, repo: SQLiteRepository) -> None:
-        resp = await service.get_current()
-        assert resp.path == str(repo._db_path)
+@pytest.mark.asyncio
+async def test_list_projects_empty(service):
+    result = await service.list_projects()
+    assert result == []
 
 
-class TestNewProject:
-    async def test_creates_file_and_returns_response(
-        self, service: ProjectService, tmp_path: Path,
-    ) -> None:
-        new_path = tmp_path / "new_project.spid"
-        resp = await service.new_project("New Project", new_path)
-        assert resp.name == "New Project"
-        assert resp.path == str(new_path)
-        assert resp.controller_count == 0
-        assert new_path.exists()
+@pytest.mark.asyncio
+async def test_list_projects_finds_spid_files(service, projects_dir):
+    # Create two .spid files with proper schema
+    for name in ("alpha", "beta"):
+        path = projects_dir / f"{name}.spid"
+        async with aiosqlite.connect(path) as db:
+            await db.execute(
+                "CREATE TABLE IF NOT EXISTS Controladores "
+                "(id INTEGER PRIMARY KEY, nome TEXT NOT NULL)"
+            )
+            if name == "alpha":
+                await db.execute(
+                    "INSERT INTO Controladores (nome) VALUES (?)", ("ctrl1",)
+                )
+            await db.commit()
 
-    async def test_calls_stop_all(
-        self, service: ProjectService, loop_manager, tmp_path: Path,
-    ) -> None:
-        new_path = tmp_path / "new.spid"
-        await service.new_project("X", new_path)
-        loop_manager.stop_all.assert_called_once()
-
-    async def test_stores_meta(
-        self, service: ProjectService, repo: SQLiteRepository, tmp_path: Path,
-    ) -> None:
-        new_path = tmp_path / "meta.spid"
-        await service.new_project("Meta Test", new_path)
-        assert await repo.get_meta("nome") == "Meta Test"
-        assert await repo.get_meta("criado_em") is not None
-
-    async def test_stops_simulator(
-        self, service: ProjectService, simulator_adapter, tmp_path: Path,
-    ) -> None:
-        new_path = tmp_path / "sim.spid"
-        await service.new_project("X", new_path)
-        simulator_adapter.stop.assert_called_once()
+    result = await service.list_projects()
+    names = {p.name for p in result}
+    assert names == {"alpha", "beta"}
+    alpha = next(p for p in result if p.name == "alpha")
+    assert alpha.controller_count == 1
+    beta = next(p for p in result if p.name == "beta")
+    assert beta.controller_count == 0
 
 
-class TestOpenProject:
-    async def test_opens_existing_file(
-        self, service: ProjectService, tmp_path: Path,
-    ) -> None:
-        # Create a valid .spid file first
-        existing = tmp_path / "existing.spid"
-        prep = SQLiteRepository(existing)
-        await prep.initialize()
-        await prep.set_meta("nome", "Existing")
-        await prep.close()
-
-        resp = await service.open_project(existing)
-        assert resp.name == "Existing"
-        assert resp.path == str(existing)
-
-    async def test_raises_for_missing_file(self, service: ProjectService, tmp_path: Path) -> None:
-        missing = tmp_path / "nonexistent.spid"
-        with pytest.raises(FileNotFoundError):
-            await service.open_project(missing)
-
-    async def test_calls_stop_all(
-        self, service: ProjectService, loop_manager, tmp_path: Path,
-    ) -> None:
-        existing = tmp_path / "stop.spid"
-        prep = SQLiteRepository(existing)
-        await prep.initialize()
-        await prep.close()
-
-        await service.open_project(existing)
-        loop_manager.stop_all.assert_called_once()
-
-    async def test_stops_simulator(
-        self, service: ProjectService, simulator_adapter, tmp_path: Path,
-    ) -> None:
-        existing = tmp_path / "sim_open.spid"
-        prep = SQLiteRepository(existing)
-        await prep.initialize()
-        await prep.close()
-
-        await service.open_project(existing)
-        simulator_adapter.stop.assert_called_once()
+@pytest.mark.asyncio
+async def test_list_projects_ignores_non_spid(service, projects_dir):
+    (projects_dir / "readme.txt").write_text("hello")
+    result = await service.list_projects()
+    assert result == []
 
 
-class TestSaveAs:
-    async def test_copies_and_returns_response(
-        self, service: ProjectService, repo: SQLiteRepository, tmp_path: Path,
-    ) -> None:
-        await repo.set_meta("nome", "Original")
-        dest = tmp_path / "copy.spid"
-        resp = await service.save_as(dest)
-        assert resp.path == str(dest)
-        assert dest.exists()
+@pytest.mark.asyncio
+async def test_new_project_creates_file(service, projects_dir):
+    result = await service.new_project("myproj")
+    assert result.name == "myproj"
+    assert result.path == "myproj.spid"
+    assert (projects_dir / "myproj.spid").exists()
 
-    async def test_does_not_call_stop_all(
-        self, service: ProjectService, loop_manager, tmp_path: Path,
-    ) -> None:
-        dest = tmp_path / "no_stop.spid"
-        await service.save_as(dest)
-        loop_manager.stop_all.assert_not_called()
 
-    async def test_does_not_stop_simulator(
-        self, service: ProjectService, simulator_adapter, tmp_path: Path,
-    ) -> None:
-        dest = tmp_path / "no_sim_stop.spid"
-        await service.save_as(dest)
-        simulator_adapter.stop.assert_not_called()
+@pytest.mark.asyncio
+async def test_new_project_conflict(service, projects_dir):
+    (projects_dir / "existing.spid").write_bytes(b"")
+    with pytest.raises(FileExistsError):
+        await service.new_project("existing")
+
+
+@pytest.mark.asyncio
+async def test_open_project_by_name(service, projects_dir):
+    # Create a valid .spid using the real repo to get correct schema
+    path = projects_dir / "demo.spid"
+    prep_repo = SQLiteRepository(path)
+    await prep_repo.initialize()
+    await prep_repo.set_meta("nome", "Demo Project")
+    await prep_repo.close()
+
+    result = await service.open_project("demo")
+    assert result.name == "Demo Project"
+    assert result.controller_count == 0
+
+
+@pytest.mark.asyncio
+async def test_open_project_not_found(service):
+    with pytest.raises(FileNotFoundError):
+        await service.open_project("nonexistent")
+
+
+@pytest.mark.asyncio
+async def test_import_project(service, projects_dir):
+    # Create a valid .spid in memory
+    src = projects_dir.parent / "source.spid"
+    async with aiosqlite.connect(src) as db:
+        await db.execute(
+            "CREATE TABLE IF NOT EXISTS Controladores "
+            "(id INTEGER PRIMARY KEY, nome TEXT NOT NULL)"
+        )
+        await db.commit()
+    data = src.read_bytes()
+
+    result = await service.import_project("imported", data)
+    assert result.name == "imported"
+    assert (projects_dir / "imported.spid").exists()
+
+
+@pytest.mark.asyncio
+async def test_import_project_conflict(service, projects_dir):
+    (projects_dir / "dup.spid").write_bytes(b"")
+    with pytest.raises(FileExistsError):
+        await service.import_project("dup", b"data")
+
+
+@pytest.mark.asyncio
+async def test_download_path(service, projects_dir):
+    await service.new_project("dl_test")
+    path = service.download_path()
+    assert path.exists()
+    assert path.name == "dl_test.spid"
+
+
+@pytest.mark.asyncio
+async def test_delete_project(service, projects_dir):
+    # Create a project file (not the active one)
+    path = projects_dir / "todelete.spid"
+    path.write_bytes(b"fake")
+    await service.delete_project("todelete")
+    assert not path.exists()
+
+
+@pytest.mark.asyncio
+async def test_delete_active_project_rejected(service, projects_dir):
+    await service.new_project("active_one")
+    with pytest.raises(ValueError, match="active"):
+        await service.delete_project("active_one")
+
+
+@pytest.mark.asyncio
+async def test_delete_nonexistent(service):
+    with pytest.raises(FileNotFoundError):
+        await service.delete_project("ghost")

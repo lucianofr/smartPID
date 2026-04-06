@@ -165,6 +165,9 @@ async def run_daemon(settings: CoreSettings) -> None:
     )
     logger.info("SmartPID daemon starting in %s mode", settings.execution_mode)
 
+    # Ensure projects directory exists
+    settings.projects_dir.mkdir(parents=True, exist_ok=True)
+
     # Phase 1 components
     repo = SQLiteRepository(settings.db_path)
     await repo.initialize()
@@ -286,6 +289,7 @@ async def run_daemon(settings: CoreSettings) -> None:
     project_service = ProjectService(
         repo=repo,
         loop_manager=loop_manager,
+        projects_dir=settings.projects_dir,
         simulator_adapter=simulator_adapter,
     )
 

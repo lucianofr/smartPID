@@ -49,8 +49,11 @@ async def api_deps(tmp_path):
     admin_hash = hash_password("admin")
     await user_repo.create("admin", admin_hash, "ADMIN")
 
+    projects_dir = tmp_path / "projects"
+    projects_dir.mkdir()
     project_service = ProjectService(
         repo=repo, loop_manager=loop_manager,
+        projects_dir=projects_dir,
     )
 
     yield {
