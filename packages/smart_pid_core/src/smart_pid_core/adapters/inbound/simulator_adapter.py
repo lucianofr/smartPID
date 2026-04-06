@@ -11,7 +11,11 @@ from typing import TYPE_CHECKING
 from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 from smart_pid_core.domain.services.pid_engine import PIDEngine, PIDState
 from smart_pid_core.domain.services.process_models import ProcessModel
-from smart_pid_domain.dtos.simulator import AutoDisturbanceRequest, AutoSPRequest, ControllerSimStatus
+from smart_pid_domain.dtos.simulator import (
+    AutoDisturbanceRequest,
+    AutoSPRequest,
+    ControllerSimStatus,
+)
 from smart_pid_domain.models.controller import PIDParams
 from smart_pid_domain.models.process_preset import PRESETS
 from smart_pid_domain.models.signal import FFSignal
