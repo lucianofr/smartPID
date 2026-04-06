@@ -10,10 +10,10 @@ from PySide6.QtWidgets import QWidget
 if TYPE_CHECKING:
     from smart_pid_hmi.themes.base import ThemeBase
 
-_BAR_HEIGHT = 28
-_WIDGET_HEIGHT = 40
-_LABEL_WIDTH = 40
-_VALUE_WIDTH = 90
+_BAR_HEIGHT = 22
+_WIDGET_HEIGHT = 32
+_LABEL_WIDTH = 32
+_VALUE_WIDTH = 70
 
 
 def _theme_attr(theme: ThemeBase, attr: str, fallback: str) -> str:
@@ -112,7 +112,7 @@ class AnalogBarWidget(QWidget):
         p.drawText(label_rect, Qt.AlignmentFlag.AlignVCenter, self._label)
 
         # -- Value text (right, monospaced, fixed width) --
-        value_font = QFont("Fira Code", t.font_size_value)
+        value_font = QFont("Fira Code", t.font_size_value - 2)
         value_font.setStyleHint(QFont.StyleHint.Monospace)
         p.setFont(value_font)
         p.setPen(QColor(t.fg_primary))

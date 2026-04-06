@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -242,15 +243,39 @@ class FaceplateWidget(QFrame):
         gains_row2.addWidget(self._td_input)
         layout.addLayout(gains_row2)
 
-        # -- Stats row --
-        self._stats_label = QLabel("IAE: \u2014  |  2\u03c3/Range: \u2014")
-        self._stats_label.setStyleSheet(
-            f"font-size: {theme.font_size_normal}px; "
-            f"color: {theme.fg_secondary}; "
-            f"background: transparent;"
-            f" font-family: 'Fira Code', monospace;"
+        # -- Separator --
+        sep7 = _separator(theme)
+        self._separators.append(sep7)
+        layout.addWidget(sep7)
+
+        # -- Performance metrics grid (2 columns) --
+        perf_title = QLabel("Performance")
+        perf_title.setStyleSheet(
+            f"color: {theme.fg_secondary}; background: transparent;"
+            f" font-size: {theme.font_size_label}px; font-weight: bold;"
         )
-        layout.addWidget(self._stats_label)
+        layout.addWidget(perf_title)
+        self._perf_title = perf_title
+
+        stats_grid = QGridLayout()
+        stats_grid.setSpacing(2)
+        stats_grid.setContentsMargins(0, 0, 0, 0)
+
+        self._stat_labels: dict[str, QLabel] = {}
+        metrics = [
+            ("IAE", 0, 0), ("ITAE", 0, 1),
+            ("ISE", 1, 0), ("MSE", 1, 1),
+            ("StdDev", 2, 0), ("TV", 2, 1),
+            ("2\u03c3/Range", 3, 0), ("2\u03c3/SP", 3, 1),
+        ]
+        stat_css = self._stat_cell_css(theme)
+        for name, row, col in metrics:
+            lbl = QLabel(f"{name}: \u2014")
+            lbl.setStyleSheet(stat_css)
+            stats_grid.addWidget(lbl, row, col)
+            self._stat_labels[name] = lbl
+
+        layout.addLayout(stats_grid)
         layout.addStretch()
 
     def _apply_frame_style(self, theme: ThemeBase) -> None:
@@ -338,10 +363,12 @@ class FaceplateWidget(QFrame):
         self._apply_input_style(self._kp_input, theme)
         self._apply_input_style(self._ti_input, theme)
         self._apply_input_style(self._td_input, theme)
-        self._stats_label.setStyleSheet(
-            f"font-size: {theme.font_size_normal}px; "
+        stat_css = self._stat_cell_css(theme)
+        for lbl in self._stat_labels.values():
+            lbl.setStyleSheet(stat_css)
+        self._perf_title.setStyleSheet(
             f"color: {theme.fg_secondary}; background: transparent;"
-            f" font-family: 'Fira Code', monospace;"
+            f" font-size: {theme.font_size_label}px; font-weight: bold;"
         )
         self.update()
 
@@ -455,16 +482,38 @@ class FaceplateWidget(QFrame):
             "gain": gain, "reset": reset, "rate": rate,
         })
 
-    def update_stats(self, iae: float, variability: float) -> None:
-        """Update performance stats display.
+    @staticmethod
+    def _stat_cell_css(theme: ThemeBase) -> str:
+        return (
+            f"color: {theme.fg_primary}; background: transparent;"
+            f" font-size: {theme.font_size_label}px;"
+            f" font-family: 'Fira Code', monospace;"
+            f" padding: 1px 4px;"
+        )
+
+    def update_stats(self, stats: dict) -> None:
+        """Update performance metrics grid.
 
         Args:
-            iae: Integral of Absolute Error.
-            variability: 2-sigma / range expressed as percentage.
+            stats: dict with keys matching metric names
+                   (IAE, ITAE, ISE, MSE, StdDev, TV, 2sigma_range, 2sigma_sp).
         """
-        self._stats_label.setText(
-            f"IAE: {iae:.2f} | 2\u03c3/Range: {variability:.1f}%"
-        )
+        key_map = {
+            "IAE": "iae", "ITAE": "itae", "ISE": "ise", "MSE": "mse",
+            "StdDev": "std_dev", "TV": "tv",
+            "2\u03c3/Range": "variability_range",
+            "2\u03c3/SP": "variability_sp",
+        }
+        for label_name, lbl in self._stat_labels.items():
+            key = key_map.get(label_name, label_name.lower())
+            val = stats.get(key)
+            if val is not None:
+                if label_name in ("2\u03c3/Range", "2\u03c3/SP"):
+                    lbl.setText(f"{label_name}: {val:.1f}%")
+                else:
+                    lbl.setText(f"{label_name}: {val:.2f}")
+            else:
+                lbl.setText(f"{label_name}: \u2014")
 
     def _apply_optimizer_style(self, theme: ThemeBase) -> None:
         """Style optimizer buttons as small flat controls."""

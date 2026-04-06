@@ -95,27 +95,31 @@ def test_co_input_emits_command(qtbot, theme):
 
 # --- Gap #23: stats update ---
 
-def test_stats_label_initial(qtbot, theme):
-    """Stats label shows placeholder on creation."""
+def test_stats_grid_initial(qtbot, theme):
+    """Stats grid shows placeholder dashes on creation."""
     fp = FaceplateWidget(theme=theme)
     qtbot.addWidget(fp)
-    assert "\u2014" in fp._stats_label.text()
+    assert "\u2014" in fp._stat_labels["IAE"].text()
+    assert "\u2014" in fp._stat_labels["TV"].text()
 
 
 def test_update_stats_formats_values(qtbot, theme):
-    """update_stats() formats IAE and variability correctly."""
+    """update_stats() formats metrics correctly."""
     fp = FaceplateWidget(theme=theme)
     qtbot.addWidget(fp)
-    fp.update_stats(iae=12.345, variability=3.78)
-    assert fp._stats_label.text() == "IAE: 12.35 | 2\u03c3/Range: 3.8%"
+    fp.update_stats({"iae": 12.345, "variability_range": 3.78, "tv": 5.1})
+    assert "12.35" in fp._stat_labels["IAE"].text()
+    assert "3.8%" in fp._stat_labels["2\u03c3/Range"].text()
+    assert "5.10" in fp._stat_labels["TV"].text()
 
 
 def test_update_stats_zero(qtbot, theme):
     """update_stats() handles zero values."""
     fp = FaceplateWidget(theme=theme)
     qtbot.addWidget(fp)
-    fp.update_stats(iae=0.0, variability=0.0)
-    assert fp._stats_label.text() == "IAE: 0.00 | 2\u03c3/Range: 0.0%"
+    fp.update_stats({"iae": 0.0, "variability_range": 0.0})
+    assert "0.00" in fp._stat_labels["IAE"].text()
+    assert "0.0%" in fp._stat_labels["2\u03c3/Range"].text()
 
 
 # --- Gap #24: optimizer buttons ---
