@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -548,6 +548,7 @@ class SimulatorPage(QWidget):
     def _on_opcua_apply(self) -> None:
         self.opcua_config_changed.emit(int(self._opcua_port_spin.value()))
 
+    @Slot(bool)
     def set_sim_running(self, running: bool) -> None:
         """Update Start/Stop button states based on simulation status."""
         self._sim_start_btn.setEnabled(not running)

@@ -21,12 +21,31 @@ from smart_pid_domain.dtos.simulator import (
     SimulatorPIDEnableRequest,
     SimulatorPIDModeRequest,
     SimulatorPIDParamsRequest,
+    SimulatorPIDSPRequest,
     SimulatorPIDStatusResponse,
     SimulatorPresetRequest,
     SimulatorStatusResponse,
 )
 
 router = APIRouter()
+
+
+@router.post("/start", response_model=CommandResponse)
+async def start_simulator(
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> CommandResponse:
+    adapter.start()
+    return CommandResponse(ok=True, detail="Simulator started")
+
+
+@router.post("/stop", response_model=CommandResponse)
+async def stop_simulator(
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> CommandResponse:
+    adapter.stop()
+    return CommandResponse(ok=True, detail="Simulator stopped")
 
 
 @router.get("/status", response_model=SimulatorStatusResponse)
@@ -112,6 +131,20 @@ async def set_pid_params(
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     return CommandResponse(ok=True, controller_id=controller_id, detail="PID params updated")
+
+
+@router.post("/{controller_id}/pid/sp", response_model=CommandResponse)
+async def set_pid_sp(
+    controller_id: int,
+    body: SimulatorPIDSPRequest,
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> CommandResponse:
+    try:
+        adapter.set_pid_sp(controller_id, body.sp)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
+    return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID SP={body.sp}")
 
 
 @router.post("/{controller_id}/pid/mode", response_model=CommandResponse)

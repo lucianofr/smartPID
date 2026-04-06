@@ -137,6 +137,16 @@ class APIClient:
         resp.raise_for_status()
         return resp.json().get("results", [])
 
+    def start_simulator(self) -> CommandResponse:
+        resp = self._http.post("/simulator/start", headers=self._headers())
+        resp.raise_for_status()
+        return CommandResponse.model_validate(resp.json())
+
+    def stop_simulator(self) -> CommandResponse:
+        resp = self._http.post("/simulator/stop", headers=self._headers())
+        resp.raise_for_status()
+        return CommandResponse.model_validate(resp.json())
+
     def get_simulator_status(self) -> SimulatorStatusResponse:
         resp = self._http.get("/simulator/status", headers=self._headers())
         resp.raise_for_status()
@@ -213,6 +223,17 @@ class APIClient:
         resp = self._http.post(
             f"/simulator/{controller_id}/pid/mode",
             json={"controller_id": controller_id, "mode": mode},
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return CommandResponse.model_validate(resp.json())
+
+    def set_simulator_pid_sp(
+        self, controller_id: int, sp: float,
+    ) -> CommandResponse:
+        resp = self._http.post(
+            f"/simulator/{controller_id}/pid/sp",
+            json={"controller_id": controller_id, "sp": sp},
             headers=self._headers(),
         )
         resp.raise_for_status()

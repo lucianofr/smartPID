@@ -81,6 +81,11 @@ class SimulatorPIDModeRequest(BaseModel):
     mode: Literal["MAN", "AUTO"]
 
 
+class SimulatorPIDSPRequest(BaseModel):
+    controller_id: int
+    sp: float = Field(ge=0.0, le=100.0)
+
+
 class SimulatorPIDStatusResponse(BaseModel):
     enabled: bool
     kp: float
