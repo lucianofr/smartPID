@@ -167,3 +167,60 @@ async def test_delete_active_project_rejected(service, projects_dir):
 async def test_delete_nonexistent(service):
     with pytest.raises(FileNotFoundError):
         await service.delete_project("ghost")
+
+
+# --- DaemonState integration tests ---
+
+
+@pytest.fixture
+def daemon_state(tmp_path):
+    from smart_pid_core.application.daemon_state import DaemonState
+    return DaemonState(tmp_path / "daemon_state.json")
+
+
+@pytest.fixture
+def service_with_state(repo, loop_manager, projects_dir, daemon_state):
+    return ProjectService(
+        repo=repo,
+        loop_manager=loop_manager,
+        projects_dir=projects_dir,
+        daemon_state=daemon_state,
+    )
+
+
+@pytest.mark.asyncio
+async def test_new_project_saves_daemon_state(service_with_state, daemon_state):
+    await service_with_state.new_project("stateful")
+    assert daemon_state.active_project == "stateful"
+
+
+@pytest.mark.asyncio
+async def test_open_project_saves_daemon_state(
+    service_with_state, projects_dir, daemon_state,
+):
+    path = projects_dir / "demo2.spid"
+    prep_repo = SQLiteRepository(path)
+    await prep_repo.initialize()
+    await prep_repo.set_meta("nome", "Demo2")
+    await prep_repo.close()
+
+    await service_with_state.open_project("demo2")
+    assert daemon_state.active_project == "demo2"
+
+
+@pytest.mark.asyncio
+async def test_import_project_saves_daemon_state(
+    service_with_state, projects_dir, daemon_state,
+):
+    import aiosqlite as _aiosqlite
+
+    src = projects_dir.parent / "imp.spid"
+    async with _aiosqlite.connect(src) as db:
+        await db.execute(
+            "CREATE TABLE IF NOT EXISTS Controladores "
+            "(id INTEGER PRIMARY KEY, nome TEXT NOT NULL)"
+        )
+        await db.commit()
+
+    await service_with_state.import_project("imp_state", src.read_bytes())
+    assert daemon_state.active_project == "imp_state"

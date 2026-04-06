@@ -679,13 +679,23 @@ class MainWindow(QMainWindow):
         """Poll simulator status and update live values on the simulator page."""
         cid = self._simulator_page.current_controller_id
         if cid is None:
+            logger.debug("sim poll: no controller selected, skipping")
             return
 
         def do_poll():
             try:
                 status = self._api_client.get_simulator_status()
+                if not status.controllers:
+                    logger.debug(
+                        "sim poll: backend has 0 controllers registered in simulator"
+                    )
+                    return
                 ctrl_status = status.controllers.get(cid)
                 if ctrl_status is None:
+                    logger.debug(
+                        "sim poll: controller %d not in simulator (available: %s)",
+                        cid, list(status.controllers.keys()),
+                    )
                     return
                 QMetaObject.invokeMethod(
                     self, "_apply_sim_live_values",
@@ -960,7 +970,21 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"[PROJECT CHECK] Error: {e}")  # noqa: T201
 
-        # No managed project — show Welcome Dialog
+        # Fallback: try to re-open last known project from HMI state
+        last = self._app_state.last_project_name
+        if last:
+            try:
+                result = self._api_client.open_project(last)
+                rname = result.get("name", last)
+                rpath = result.get("path", "")
+                rcount = result.get("controller_count", 0)
+                self._settings_page.update_project_info(rname, rpath, rcount)
+                self._load_dashboard()
+                return
+            except Exception as e:
+                print(f"[PROJECT RESTORE] Could not re-open '{last}': {e}")  # noqa: T201
+
+        # No managed project and no restorable project — show Welcome Dialog
         self._show_project_dialog()
 
     def _show_project_dialog(self) -> None:

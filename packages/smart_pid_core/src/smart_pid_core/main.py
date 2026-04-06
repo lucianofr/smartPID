@@ -18,6 +18,7 @@ from smart_pid_core.adapters.inbound.api.auth import hash_password
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
+from smart_pid_core.application.daemon_state import DaemonState
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.application.telemetry_publisher import TelemetryPublisher
@@ -173,6 +174,20 @@ async def run_daemon(settings: CoreSettings) -> None:
     # Phase 1 components
     repo = SQLiteRepository(settings.db_path)
     await repo.initialize()
+
+    # Restore last active project BEFORE registering controllers so that
+    # simulator / OPC-UA adapters see the correct controller set.
+    daemon_state = DaemonState()
+    last_project = daemon_state.active_project
+    if last_project and repo._db_path.name == "project.spid":
+        restore_path = settings.projects_dir / f"{last_project}.spid"
+        if restore_path.exists():
+            logger.info("restoring_last_project", name=last_project)
+            await repo.reopen(restore_path)
+        else:
+            logger.warning("last_project_not_found", name=last_project)
+            daemon_state.set_active_project(None)
+
     historian = SQLiteHistorian(repo)
     bus = EventBus()
     bus.start()
@@ -196,6 +211,11 @@ async def run_daemon(settings: CoreSettings) -> None:
                 pv_min=ctrl.pv_scale.eu_min,
                 pv_max=ctrl.pv_scale.eu_max,
             )
+        logger.info(
+            "simulator_controllers_registered",
+            count=len(controllers),
+            ids=[c.id for c in controllers],
+        )
         simulator_adapter.start_opcua()
         logger.info("opcua_server_started", port=settings.simulator_port)
         simulator_adapter.start()
@@ -289,7 +309,7 @@ async def run_daemon(settings: CoreSettings) -> None:
     export_worker = ExportWorker(historian=historian, export_dir=export_dir)
     logger.info("export_worker_created", export_dir=export_dir)
 
-    # Project service
+    # Project service (daemon_state created earlier, before controller registration)
     from smart_pid_core.application.project_service import ProjectService
 
     project_service = ProjectService(
@@ -297,6 +317,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         loop_manager=loop_manager,
         projects_dir=settings.projects_dir,
         simulator_adapter=simulator_adapter,
+        daemon_state=daemon_state,
     )
 
     # Phase 2: FastAPI

@@ -10,6 +10,7 @@ from smart_pid_domain.dtos.project import ProjectListItem, ProjectResponse
 
 if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+    from smart_pid_core.application.daemon_state import DaemonState
     from smart_pid_core.application.loop_manager import LoopManager
 
 
@@ -22,11 +23,13 @@ class ProjectService:
         loop_manager: LoopManager,
         projects_dir: Path,
         simulator_adapter: object | None = None,
+        daemon_state: DaemonState | None = None,
     ) -> None:
         self._repo = repo
         self._loop_manager = loop_manager
         self._projects_dir = projects_dir
         self._simulator_adapter = simulator_adapter
+        self._daemon_state = daemon_state
 
     @property
     def projects_dir(self) -> Path:
@@ -72,6 +75,8 @@ class ProjectService:
         self._stop_simulator()
         await self._repo.reopen(dest)
         await self._repo.set_meta("nome", name)
+        if self._daemon_state:
+            self._daemon_state.set_active_project(name)
         return ProjectResponse(
             name=name,
             path=dest.name,
@@ -87,6 +92,8 @@ class ProjectService:
         self._stop_simulator()
         await self._repo.reopen(path)
         await self._load_simulator_configs()
+        if self._daemon_state:
+            self._daemon_state.set_active_project(name)
         return await self.get_current()
 
     async def import_project(self, name: str, data: bytes) -> ProjectResponse:
@@ -99,6 +106,8 @@ class ProjectService:
         self._stop_simulator()
         await self._repo.reopen(dest)
         await self._load_simulator_configs()
+        if self._daemon_state:
+            self._daemon_state.set_active_project(name)
         return await self.get_current()
 
     def download_path(self) -> Path:
