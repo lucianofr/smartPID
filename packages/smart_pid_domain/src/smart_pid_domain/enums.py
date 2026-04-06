@@ -39,9 +39,49 @@ class ControlObjective(StrEnum):
     SURGE_LEVEL = "SURGE_LEVEL"
 
 class ProcessSpeed(StrEnum):
-    SLOW = "SLOW"
-    MEDIUM = "MEDIUM"
+    """Process dynamics speed — determines stats window and AI speed factor."""
+
+    ULTRA_FAST = "ULTRA_FAST"
     FAST = "FAST"
+    MEDIUM = "MEDIUM"
+    SLOW = "SLOW"
+
+    @property
+    def stats_window_s(self) -> int:
+        """Default statistics sliding window in seconds."""
+        return _STATS_WINDOWS[self]
+
+    @property
+    def speed_factor(self) -> float:
+        """AI tuning aggressiveness factor (Sv)."""
+        return _SPEED_FACTORS[self]
+
+    @property
+    def label(self) -> str:
+        """Human-readable label with process examples for UI."""
+        return _LABELS[self]
+
+
+_STATS_WINDOWS: dict[ProcessSpeed, int] = {
+    ProcessSpeed.ULTRA_FAST: 5,
+    ProcessSpeed.FAST: 60,
+    ProcessSpeed.MEDIUM: 1200,
+    ProcessSpeed.SLOW: 7200,
+}
+
+_SPEED_FACTORS: dict[ProcessSpeed, float] = {
+    ProcessSpeed.ULTRA_FAST: 0.02,
+    ProcessSpeed.FAST: 0.05,
+    ProcessSpeed.MEDIUM: 0.15,
+    ProcessSpeed.SLOW: 0.30,
+}
+
+_LABELS: dict[ProcessSpeed, str] = {
+    ProcessSpeed.ULTRA_FAST: "Ultra Fast — Motors / Converters",
+    ProcessSpeed.FAST: "Fast — Flow / Pressure",
+    ProcessSpeed.MEDIUM: "Medium — Level / Heat Exchangers",
+    ProcessSpeed.SLOW: "Slow — Furnaces / Distillation",
+}
 
 class ConnectionState(StrEnum):
     OFFLINE = "OFFLINE"
