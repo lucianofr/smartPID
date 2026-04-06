@@ -37,6 +37,7 @@ from smart_pid_hmi.themes import (
     ISA101Theme,
     MD3DarkTheme,
     MD3LightTheme,
+    OceanTheme,
     ThemeManager,
 )
 
@@ -98,6 +99,7 @@ class MainWindow(QMainWindow):
         self._theme_manager.register(MD3DarkTheme())
         self._theme_manager.register(MD3LightTheme())
         self._theme_manager.register(HPCLightTheme())
+        self._theme_manager.register(OceanTheme())
         self._theme_manager.set_theme("isa101")
         theme = isa_theme
         theme.apply(QApplication.instance())
