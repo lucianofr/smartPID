@@ -93,3 +93,9 @@ class SimulatorPIDStatusResponse(BaseModel):
     td: float
     mode: int  # 0=MAN, 1=AUTO
     cv: float
+
+
+class OPCUAServerStatus(BaseModel):
+    running: bool
+    port: int
+    endpoint: str
