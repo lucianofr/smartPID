@@ -168,7 +168,7 @@ async def run_daemon(settings: CoreSettings) -> None:
     # Phase 1 components
     repo = SQLiteRepository(settings.db_path)
     await repo.initialize()
-    historian = SQLiteHistorian(repo.db)
+    historian = SQLiteHistorian(repo)
     bus = EventBus()
     bus.start()
     from smart_pid_core.domain.services.alarm_engine import AlarmEngine
@@ -233,15 +233,15 @@ async def run_daemon(settings: CoreSettings) -> None:
     # Phase 5: AI Repository
     from smart_pid_core.adapters.outbound.ai_repo import AIRepository
 
-    ai_repo = AIRepository(repo.db)
+    ai_repo = AIRepository(repo)
 
     # Phase 6: Alarm + Audit infrastructure
     from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
     from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
     from smart_pid_core.application.workers.alarm_worker import AlarmWorker
 
-    alarm_repo = AlarmRepository(repo.db)
-    audit_repo = AuditRepository(repo.db)
+    alarm_repo = AlarmRepository(repo)
+    audit_repo = AuditRepository(repo)
 
     # Build alarm configs from Configuracao_Alarmes table
     alarm_configs = await _load_alarm_configs(repo.db)

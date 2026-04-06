@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import aiosqlite
+    from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 
 from smart_pid_domain.models.signal import FFSignal
 from smart_pid_domain.models.telemetry import TelemetryFrame
@@ -17,8 +17,13 @@ class SQLiteHistorian:
     Shares the aiosqlite.Connection owned by SQLiteRepository.
     """
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
-        self._db = db
+    def __init__(self, repo: SQLiteRepository) -> None:
+        self._repo = repo
+
+    @property
+    def _db(self):  # noqa: ANN202
+        """Always return the current (possibly reopened) connection."""
+        return self._repo.db
 
     async def write_batch(self, frames: list[TelemetryFrame]) -> None:
         """Batch-insert telemetry frames. No-op for empty list."""

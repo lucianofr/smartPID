@@ -43,12 +43,12 @@ async def monitor_deps(tmp_path):
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
-    historian = SQLiteHistorian(repo.db)
+    historian = SQLiteHistorian(repo)
     user_db_path = tmp_path / "users.db"
     user_repo = UserRepository(user_db_path)
     await user_repo.initialize()
-    alarm_repo = AlarmRepository(repo.db)
-    audit_repo = AuditRepository(repo.db)
+    alarm_repo = AlarmRepository(repo)
+    audit_repo = AuditRepository(repo)
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
     loop_manager = LoopManager(bus=bus, execution_mode="monitor")
@@ -156,12 +156,12 @@ class TestApplyTuning:
         db_path = tmp_path / "test.spid"
         repo = SQLiteRepository(db_path)
         await repo.initialize()
-        historian = SQLiteHistorian(repo.db)
+        historian = SQLiteHistorian(repo)
         user_db_path = tmp_path / "users.db"
         user_repo = UserRepository(user_db_path)
         await user_repo.initialize()
-        alarm_repo = AlarmRepository(repo.db)
-        audit_repo = AuditRepository(repo.db)
+        alarm_repo = AlarmRepository(repo)
+        audit_repo = AuditRepository(repo)
         bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
         bus.start()
         loop_manager = LoopManager(bus=bus, execution_mode="execute")

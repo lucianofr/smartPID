@@ -17,7 +17,7 @@ async def setup(tmp_path):
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
-    historian = SQLiteHistorian(repo.db)
+    historian = SQLiteHistorian(repo)
     bus = EventBus()
     bus.start()
     yield bus, historian, repo

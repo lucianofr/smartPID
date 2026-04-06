@@ -143,7 +143,7 @@ class TestAlarmWorkerIntegration:
 
         repo = SQLiteRepository(tmp_path / "test.db")
         await repo.initialize()
-        alarm_repo = AlarmRepository(repo.db)
+        alarm_repo = AlarmRepository(repo)
 
         mock_bus = MagicMock()
         mock_bus.create_subscriber.return_value = MagicMock()
