@@ -193,3 +193,117 @@ class TestSimulatorAdapterOPCUA:
         self, mock_adapter: SimulatorAdapter,
     ) -> None:
         mock_adapter._on_opcua_write(999, "co", 50.0)  # Should not raise
+
+
+class TestSimulatorPIDInternal:
+    """Tests for internal PID controller in simulator."""
+
+    def test_pid_disabled_by_default(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        assert adapter._controllers[1].pid_enabled is False
+
+    def test_enable_pid(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter.enable_pid(1, enabled=True)
+        assert adapter._controllers[1].pid_enabled is True
+
+    def test_disable_pid(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter.enable_pid(1, enabled=True)
+        adapter.enable_pid(1, enabled=False)
+        assert adapter._controllers[1].pid_enabled is False
+
+    def test_set_pid_params(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter.set_pid_params(1, kp=2.0, ti=5.0, td=1.0)
+        p = adapter._controllers[1].pid_params
+        assert p.gain == 2.0
+        assert p.reset == 5.0
+        assert p.rate == 1.0
+
+    def test_set_pid_mode_auto(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter.set_pid_mode(1, mode=1)
+        assert adapter._controllers[1].pid_mode == 1
+
+    def test_set_pid_mode_man(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter.set_pid_mode(1, mode=1)
+        adapter.set_pid_mode(1, mode=0)
+        assert adapter._controllers[1].pid_mode == 0
+
+    def test_get_pid_status(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter.enable_pid(1, enabled=True)
+        adapter.set_pid_params(1, kp=3.0, ti=8.0, td=0.5)
+        adapter.set_pid_mode(1, mode=1)
+        status = adapter.get_pid_status(1)
+        assert status["enabled"] is True
+        assert status["kp"] == 3.0
+        assert status["ti"] == 8.0
+        assert status["td"] == 0.5
+        assert status["mode"] == 1
+
+    def test_tick_pid_disabled_co_unchanged(self, adapter: SimulatorAdapter) -> None:
+        """When PID disabled, CO is not modified by tick."""
+        adapter.register_controller(1)
+        adapter.write_output(1, 25.0)
+        adapter._tick(0.1)
+        assert adapter._controllers[1].last_co == 25.0
+
+    def test_tick_pid_man_mode_co_unchanged(self, adapter: SimulatorAdapter) -> None:
+        """When PID enabled but in MAN mode, CO is not modified by tick."""
+        adapter.register_controller(1)
+        adapter.enable_pid(1, enabled=True)
+        adapter.set_pid_mode(1, mode=0)  # MAN
+        adapter.write_output(1, 25.0)
+        adapter._tick(0.1)
+        assert adapter._controllers[1].last_co == 25.0
+
+    def test_tick_pid_auto_computes_co(self, adapter: SimulatorAdapter) -> None:
+        """When PID enabled in AUTO, CO is computed by PIDEngine."""
+        adapter.register_controller(1)
+        adapter.enable_pid(1, enabled=True)
+        adapter.set_pid_mode(1, mode=1)  # AUTO
+        adapter._controllers[1].sp = 50.0
+        adapter._controllers[1].last_co = 0.0
+        # Run several ticks — CO should move toward correcting the error
+        for _ in range(10):
+            adapter._tick(0.1)
+        co = adapter._controllers[1].last_co
+        assert co > 0.0, f"Expected CO > 0 after PID AUTO ticks, got {co}"
+
+    def test_controller_sim_status_includes_pid(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter.enable_pid(1, enabled=True)
+        adapter.set_pid_params(1, kp=2.0, ti=5.0, td=0.5)
+        status = adapter.get_controller_status(1)
+        assert status.pid_enabled is True
+        assert status.pid_kp == 2.0
+        assert status.pid_ti == 5.0
+        assert status.pid_td == 0.5
+
+    def test_on_opcua_write_kp(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, "kp", 3.5)
+        assert adapter._controllers[1].pid_params.gain == 3.5
+
+    def test_on_opcua_write_ti(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, "ti", 8.0)
+        assert adapter._controllers[1].pid_params.reset == 8.0
+
+    def test_on_opcua_write_td(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, "td", 2.0)
+        assert adapter._controllers[1].pid_params.rate == 2.0
+
+    def test_on_opcua_write_pid_mode(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, "pid_mode", 1.0)
+        assert adapter._controllers[1].pid_mode == 1
+
+    def test_on_opcua_write_pid_sp(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, "pid_sp", 75.0)
+        assert adapter._controllers[1].sp == 75.0

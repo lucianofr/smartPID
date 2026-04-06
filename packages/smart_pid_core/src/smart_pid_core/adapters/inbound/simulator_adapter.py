@@ -9,9 +9,12 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
+from smart_pid_core.domain.services.pid_engine import PIDEngine, PIDState
 from smart_pid_core.domain.services.process_models import ProcessModel
 from smart_pid_domain.dtos.simulator import ControllerSimStatus
+from smart_pid_domain.models.controller import PIDParams
 from smart_pid_domain.models.process_preset import PRESETS
+from smart_pid_domain.models.signal import FFSignal
 
 if TYPE_CHECKING:
     from smart_pid_core.config import CoreSettings
@@ -39,6 +42,11 @@ class _ControllerSim:
     step_amplitude: float = 0.0
     noise_active: bool = False
     noise_amplitude: float = 0.0
+    # Internal PID
+    pid_enabled: bool = False
+    pid_params: PIDParams = field(default_factory=PIDParams)
+    pid_state: PIDState = field(default_factory=PIDState)
+    pid_mode: int = 0  # 0=MAN, 1=AUTO
 
 
 class SimulatorAdapter:
@@ -50,6 +58,7 @@ class SimulatorAdapter:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+        self._pid_engine = PIDEngine()
         self._opcua_server = OPCUAServer(port=settings.simulator_port)
         self._opcua_server.set_on_write(self._on_opcua_write)
 
@@ -84,6 +93,16 @@ class SimulatorAdapter:
                 ctrl.last_co = value
             elif param == "sp":
                 ctrl.sp = value
+            elif param == "kp":
+                ctrl.pid_params.gain = value
+            elif param == "ti":
+                ctrl.pid_params.reset = value
+            elif param == "td":
+                ctrl.pid_params.rate = value
+            elif param == "pid_mode":
+                ctrl.pid_mode = int(value)
+            elif param == "pid_sp":
+                ctrl.sp = value
 
     def write_output(self, controller_id: int, co: float) -> None:
         with self._lock:
@@ -93,6 +112,40 @@ class SimulatorAdapter:
 
     def write_parameter(self, controller_id: int, param: str, value: float) -> None:
         """No-op for simulator — satisfies ControlWriter protocol."""
+
+    def enable_pid(self, controller_id: int, enabled: bool) -> None:
+        with self._lock:
+            ctrl = self._controllers[controller_id]
+            ctrl.pid_enabled = enabled
+            if enabled:
+                ctrl.pid_state = self._pid_engine.bumpless_transfer(
+                    ctrl.pid_state, current_pv=0.0, current_co=ctrl.last_co,
+                    params=ctrl.pid_params,
+                )
+
+    def set_pid_params(self, controller_id: int, kp: float, ti: float, td: float) -> None:
+        with self._lock:
+            ctrl = self._controllers[controller_id]
+            ctrl.pid_params.gain = kp
+            ctrl.pid_params.reset = ti
+            ctrl.pid_params.rate = td
+
+    def set_pid_mode(self, controller_id: int, mode: int) -> None:
+        with self._lock:
+            ctrl = self._controllers[controller_id]
+            ctrl.pid_mode = mode
+
+    def get_pid_status(self, controller_id: int) -> dict:
+        with self._lock:
+            ctrl = self._controllers[controller_id]
+            return {
+                "enabled": ctrl.pid_enabled,
+                "kp": ctrl.pid_params.gain,
+                "ti": ctrl.pid_params.reset,
+                "td": ctrl.pid_params.rate,
+                "mode": ctrl.pid_mode,
+                "cv": ctrl.pid_state.cv,
+            }
 
     def register_controller(self, controller_id: int) -> None:
         with self._lock:
@@ -161,6 +214,12 @@ class SimulatorAdapter:
                 step_amplitude=ctrl.step_amplitude,
                 noise_active=ctrl.noise_active,
                 noise_amplitude=ctrl.noise_amplitude,
+                pid_enabled=ctrl.pid_enabled,
+                pid_kp=ctrl.pid_params.gain,
+                pid_ti=ctrl.pid_params.reset,
+                pid_td=ctrl.pid_params.rate,
+                pid_mode=ctrl.pid_mode,
+                pid_cv=ctrl.pid_state.cv,
             )
 
     def get_status(self) -> dict[int, ControllerSimStatus]:
@@ -176,6 +235,12 @@ class SimulatorAdapter:
                     step_amplitude=ctrl.step_amplitude,
                     noise_active=ctrl.noise_active,
                     noise_amplitude=ctrl.noise_amplitude,
+                    pid_enabled=ctrl.pid_enabled,
+                    pid_kp=ctrl.pid_params.gain,
+                    pid_ti=ctrl.pid_params.reset,
+                    pid_td=ctrl.pid_params.rate,
+                    pid_mode=ctrl.pid_mode,
+                    pid_cv=ctrl.pid_state.cv,
                 )
                 for cid, ctrl in self._controllers.items()
             }
@@ -198,6 +263,21 @@ class SimulatorAdapter:
                     pv += ctrl.step_amplitude
                 if ctrl.noise_active:
                     pv += random.gauss(0, ctrl.noise_amplitude)
+
+                # Internal PID: compute CO when enabled and AUTO
+                if ctrl.pid_enabled and ctrl.pid_mode == 1:
+                    result = self._pid_engine.compute(
+                        params=ctrl.pid_params,
+                        state=ctrl.pid_state,
+                        pv=FFSignal.good(pv),
+                        sp=FFSignal.good(ctrl.sp),
+                        bkcal_in=FFSignal.good(ctrl.pid_state.cv),
+                        dt=dt,
+                        out_limits=(0.0, 100.0),
+                    )
+                    ctrl.pid_state = result.new_state
+                    ctrl.last_co = result.cv
+
                 self._opcua_server.update_values(
                     controller_id=ctrl.controller_id,
                     pv=pv,
