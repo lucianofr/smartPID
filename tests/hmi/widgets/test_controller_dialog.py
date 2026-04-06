@@ -3,7 +3,6 @@ import pytest
 
 from smart_pid_hmi.widgets.controller_dialog import ControllerDialog
 
-
 # ---------------------------------------------------------------- fixtures
 
 EDIT_DATA: dict = {

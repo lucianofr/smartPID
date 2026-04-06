@@ -18,7 +18,6 @@ from smart_pid_domain.dtos.controllers import (
     TagBindingsDTO,
 )
 
-
 # ── Sub-model defaults ──────────────────────────────────────────────────────
 
 

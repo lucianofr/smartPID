@@ -49,8 +49,8 @@ from smart_pid_domain.enums import (
 from smart_pid_domain.exceptions import ControllerNotFoundError
 from smart_pid_domain.models.controller import (
     AIConfig,
-    ControlOpts,
     Controller,
+    ControlOpts,
     IOOpts,
     PIDParams,
     ScaleConfig,

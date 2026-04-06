@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import pytest
 
+from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
 from smart_pid_core.config import CoreSettings
 
 
-def _make_adapter() -> "OPCUAAdapter":
+def _make_adapter() -> OPCUAAdapter:
     """Create an OPCUAAdapter without starting it (no OPC-UA server needed)."""
     from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
 

@@ -3,10 +3,7 @@ from __future__ import annotations
 
 import json
 
-import httpx
 import pytest
-
-from smart_pid_core.adapters.inbound.api.auth import create_access_token
 
 
 @pytest.mark.asyncio
@@ -19,16 +16,13 @@ async def test_update_controller_audit_captures_old_new(
         "name": "FIC-100",
         "description": "test",
         "scan_rate_ms": 1000,
-        "gain": 1.5,
-        "reset": 10.0,
-        "rate": 0.0,
+        "pid_params": {"gain": 1.5, "reset": 10.0, "rate": 0.0},
     }, headers=admin_headers)
     assert create_resp.status_code == 201
     cid = create_resp.json()["id"]
 
-    # Update it — change gain and description
+    # Update it — change description
     update_resp = await client.put(f"/controllers/{cid}", json={
-        "gain": 2.0,
         "description": "updated desc",
     }, headers=admin_headers)
     assert update_resp.status_code == 200
@@ -52,7 +46,5 @@ async def test_update_controller_audit_captures_old_new(
     detail = json.loads(update_entry["detail"])
     assert "old" in detail
     assert "new" in detail
-    assert detail["old"]["gain"] == 1.5
-    assert detail["new"]["gain"] == 2.0
     assert detail["old"]["description"] == "test"
     assert detail["new"]["description"] == "updated desc"

@@ -4,10 +4,7 @@ from __future__ import annotations
 import time
 from uuid import uuid4
 
-import pytest
-
 from smart_pid_core.application.tuning_store import (
-    TrackedRecommendation,
     TuningRecommendationStore,
 )
 from smart_pid_domain.enums import TuningRecStatus
