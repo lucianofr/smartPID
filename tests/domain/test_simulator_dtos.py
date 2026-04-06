@@ -5,6 +5,10 @@ from smart_pid_domain.dtos.simulator import (
     ControllerSimStatus,
     SimulatorDisturbanceRequest,
     SimulatorParametersRequest,
+    SimulatorPIDEnableRequest,
+    SimulatorPIDModeRequest,
+    SimulatorPIDParamsRequest,
+    SimulatorPIDStatusResponse,
     SimulatorPresetRequest,
     SimulatorStatusResponse,
 )
@@ -77,3 +81,53 @@ class TestSimulatorStatusResponse:
         )
         s = SimulatorStatusResponse(enabled=True, controllers={1: ctrl})
         assert s.controllers[1].step_active
+
+
+class TestControllerSimStatusPIDFields:
+    def test_defaults(self) -> None:
+        status = ControllerSimStatus(
+            preset="FLOW", gain=1.2, tau1=3.0, tau2=None, dead_time=1.0,
+            step_active=False, step_amplitude=0.0,
+            noise_active=False, noise_amplitude=0.0,
+        )
+        assert status.pid_enabled is False
+        assert status.pid_kp == 1.0
+        assert status.pid_ti == 10.0
+        assert status.pid_td == 0.0
+        assert status.pid_mode == 0
+        assert status.pid_cv == 0.0
+
+    def test_with_pid_values(self) -> None:
+        status = ControllerSimStatus(
+            preset="FLOW", gain=1.2, tau1=3.0, tau2=None, dead_time=1.0,
+            step_active=False, step_amplitude=0.0,
+            noise_active=False, noise_amplitude=0.0,
+            pid_enabled=True, pid_kp=2.0, pid_ti=5.0, pid_td=1.0,
+            pid_mode=1, pid_cv=42.0,
+        )
+        assert status.pid_enabled is True
+        assert status.pid_kp == 2.0
+        assert status.pid_cv == 42.0
+
+
+class TestSimulatorPIDRequestDTOs:
+    def test_enable_request(self) -> None:
+        req = SimulatorPIDEnableRequest(controller_id=1, enabled=True)
+        assert req.controller_id == 1
+        assert req.enabled is True
+
+    def test_params_request(self) -> None:
+        req = SimulatorPIDParamsRequest(controller_id=1, kp=2.0, ti=5.0, td=1.0)
+        assert req.kp == 2.0
+        assert req.ti == 5.0
+
+    def test_mode_request(self) -> None:
+        req = SimulatorPIDModeRequest(controller_id=1, mode="AUTO")
+        assert req.mode == "AUTO"
+
+    def test_status_response(self) -> None:
+        resp = SimulatorPIDStatusResponse(
+            enabled=True, kp=1.0, ti=10.0, td=0.0, mode=1, cv=50.0,
+        )
+        assert resp.enabled is True
+        assert resp.cv == 50.0
