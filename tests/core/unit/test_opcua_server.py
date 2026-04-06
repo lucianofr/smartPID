@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import socket
 import time
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -261,5 +262,100 @@ class TestOPCUAServerWriteCallback:
                 assert sp_writes[-1] == pytest.approx(60.0, abs=0.5)
             finally:
                 client.stop()
+        finally:
+            server.stop()
+
+
+class TestOPCUAServerPIDWriteHandler:
+    """Test that _WriteHandler resolves PID param nodes correctly."""
+
+    def test_write_handler_resolves_kp(self) -> None:
+        from smart_pid_core.adapters.inbound.opcua_server import _WriteHandler
+
+        kp_node = MagicMock()
+        kp_node.nodeid.to_string.return_value = "ns=2;s=Kp_1"
+        controller_nodes = {
+            1: {"kp": kp_node, "ti": MagicMock(), "td": MagicMock()},
+        }
+        callback = MagicMock()
+        handler = _WriteHandler(callback, controller_nodes)
+        result = handler._resolve_node("ns=2;s=Kp_1")
+        assert result == (1, "kp")
+
+    def test_write_handler_resolves_ti(self) -> None:
+        from smart_pid_core.adapters.inbound.opcua_server import _WriteHandler
+
+        ti_node = MagicMock()
+        ti_node.nodeid.to_string.return_value = "ns=2;s=Ti_1"
+        controller_nodes = {
+            1: {"ti": ti_node, "kp": MagicMock(), "td": MagicMock()},
+        }
+        callback = MagicMock()
+        handler = _WriteHandler(callback, controller_nodes)
+        result = handler._resolve_node("ns=2;s=Ti_1")
+        assert result == (1, "ti")
+
+    def test_write_handler_resolves_td(self) -> None:
+        from smart_pid_core.adapters.inbound.opcua_server import _WriteHandler
+
+        td_node = MagicMock()
+        td_node.nodeid.to_string.return_value = "ns=2;s=Td_1"
+        controller_nodes = {
+            1: {"td": td_node, "kp": MagicMock(), "ti": MagicMock()},
+        }
+        callback = MagicMock()
+        handler = _WriteHandler(callback, controller_nodes)
+        result = handler._resolve_node("ns=2;s=Td_1")
+        assert result == (1, "td")
+
+    def test_write_handler_resolves_pid_mode(self) -> None:
+        from smart_pid_core.adapters.inbound.opcua_server import _WriteHandler
+
+        mode_node = MagicMock()
+        mode_node.nodeid.to_string.return_value = "ns=2;s=PIDMode_1"
+        controller_nodes = {
+            1: {"pid_mode": mode_node},
+        }
+        callback = MagicMock()
+        handler = _WriteHandler(callback, controller_nodes)
+        result = handler._resolve_node("ns=2;s=PIDMode_1")
+        assert result == (1, "pid_mode")
+
+    def test_write_handler_resolves_pid_sp(self) -> None:
+        from smart_pid_core.adapters.inbound.opcua_server import _WriteHandler
+
+        sp_node = MagicMock()
+        sp_node.nodeid.to_string.return_value = "ns=2;s=PIDSP_1"
+        controller_nodes = {
+            1: {"pid_sp": sp_node},
+        }
+        callback = MagicMock()
+        handler = _WriteHandler(callback, controller_nodes)
+        result = handler._resolve_node("ns=2;s=PIDSP_1")
+        assert result == (1, "pid_sp")
+
+    def test_write_handler_calls_callback_on_datachange(self) -> None:
+        from smart_pid_core.adapters.inbound.opcua_server import _WriteHandler
+
+        kp_node = MagicMock()
+        kp_node.nodeid.to_string.return_value = "ns=2;s=Kp_1"
+        controller_nodes = {1: {"kp": kp_node}}
+        callback = MagicMock()
+        handler = _WriteHandler(callback, controller_nodes)
+        handler.datachange_notification(kp_node, 3.5, None)
+        callback.assert_called_once_with(1, "kp", 3.5)
+
+    def test_register_after_start_creates_pid_nodes(self) -> None:
+        from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
+
+        server = OPCUAServer(port=_get_free_port())
+        server.start()
+        try:
+            node_ids = server.register_controller(1)
+            assert "kp" in node_ids
+            assert "ti" in node_ids
+            assert "td" in node_ids
+            assert "pid_mode" in node_ids
+            assert "pid_sp" in node_ids
         finally:
             server.stop()
