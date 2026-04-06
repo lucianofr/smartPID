@@ -125,14 +125,23 @@ class ProjectService:
             return False
 
     async def _load_simulator_configs(self) -> None:
-        """Restore simulator state from Configuracao_Simulador."""
+        """Register controllers and restore simulator state after project switch."""
         if self._simulator_adapter is None:
             return
-        if not hasattr(self._simulator_adapter, "load_sim_config"):
-            return
-        configs = await self._repo.list_sim_configs()
-        for cfg in configs:
-            self._simulator_adapter.load_sim_config(cfg)
+        # Register all controllers so OPC-UA nodes are created
+        if hasattr(self._simulator_adapter, "register_controller"):
+            controllers = await self._repo.list_all()
+            for ctrl in controllers:
+                self._simulator_adapter.register_controller(
+                    ctrl.id,
+                    pv_min=ctrl.pv_scale.eu_min,
+                    pv_max=ctrl.pv_scale.eu_max,
+                )
+        # Restore simulator preset/PID state
+        if hasattr(self._simulator_adapter, "load_sim_config"):
+            configs = await self._repo.list_sim_configs()
+            for cfg in configs:
+                self._simulator_adapter.load_sim_config(cfg)
 
     def _stop_simulator(self) -> None:
         """Stop the simulator adapter if present."""
