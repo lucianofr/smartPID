@@ -69,7 +69,7 @@ class DashboardPage(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded,
         )
         self._cards_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self._cards_scroll.setFixedHeight(195)
+        self._cards_scroll.setFixedHeight(220)
         self._cards_container = QWidget()
         self._cards_layout = QHBoxLayout(self._cards_container)
         self._cards_layout.setSpacing(6)
@@ -89,17 +89,18 @@ class DashboardPage(QWidget):
         )
         layout.addWidget(self._detail_label)
 
-        # Middle: trend + faceplate (70/30 split)
+        # Middle: (trend + AI log) | faceplate — splitter 70/30
         splitter = QSplitter()
-        self._trend = TrendChartWidget(theme=theme)
-        self._faceplate = FaceplateWidget(theme=theme)
-        splitter.addWidget(self._trend)
-        splitter.addWidget(self._faceplate)
-        splitter.setStretchFactor(0, 7)
-        splitter.setStretchFactor(1, 3)
-        layout.addWidget(splitter, stretch=1)
 
-        # AI Log box (terminal-style, shows AI reasoning)
+        # Left side: trend chart + AI log stacked
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(4)
+
+        self._trend = TrendChartWidget(theme=theme)
+        left_layout.addWidget(self._trend, stretch=1)
+
         self._ai_log = QPlainTextEdit()
         self._ai_log.setReadOnly(True)
         self._ai_log.setMaximumHeight(80)
@@ -115,7 +116,17 @@ class DashboardPage(QWidget):
             " selection-background-color: #004400;"
             "}"
         )
-        layout.addWidget(self._ai_log)
+        left_layout.addWidget(self._ai_log)
+
+        splitter.addWidget(left_panel)
+
+        # Right side: faceplate (stretches to alarm bar)
+        self._faceplate = FaceplateWidget(theme=theme)
+        splitter.addWidget(self._faceplate)
+
+        splitter.setStretchFactor(0, 7)
+        splitter.setStretchFactor(1, 3)
+        layout.addWidget(splitter, stretch=1)
 
         # Bottom: alarm bar
         self._alarm_bar = AlarmBarWidget(theme=theme)

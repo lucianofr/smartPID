@@ -44,8 +44,8 @@ Card compacto (largura fixa 280px) para visão geral da malha PID. Cards lado a 
 * **Barra de alarme (topo):** Faixa de 5px na cor do alarme ativo, transparente normalmente.
 * **Estilo:** `Filled Card` M3. Fundo na cor `Surface Container`, cantos arredondados (12px), sem borda externa (ou borda sutil se inativo).
 * **Header:** Tag em negrito + descrição, ícone de alarme (visível apenas em alarme), botão de configurações (⚙) à direita.
-* **Indicador de Modo:** Label abaixo do header mostrando o modo de operação atual (ex: `Mode: AUTO`).
 * **Barras:** Três `AnalogBarWidget` empilhadas (PV, SP, CO). NADA de mini gráficos de tendência.
+* **Indicador de Modo:** Label abaixo das barras mostrando o modo de operação atual (ex: `Mode: AUTO`).
 * **Indicador de Alarme:** Card inteiro passa a ser `M3 Outlined Card` com borda espessa na cor do alarme. Barra de alarme no topo colorida. Ícone (M3 Symbol) no header.
 
 ### 4.3. FaceplateWidget (Nível 3 - Baseado em M3 Standard Side Sheet)

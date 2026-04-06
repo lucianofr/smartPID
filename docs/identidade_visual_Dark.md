@@ -44,8 +44,8 @@ Card stealth compacto (largura fixa 280px) para monitoramento periférico. Cards
 * **Barra de alarme (topo):** Faixa de 5px, colorida pela prioridade do alarme (vermelho/âmbar), transparente normalmente.
 * **Layout:** Fundo `#0D0D11`, borda fina `#222228`.
 * **Header:** Tag em negrito + descrição, ícone de alarme (visível apenas em alarme), botão de configurações (⚙) à direita.
-* **Indicador de Modo:** Label abaixo do header mostrando o modo de operação atual (ex: `Mode: AUTO`).
 * **Barras:** Três `AnalogBarWidget` (PV, SP, CO) empilhadas.
+* **Indicador de Modo:** Label abaixo das barras mostrando o modo de operação atual (ex: `Mode: AUTO`).
 * **Indicador de Alarme:** Ícone geométrico preenchido (octógono ou triângulo) ao lado do Tag. Borda do card na cor do alarme. Barra de alarme no topo colorida.
 * **Sem sparklines.**
 

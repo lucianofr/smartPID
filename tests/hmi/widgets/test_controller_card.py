@@ -90,7 +90,7 @@ def test_mode_badge_update(qtbot, theme):
         min_val=0.0, max_val=100.0, theme=theme,
     )
     qtbot.addWidget(card)
-    assert card._mode_label.text() == "\u2014"
+    assert "Mode:" in card._mode_label.text()
     frame = {"pv": 50.0, "sp": 50.0, "co": 50.0, "mode": "AUTO"}
     card.on_telemetry(1, frame)
     assert "AUTO" in card._mode_label.text()

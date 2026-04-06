@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from smart_pid_hmi.themes.base import ThemeBase
 
 _CARD_WIDTH = 280
-_CARD_MIN_HEIGHT = 175
+_CARD_MIN_HEIGHT = 200
 _ALARM_STRIP_HEIGHT = 5
 
 
@@ -119,12 +119,6 @@ class ControllerCardWidget(QFrame):
 
         content.addLayout(header)
 
-        # ── Mode badge ──
-        self._mode_label = QLabel("\u2014")
-        self._mode_label.setFixedHeight(18)
-        self._apply_mode_style(theme)
-        content.addWidget(self._mode_label)
-
         # ── Analog bars (PV, SP, CO) ──
         self._bar_pv = AnalogBarWidget("PV", "", min_val, max_val, theme)
         self._bar_sp = AnalogBarWidget("SP", "", min_val, max_val, theme)
@@ -132,6 +126,12 @@ class ControllerCardWidget(QFrame):
         content.addWidget(self._bar_pv)
         content.addWidget(self._bar_sp)
         content.addWidget(self._bar_co)
+
+        # ── Mode indicator (below bars) ──
+        self._mode_label = QLabel("Mode: \u2014")
+        self._mode_label.setFixedHeight(16)
+        self._apply_mode_style(theme)
+        content.addWidget(self._mode_label)
 
         root.addLayout(content)
 
