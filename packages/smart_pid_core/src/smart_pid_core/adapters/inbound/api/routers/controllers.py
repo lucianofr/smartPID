@@ -25,13 +25,37 @@ from smart_pid_domain.dtos.alarms import (
 )
 from smart_pid_domain.dtos.auth import UserClaims
 from smart_pid_domain.dtos.controllers import (
+    AIConfigDTO,
     ControllerCreate,
     ControllerResponse,
     ControllerUpdate,
+    ControlOptsDTO,
+    IOOptsDTO,
+    PIDParamsDTO,
+    ScaleConfigDTO,
+    TagBindingsDTO,
 )
-from smart_pid_domain.enums import AuditAction
+from smart_pid_domain.enums import (
+    AIEngine,
+    AuditAction,
+    ControllerMode,
+    ControlObjective,
+    ExecutionMode,
+    IntegralType,
+    PIDStructure,
+    ProcessSpeed,
+    TuningWriteMode,
+)
 from smart_pid_domain.exceptions import ControllerNotFoundError
-from smart_pid_domain.models.controller import Controller, PIDParams
+from smart_pid_domain.models.controller import (
+    AIConfig,
+    ControlOpts,
+    Controller,
+    IOOpts,
+    PIDParams,
+    ScaleConfig,
+    TagBindings,
+)
 
 router = APIRouter()
 
@@ -46,15 +70,224 @@ def _to_response(c: Controller) -> ControllerResponse:
         pv=0.0,
         sp=0.0,
         co=0.0,
+        execution_mode=str(c.execution_mode),
         scan_rate_ms=c.scan_rate_ms,
-        gain=c.pid_params.gain,
-        reset=c.pid_params.reset,
-        rate=c.pid_params.rate,
+        pid_params=PIDParamsDTO(
+            gain=c.pid_params.gain,
+            reset=c.pid_params.reset,
+            rate=c.pid_params.rate,
+            alpha=c.pid_params.alpha,
+            deadband=c.pid_params.deadband,
+        ),
+        pid_structure=str(c.pid_structure),
+        integral_type=str(c.integral_type),
+        pv_scale=ScaleConfigDTO(
+            eu_min=c.pv_scale.eu_min,
+            eu_max=c.pv_scale.eu_max,
+            unit=c.pv_scale.unit,
+        ),
+        out_scale=ScaleConfigDTO(
+            eu_min=c.out_scale.eu_min,
+            eu_max=c.out_scale.eu_max,
+            unit=c.out_scale.unit,
+        ),
+        tag_bindings=TagBindingsDTO(
+            node_id_pv=c.tag_bindings.node_id_pv,
+            node_id_sp=c.tag_bindings.node_id_sp,
+            node_id_co=c.tag_bindings.node_id_co,
+            node_id_integral=c.tag_bindings.node_id_integral,
+            node_id_bkcal_in=c.tag_bindings.node_id_bkcal_in,
+            node_id_bkcal_out=c.tag_bindings.node_id_bkcal_out,
+            node_id_kp=c.tag_bindings.node_id_kp,
+            node_id_ti=c.tag_bindings.node_id_ti,
+            node_id_td=c.tag_bindings.node_id_td,
+            node_id_mode=c.tag_bindings.node_id_mode,
+        ),
+        control_opts=ControlOptsDTO(
+            no_out_limits_in_manual=c.control_opts.no_out_limits_in_manual,
+            obey_sp_limits_if_cas=c.control_opts.obey_sp_limits_if_cas,
+            track_in_manual=c.control_opts.track_in_manual,
+            track_enable=c.control_opts.track_enable,
+            direct_acting=c.control_opts.direct_acting,
+            sp_track_retained_target=c.control_opts.sp_track_retained_target,
+            sp_pv_track_in_lo_or_iman=c.control_opts.sp_pv_track_in_lo_or_iman,
+            sp_pv_track_in_rout=c.control_opts.sp_pv_track_in_rout,
+            sp_pv_track_in_man=c.control_opts.sp_pv_track_in_man,
+            use_pv_for_bkcal_out=c.control_opts.use_pv_for_bkcal_out,
+        ),
+        io_opts=IOOptsDTO(
+            low_cutoff=c.io_opts.low_cutoff,
+            target_to_man_if_fault=c.io_opts.target_to_man_if_fault,
+            fault_state_to_value=c.io_opts.fault_state_to_value,
+            increase_to_close=c.io_opts.increase_to_close,
+            sp_pv_track_in_lo_or_iman=c.io_opts.sp_pv_track_in_lo_or_iman,
+            sp_pv_track_in_man=c.io_opts.sp_pv_track_in_man,
+        ),
+        ai_config=AIConfigDTO(
+            engine=str(c.ai_config.engine),
+            objective=str(c.ai_config.objective),
+            process_speed=str(c.ai_config.process_speed),
+            dead_time_l=c.ai_config.dead_time_l,
+            limit_min=c.ai_config.limit_min,
+            limit_max=c.ai_config.limit_max,
+        ),
+        tuning_write_mode=str(c.tuning_write_mode),
+        max_tuning_change_pct=c.max_tuning_change_pct,
+        mode_normal=str(c.mode_normal),
         sp_hi_lim=c.sp_hi_lim,
         sp_lo_lim=c.sp_lo_lim,
+        sp_rate_up=c.sp_rate_up,
+        sp_rate_dn=c.sp_rate_dn,
         out_hi_lim=c.out_hi_lim,
         out_lo_lim=c.out_lo_lim,
+        arw_hi_lim=c.arw_hi_lim,
+        arw_lo_lim=c.arw_lo_lim,
+        pv_ftime=c.pv_ftime,
+        sp_ftime=c.sp_ftime,
+        low_cut=c.low_cut,
+        ff_enable=c.ff_enable,
+        ff_gain=c.ff_gain,
+        shed_opt=str(c.shed_opt),
+        shed_time_s=c.shed_time_s,
     )
+
+
+def _body_to_controller(body: ControllerCreate) -> Controller:
+    """Build a full domain Controller from a ControllerCreate DTO."""
+    return Controller(
+        id=0,
+        name=body.name,
+        description=body.description,
+        execution_mode=ExecutionMode(body.execution_mode),
+        scan_rate_ms=body.scan_rate_ms,
+        pid_params=PIDParams(
+            gain=body.pid_params.gain,
+            reset=body.pid_params.reset,
+            rate=body.pid_params.rate,
+            alpha=body.pid_params.alpha,
+            deadband=body.pid_params.deadband,
+        ),
+        pid_structure=PIDStructure(body.pid_structure),
+        integral_type=IntegralType(body.integral_type),
+        pv_scale=ScaleConfig(
+            eu_min=body.pv_scale.eu_min,
+            eu_max=body.pv_scale.eu_max,
+            unit=body.pv_scale.unit,
+        ),
+        out_scale=ScaleConfig(
+            eu_min=body.out_scale.eu_min,
+            eu_max=body.out_scale.eu_max,
+            unit=body.out_scale.unit,
+        ),
+        tag_bindings=TagBindings(
+            node_id_pv=body.tag_bindings.node_id_pv,
+            node_id_sp=body.tag_bindings.node_id_sp,
+            node_id_co=body.tag_bindings.node_id_co,
+            node_id_integral=body.tag_bindings.node_id_integral,
+            node_id_bkcal_in=body.tag_bindings.node_id_bkcal_in,
+            node_id_bkcal_out=body.tag_bindings.node_id_bkcal_out,
+            node_id_kp=body.tag_bindings.node_id_kp,
+            node_id_ti=body.tag_bindings.node_id_ti,
+            node_id_td=body.tag_bindings.node_id_td,
+            node_id_mode=body.tag_bindings.node_id_mode,
+        ),
+        control_opts=ControlOpts(
+            no_out_limits_in_manual=body.control_opts.no_out_limits_in_manual,
+            obey_sp_limits_if_cas=body.control_opts.obey_sp_limits_if_cas,
+            track_in_manual=body.control_opts.track_in_manual,
+            track_enable=body.control_opts.track_enable,
+            direct_acting=body.control_opts.direct_acting,
+            sp_track_retained_target=body.control_opts.sp_track_retained_target,
+            sp_pv_track_in_lo_or_iman=body.control_opts.sp_pv_track_in_lo_or_iman,
+            sp_pv_track_in_rout=body.control_opts.sp_pv_track_in_rout,
+            sp_pv_track_in_man=body.control_opts.sp_pv_track_in_man,
+            use_pv_for_bkcal_out=body.control_opts.use_pv_for_bkcal_out,
+        ),
+        io_opts=IOOpts(
+            low_cutoff=body.io_opts.low_cutoff,
+            target_to_man_if_fault=body.io_opts.target_to_man_if_fault,
+            fault_state_to_value=body.io_opts.fault_state_to_value,
+            increase_to_close=body.io_opts.increase_to_close,
+            sp_pv_track_in_lo_or_iman=body.io_opts.sp_pv_track_in_lo_or_iman,
+            sp_pv_track_in_man=body.io_opts.sp_pv_track_in_man,
+        ),
+        ai_config=AIConfig(
+            engine=AIEngine(body.ai_config.engine),
+            objective=ControlObjective(body.ai_config.objective),
+            process_speed=ProcessSpeed(body.ai_config.process_speed),
+            dead_time_l=body.ai_config.dead_time_l,
+            limit_min=body.ai_config.limit_min,
+            limit_max=body.ai_config.limit_max,
+        ),
+        tuning_write_mode=TuningWriteMode(body.tuning_write_mode),
+        max_tuning_change_pct=body.max_tuning_change_pct,
+        mode_normal=ControllerMode(body.mode_normal),
+        sp_hi_lim=body.sp_hi_lim,
+        sp_lo_lim=body.sp_lo_lim,
+        sp_rate_up=body.sp_rate_up,
+        sp_rate_dn=body.sp_rate_dn,
+        out_hi_lim=body.out_hi_lim,
+        out_lo_lim=body.out_lo_lim,
+        arw_hi_lim=body.arw_hi_lim,
+        arw_lo_lim=body.arw_lo_lim,
+        pv_ftime=body.pv_ftime,
+        sp_ftime=body.sp_ftime,
+        low_cut=body.low_cut,
+        ff_enable=body.ff_enable,
+        ff_gain=body.ff_gain,
+        shed_opt=ControllerMode(body.shed_opt),
+        shed_time_s=body.shed_time_s,
+    )
+
+
+# Mapping from ControllerUpdate field names to domain nested-object builders
+_NESTED_BUILDERS: dict[str, tuple[type, callable]] = {
+    "pid_params": (PIDParamsDTO, lambda dto: PIDParams(
+        gain=dto.gain, reset=dto.reset, rate=dto.rate, alpha=dto.alpha, deadband=dto.deadband,
+    )),
+    "pv_scale": (ScaleConfigDTO, lambda dto: ScaleConfig(
+        eu_min=dto.eu_min, eu_max=dto.eu_max, unit=dto.unit,
+    )),
+    "out_scale": (ScaleConfigDTO, lambda dto: ScaleConfig(
+        eu_min=dto.eu_min, eu_max=dto.eu_max, unit=dto.unit,
+    )),
+    "tag_bindings": (TagBindingsDTO, lambda dto: TagBindings(
+        node_id_pv=dto.node_id_pv, node_id_sp=dto.node_id_sp, node_id_co=dto.node_id_co,
+        node_id_integral=dto.node_id_integral, node_id_bkcal_in=dto.node_id_bkcal_in,
+        node_id_bkcal_out=dto.node_id_bkcal_out, node_id_kp=dto.node_id_kp,
+        node_id_ti=dto.node_id_ti, node_id_td=dto.node_id_td, node_id_mode=dto.node_id_mode,
+    )),
+    "control_opts": (ControlOptsDTO, lambda dto: ControlOpts(
+        no_out_limits_in_manual=dto.no_out_limits_in_manual,
+        obey_sp_limits_if_cas=dto.obey_sp_limits_if_cas,
+        track_in_manual=dto.track_in_manual, track_enable=dto.track_enable,
+        direct_acting=dto.direct_acting, sp_track_retained_target=dto.sp_track_retained_target,
+        sp_pv_track_in_lo_or_iman=dto.sp_pv_track_in_lo_or_iman,
+        sp_pv_track_in_rout=dto.sp_pv_track_in_rout, sp_pv_track_in_man=dto.sp_pv_track_in_man,
+        use_pv_for_bkcal_out=dto.use_pv_for_bkcal_out,
+    )),
+    "io_opts": (IOOptsDTO, lambda dto: IOOpts(
+        low_cutoff=dto.low_cutoff, target_to_man_if_fault=dto.target_to_man_if_fault,
+        fault_state_to_value=dto.fault_state_to_value, increase_to_close=dto.increase_to_close,
+        sp_pv_track_in_lo_or_iman=dto.sp_pv_track_in_lo_or_iman,
+        sp_pv_track_in_man=dto.sp_pv_track_in_man,
+    )),
+    "ai_config": (AIConfigDTO, lambda dto: AIConfig(
+        engine=AIEngine(dto.engine), objective=ControlObjective(dto.objective),
+        process_speed=ProcessSpeed(dto.process_speed), dead_time_l=dto.dead_time_l,
+        limit_min=dto.limit_min, limit_max=dto.limit_max,
+    )),
+}
+
+# Enum fields that need conversion from string
+_ENUM_FIELDS: dict[str, type] = {
+    "execution_mode": ExecutionMode,
+    "pid_structure": PIDStructure,
+    "integral_type": IntegralType,
+    "tuning_write_mode": TuningWriteMode,
+    "mode_normal": ControllerMode,
+    "shed_opt": ControllerMode,
+}
 
 
 @router.get("", response_model=list[ControllerResponse])
@@ -73,17 +306,7 @@ async def create_controller(
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> ControllerResponse:
-    controller = Controller(
-        id=0,
-        name=body.name,
-        description=body.description,
-        scan_rate_ms=body.scan_rate_ms,
-        pid_params=PIDParams(gain=body.gain, reset=body.reset, rate=body.rate),
-        sp_hi_lim=body.sp_hi_lim,
-        sp_lo_lim=body.sp_lo_lim,
-        out_hi_lim=body.out_hi_lim,
-        out_lo_lim=body.out_lo_lim,
-    )
+    controller = _body_to_controller(body)
     saved = await repo.save(controller)
     await audit_repo.record(
         user.user_id, user.username, AuditAction.CREATE_CONTROLLER,
@@ -119,53 +342,35 @@ async def update_controller(
         raise ControllerNotFoundError(controller_id) from None
 
     updates: dict = {}
-    if body.name is not None:
-        updates["name"] = body.name
-    if body.description is not None:
-        updates["description"] = body.description
-    if body.scan_rate_ms is not None:
-        updates["scan_rate_ms"] = body.scan_rate_ms
-    if body.sp_hi_lim is not None:
-        updates["sp_hi_lim"] = body.sp_hi_lim
-    if body.sp_lo_lim is not None:
-        updates["sp_lo_lim"] = body.sp_lo_lim
-    if body.out_hi_lim is not None:
-        updates["out_hi_lim"] = body.out_hi_lim
-    if body.out_lo_lim is not None:
-        updates["out_lo_lim"] = body.out_lo_lim
+    body_dict = body.model_dump(exclude_unset=True)
 
-    pid_updates: dict = {}
-    if body.gain is not None:
-        pid_updates["gain"] = body.gain
-    if body.reset is not None:
-        pid_updates["reset"] = body.reset
-    if body.rate is not None:
-        pid_updates["rate"] = body.rate
-    if pid_updates:
-        updates["pid_params"] = replace(controller.pid_params, **pid_updates)
+    for field_name, value in body_dict.items():
+        if value is None:
+            continue
+        if field_name in _NESTED_BUILDERS:
+            dto = getattr(body, field_name)
+            _, builder = _NESTED_BUILDERS[field_name]
+            updates[field_name] = builder(dto)
+        elif field_name in _ENUM_FIELDS:
+            updates[field_name] = _ENUM_FIELDS[field_name](value)
+        else:
+            updates[field_name] = value
 
-    # Capture old values for audit trail before applying updates
+    # Capture old/new for audit trail
     old_values: dict = {}
     new_values: dict = {}
-    for key in updates:
-        if key == "pid_params":
-            old_pid = controller.pid_params
-            new_pid = updates["pid_params"]
-            for pf in ("gain", "reset", "rate"):
-                if getattr(old_pid, pf) != getattr(new_pid, pf):
-                    old_values[pf] = getattr(old_pid, pf)
-                    new_values[pf] = getattr(new_pid, pf)
-        else:
-            old_values[key] = getattr(controller, key)
-            new_values[key] = updates[key]
+    for key, new_val in updates.items():
+        old_val = getattr(controller, key)
+        old_values[key] = str(old_val) if hasattr(old_val, '__dataclass_fields__') else old_val
+        new_values[key] = str(new_val) if hasattr(new_val, '__dataclass_fields__') else new_val
 
     if updates:
         controller = replace(controller, **updates)
         await repo.save(controller)
 
     audit_detail = json.dumps({
-        "old": old_values,
-        "new": new_values,
+        "old": {k: str(v) for k, v in old_values.items()},
+        "new": {k: str(v) for k, v in new_values.items()},
     })
     await audit_repo.record(
         user.user_id, user.username, AuditAction.UPDATE_CONTROLLER,
