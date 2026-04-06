@@ -112,15 +112,24 @@ class ControllerCardWidget(QFrame):
         header.addStretch()
         header.addWidget(self._mode_label)
 
-        # Gear button for settings
-        self._settings_btn = QPushButton("\u2699")
+        # Gear button for settings — use QIcon from theme for cross-platform rendering
+        from PySide6.QtGui import QIcon
+        self._settings_btn = QPushButton()
         self._settings_btn.setObjectName("settings_btn")
+        icon = QIcon.fromTheme("preferences-system")
+        if icon.isNull():
+            icon = QIcon.fromTheme("configure")
+        if icon.isNull():
+            # Fallback: text label
+            self._settings_btn.setText("CFG")
+        else:
+            self._settings_btn.setIcon(icon)
         self._settings_btn.setFixedSize(30, 30)
         self._settings_btn.setStyleSheet(
             f"QPushButton {{ background: transparent;"
             f" border: 1px solid {theme.border};"
             f" border-radius: 4px;"
-            f" color: {theme.fg_primary}; font-size: 18px; }}"
+            f" color: {theme.fg_primary}; font-size: 10px; }}"
             f"QPushButton:hover {{ background: {theme.bg_widget};"
             f" color: {theme.accent}; }}"
         )
