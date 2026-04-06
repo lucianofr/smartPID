@@ -296,6 +296,8 @@ class MainWindow(QMainWindow):
         self._simulator_page.auto_disturbance_changed.connect(self._send_sim_auto_dist)
         self._simulator_page.sim_start_requested.connect(self._send_sim_start)
         self._simulator_page.sim_stop_requested.connect(self._send_sim_stop)
+        self._simulator_page.opcua_start_requested.connect(self._send_opcua_start)
+        self._simulator_page.opcua_stop_requested.connect(self._send_opcua_stop)
         self._simulator_page.pid_sp_changed.connect(self._send_sim_pid_sp)
         self._settings_page.theme_changed.connect(self._on_theme_switch)
         self._settings_page.refresh_rate_changed.connect(self._on_refresh_rate_changed)
@@ -521,6 +523,13 @@ class MainWindow(QMainWindow):
                     QMetaObject.invokeMethod(
                         self, "_enable_simulator", Qt.ConnectionType.QueuedConnection,
                     )
+                opcua_status = self._api_client.get_opcua_status()
+                if opcua_status.get("running"):
+                    QMetaObject.invokeMethod(
+                        self._simulator_page, "set_opcua_running",
+                        Qt.ConnectionType.QueuedConnection,
+                        Q_ARG(bool, True),
+                    )
             except Exception:
                 pass  # Not available — button stays disabled
 
@@ -622,6 +631,32 @@ class MainWindow(QMainWindow):
                 self._api_client.stop_simulator()
                 QMetaObject.invokeMethod(
                     self._simulator_page, "set_sim_running",
+                    Qt.ConnectionType.QueuedConnection,
+                    Q_ARG(bool, False),
+                )
+            except Exception as e:
+                self._api_error_signal.emit(str(e))
+        threading.Thread(target=do_stop, daemon=True).start()
+
+    def _send_opcua_start(self) -> None:
+        def do_start():
+            try:
+                self._api_client.start_opcua_server()
+                QMetaObject.invokeMethod(
+                    self._simulator_page, "set_opcua_running",
+                    Qt.ConnectionType.QueuedConnection,
+                    Q_ARG(bool, True),
+                )
+            except Exception as e:
+                self._api_error_signal.emit(str(e))
+        threading.Thread(target=do_start, daemon=True).start()
+
+    def _send_opcua_stop(self) -> None:
+        def do_stop():
+            try:
+                self._api_client.stop_opcua_server()
+                QMetaObject.invokeMethod(
+                    self._simulator_page, "set_opcua_running",
                     Qt.ConnectionType.QueuedConnection,
                     Q_ARG(bool, False),
                 )
