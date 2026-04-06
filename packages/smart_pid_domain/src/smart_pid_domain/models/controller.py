@@ -90,6 +90,7 @@ class ControlOpts:
     sp_pv_track_in_lo_or_iman: bool = False
     sp_pv_track_in_rout: bool = False
     sp_pv_track_in_man: bool = False
+    use_pv_for_bkcal_out: bool = False
 
 
 @dataclass

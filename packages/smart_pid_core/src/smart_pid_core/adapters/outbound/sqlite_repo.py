@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS Controladores (
     ctrl_sp_pv_track_in_lo_or_iman  INTEGER NOT NULL DEFAULT 0,
     sp_pv_track_in_rout             INTEGER NOT NULL DEFAULT 0,
     ctrl_sp_pv_track_in_man         INTEGER NOT NULL DEFAULT 0,
+    use_pv_for_bkcal_out            INTEGER NOT NULL DEFAULT 0,
     -- IO opts
     low_cutoff                      INTEGER NOT NULL DEFAULT 0,
     target_to_man_if_fault          INTEGER NOT NULL DEFAULT 0,
@@ -320,6 +321,7 @@ class SQLiteRepository:
             "ctrl_sp_pv_track_in_lo_or_iman": int(c.control_opts.sp_pv_track_in_lo_or_iman),
             "sp_pv_track_in_rout": int(c.control_opts.sp_pv_track_in_rout),
             "ctrl_sp_pv_track_in_man": int(c.control_opts.sp_pv_track_in_man),
+            "use_pv_for_bkcal_out": int(c.control_opts.use_pv_for_bkcal_out),
             # IOOpts
             "low_cutoff": int(c.io_opts.low_cutoff),
             "target_to_man_if_fault": int(c.io_opts.target_to_man_if_fault),
@@ -397,6 +399,7 @@ class SQLiteRepository:
                 sp_pv_track_in_lo_or_iman=bool(row["ctrl_sp_pv_track_in_lo_or_iman"]),
                 sp_pv_track_in_rout=bool(row["sp_pv_track_in_rout"]),
                 sp_pv_track_in_man=bool(row["ctrl_sp_pv_track_in_man"]),
+                use_pv_for_bkcal_out=bool(row["use_pv_for_bkcal_out"]),
             ),
             io_opts=IOOpts(
                 low_cutoff=bool(row["low_cutoff"]),
