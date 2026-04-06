@@ -77,7 +77,9 @@ class TestOPCUAFullStack:
         self, opcua_server: OPCUAServer, opcua_client: OPCUAAdapter,
     ) -> None:
         """Client can read PV/SP/CO values that the server publishes."""
-        opcua_server.update_values(controller_id=1, pv=72.5, sp=75.0, co=45.0)
+        opcua_server.update_values(
+            controller_id=1, values={"pv": 72.5, "sp": 75.0, "co": 45.0},
+        )
 
         def _pv_updated():
             f = opcua_client.read_telemetry(1)
@@ -109,7 +111,9 @@ class TestOPCUAFullStack:
     ) -> None:
         """Full cycle: server updates PV, client reads it, client writes CO."""
         # Server sets initial process values
-        opcua_server.update_values(controller_id=1, pv=50.0, sp=60.0, co=30.0)
+        opcua_server.update_values(
+            controller_id=1, values={"pv": 50.0, "sp": 60.0, "co": 30.0},
+        )
 
         def _pv_set():
             f = opcua_client.read_telemetry(1)
