@@ -29,12 +29,12 @@ def bus():
 def controller():
     return Controller(
         id=1, name="E2E-Test", scan_rate_ms=100,
+        process_speed=ProcessSpeed.MEDIUM,
         pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
         pv_scale=ScaleConfig(eu_min=0.0, eu_max=100.0),
         ai_config=AIConfig(
             engine=AIEngine.FUZZY,
             objective=ControlObjective.SP_TRACKING,
-            process_speed=ProcessSpeed.MEDIUM,
             dead_time_l=0.1,
             limit_min=0.5,
             limit_max=50.0,

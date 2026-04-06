@@ -22,10 +22,10 @@ EDIT_DATA: dict = {
     },
     "pv_scale": {"eu_min": -50.0, "eu_max": 200.0, "unit": "degC"},
     "out_scale": {"eu_min": 0.0, "eu_max": 100.0, "unit": "%"},
+    "process_speed": "SLOW",
     "ai_config": {
         "engine": "FUZZY",
         "objective": "SP_TRACKING",
-        "process_speed": "SLOW",
         "dead_time_l": 5.0,
         "limit_min": 0.5,
         "limit_max": 50.0,
@@ -197,7 +197,7 @@ class TestGetControllerData:
     def test_ai_config_sub_keys(self, dialog):
         data = dialog.get_controller_data()
         assert set(data["ai_config"].keys()) == {
-            "engine", "objective", "process_speed",
+            "engine", "objective",
             "dead_time_l", "limit_min", "limit_max",
         }
 

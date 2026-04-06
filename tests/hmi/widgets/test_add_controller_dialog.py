@@ -113,7 +113,7 @@ class TestGetControllerData:
     def test_ai_config_sub_keys(self, dialog):
         data = dialog.get_controller_data()
         assert set(data["ai_config"].keys()) == {
-            "engine", "objective", "process_speed",
+            "engine", "objective",
             "dead_time_l", "limit_min", "limit_max",
         }
 

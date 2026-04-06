@@ -99,7 +99,7 @@ class AIWorker:
                             ki_current=self._ki_current,
                             span=self._controller.pv_scale.span,
                             objective=self._ai_config.objective,
-                            speed=self._ai_config.process_speed,
+                            speed=self._controller.process_speed,
                             limit_min=self._ai_config.limit_min,
                             limit_max=self._ai_config.limit_max,
                         )
@@ -113,7 +113,7 @@ class AIWorker:
                             co=self._last_co,
                             integral_val=0.0,
                             objective=self._ai_config.objective,
-                            speed=self._ai_config.process_speed,
+                            speed=self._controller.process_speed,
                             limit_min=self._ai_config.limit_min,
                             limit_max=self._ai_config.limit_max,
                         )

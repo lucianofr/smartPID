@@ -39,7 +39,7 @@ async def get_ai_status(
         controller_id=controller_id,
         engine=worker._ai_config.engine,
         objective=worker._ai_config.objective,
-        speed=worker._ai_config.process_speed,
+        speed=worker._controller.process_speed,
         current_ki=worker._ki_current,
     )
 

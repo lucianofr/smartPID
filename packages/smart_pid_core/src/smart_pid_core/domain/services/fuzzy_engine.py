@@ -101,13 +101,6 @@ LEVEL_CENTERS: dict[str, float] = {
     "PB": 100.0,
 }
 
-SPEED_FACTORS: dict[ProcessSpeed, float] = {
-    ProcessSpeed.SLOW: 0.30,
-    ProcessSpeed.MEDIUM: 0.15,
-    ProcessSpeed.FAST: 0.05,
-}
-
-
 @dataclass(frozen=True)
 class AIDecision:
     """Result of an AI Ki optimization computation."""
@@ -227,7 +220,7 @@ class FuzzyEngine:
         gamma = self.infer(error_norm, delta_error_norm, objective)
 
         # Update Ki
-        sv = SPEED_FACTORS[speed]
+        sv = speed.speed_factor
         new_ki = ki_current * (1.0 + gamma * sv)
         new_ki = max(limit_min, min(limit_max, new_ki))
 
