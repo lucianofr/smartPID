@@ -2,11 +2,14 @@
 
 Settings are loaded in this priority (highest wins):
   1. Environment variables  (SPID_HMI_SERVER_HOST, …)
-  2. Config file            (~/.config/smart-pid/hmi.env)
+  2. Config file            (~/.smart-pid/hmi.env)
   3. Built-in defaults      (below)
 
 On first run the config file is created automatically with the defaults
 so the user can tweak server/port without touching env vars.
+
+The base directory ``~/.smart-pid/`` is shared with the backend
+(projects_dir, users.db) and works on Linux, macOS and Windows.
 """
 from __future__ import annotations
 
@@ -14,8 +17,8 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-CONFIG_DIR = Path.home() / ".config" / "smart-pid"
-CONFIG_FILE = CONFIG_DIR / "hmi.env"
+APP_DIR = Path.home() / ".smart-pid"
+CONFIG_FILE = APP_DIR / "hmi.env"
 
 _DEFAULT_CONFIG_CONTENT = """\
 # Smart PID HMI — connection settings
@@ -33,7 +36,7 @@ SPID_HMI_REFRESH_MS=33
 
 def ensure_config_file() -> Path:
     """Create the default config file if it does not exist yet."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    APP_DIR.mkdir(parents=True, exist_ok=True)
     if not CONFIG_FILE.exists():
         CONFIG_FILE.write_text(_DEFAULT_CONFIG_CONTENT)
     return CONFIG_FILE
@@ -42,7 +45,7 @@ def ensure_config_file() -> Path:
 class HMISettings(BaseSettings):
     """Desktop HMI client settings.
 
-    Loaded from env vars (SPID_HMI_ prefix) and ``~/.config/smart-pid/hmi.env``.
+    Loaded from env vars (SPID_HMI_ prefix) and ``~/.smart-pid/hmi.env``.
     """
 
     model_config = SettingsConfigDict(
@@ -57,7 +60,7 @@ class HMISettings(BaseSettings):
     theme: str = "isa101"
     mock_mode: bool = False
     refresh_ms: int = 33
-    app_state_path: Path = CONFIG_DIR / "app.json"
+    app_state_path: Path = APP_DIR / "app.json"
 
     @property
     def server_url(self) -> str:

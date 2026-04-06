@@ -33,7 +33,7 @@ def test_ensure_config_file_creates_file(tmp_path, monkeypatch):
 
     fake_dir = tmp_path / "smart-pid"
     fake_file = fake_dir / "hmi.env"
-    monkeypatch.setattr(cfg, "CONFIG_DIR", fake_dir)
+    monkeypatch.setattr(cfg, "APP_DIR", fake_dir)
     monkeypatch.setattr(cfg, "CONFIG_FILE", fake_file)
 
     result = ensure_config_file()
@@ -52,7 +52,7 @@ def test_ensure_config_file_does_not_overwrite(tmp_path, monkeypatch):
     fake_dir.mkdir()
     fake_file = fake_dir / "hmi.env"
     fake_file.write_text("SPID_HMI_SERVER_HOST=myserver\n")
-    monkeypatch.setattr(cfg, "CONFIG_DIR", fake_dir)
+    monkeypatch.setattr(cfg, "APP_DIR", fake_dir)
     monkeypatch.setattr(cfg, "CONFIG_FILE", fake_file)
 
     ensure_config_file()
