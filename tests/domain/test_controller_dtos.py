@@ -54,10 +54,20 @@ class TestAIConfigDTO:
         a = AIConfigDTO()
         assert a.engine == "NONE"
         assert a.objective == "DISTURBANCE_REJECTION"
-        assert a.process_speed == "MEDIUM"
+        assert not hasattr(a, "process_speed") or "process_speed" not in a.model_fields
         assert a.dead_time_l == 1.0
         assert a.limit_min == 0.1
         assert a.limit_max == 100.0
+
+
+class TestControllerCreateProcessSpeed:
+    def test_default_process_speed(self) -> None:
+        c = ControllerCreate(name="TIC-100")
+        assert c.process_speed == "MEDIUM"
+
+    def test_custom_process_speed(self) -> None:
+        c = ControllerCreate(name="TIC-100", process_speed="SLOW")
+        assert c.process_speed == "SLOW"
 
 
 class TestTagBindingsDTO:
