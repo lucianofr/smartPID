@@ -122,8 +122,7 @@ class MainWindow(QMainWindow):
         self._toolbar.setFixedHeight(48)
         self._toolbar.setStyleSheet(
             f"QToolBar {{ background-color: {theme.bg_toolbar};"
-            f" border-bottom: 1px solid {theme.border};"
-            " }}"
+            f" border-bottom: 1px solid {theme.border}; }}"
         )
 
         # --- Left: app title ---
@@ -718,7 +717,7 @@ class MainWindow(QMainWindow):
                 f" border-radius: {theme.border_radius};"
                 " font-weight: bold;"
                 f" font-size: {theme.font_size_normal}px;"
-                " padding: 4px 14px; }}"
+                f" padding: 4px 14px; }}"
             )
         return (
             f"QPushButton {{ background-color: transparent;"
@@ -754,8 +753,7 @@ class MainWindow(QMainWindow):
         # Update toolbar styling
         self._toolbar.setStyleSheet(
             f"QToolBar {{ background-color: {theme.bg_toolbar};"
-            f" border-bottom: 1px solid {theme.border};"
-            " }}"
+            f" border-bottom: 1px solid {theme.border}; }}"
         )
         self._app_label.setStyleSheet(
             f"font-weight: bold;"
@@ -908,7 +906,9 @@ class MainWindow(QMainWindow):
     def _do_open_project(self, path: str) -> None:
         def do_open():
             try:
-                result = self._api_client.open_project(path)
+                # Backend expects project name, not file path
+                name = Path(path).stem if path.endswith(".spid") else path
+                result = self._api_client.open_project(name)
                 self._app_state.set_last_project(
                     result["path"], result["name"], result["controller_count"],
                 )

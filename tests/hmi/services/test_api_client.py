@@ -179,3 +179,29 @@ def test_clear_simulator_disturbance():
     client = APIClient(base_url="http://test:8000", session=session, transport=transport)
     result = client.clear_simulator_disturbance(1)
     assert result.ok is True
+
+
+def test_start_opcua_server():
+    transport = _mock_transport(200, {"ok": True, "detail": "OPC-UA server started"})
+    session = Session()
+    client = APIClient(base_url="http://test:8000", session=session, transport=transport)
+    result = client.start_opcua_server()
+    assert result.ok is True
+
+
+def test_stop_opcua_server():
+    transport = _mock_transport(200, {"ok": True, "detail": "OPC-UA server stopped"})
+    session = Session()
+    client = APIClient(base_url="http://test:8000", session=session, transport=transport)
+    result = client.stop_opcua_server()
+    assert result.ok is True
+
+
+def test_get_opcua_status():
+    transport = _mock_transport(200, {"running": True, "port": 4840, "endpoint": "opc.tcp://localhost:4840"})
+    session = Session()
+    client = APIClient(base_url="http://test:8000", session=session, transport=transport)
+    result = client.get_opcua_status()
+    assert result["running"] is True
+    assert result["port"] == 4840
+    assert result["endpoint"] == "opc.tcp://localhost:4840"

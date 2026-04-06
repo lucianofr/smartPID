@@ -50,7 +50,9 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 ### Comunicacao
 - ZeroMQ inproc:// — Bus interno entre threads do Backend (XPUB/XSUB proxy, msgpack)
 - ZeroMQ tcp://5555 — PUB/SUB Backend->HMI (telemetria em tempo real)
-- FastAPI REST — HMI->Backend (comandos, historico, CRUD)
+- FastAPI REST — HMI->Backend (comandos, historico, CRUD, project upload/download)
+- Project management via REST: list, new, open (by name), import (multipart upload), download (FileResponse), delete
+- Welcome Dialog mostrado pos-login (precisa de auth para listar projetos do backend)
 - Topicos: TELEMETRY.{id}, ACTION.CTRL.{id}, ACTION.AI.{id}, STATUS.{id}
 
 ### PID Engine
