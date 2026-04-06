@@ -349,6 +349,7 @@ class MainWindow(QMainWindow):
         self._telemetry_source.start()
         self._bus_bridge.start()
         self._stack.setCurrentWidget(self._dashboard_page)
+        self._load_dashboard()
         self._check_simulator_available()
         self._show_admin_controls()
         self._alarm_panel.load_active_alarms()
@@ -698,8 +699,8 @@ class MainWindow(QMainWindow):
                     Q_ARG(float, ctrl_status.disturbance_output),
                     Q_ARG(float, ctrl_status.sp),
                 )
-            except Exception:
-                pass  # Silently ignore poll errors
+            except Exception as e:
+                logger.debug("sim poll error: %s", e)
         threading.Thread(target=do_poll, daemon=True).start()
 
     @Slot(float, float, float, float, float, float, float, float)
