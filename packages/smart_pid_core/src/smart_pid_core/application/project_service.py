@@ -57,7 +57,18 @@ class ProjectService:
         self._loop_manager.stop_all()
         self._stop_simulator()
         await self._repo.reopen(path)
+        await self._load_simulator_configs()
         return await self.get_current()
+
+    async def _load_simulator_configs(self) -> None:
+        """Restore simulator state from Configuracao_Simulador."""
+        if self._simulator_adapter is None:
+            return
+        if not hasattr(self._simulator_adapter, "load_sim_config"):
+            return
+        configs = await self._repo.list_sim_configs()
+        for cfg in configs:
+            self._simulator_adapter.load_sim_config(cfg)
 
     async def save_as(self, path: Path) -> ProjectResponse:
         """Copy the current DB to *path* and reopen at the new location."""

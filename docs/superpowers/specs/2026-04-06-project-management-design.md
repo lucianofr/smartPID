@@ -252,18 +252,24 @@ Persists simulator process model configuration per controller.
 
 ```sql
 CREATE TABLE IF NOT EXISTS Configuracao_Simulador (
-    controlador_id INTEGER PRIMARY KEY REFERENCES Controladores(id),
+    controlador_id INTEGER PRIMARY KEY REFERENCES Controladores(id) ON DELETE CASCADE,
     preset TEXT NOT NULL DEFAULT 'fopdt_default',
     gain REAL NOT NULL,
     tau1 REAL NOT NULL,
     tau2 REAL NOT NULL,
-    dead_time REAL NOT NULL
+    dead_time REAL NOT NULL,
+    pid_enabled INTEGER NOT NULL DEFAULT 0,
+    pid_kp REAL NOT NULL DEFAULT 1.0,
+    pid_ti REAL NOT NULL DEFAULT 10.0,
+    pid_td REAL NOT NULL DEFAULT 0.0,
+    pid_mode INTEGER NOT NULL DEFAULT 0
 );
 ```
 
 - Saved when simulator params are changed via API
 - Loaded on project open (populates `SimulatorAdapter` in-memory state)
-- Disturbance state (step/noise) is NOT persisted — always starts clean
+- Internal PID parameters (Kp, Ti, Td), enable flag, and mode are persisted — restored on project open
+- Disturbance state (step/noise) and auto-excitation state are NOT persisted — always start clean
 
 ### User DB separation
 

@@ -246,6 +246,28 @@ class SimulatorAdapter:
             if not req.enabled:
                 ctrl.auto_dist_elapsed_s = 0.0
 
+    def load_sim_config(self, cfg: dict) -> None:
+        """Restore a controller's simulator state from a persisted config dict."""
+        cid = cfg["controlador_id"]
+        with self._lock:
+            ctrl = self._controllers.get(cid)
+            if ctrl is None:
+                return
+            ctrl.preset_name = cfg["preset"]
+            ctrl.gain = cfg["gain"]
+            ctrl.tau1 = cfg["tau1"]
+            tau2 = cfg["tau2"]
+            ctrl.tau2 = tau2 if tau2 else None
+            ctrl.dead_time = cfg["dead_time"]
+            ctrl.model = ProcessModel(
+                gain=ctrl.gain, tau1=ctrl.tau1, tau2=ctrl.tau2, dead_time=ctrl.dead_time,
+            )
+            ctrl.pid_enabled = cfg.get("pid_enabled", False)
+            ctrl.pid_params.gain = cfg.get("pid_kp", 1.0)
+            ctrl.pid_params.reset = cfg.get("pid_ti", 10.0)
+            ctrl.pid_params.rate = cfg.get("pid_td", 0.0)
+            ctrl.pid_mode = cfg.get("pid_mode", 0)
+
     def get_controller_status(self, controller_id: int) -> ControllerSimStatus:
         with self._lock:
             ctrl = self._controllers[controller_id]
