@@ -225,7 +225,7 @@ class TestSimulatorPageOPCUA:
     def test_opcua_port_default(self, pid_page: SimulatorPage) -> None:
         spin = pid_page.findChild(QDoubleSpinBox, "opcua_port_spin")
         assert spin is not None
-        assert spin.value() == 4841
+        assert spin.value() == 4849
 
     def test_opcua_config_signal(self, pid_page: SimulatorPage, qtbot) -> None:
         pid_page._opcua_port_spin.setValue(4842)

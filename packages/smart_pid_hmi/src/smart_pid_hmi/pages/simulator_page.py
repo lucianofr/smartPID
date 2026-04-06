@@ -203,7 +203,7 @@ class SimulatorPage(QWidget):
         self._opcua_port_spin = QDoubleSpinBox()
         self._opcua_port_spin.setObjectName("opcua_port_spin")
         self._opcua_port_spin.setRange(1024, 65535)
-        self._opcua_port_spin.setValue(4841)
+        self._opcua_port_spin.setValue(4849)
         self._opcua_port_spin.setDecimals(0)
         endpoint_row.addWidget(self._opcua_port_spin, stretch=1)
         opcua_layout.addLayout(endpoint_row)
