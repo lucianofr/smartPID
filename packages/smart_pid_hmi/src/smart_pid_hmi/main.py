@@ -355,8 +355,10 @@ class MainWindow(QMainWindow):
         # Start periodic KPI refresh (every 30 seconds)
         self._kpi_timer.start(30_000)
 
+        # Show current backend project info immediately
+        self._refresh_project_info()
+
         # Open pending project after login
-        has_pending = bool(self._pending_project_path)
         if self._pending_project_path:
             if self._pending_project_action == "new" and self._pending_project_name:
                 self._do_new_project(self._pending_project_name, self._pending_project_path)
@@ -365,11 +367,8 @@ class MainWindow(QMainWindow):
             self._pending_project_action = None
             self._pending_project_path = None
             self._pending_project_name = None
-
-        # Always refresh project info from backend after login.
-        # Use longer delay when a project operation is in flight.
-        delay_ms = 3000 if has_pending else 500
-        QTimer.singleShot(delay_ms, self._refresh_project_info)
+            # Refresh again after pending operation completes
+            QTimer.singleShot(3000, self._refresh_project_info)
 
     @Slot(str)
     def _on_login_error_received(self, error_msg: str) -> None:
@@ -922,10 +921,10 @@ class MainWindow(QMainWindow):
             name = result.get("name", "")
             path = result.get("path", "")
             count = int(result.get("controller_count", 0))
-            logger.info("project_info_fetched name=%s path=%s count=%s", name, path, count)
+            print(f"[PROJECT INFO] name={name!r} path={path!r} count={count}")  # noqa: T201
             self._settings_page.update_project_info(name, path, count)
         except Exception as e:
-            logger.warning("Could not fetch current project info: %s", e)
+            print(f"[PROJECT INFO ERROR] {type(e).__name__}: {e}")  # noqa: T201
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._kpi_timer.stop()
