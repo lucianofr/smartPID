@@ -33,6 +33,9 @@ class CoreSettings(BaseSettings):
     db_retention_alarm_days: int = 30
     db_batch_size: int = 500
 
+    # User database (app-level, separate from project)
+    users_db_path: Path = Path.home() / ".config" / "smart-pid" / "users.db"
+
     # Simulator
     simulator_enabled: bool = False
     simulator_port: int = 4841
