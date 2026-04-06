@@ -47,6 +47,7 @@ class FaceplateWidget(QFrame):
     optimizer_run_requested = Signal(int)      # (controller_id)
     optimizer_pause_requested = Signal(int)    # (controller_id)
     optimizer_stop_requested = Signal(int)     # (controller_id)
+    gains_changed = Signal(int, dict)          # (controller_id, {gain, reset, rate})
 
     def __init__(
         self, theme: ThemeBase, parent: QWidget | None = None,
@@ -202,15 +203,44 @@ class FaceplateWidget(QFrame):
         self._separators.append(sep6)
         layout.addWidget(sep6)
 
-        # -- PID Gains row --
-        self._gains_label = QLabel("Kp: \u2014  Ti: \u2014  Td: \u2014")
-        self._gains_label.setStyleSheet(
-            f"font-size: {theme.font_size_normal}px; "
-            f"color: {theme.fg_primary}; "
-            f"background: transparent;"
-            f" font-family: 'Fira Code', monospace;"
-        )
-        layout.addWidget(self._gains_label)
+        # -- PID Gains (editable) --
+        self._integral_type = "TIME_TI"  # updated on controller select
+
+        gains_row1 = QHBoxLayout()
+        gains_row1.setSpacing(6)
+        self._kp_lbl = QLabel("Kp:")
+        self._kp_lbl.setFixedWidth(28)
+        self._kp_lbl.setStyleSheet(self._gains_label_css(theme))
+        self._kp_input = QLineEdit()
+        self._kp_input.setPlaceholderText("Kp")
+        self._apply_input_style(self._kp_input, theme)
+        self._kp_input.returnPressed.connect(self._on_gains_changed)
+        gains_row1.addWidget(self._kp_lbl)
+        gains_row1.addWidget(self._kp_input)
+        layout.addLayout(gains_row1)
+
+        gains_row2 = QHBoxLayout()
+        gains_row2.setSpacing(6)
+        self._ti_lbl = QLabel("Ti:")
+        self._ti_lbl.setFixedWidth(28)
+        self._ti_lbl.setStyleSheet(self._gains_label_css(theme))
+        self._ti_input = QLineEdit()
+        self._ti_input.setPlaceholderText("Ti")
+        self._apply_input_style(self._ti_input, theme)
+        self._ti_input.returnPressed.connect(self._on_gains_changed)
+        gains_row2.addWidget(self._ti_lbl)
+        gains_row2.addWidget(self._ti_input)
+
+        self._td_lbl = QLabel("Td:")
+        self._td_lbl.setFixedWidth(28)
+        self._td_lbl.setStyleSheet(self._gains_label_css(theme))
+        self._td_input = QLineEdit()
+        self._td_input.setPlaceholderText("Td")
+        self._apply_input_style(self._td_input, theme)
+        self._td_input.returnPressed.connect(self._on_gains_changed)
+        gains_row2.addWidget(self._td_lbl)
+        gains_row2.addWidget(self._td_input)
+        layout.addLayout(gains_row2)
 
         # -- Stats row --
         self._stats_label = QLabel("IAE: \u2014  |  2\u03c3/Range: \u2014")
@@ -301,11 +331,13 @@ class FaceplateWidget(QFrame):
             sep.setStyleSheet(
                 f"background-color: {theme.border}; border: none;"
             )
-        self._gains_label.setStyleSheet(
-            f"font-size: {theme.font_size_normal}px; "
-            f"color: {theme.fg_primary}; background: transparent;"
-            f" font-family: 'Fira Code', monospace;"
-        )
+        gains_css = self._gains_label_css(theme)
+        self._kp_lbl.setStyleSheet(gains_css)
+        self._ti_lbl.setStyleSheet(gains_css)
+        self._td_lbl.setStyleSheet(gains_css)
+        self._apply_input_style(self._kp_input, theme)
+        self._apply_input_style(self._ti_input, theme)
+        self._apply_input_style(self._td_input, theme)
         self._stats_label.setStyleSheet(
             f"font-size: {theme.font_size_normal}px; "
             f"color: {theme.fg_secondary}; background: transparent;"
@@ -332,11 +364,13 @@ class FaceplateWidget(QFrame):
             bar._max = max_val  # noqa: SLF001
             bar.set_value(0.0)
         self._bar_co.set_value(0.0)
-        # Update PID gains display
+        # Update PID gains fields
         if pid_gains:
             self.update_gains(pid_gains)
         else:
-            self._gains_label.setText("Kp: \u2014  Ti: \u2014  Td: \u2014")
+            self._kp_input.setText("")
+            self._ti_input.setText("")
+            self._td_input.setText("")
 
     def on_telemetry(self, controller_id: int, frame: dict) -> None:
         if (
@@ -374,33 +408,52 @@ class FaceplateWidget(QFrame):
         except ValueError:
             pass
 
+    @staticmethod
+    def _gains_label_css(theme: ThemeBase) -> str:
+        return (
+            f"color: {theme.fg_secondary}; background: transparent;"
+            f" font-size: {theme.font_size_label}px; font-weight: bold;"
+        )
+
     def update_gains(self, gains: dict) -> None:
-        """Update PID gains display.
+        """Update PID gains input fields.
 
         Args:
             gains: dict with keys 'gain', 'reset', 'rate',
                    and optionally 'integral_type' (TIME_TI or GAIN_KI).
         """
-        kp = gains.get("gain", 0.0)
-        reset_val = gains.get("reset", 0.0)
-        rate_val = gains.get("rate", 0.0)
         integral_type = gains.get("integral_type", "TIME_TI")
+        self._integral_type = integral_type
 
-        # Integral: Ki if GAIN_KI, Ti if TIME_TI
+        # Update labels based on integral type
         if integral_type == "GAIN_KI":
-            i_label, i_val = "Ki", f"{reset_val:.3f}"
+            self._ti_lbl.setText("Ki:")
+            self._td_lbl.setText("Kd:")
         else:
-            i_label, i_val = "Ti", f"{reset_val:.1f}s"
+            self._ti_lbl.setText("Ti:")
+            self._td_lbl.setText("Td:")
 
-        # Derivative: Kd if GAIN_KI, Td if TIME_TI
-        if integral_type == "GAIN_KI":
-            d_label, d_val = "Kd", f"{rate_val:.3f}"
-        else:
-            d_label, d_val = "Td", f"{rate_val:.1f}s"
+        # Set values in inputs (don't overwrite if user is editing)
+        if not self._kp_input.hasFocus():
+            self._kp_input.setText(f"{gains.get('gain', 0.0):.3f}")
+        if not self._ti_input.hasFocus():
+            self._ti_input.setText(f"{gains.get('reset', 0.0):.3f}")
+        if not self._td_input.hasFocus():
+            self._td_input.setText(f"{gains.get('rate', 0.0):.3f}")
 
-        self._gains_label.setText(
-            f"Kp: {kp:.3f}  {i_label}: {i_val}  {d_label}: {d_val}"
-        )
+    def _on_gains_changed(self) -> None:
+        """User pressed Enter on a gains field — emit new values."""
+        if self._controller_id is None:
+            return
+        try:
+            gain = float(self._kp_input.text())
+            reset = float(self._ti_input.text())
+            rate = float(self._td_input.text())
+        except ValueError:
+            return
+        self.gains_changed.emit(self._controller_id, {
+            "gain": gain, "reset": reset, "rate": rate,
+        })
 
     def update_stats(self, iae: float, variability: float) -> None:
         """Update performance stats display.
