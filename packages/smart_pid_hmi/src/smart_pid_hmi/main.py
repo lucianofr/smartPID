@@ -31,7 +31,13 @@ from smart_pid_hmi.pages.settings_page import SettingsPage
 from smart_pid_hmi.pages.simulator_page import SimulatorPage
 from smart_pid_hmi.pages.user_management_page import UserManagementPage
 from smart_pid_hmi.services.session import Session
-from smart_pid_hmi.themes import DarkRoomTheme, ISA101Theme, MD3DarkTheme, ThemeManager
+from smart_pid_hmi.themes import (
+    DarkRoomTheme,
+    ISA101Theme,
+    MD3DarkTheme,
+    MD3LightTheme,
+    ThemeManager,
+)
 
 if TYPE_CHECKING:
     from smart_pid_hmi.services.ports import APIClientPort, TelemetrySourcePort
@@ -89,6 +95,7 @@ class MainWindow(QMainWindow):
         self._theme_manager.register(isa_theme)
         self._theme_manager.register(DarkRoomTheme())
         self._theme_manager.register(MD3DarkTheme())
+        self._theme_manager.register(MD3LightTheme())
         self._theme_manager.set_theme("isa101")
         theme = isa_theme
         theme.apply(QApplication.instance())

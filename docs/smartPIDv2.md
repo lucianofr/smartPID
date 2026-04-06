@@ -262,7 +262,8 @@ O layout é projetado para o cliente visual. O usuário inicia a HMI e se depara
 ### **8.0. Utilização de Temas**
 O código da UI deve ser desenvolvido de maneira que permita a aplicação de temas:
 * **Tema Dark Mode**: Tema escuro, estilo dark room.
-* **Tema Material Design 3**: Baseado no padrão do Google.
+* **Tema Material Design 3 Dark**: Baseado no padrão do Google (variante escura).
+* **Tema Material Design 3 Light**: Baseado no padrão do Google (variante clara, fundos brancos/lilás).
 * **Tema ISA-101**: Baseado na norma ISA-101, com tons cinza escuros, cores suaves para PVs e cores primárias restritas apenas aos alarmes.
 
 ### **8.1. Dashboard Executivo (Landing Page)**
