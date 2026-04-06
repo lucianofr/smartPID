@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 NAMESPACE_URI = "urn:smartpid:sim"
+_WRITABLE_PARAMS = ("co", "sp", "kp", "ti", "td", "pid_mode", "pid_sp")
 
 
 class OPCUAServer:
@@ -56,7 +57,7 @@ class OPCUAServer:
         return dict(self._controller_node_ids)
 
     def set_on_write(self, callback: Callable[[int, str, float], None]) -> None:
-        """Register callback for external writes to CO or SP nodes."""
+        """Register callback for external writes to writable nodes."""
         self._on_write = callback
 
     def start(self) -> None:
@@ -106,12 +107,21 @@ class OPCUAServer:
         co: float,
         mode: int = 0,
         status: int = 0,
+        *,
+        kp: float | None = None,
+        ti: float | None = None,
+        td: float | None = None,
+        pid_mode: int | None = None,
+        pid_sp: float | None = None,
     ) -> None:
         """Update OPC-UA node values for a controller. Thread-safe."""
         if self._loop is None or not self._loop.is_running():
             return
         asyncio.run_coroutine_threadsafe(
-            self._async_update_values(controller_id, pv, sp, co, mode, status),
+            self._async_update_values(
+                controller_id, pv, sp, co, mode, status,
+                kp=kp, ti=ti, td=td, pid_mode=pid_mode, pid_sp=pid_sp,
+            ),
             self._loop,
         )
 
@@ -155,7 +165,7 @@ class OPCUAServer:
         sub = await self._server.create_subscription(100, handler)
         self._subscription = sub
         for nodes_dict in self._controller_nodes.values():
-            for param in ("co", "sp"):
+            for param in _WRITABLE_PARAMS:
                 node = nodes_dict.get(param)
                 if node is not None:
                     await sub.subscribe_data_change(node)
@@ -188,9 +198,31 @@ class OPCUAServer:
             self._ns_idx, "Status", 0, ua.VariantType.Int32,
         )
 
-        # Make CO and SP writable (for external clients)
+        # PID tuning nodes (all writable)
+        kp_node = await ctrl_folder.add_variable(
+            self._ns_idx, "Kp", 1.0, ua.VariantType.Float,
+        )
+        ti_node = await ctrl_folder.add_variable(
+            self._ns_idx, "Ti", 10.0, ua.VariantType.Float,
+        )
+        td_node = await ctrl_folder.add_variable(
+            self._ns_idx, "Td", 0.0, ua.VariantType.Float,
+        )
+        pid_mode_node = await ctrl_folder.add_variable(
+            self._ns_idx, "PID_Mode", 0, ua.VariantType.Int32,
+        )
+        pid_sp_node = await ctrl_folder.add_variable(
+            self._ns_idx, "PID_SP", 50.0, ua.VariantType.Float,
+        )
+
+        # Make writable params accessible to external clients
         await co_node.set_writable()
         await sp_node.set_writable()
+        await kp_node.set_writable()
+        await ti_node.set_writable()
+        await td_node.set_writable()
+        await pid_mode_node.set_writable()
+        await pid_sp_node.set_writable()
 
         node_ids = {
             "pv": pv_node.nodeid.to_string(),
@@ -198,6 +230,11 @@ class OPCUAServer:
             "co": co_node.nodeid.to_string(),
             "mode": mode_node.nodeid.to_string(),
             "status": status_node.nodeid.to_string(),
+            "kp": kp_node.nodeid.to_string(),
+            "ti": ti_node.nodeid.to_string(),
+            "td": td_node.nodeid.to_string(),
+            "pid_mode": pid_mode_node.nodeid.to_string(),
+            "pid_sp": pid_sp_node.nodeid.to_string(),
         }
         self._controller_node_ids[controller_id] = node_ids
         self._controller_nodes[controller_id] = {
@@ -206,12 +243,17 @@ class OPCUAServer:
             "co": co_node,
             "mode": mode_node,
             "status": status_node,
+            "kp": kp_node,
+            "ti": ti_node,
+            "td": td_node,
+            "pid_mode": pid_mode_node,
+            "pid_sp": pid_sp_node,
         }
         logger.info("opcua_server_registered controller=%d tag=%s", controller_id, tag)
 
-        # Subscribe new CO/SP nodes if subscription exists (late registration)
+        # Subscribe writable nodes if subscription exists (late registration)
         if self._subscription is not None:
-            for param in ("co", "sp"):
+            for param in _WRITABLE_PARAMS:
                 node = self._controller_nodes[controller_id].get(param)
                 if node is not None:
                     await self._subscription.subscribe_data_change(node)
@@ -226,6 +268,12 @@ class OPCUAServer:
         co: float,
         mode: int,
         status: int,
+        *,
+        kp: float | None = None,
+        ti: float | None = None,
+        td: float | None = None,
+        pid_mode: int | None = None,
+        pid_sp: float | None = None,
     ) -> None:
         """Write new values to the controller's OPC-UA nodes."""
         nodes = self._controller_nodes.get(controller_id)
@@ -240,6 +288,20 @@ class OPCUAServer:
         await nodes["status"].write_value(
             ua.DataValue(ua.Variant(status, ua.VariantType.Int32)),
         )
+        if kp is not None:
+            await nodes["kp"].write_value(ua.DataValue(ua.Variant(kp, ua.VariantType.Float)))
+        if ti is not None:
+            await nodes["ti"].write_value(ua.DataValue(ua.Variant(ti, ua.VariantType.Float)))
+        if td is not None:
+            await nodes["td"].write_value(ua.DataValue(ua.Variant(td, ua.VariantType.Float)))
+        if pid_mode is not None:
+            await nodes["pid_mode"].write_value(
+                ua.DataValue(ua.Variant(pid_mode, ua.VariantType.Int32)),
+            )
+        if pid_sp is not None:
+            await nodes["pid_sp"].write_value(
+                ua.DataValue(ua.Variant(pid_sp, ua.VariantType.Float)),
+            )
 
 
 class _WriteHandler:
@@ -257,7 +319,7 @@ class _WriteHandler:
     def _resolve_node(self, node_id_str: str) -> tuple[int, str] | None:
         """Find controller_id and param name from a node_id string."""
         for cid, nodes in self._controller_nodes.items():
-            for param in ("co", "sp"):
+            for param in _WRITABLE_PARAMS:
                 node = nodes.get(param)
                 if node is not None and node.nodeid.to_string() == node_id_str:
                     return (cid, param)

@@ -278,6 +278,9 @@ class MainWindow(QMainWindow):
         self._simulator_page.step_requested.connect(self._send_sim_step)
         self._simulator_page.noise_requested.connect(self._send_sim_noise)
         self._simulator_page.clear_disturbance_requested.connect(self._send_sim_clear)
+        self._simulator_page.pid_enabled_changed.connect(self._send_sim_pid_enable)
+        self._simulator_page.pid_params_changed.connect(self._send_sim_pid_params)
+        self._simulator_page.pid_mode_changed.connect(self._send_sim_pid_mode)
         self._settings_page.theme_changed.connect(self._on_theme_switch)
         self._settings_page.refresh_rate_changed.connect(self._on_refresh_rate_changed)
         bus_bridge.telemetry_received.connect(self._on_telemetry_for_trends)
@@ -545,6 +548,24 @@ class MainWindow(QMainWindow):
         if cid is None:
             return
         self._safe_api_call(self._api_client.clear_simulator_disturbance, cid)
+
+    def _send_sim_pid_enable(self, enabled: bool) -> None:
+        cid = self._simulator_page.current_controller_id
+        if cid is None:
+            return
+        self._safe_api_call(self._api_client.enable_simulator_pid, cid, enabled)
+
+    def _send_sim_pid_params(self, kp: float, ti: float, td: float) -> None:
+        cid = self._simulator_page.current_controller_id
+        if cid is None:
+            return
+        self._safe_api_call(self._api_client.set_simulator_pid_params, cid, kp, ti, td)
+
+    def _send_sim_pid_mode(self, mode: str) -> None:
+        cid = self._simulator_page.current_controller_id
+        if cid is None:
+            return
+        self._safe_api_call(self._api_client.set_simulator_pid_mode, cid, mode)
 
     def _on_refresh_rate_changed(self, ms: int) -> None:
         """Update BusBridge refresh interval when user changes setting."""

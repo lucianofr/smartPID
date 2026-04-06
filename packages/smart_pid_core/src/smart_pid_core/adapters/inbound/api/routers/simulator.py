@@ -15,6 +15,10 @@ from smart_pid_domain.dtos.commands import CommandResponse
 from smart_pid_domain.dtos.simulator import (
     SimulatorDisturbanceRequest,
     SimulatorParametersRequest,
+    SimulatorPIDEnableRequest,
+    SimulatorPIDModeRequest,
+    SimulatorPIDParamsRequest,
+    SimulatorPIDStatusResponse,
     SimulatorPresetRequest,
     SimulatorStatusResponse,
 )
@@ -73,3 +77,48 @@ async def clear_disturbance(
 ) -> CommandResponse:
     adapter.clear_disturbance(controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail="Disturbances cleared")
+
+
+@router.post("/{controller_id}/pid/enable", response_model=CommandResponse)
+async def enable_pid(
+    controller_id: int,
+    body: SimulatorPIDEnableRequest,
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> CommandResponse:
+    adapter.enable_pid(controller_id, body.enabled)
+    state = "enabled" if body.enabled else "disabled"
+    return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID {state}")
+
+
+@router.post("/{controller_id}/pid/params", response_model=CommandResponse)
+async def set_pid_params(
+    controller_id: int,
+    body: SimulatorPIDParamsRequest,
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> CommandResponse:
+    adapter.set_pid_params(controller_id, body.kp, body.ti, body.td)
+    return CommandResponse(ok=True, controller_id=controller_id, detail="PID params updated")
+
+
+@router.post("/{controller_id}/pid/mode", response_model=CommandResponse)
+async def set_pid_mode(
+    controller_id: int,
+    body: SimulatorPIDModeRequest,
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> CommandResponse:
+    mode_int = 1 if body.mode == "AUTO" else 0
+    adapter.set_pid_mode(controller_id, mode_int)
+    return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID mode={body.mode}")
+
+
+@router.get("/{controller_id}/pid/status", response_model=SimulatorPIDStatusResponse)
+async def get_pid_status(
+    controller_id: int,
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> SimulatorPIDStatusResponse:
+    status = adapter.get_pid_status(controller_id)
+    return SimulatorPIDStatusResponse(**status)

@@ -37,8 +37,41 @@ class ControllerSimStatus(BaseModel):
     step_amplitude: float
     noise_active: bool
     noise_amplitude: float
+    # PID internal state
+    pid_enabled: bool = False
+    pid_kp: float = 1.0
+    pid_ti: float = 10.0
+    pid_td: float = 0.0
+    pid_mode: int = 0  # 0=MAN, 1=AUTO
+    pid_cv: float = 0.0
 
 
 class SimulatorStatusResponse(BaseModel):
     enabled: bool
     controllers: dict[int, ControllerSimStatus]
+
+
+class SimulatorPIDEnableRequest(BaseModel):
+    controller_id: int
+    enabled: bool
+
+
+class SimulatorPIDParamsRequest(BaseModel):
+    controller_id: int
+    kp: float
+    ti: float
+    td: float
+
+
+class SimulatorPIDModeRequest(BaseModel):
+    controller_id: int
+    mode: Literal["MAN", "AUTO"]
+
+
+class SimulatorPIDStatusResponse(BaseModel):
+    enabled: bool
+    kp: float
+    ti: float
+    td: float
+    mode: int  # 0=MAN, 1=AUTO
+    cv: float

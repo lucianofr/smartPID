@@ -234,6 +234,24 @@ class MockAPIClient:
     def clear_simulator_disturbance(self, controller_id: int) -> CommandResponse:
         return CommandResponse(ok=True, controller_id=controller_id, detail="mock")
 
+    def enable_simulator_pid(
+        self, controller_id: int, enabled: bool,
+    ) -> CommandResponse:
+        return CommandResponse(ok=True, controller_id=controller_id, detail="mock")
+
+    def set_simulator_pid_params(
+        self, controller_id: int, kp: float, ti: float, td: float,
+    ) -> CommandResponse:
+        return CommandResponse(ok=True, controller_id=controller_id, detail="mock")
+
+    def set_simulator_pid_mode(
+        self, controller_id: int, mode: str,
+    ) -> CommandResponse:
+        return CommandResponse(ok=True, controller_id=controller_id, detail="mock")
+
+    def get_simulator_pid_status(self, controller_id: int) -> dict:
+        return {"enabled": False, "kp": 1.0, "ti": 10.0, "td": 0.0, "mode": 0, "cv": 0.0}
+
     # Stats
     def get_controller_stats(self, controller_id: int) -> dict:
         return {"controller_id": controller_id, "iae": 0.0, "ise": 0.0}
