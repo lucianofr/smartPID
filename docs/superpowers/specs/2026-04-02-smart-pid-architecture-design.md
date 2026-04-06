@@ -137,7 +137,7 @@ smart-pid/
 │           │
 │           ├── widgets/
 │           │   ├── __init__.py
-│           │   ├── controller_card.py     # Sparkline card for grid
+│           │   ├── controller_card.py     # Summary card with analog bars + gear button
 │           │   ├── faceplate.py           # Bar graphs, SP/PV/CO inputs
 │           │   ├── trend_chart.py         # pyqtgraph high-res trend
 │           │   ├── ai_log_box.py          # Terminal-style AI reasoning
@@ -368,7 +368,7 @@ Hot-switch without restart via Settings dropdown.
 ### 9.3 Pages
 
 1. **Dashboard Executive**: Global KPIs (% Auto, % AI coverage), Bad Actors (top 5 IAE), AI ROI (before/after), system health (CPU/RAM/uptime)
-2. **Dashboard Operational (Main)**: Grid of ControllerCards with sparklines (top), TrendChart + Faceplate (bottom 70/30 split), AILogBox, AlarmBar (fixed footer)
+2. **Dashboard Operational (Main)**: Grid of ControllerCards with analog bars (top), TrendChart + Faceplate (bottom 70/30 split), AILogBox, AlarmBar (fixed footer)
 3. **Multi-Trend**: 2x2 grid, Time-Sync (zoom/pan synchronized across 4 charts)
 4. **Alarm Panel**: Full table with filters (priority, type, time range), ACK button
 5. **Settings**: OPC-UA endpoint config, test connection, project management (New/Open/Save/SaveAs)
@@ -377,7 +377,7 @@ Hot-switch without restart via Settings dropdown.
 
 - **TrendChart**: pyqtgraph PlotWidget. Y1 (PV/SP), Y2 (CO). Time window selector (value + unit dropdown). Auto-scale checkbox. Manual scale fields. AI action markers (orange circles). CSV export button. Downsampling for large datasets.
 - **Faceplate**: Bar graphs (PV/SP/CO), numeric inputs, stats display (2σ/Range, IAE), mode indicator, optimizer state buttons (RUN/PAUSE/STOP), config gear icon.
-- **ControllerCard**: Name, mode badge, sparkline, PV/SP/CO values, AI status. Border color indicates alarm state.
+- **ControllerCard**: Name, mode badge, PV/SP/CO analog bars, gear button (⚙), AI status. Border color indicates alarm state. No sparklines — trend data shown in TrendChart.
 - **AILogBox**: Terminal-style scrolling text with timestamps and color-coded entries (Fuzzy orange, RL cyan).
 - **AlarmBar**: Fixed bottom widget showing 10 most recent alarms across all controllers.
 - **OPCUABrowser**: Modal tree view for navigating OPC-UA address space, search bar, double-click to select NodeID.

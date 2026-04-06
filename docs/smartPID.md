@@ -271,7 +271,7 @@ Visão gerencial do ROI do software.
 
 ### **8.2. Dashboard Operacional (Master-Detail)**
 Tela dividida verticalmente (50% / 50%):
-* **Grid de Cards (Topo):** Overview de todas as malhas. Contém Sparklines, Valores e Borda Colorida se em alarme. Clicar altera o contexto inferior.
+* **Grid de Cards (Topo):** Overview de todas as malhas. Barras analógicas (PV, SP, CO), badge de modo, botão de configurações (⚙) e borda colorida se em alarme. Sem sparklines. Clicar altera o contexto inferior.
 * **Gráfico Trend (Baixo-Esquerda):** Gráfico de alta resolução (70% da largura). Eixo Y1 (PV/SP), Y2 (CO). Marcadores visuais onde a IA atuou. O usuário deve ser capaz de escolher a janela de tempo que ele quer visualizar, coloque uma caixa de texto pwara o usuário entrar com um número que terá como unidade o que for escolhido no dropbox com as escolhas (segundo, minuto e hora), esta será a janela de tempo. 
 - Checkbox para auto scale
 - campos para definir escala de PV (SP usa a mesma escala) e CO. 

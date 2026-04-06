@@ -274,7 +274,7 @@ Visão gerencial do ROI do software, consumida via API:
 
 ### **8.2. Dashboard Operacional (Master-Detail)**
 Tela dividida verticalmente (50% / 50%):
-* **Grid de Cards (Topo):** Overview de todas as malhas. Sparklines e borda colorida se em alarme.
+* **Grid de Cards (Topo):** Overview de todas as malhas. Barras analógicas (PV, SP, CO), badge de modo, botão de configurações (⚙) e borda colorida se em alarme. Sem sparklines — os dados de tendência ficam no gráfico Trend abaixo.
 * **Gráfico Trend (Baixo-Esquerda):** Ocupa 70% da largura. Eixo Y1 (PV/SP), Y2 (CO). Marcadores visuais onde a IA atuou. 
   * O usuário deve ser capaz de escolher a **janela de tempo** digitando um número e escolhendo a unidade no dropbox (segundo, minuto, hora).
   * Checkbox para Auto-Scale.
