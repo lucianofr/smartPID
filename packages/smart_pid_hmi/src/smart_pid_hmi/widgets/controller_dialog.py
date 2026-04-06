@@ -1,6 +1,7 @@
 """Dialog for adding or editing a controller loop — all 30+ fields in tabbed layout."""
 from __future__ import annotations
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -89,8 +90,8 @@ class ControllerDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self._edit_mode = edit_data is not None
-        self.setMinimumWidth(520)
-        self.setMinimumHeight(480)
+        self.setMinimumWidth(640)
+        self.setMinimumHeight(580)
 
         root = QVBoxLayout(self)
         self._tabs = QTabWidget()
@@ -137,6 +138,8 @@ class ControllerDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok
             | QDialogButtonBox.StandardButton.Cancel
         )
+        for btn in buttons.buttons():
+            btn.setIcon(QIcon())
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
