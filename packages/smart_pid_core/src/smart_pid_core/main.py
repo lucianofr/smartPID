@@ -176,6 +176,14 @@ async def run_daemon(settings: CoreSettings) -> None:
             "Change it immediately via the /users API or set SPID_ADMIN_PASSWORD env var.",
         )
 
+    # Project service
+    from smart_pid_core.application.project_service import ProjectService
+
+    project_service = ProjectService(
+        repo=repo, loop_manager=loop_manager,
+        simulator_adapter=simulator_adapter,
+    )
+
     # Phase 5: AI Repository
     from smart_pid_core.adapters.outbound.ai_repo import AIRepository
 
@@ -238,6 +246,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         stats_workers=loop_manager.get_stats_workers(),
         ai_workers=loop_manager.get_ai_workers(),
         ai_repo=ai_repo,
+        project_service=project_service,
         alarm_repo=alarm_repo,
         audit_repo=audit_repo,
     )

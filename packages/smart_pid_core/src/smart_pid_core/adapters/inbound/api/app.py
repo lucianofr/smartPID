@@ -18,6 +18,7 @@ from smart_pid_core.adapters.inbound.api.routers import (
     export,
     history,
     opcua,
+    project,
     simulator,
     stats,
     system,
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.user_repo import UserRepository
     from smart_pid_core.application.event_bus import EventBus
     from smart_pid_core.application.loop_manager import LoopManager
+    from smart_pid_core.application.project_service import ProjectService
     from smart_pid_core.application.workers.stats_worker import StatsWorker
     from smart_pid_core.config import CoreSettings
 
@@ -59,6 +61,7 @@ def create_app(
     stats_workers: dict[int, StatsWorker] | None = None,
     ai_workers: dict[int, object] | None = None,
     ai_repo: AIRepository | None = None,
+    project_service: ProjectService | None = None,
     alarm_repo: AlarmRepository | None = None,
     audit_repo: AuditRepository | None = None,
     event_bus: EventBus | None = None,
@@ -72,6 +75,7 @@ def create_app(
     app.state.user_repo = user_repo
     app.state.loop_manager = loop_manager
     app.state.settings = settings
+    app.state.project_service = project_service
     app.state.simulator_adapter = simulator_adapter
     app.state.opcua_adapter = opcua_adapter
     app.state.stats_workers = stats_workers or {}
@@ -83,6 +87,7 @@ def create_app(
     app.state.execution_mode = settings.execution_mode
 
     # Register routers
+    app.include_router(project.router, prefix="/project", tags=["project"])
     app.include_router(system.router, prefix="/system", tags=["system"])
     app.include_router(auth.router, prefix="/auth", tags=["auth"])
     app.include_router(controllers.router, prefix="/controllers", tags=["controllers"])
