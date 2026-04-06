@@ -7,7 +7,6 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QGridLayout,
     QLabel,
-    QScrollArea,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -61,15 +60,12 @@ class DashboardPage(QWidget):
         )
         layout.addWidget(self._overview_label)
 
-        # Top: cards grid (scrollable)
-        self._cards_scroll = QScrollArea()
-        self._cards_scroll.setWidgetResizable(True)
-        self._cards_scroll.setMaximumHeight(220)
+        # Top: cards in horizontal layout (no scroll, fixed height)
         self._cards_container = QWidget()
         self._cards_layout = QGridLayout(self._cards_container)
-        self._cards_layout.setSpacing(6)
-        self._cards_scroll.setWidget(self._cards_container)
-        layout.addWidget(self._cards_scroll)
+        self._cards_layout.setSpacing(8)
+        self._cards_layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._cards_container)
 
         # Section title: detail
         self._detail_label = QLabel(
