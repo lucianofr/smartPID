@@ -197,31 +197,6 @@ class DarkRoomTheme:
         QSpinBox:focus, QDoubleSpinBox:focus {{
             border-color: {self.border_focus};
         }}
-        QSpinBox::up-button, QDoubleSpinBox::up-button,
-        QSpinBox::down-button, QDoubleSpinBox::down-button {{
-            background-color: {self.bg_secondary};
-            border: 1px solid {self.border};
-            width: 16px;
-        }}
-        QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
-        QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
-            background-color: {self.bg_hover};
-        }}
-        QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
-            image: none;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-bottom: 5px solid {self.fg_secondary};
-            width: 0px; height: 0px;
-        }}
-        QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
-            image: none;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-top: 5px solid {self.fg_secondary};
-            width: 0px; height: 0px;
-        }}
-
         /* --- Combo Boxes --- */
         QComboBox {{
             background-color: {self.bg_input};
@@ -235,17 +210,6 @@ class DarkRoomTheme:
         }}
         QComboBox:focus {{
             border-color: {self.border_focus};
-        }}
-        QComboBox::drop-down {{
-            border: none;
-            width: 24px;
-        }}
-        QComboBox::down-arrow {{
-            image: none;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-top: 5px solid {self.fg_secondary};
-            width: 0px; height: 0px;
         }}
         QComboBox QAbstractItemView {{
             background-color: {self.bg_secondary};
