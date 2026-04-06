@@ -25,12 +25,14 @@ class StatsWorker:
         self,
         bus: EventBus,
         controller: Controller,
-        window_size: int = 1800,
-        publish_interval: int = 60,
     ) -> None:
         self._bus = bus
         self._controller = controller
-        self._publish_interval = publish_interval
+        window_size = (
+            controller.process_speed.stats_window_s * 1000
+            // controller.scan_rate_ms
+        )
+        self._publish_interval = max(1, window_size // 5)
         self._calculator = StatsCalculator(
             window_size=window_size,
             span=controller.pv_scale.span,
