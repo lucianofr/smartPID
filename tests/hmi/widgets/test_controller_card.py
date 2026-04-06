@@ -1,6 +1,7 @@
 """Tests for ControllerCardWidget."""
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QPushButton
 
 from smart_pid_hmi.themes.isa101 import ISA101Theme
 from smart_pid_hmi.widgets.controller_card import ControllerCardWidget, SparklineWidget
@@ -119,3 +120,40 @@ def test_card_sparkline_fed_on_telemetry(qtbot, theme):
         frame = {"pv": pv, "sp": 50.0, "co": 50.0}
         card.on_telemetry(1, frame)
     assert list(card._sparkline.data) == [10.0, 20.0, 30.0]
+
+
+# --- Gear button ---
+
+def test_gear_button_exists(qtbot, theme):
+    card = ControllerCardWidget(
+        controller_id=1, tag_name="FIC-101",
+        min_val=0.0, max_val=100.0, theme=theme,
+    )
+    qtbot.addWidget(card)
+    gear = card.findChild(QPushButton, "settings_btn")
+    assert gear is not None
+
+
+def test_gear_emits_settings_requested(qtbot, theme):
+    card = ControllerCardWidget(
+        controller_id=7, tag_name="FIC-101",
+        min_val=0.0, max_val=100.0, theme=theme,
+    )
+    qtbot.addWidget(card)
+    gear = card.findChild(QPushButton, "settings_btn")
+    with qtbot.waitSignal(card.settings_requested, timeout=500) as blocker:
+        qtbot.mouseClick(gear, Qt.MouseButton.LeftButton)
+    assert blocker.args == [7]
+
+
+def test_gear_click_does_not_emit_controller_selected(qtbot, theme):
+    card = ControllerCardWidget(
+        controller_id=1, tag_name="FIC-101",
+        min_val=0.0, max_val=100.0, theme=theme,
+    )
+    qtbot.addWidget(card)
+    gear = card.findChild(QPushButton, "settings_btn")
+    selected_emitted = []
+    card.controller_selected.connect(lambda cid: selected_emitted.append(cid))
+    qtbot.mouseClick(gear, Qt.MouseButton.LeftButton)
+    assert selected_emitted == []

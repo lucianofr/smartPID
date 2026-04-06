@@ -137,6 +137,42 @@ def test_inject_simulator_disturbance():
     assert result.ok is True
 
 
+def test_update_controller():
+    data = {
+        "id": 1, "name": "FIC-101", "description": "Updated flow",
+        "mode": "AUTO", "pv": 45.0, "sp": 55.0, "co": 62.0,
+    }
+    transport = _mock_transport(200, data)
+    session = Session()
+    client = APIClient(base_url="http://test:8000", session=session, transport=transport)
+    resp = client.update_controller(1, {"description": "Updated flow", "sp": 55.0})
+    assert resp.id == 1
+    assert resp.description == "Updated flow"
+    assert resp.sp == 55.0
+
+
+def test_update_controller_sends_put():
+    """Verify that update_controller issues a PUT request with correct path and body."""
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["url"] = str(request.url)
+        captured["body"] = request.content
+        return httpx.Response(200, json={
+            "id": 2, "name": "LIC-201", "description": "Level",
+            "mode": "AUTO", "pv": 65.0, "sp": 65.0, "co": 50.0,
+        })
+
+    transport = httpx.MockTransport(handler)
+    session = MagicMock()
+    session.auth_header = {"Authorization": "Bearer tok"}
+    client = APIClient(base_url="http://test:8000", session=session, transport=transport)
+    client.update_controller(2, {"sp": 70.0})
+    assert captured["method"] == "PUT"
+    assert "/controllers/2" in captured["url"]
+
+
 def test_clear_simulator_disturbance():
     transport = _mock_transport(200, {"ok": True, "controller_id": 1, "detail": "Cleared"})
     session = Session()

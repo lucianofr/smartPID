@@ -1,5 +1,5 @@
 """Tests for tuning domain models."""
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from smart_pid_domain.enums import TuningRecStatus
 from smart_pid_domain.models.tuning import PIDParamsRead, TuningRecommendation

@@ -31,6 +31,7 @@ class DashboardPage(QWidget):
     setpoint_requested = Signal(int, float)
     mode_requested = Signal(int, str)
     output_requested = Signal(int, float)
+    settings_requested = Signal(int)
 
     def __init__(
         self,
@@ -128,6 +129,7 @@ class DashboardPage(QWidget):
                 min_val=lo, max_val=hi, theme=self._theme,
             )
             card.controller_selected.connect(self._on_card_selected)
+            card.settings_requested.connect(self.settings_requested)
             row = idx // _GRID_COLS
             col = idx % _GRID_COLS
             self._cards_layout.addWidget(card, row, col)

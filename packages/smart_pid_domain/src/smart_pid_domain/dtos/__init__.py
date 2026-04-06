@@ -14,10 +14,22 @@ from smart_pid_domain.dtos.commands import (
     OutputCommand,
     SetpointCommand,
 )
+from smart_pid_domain.dtos.config import (
+    PIDTuningResponse,
+    PIDTuningUpdate,
+    TagBindingsResponse,
+    TagBindingsUpdate,
+)
 from smart_pid_domain.dtos.controllers import (
+    AIConfigDTO,
     ControllerCreate,
     ControllerResponse,
     ControllerUpdate,
+    ControlOptsDTO,
+    IOOptsDTO,
+    PIDParamsDTO,
+    ScaleConfigDTO,
+    TagBindingsDTO,
 )
 from smart_pid_domain.dtos.export import ExportJob, ExportRequest
 from smart_pid_domain.dtos.history import HistoryResponse, TelemetryFrameDTO
@@ -26,6 +38,12 @@ from smart_pid_domain.dtos.opcua import (
     OPCUANodeInfo,
     OPCUASearchResponse,
     OPCUAStatusResponse,
+)
+from smart_pid_domain.dtos.project import (
+    ProjectCreate,
+    ProjectOpen,
+    ProjectResponse,
+    ProjectSaveAs,
 )
 from smart_pid_domain.dtos.simulator import (
     ControllerSimStatus,
@@ -38,6 +56,7 @@ from smart_pid_domain.dtos.system import SystemStatusResponse
 from smart_pid_domain.dtos.users import UserResponse, UserUpdate
 
 __all__ = [
+    "AIConfigDTO",
     "AIConfigUpdateRequest",
     "AIHistoryResponse",
     "AIStatusResponse",
@@ -45,6 +64,7 @@ __all__ = [
     "AlarmAckRequest",
     "AlarmResponse",
     "CommandResponse",
+    "ControlOptsDTO",
     "ControllerCreate",
     "ControllerResponse",
     "ControllerSimStatus",
@@ -52,6 +72,7 @@ __all__ = [
     "ExportJob",
     "ExportRequest",
     "HistoryResponse",
+    "IOOptsDTO",
     "LoginRequest",
     "ModeCommand",
     "OPCUABrowseResponse",
@@ -59,6 +80,14 @@ __all__ = [
     "OPCUASearchResponse",
     "OPCUAStatusResponse",
     "OutputCommand",
+    "PIDParamsDTO",
+    "PIDTuningResponse",
+    "PIDTuningUpdate",
+    "ProjectCreate",
+    "ProjectOpen",
+    "ProjectResponse",
+    "ProjectSaveAs",
+    "ScaleConfigDTO",
     "SetpointCommand",
     "SimulatorDisturbanceRequest",
     "SimulatorParametersRequest",
@@ -66,6 +95,9 @@ __all__ = [
     "SimulatorStatusResponse",
     "StatsResponse",
     "SystemStatusResponse",
+    "TagBindingsDTO",
+    "TagBindingsResponse",
+    "TagBindingsUpdate",
     "TelemetryFrameDTO",
     "TokenResponse",
     "UserClaims",

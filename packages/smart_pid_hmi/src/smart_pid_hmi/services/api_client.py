@@ -77,6 +77,13 @@ class APIClient:
         resp.raise_for_status()
         return ControllerResponse.model_validate(resp.json())
 
+    def update_controller(self, controller_id: int, data: dict) -> ControllerResponse:
+        resp = self._http.put(
+            f"/controllers/{controller_id}", json=data, headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return ControllerResponse.model_validate(resp.json())
+
     def set_setpoint(self, controller_id: int, value: float) -> CommandResponse:
         resp = self._http.post(
             "/commands/setpoint",
