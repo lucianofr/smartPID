@@ -31,15 +31,6 @@ from smart_pid_domain.models.controller import (
 )
 
 _DDL = """
-CREATE TABLE IF NOT EXISTS Usuarios (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome        TEXT    NOT NULL UNIQUE,
-    senha_hash  TEXT    NOT NULL,
-    perfil      TEXT    NOT NULL DEFAULT 'OPERATOR',
-    ativo       INTEGER NOT NULL DEFAULT 1,
-    criado_em   TEXT    NOT NULL DEFAULT (datetime('now'))
-);
-
 CREATE TABLE IF NOT EXISTS Controladores (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     nome                TEXT    NOT NULL,
@@ -134,6 +125,8 @@ CREATE TABLE IF NOT EXISTS Configuracao_Alarmes (
     limite          REAL    NOT NULL DEFAULT 0.0,
     habilitado      INTEGER NOT NULL DEFAULT 1,
     histerese       REAL    NOT NULL DEFAULT 0.0,
+    delay_on_ms     INTEGER NOT NULL DEFAULT 0,
+    delay_off_ms    INTEGER NOT NULL DEFAULT 0,
     mensagem        TEXT    NOT NULL DEFAULT '',
     criado_em       TEXT    NOT NULL DEFAULT (datetime('now'))
 );

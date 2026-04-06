@@ -49,6 +49,8 @@ async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
             "value": row["limite"],
             "priority": AlarmPriority(row["prioridade"]),
             "hysteresis": row["histerese"],
+            "delay_on_ms": row.get("delay_on_ms", 0) or 0,
+            "delay_off_ms": row.get("delay_off_ms", 0) or 0,
         }
 
     for cid, alarms in by_controller.items():
@@ -57,41 +59,55 @@ async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
             name: str,
             default_priority: AlarmPriority = AlarmPriority.WARNING,
             _alarms: dict = alarms,
-        ) -> tuple[bool, float, AlarmPriority]:
+        ) -> tuple[bool, float, AlarmPriority, int, int]:
             a = _alarms.get(name, {})
             return (
                 a.get("enabled", False),
                 a.get("value", 0.0),
                 a.get("priority", default_priority),
+                a.get("delay_on_ms", 0),
+                a.get("delay_off_ms", 0),
             )
 
-        hihi_e, hihi_v, hihi_p = _get("HIHI", AlarmPriority.CRITICAL)
-        hi_e, hi_v, hi_p = _get("HI")
-        lo_e, lo_v, lo_p = _get("LO")
-        lolo_e, lolo_v, lolo_p = _get("LOLO", AlarmPriority.CRITICAL)
-        dvhi_e, dvhi_v, dvhi_p = _get("DV_HI", AlarmPriority.ADVISORY)
-        dvlo_e, dvlo_v, dvlo_p = _get("DV_LO", AlarmPriority.ADVISORY)
+        hihi_e, hihi_v, hihi_p, hihi_don, hihi_doff = _get("HIHI", AlarmPriority.CRITICAL)
+        hi_e, hi_v, hi_p, hi_don, hi_doff = _get("HI")
+        lo_e, lo_v, lo_p, lo_don, lo_doff = _get("LO")
+        lolo_e, lolo_v, lolo_p, lolo_don, lolo_doff = _get("LOLO", AlarmPriority.CRITICAL)
+        dvhi_e, dvhi_v, dvhi_p, dvhi_don, dvhi_doff = _get("DV_HI", AlarmPriority.ADVISORY)
+        dvlo_e, dvlo_v, dvlo_p, dvlo_don, dvlo_doff = _get("DV_LO", AlarmPriority.ADVISORY)
         deadband = max((a.get("hysteresis", 0.0) for a in alarms.values()), default=0.0)
 
         configs[cid] = _AC(
             hihi_enabled=hihi_e,
             hihi_value=hihi_v,
             hihi_priority=hihi_p,
+            hihi_delay_on_ms=hihi_don,
+            hihi_delay_off_ms=hihi_doff,
             hi_enabled=hi_e,
             hi_value=hi_v,
             hi_priority=hi_p,
+            hi_delay_on_ms=hi_don,
+            hi_delay_off_ms=hi_doff,
             lo_enabled=lo_e,
             lo_value=lo_v,
             lo_priority=lo_p,
+            lo_delay_on_ms=lo_don,
+            lo_delay_off_ms=lo_doff,
             lolo_enabled=lolo_e,
             lolo_value=lolo_v,
             lolo_priority=lolo_p,
+            lolo_delay_on_ms=lolo_don,
+            lolo_delay_off_ms=lolo_doff,
             dv_hi_enabled=dvhi_e,
             dv_hi_value=dvhi_v,
             dv_hi_priority=dvhi_p,
+            dv_hi_delay_on_ms=dvhi_don,
+            dv_hi_delay_off_ms=dvhi_doff,
             dv_lo_enabled=dvlo_e,
             dv_lo_value=dvlo_v,
             dv_lo_priority=dvlo_p,
+            dv_lo_delay_on_ms=dvlo_don,
+            dv_lo_delay_off_ms=dvlo_doff,
             deadband_percent=deadband,
         )
     return configs
@@ -147,8 +163,9 @@ async def run_daemon(settings: CoreSettings) -> None:
         opcua_adapter.start()
         logger.info("opcua_adapter_started", endpoint=settings.opcua_endpoint)
 
-    # Phase 2: User repo + seed admin
-    user_repo = UserRepository(repo.db)
+    # Phase 2: User repo + seed admin (standalone DB)
+    user_repo = UserRepository(settings.users_db_path)
+    await user_repo.initialize()
     users = await user_repo.list_all()
     if not users:
         admin_hash = hash_password("admin")
@@ -272,6 +289,8 @@ async def run_daemon(settings: CoreSettings) -> None:
     alarm_worker.stop()
     loop_manager.stop_all()
     bus.stop()
+    # Close user DB before project DB
+    await user_repo.close()
     # I-INT-3: Close SQLite connection to finalize WAL
     await repo.close()
     logger.info("daemon_stopped")
