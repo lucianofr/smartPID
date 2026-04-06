@@ -83,7 +83,7 @@ class MockAPIClient:
         # Fake JWT with long expiry
         header = base64.urlsafe_b64encode(b'{"alg":"HS256"}').rstrip(b"=").decode()
         payload = base64.urlsafe_b64encode(json.dumps({
-            "sub": "1", "username": username, "role": "operator",
+            "sub": "1", "username": username, "role": "ADMIN",
             "exp": int(time.time()) + 86400,
         }).encode()).rstrip(b"=").decode()
         fake_token = f"{header}.{payload}.mocksig"

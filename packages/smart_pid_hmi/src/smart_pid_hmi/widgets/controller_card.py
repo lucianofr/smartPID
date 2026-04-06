@@ -9,7 +9,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -27,22 +26,13 @@ if TYPE_CHECKING:
     from smart_pid_hmi.themes.base import ThemeBase
 
 _CARD_WIDTH = 280
-_CARD_MIN_HEIGHT = 150
+_CARD_MIN_HEIGHT = 175
 _ALARM_STRIP_HEIGHT = 5
 
 
 def _theme_attr(theme: ThemeBase, attr: str, fallback: str) -> str:
     val = getattr(theme, attr, "")
     return val if val else fallback
-
-
-def _make_settings_icon() -> QIcon:
-    """Try system theme icons, return best match."""
-    for name in ("preferences-system", "configure", "emblem-system"):
-        icon = QIcon.fromTheme(name)
-        if not icon.isNull():
-            return icon
-    return QIcon()
 
 
 class ControllerCardWidget(QFrame):
@@ -114,15 +104,10 @@ class ControllerCardWidget(QFrame):
         self._tag_label.setWordWrap(True)
         header.addWidget(self._tag_label, stretch=1)
 
-        # Settings button
-        self._settings_btn = QPushButton()
+        # Settings button (text label — QIcon.fromTheme unreliable in Flatpak/Wayland)
+        self._settings_btn = QPushButton("CFG")
         self._settings_btn.setObjectName("settings_btn")
-        icon = _make_settings_icon()
-        if icon.isNull():
-            self._settings_btn.setText("CFG")
-        else:
-            self._settings_btn.setIcon(icon)
-        self._settings_btn.setFixedSize(28, 28)
+        self._settings_btn.setFixedSize(36, 24)
         self._apply_settings_btn_style(theme)
         self._settings_btn.setToolTip("Controller settings")
         self._settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -162,12 +147,14 @@ class ControllerCardWidget(QFrame):
 
     def _apply_settings_btn_style(self, theme: ThemeBase) -> None:
         self._settings_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent;"
+            f"QPushButton {{ background: {theme.bg_widget};"
             f" border: 1px solid {theme.border};"
-            f" border-radius: 4px;"
-            f" color: {theme.fg_primary}; font-size: 10px; }}"
-            f"QPushButton:hover {{ background: {theme.bg_widget};"
-            f" color: {theme.accent}; }}"
+            f" border-radius: 3px;"
+            f" color: {theme.fg_primary};"
+            f" font-size: 9px; font-weight: bold;"
+            f" padding: 2px 4px; }}"
+            f"QPushButton:hover {{ background: {theme.accent};"
+            f" color: {theme.bg_widget}; }}"
         )
 
     # ── Properties ───────────────────────────────────────────────

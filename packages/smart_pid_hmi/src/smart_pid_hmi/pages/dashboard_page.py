@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Signal
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QPlainTextEdit,
     QScrollArea,
     QSplitter,
     QVBoxLayout,
@@ -69,6 +69,7 @@ class DashboardPage(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded,
         )
         self._cards_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self._cards_scroll.setFixedHeight(195)
         self._cards_container = QWidget()
         self._cards_layout = QHBoxLayout(self._cards_container)
         self._cards_layout.setSpacing(6)
@@ -97,6 +98,24 @@ class DashboardPage(QWidget):
         splitter.setStretchFactor(0, 7)
         splitter.setStretchFactor(1, 3)
         layout.addWidget(splitter, stretch=1)
+
+        # AI Log box (terminal-style, shows AI reasoning)
+        self._ai_log = QPlainTextEdit()
+        self._ai_log.setReadOnly(True)
+        self._ai_log.setMaximumHeight(80)
+        self._ai_log.setPlaceholderText("AI Log — reasoning and tuning actions")
+        self._ai_log.setStyleSheet(
+            "QPlainTextEdit {"
+            " background-color: #000000;"
+            " color: #00FF41;"
+            " border: 1px solid #333333;"
+            " font-family: 'Courier New', 'Liberation Mono', 'Consolas', monospace;"
+            " font-size: 11px;"
+            " padding: 4px;"
+            " selection-background-color: #004400;"
+            "}"
+        )
+        layout.addWidget(self._ai_log)
 
         # Bottom: alarm bar
         self._alarm_bar = AlarmBarWidget(theme=theme)
@@ -173,6 +192,20 @@ class DashboardPage(QWidget):
         for card in self._cards:
             card.on_alarm(controller_id, alarm)
         self._alarm_bar.on_alarm(controller_id, alarm)
+
+    def append_ai_log(self, message: str) -> None:
+        """Append a message to the AI log box (terminal-style)."""
+        self._ai_log.appendPlainText(message)
+        # Keep max 200 lines
+        doc = self._ai_log.document()
+        if doc.blockCount() > 200:
+            cursor = self._ai_log.textCursor()
+            cursor.movePosition(cursor.MoveOperation.Start)
+            cursor.movePosition(
+                cursor.MoveOperation.Down, cursor.MoveMode.KeepAnchor, doc.blockCount() - 200,
+            )
+            cursor.removeSelectedText()
+            cursor.deleteChar()  # remove trailing newline
 
     def apply_theme(self, theme: ThemeBase) -> None:
         """Re-apply theme colors to dynamic elements."""

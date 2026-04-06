@@ -9,15 +9,15 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QScrollArea,
+    QVBoxLayout,
     QWidget,
 )
 
 if TYPE_CHECKING:
     from smart_pid_hmi.themes.base import ThemeBase
 
-_MAX_ALARMS = 10
-_BAR_HEIGHT = 44
+_MAX_ALARMS = 5
+_BAR_HEIGHT = 110
 
 
 def _theme_attr(theme: ThemeBase, attr: str, fallback: str) -> str:
@@ -45,47 +45,38 @@ class AlarmBarWidget(QFrame):
         self._apply_bar_style(theme)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 0, 8, 0)
-        layout.setSpacing(8)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(4)
 
-        # Left: alarm log label with counter
+        # Left column: title + alarm entries (vertical)
+        left = QVBoxLayout()
+        left.setSpacing(2)
+
         self._counter_label = QLabel("[ LOG ALARMES ]")
         self._counter_label.setStyleSheet(
             f"color: {theme.fg_primary}; background: transparent; "
             f"font-size: {theme.font_size_label}px; "
-            f"font-weight: bold; padding: 0 4px;"
+            f"font-weight: bold; padding: 0;"
         )
-        self._counter_label.setFixedWidth(130)
-        layout.addWidget(self._counter_label)
+        left.addWidget(self._counter_label)
 
-        # Scrollable alarm pills
-        self._scroll = QScrollArea()
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self._scroll.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self._scroll.setStyleSheet(
-            "border: none; background: transparent;"
-        )
-
+        # Alarm entries container (vertical list)
         self._container = QWidget()
-        self._container_layout = QHBoxLayout(self._container)
+        self._container_layout = QVBoxLayout(self._container)
         self._container_layout.setContentsMargins(0, 0, 0, 0)
-        self._container_layout.setSpacing(6)
+        self._container_layout.setSpacing(1)
         self._container_layout.addStretch()
+        left.addWidget(self._container, stretch=1)
 
-        self._scroll.setWidget(self._container)
-        layout.addWidget(self._scroll)
+        layout.addLayout(left, stretch=1)
 
         # Right: ACK ALL button
         self._ack_btn = QPushButton("ACK ALL")
         self._ack_btn.setFixedHeight(28)
+        self._ack_btn.setFixedWidth(70)
         self._ack_btn.clicked.connect(self.ack_all_requested.emit)
         self._apply_ack_style(theme)
-        layout.addWidget(self._ack_btn)
+        layout.addWidget(self._ack_btn, alignment=Qt.AlignmentFlag.AlignTop)
 
     def _apply_bar_style(self, theme: ThemeBase) -> None:
         bg = _theme_attr(theme, "bg_toolbar", theme.bg_secondary)
