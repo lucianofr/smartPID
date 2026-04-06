@@ -1,7 +1,11 @@
 """Tests for ExecutiveDashboardPage."""
 from PySide6.QtWidgets import QLabel, QPushButton, QTableWidget, QWidget
 
-from smart_pid_hmi.pages.executive_dashboard import ExecutiveDashboardPage, _FlowLayout
+from smart_pid_hmi.pages.executive_dashboard import (
+    ExecutiveDashboardPage,
+    _ControllerCard,
+    _FlowLayout,
+)
 
 
 def test_creation(qtbot):
@@ -93,3 +97,114 @@ def test_flow_layout_item_at(qtbot):
     layout.addWidget(btn)
     assert layout.itemAt(0).widget() is btn
     assert layout.itemAt(1) is None
+
+
+# --- _ControllerCard tests ---
+
+
+def _make_controller_data(**overrides) -> dict:
+    """Helper: minimal controller data dict with sensible defaults."""
+    base = {
+        "name": "FIC-101",
+        "mode": "AUTO",
+        "execution_mode": "DDC",
+        "pv": 50.0,
+        "sp": 50.0,
+        "sp_hi_lim": 100.0,
+        "sp_lo_lim": 0.0,
+        "ai_config": {
+            "engine": "NONE",
+            "objective": "DISTURBANCE_REJECTION",
+        },
+    }
+    base.update(overrides)
+    return base
+
+
+def test_controller_card_creation(qtbot):
+    card = _ControllerCard()
+    qtbot.addWidget(card)
+    assert card is not None
+
+
+def test_controller_card_shows_name_and_mode(qtbot):
+    card = _ControllerCard()
+    qtbot.addWidget(card)
+    card.update_data(_make_controller_data(name="TIC-301", mode="MAN"))
+    assert card._name_label.text() == "TIC-301"
+    assert card._mode_badge.text() == "MAN"
+
+
+def test_controller_card_shows_process_values(qtbot):
+    card = _ControllerCard()
+    qtbot.addWidget(card)
+    card.update_data(_make_controller_data(pv=72.5, sp=70.0))
+    assert card._pv_value.text() == "72.5"
+    assert card._sp_value.text() == "70.0"
+
+
+def test_controller_card_shows_error_pct(qtbot):
+    card = _ControllerCard()
+    qtbot.addWidget(card)
+    card.update_data(_make_controller_data(
+        pv=55.0, sp=50.0, sp_hi_lim=100.0, sp_lo_lim=0.0,
+    ))
+    assert card._error_value.text() == "5.0%"
+
+
+def test_controller_card_shows_ai_info_fuzzy(qtbot):
+    card = _ControllerCard()
+    qtbot.addWidget(card)
+    card.update_data(_make_controller_data(
+        ai_config={"engine": "FUZZY", "objective": "SP_TRACKING"},
+        ai_state="RUN",
+        ai_gamma=0.12,
+    ))
+    assert card._engine_badge.text() == "FUZZY"
+    assert card._objective_value.text() == "SP_TRACKING"
+    assert card._ai_state_value.text() == "RUN"
+    assert card._gamma_value.text() == "0.12"
+
+
+def test_controller_card_ai_none_shows_disabled(qtbot):
+    card = _ControllerCard()
+    qtbot.addWidget(card)
+    card.update_data(_make_controller_data(
+        ai_config={"engine": "NONE", "objective": "DISTURBANCE_REJECTION"},
+    ))
+    assert card._engine_badge.text() == "NONE"
+    assert card._ai_state_value.text() == "Disabled"
+    assert card._gamma_value.text() == "\u2014"
+
+
+def test_controller_card_shows_execution_mode(qtbot):
+    card = _ControllerCard()
+    qtbot.addWidget(card)
+    card.update_data(_make_controller_data(execution_mode="SUPERVISORY"))
+    assert card._exec_badge.text() == "SUPERVISORY"
+
+
+def test_controller_card_shows_performance_metrics(qtbot):
+    card = _ControllerCard()
+    qtbot.addWidget(card)
+    card.update_data(_make_controller_data(
+        iae=12.5, itae=45.2, ise=8.1, mse=2.3,
+        std_dev=1.8, total_variation=34.1,
+        variability_sp=3.6, variability_range=1.2,
+    ))
+    assert card._perf_values["IAE"].text() == "12.5"
+    assert card._perf_values["ITAE"].text() == "45.2"
+    assert card._perf_values["ISE"].text() == "8.1"
+    assert card._perf_values["MSE"].text() == "2.3"
+    assert card._perf_values["Std Dev"].text() == "1.8"
+    assert card._perf_values["TV"].text() == "34.1"
+    assert card._perf_values["Var/SP"].text() == "3.6%"
+    assert card._perf_values["Var/Rng"].text() == "1.2%"
+
+
+def test_controller_card_placeholder_when_no_stats(qtbot):
+    card = _ControllerCard()
+    qtbot.addWidget(card)
+    card.update_data(_make_controller_data())  # no stats keys
+    assert card._perf_values["IAE"].text() == "\u2014"
+    assert card._perf_values["TV"].text() == "\u2014"
