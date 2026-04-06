@@ -92,6 +92,10 @@ class MainWindow(QMainWindow):
         self._kpi_timer = QTimer(self)
         self._kpi_timer.timeout.connect(self._refresh_kpis)
 
+        # Simulator live values polling timer (1s interval)
+        self._sim_poll_timer = QTimer(self)
+        self._sim_poll_timer.timeout.connect(self._poll_sim_status)
+
         self.setWindowTitle("Smart PID HMI")
         self.setMinimumSize(1024, 700)
 
@@ -600,6 +604,12 @@ class MainWindow(QMainWindow):
                     Qt.ConnectionType.QueuedConnection,
                     Q_ARG(bool, True),
                 )
+                # Start polling live values
+                QMetaObject.invokeMethod(
+                    self._sim_poll_timer, "start",
+                    Qt.ConnectionType.QueuedConnection,
+                    Q_ARG(int, 1000),
+                )
             except Exception as e:
                 self._api_error_signal.emit(str(e))
         threading.Thread(target=do_start, daemon=True).start()
@@ -612,6 +622,10 @@ class MainWindow(QMainWindow):
                     self._simulator_page, "set_sim_running",
                     Qt.ConnectionType.QueuedConnection,
                     Q_ARG(bool, False),
+                )
+                QMetaObject.invokeMethod(
+                    self._sim_poll_timer, "stop",
+                    Qt.ConnectionType.QueuedConnection,
                 )
             except Exception as e:
                 self._api_error_signal.emit(str(e))
@@ -648,6 +662,46 @@ class MainWindow(QMainWindow):
         if cid is None:
             return
         self._safe_api_call(self._api_client.set_simulator_pid_sp, cid, sp)
+
+    def _poll_sim_status(self) -> None:
+        """Poll simulator status and update live values on the simulator page."""
+        cid = self._simulator_page.current_controller_id
+        if cid is None:
+            return
+
+        def do_poll():
+            try:
+                status = self._api_client.get_simulator_status()
+                ctrl_status = status.controllers.get(cid)
+                if ctrl_status is None:
+                    return
+                QMetaObject.invokeMethod(
+                    self, "_apply_sim_live_values",
+                    Qt.ConnectionType.QueuedConnection,
+                    Q_ARG(float, ctrl_status.pv),
+                    Q_ARG(float, ctrl_status.co),
+                    Q_ARG(float, ctrl_status.error),
+                    Q_ARG(float, ctrl_status.pid_cv),
+                    Q_ARG(float, ctrl_status.process_input),
+                    Q_ARG(float, ctrl_status.process_output),
+                    Q_ARG(float, ctrl_status.disturbance_output),
+                    Q_ARG(float, ctrl_status.sp),
+                )
+            except Exception:
+                pass  # Silently ignore poll errors
+        threading.Thread(target=do_poll, daemon=True).start()
+
+    @Slot(float, float, float, float, float, float, float, float)
+    def _apply_sim_live_values(
+        self,
+        pv: float, co: float, error: float, pid_cv: float,
+        process_in: float, process_out: float, dist_out: float, sp: float,
+    ) -> None:
+        self._simulator_page.update_live_values(
+            pv=pv, co=co, error=error, pid_cv=pid_cv,
+            process_in=process_in, process_out=process_out,
+            disturbance_out=dist_out, sp=sp,
+        )
 
     def _on_refresh_rate_changed(self, ms: int) -> None:
         """Update BusBridge refresh interval when user changes setting."""
@@ -1018,6 +1072,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._kpi_timer.stop()
+        self._sim_poll_timer.stop()
         self._bus_bridge.stop()
         self._telemetry_source.stop()
         if hasattr(self._api_client, "close"):

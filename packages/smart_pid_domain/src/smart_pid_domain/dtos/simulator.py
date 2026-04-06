@@ -57,6 +57,14 @@ class ControllerSimStatus(BaseModel):
     pid_cv: float = 0.0
     auto_sp: AutoSPRequest | None = None
     auto_disturbance: AutoDisturbanceRequest | None = None
+    # Live computed values (updated each tick)
+    pv: float = 0.0
+    sp: float = 50.0
+    co: float = 0.0
+    error: float = 0.0
+    process_input: float = 0.0
+    process_output: float = 0.0
+    disturbance_output: float = 0.0
 
 
 class SimulatorStatusResponse(BaseModel):
