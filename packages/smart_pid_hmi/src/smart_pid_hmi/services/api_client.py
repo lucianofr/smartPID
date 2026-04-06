@@ -226,6 +226,35 @@ class APIClient:
         resp.raise_for_status()
         return resp.json()
 
+    def set_simulator_auto_sp(
+        self,
+        controller_id: int,
+        enabled: bool,
+        sp_min_pct: float,
+        sp_max_pct: float,
+    ) -> dict:
+        resp = self._http.put(
+            f"/simulator/{controller_id}/auto-sp",
+            json={"enabled": enabled, "sp_min_pct": sp_min_pct, "sp_max_pct": sp_max_pct},
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def set_simulator_auto_disturbance(
+        self,
+        controller_id: int,
+        enabled: bool,
+        max_amplitude_pct: float,
+    ) -> dict:
+        resp = self._http.put(
+            f"/simulator/{controller_id}/auto-disturbance",
+            json={"enabled": enabled, "max_amplitude_pct": max_amplitude_pct},
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def get_active_alarms(self, controller_id: int | None = None) -> list[dict]:
         params: dict = {}
         if controller_id is not None:

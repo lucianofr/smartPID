@@ -20,6 +20,7 @@ from smart_pid_domain.enums import ProcessPresetName
 from smart_pid_domain.models.process_preset import PRESETS
 
 if TYPE_CHECKING:
+    from smart_pid_domain.dtos.simulator import ControllerSimStatus
     from smart_pid_hmi.themes.base import ThemeBase
 
 # Slider range config: (min, max, default, decimals)
@@ -84,6 +85,7 @@ class SimulatorPage(QWidget):
         param_layout = QVBoxLayout(param_group)
         self._gain_slider = self._make_param_row(param_layout, "Gain (K):", "gain")
         self._tau1_slider = self._make_param_row(param_layout, "Tau1 (s):", "tau1")
+        self._tau1_slider.valueChanged.connect(self._update_period_label)
         self._tau2_slider = self._make_param_row(param_layout, "Tau2 (s):", "tau2")
         self._dead_time_slider = self._make_param_row(
             param_layout, "Dead Time (s):", "dead_time",
@@ -383,6 +385,24 @@ class SimulatorPage(QWidget):
     # Public API
     # ------------------------------------------------------------------
 
+    def _update_period_label(self) -> None:
+        tau1 = self._tau1_slider.value()
+        period = max(10.0 * tau1, 1.0)
+        self._period_label.setText(f"Excitation Period (10 \u00d7 \u03c41): {period:.1f} s")
+
+    def _on_auto_sp_apply(self) -> None:
+        lo = self._auto_sp_min.value()
+        hi = self._auto_sp_max.value()
+        if lo >= hi:
+            return  # ignore invalid range
+        self.auto_sp_changed.emit(self._auto_sp_enable.isChecked(), lo, hi)
+
+    def _on_auto_dist_apply(self) -> None:
+        self.auto_disturbance_changed.emit(
+            self._auto_dist_enable.isChecked(),
+            self._auto_dist_amp.value(),
+        )
+
     def set_status_text(self, text: str) -> None:
         self._status_label.setText(f"Status: {text}")
 
@@ -395,6 +415,16 @@ class SimulatorPage(QWidget):
     def current_controller_id(self) -> int | None:
         data = self._controller_combo.currentData()
         return data if isinstance(data, int) else None
+
+    def populate_from_status(self, status: ControllerSimStatus) -> None:
+        """Populate widgets from a ControllerSimStatus DTO."""
+        if status.auto_sp is not None:
+            self._auto_sp_enable.setChecked(status.auto_sp.enabled)
+            self._auto_sp_min.setValue(status.auto_sp.sp_min_pct)
+            self._auto_sp_max.setValue(status.auto_sp.sp_max_pct)
+        if status.auto_disturbance is not None:
+            self._auto_dist_enable.setChecked(status.auto_disturbance.enabled)
+            self._auto_dist_amp.setValue(status.auto_disturbance.max_amplitude_pct)
 
     def apply_theme(self, theme: ThemeBase) -> None:
         """Re-apply theme colors to dynamic elements."""

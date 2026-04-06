@@ -79,6 +79,20 @@ class APIClientPort(Protocol):
         self, controller_id: int,
     ) -> dict: ...
 
+    def set_simulator_auto_sp(
+        self,
+        controller_id: int,
+        enabled: bool,
+        sp_min_pct: float,
+        sp_max_pct: float,
+    ) -> dict: ...
+    def set_simulator_auto_disturbance(
+        self,
+        controller_id: int,
+        enabled: bool,
+        max_amplitude_pct: float,
+    ) -> dict: ...
+
     # Alarms
     def get_active_alarms(self, controller_id: int | None = ...) -> list[dict]: ...
     def ack_alarm(self, alarm_id: int) -> dict: ...

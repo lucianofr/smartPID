@@ -186,7 +186,11 @@ async def run_daemon(settings: CoreSettings) -> None:
     if simulator_adapter is not None:
         controllers = await repo.list_all()
         for ctrl in controllers:
-            simulator_adapter.register_controller(ctrl.id)
+            simulator_adapter.register_controller(
+                ctrl.id,
+                pv_min=ctrl.pv_scale.eu_min,
+                pv_max=ctrl.pv_scale.eu_max,
+            )
         simulator_adapter.start()
         logger.info("simulator_started", port=settings.simulator_port)
 

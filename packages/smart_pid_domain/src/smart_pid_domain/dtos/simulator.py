@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from smart_pid_domain.enums import ProcessPresetName  # noqa: TC001 - pydantic needs runtime
 
@@ -27,6 +27,17 @@ class SimulatorDisturbanceRequest(BaseModel):
     amplitude: float
 
 
+class AutoSPRequest(BaseModel):
+    enabled: bool
+    sp_min_pct: float = Field(ge=0.0, le=100.0, default=30.0)
+    sp_max_pct: float = Field(ge=0.0, le=100.0, default=70.0)
+
+
+class AutoDisturbanceRequest(BaseModel):
+    enabled: bool
+    max_amplitude_pct: float = Field(ge=0.0, le=100.0, default=10.0)
+
+
 class ControllerSimStatus(BaseModel):
     preset: str
     gain: float
@@ -44,6 +55,8 @@ class ControllerSimStatus(BaseModel):
     pid_td: float = 0.0
     pid_mode: int = 0  # 0=MAN, 1=AUTO
     pid_cv: float = 0.0
+    auto_sp: AutoSPRequest | None = None
+    auto_disturbance: AutoDisturbanceRequest | None = None
 
 
 class SimulatorStatusResponse(BaseModel):

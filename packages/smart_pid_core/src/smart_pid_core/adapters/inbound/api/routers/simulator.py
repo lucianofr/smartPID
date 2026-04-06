@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_simulator_adapter,
@@ -13,6 +13,9 @@ from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter  
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
 from smart_pid_domain.dtos.commands import CommandResponse
 from smart_pid_domain.dtos.simulator import (
+    AutoDisturbanceRequest,
+    AutoSPRequest,
+    ControllerSimStatus,
     SimulatorDisturbanceRequest,
     SimulatorParametersRequest,
     SimulatorPIDEnableRequest,
@@ -75,7 +78,10 @@ async def clear_disturbance(
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
-    adapter.clear_disturbance(controller_id)
+    try:
+        adapter.clear_disturbance(controller_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     return CommandResponse(ok=True, controller_id=controller_id, detail="Disturbances cleared")
 
 
@@ -86,7 +92,10 @@ async def enable_pid(
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
-    adapter.enable_pid(controller_id, body.enabled)
+    try:
+        adapter.enable_pid(controller_id, body.enabled)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     state = "enabled" if body.enabled else "disabled"
     return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID {state}")
 
@@ -98,7 +107,10 @@ async def set_pid_params(
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
-    adapter.set_pid_params(controller_id, body.kp, body.ti, body.td)
+    try:
+        adapter.set_pid_params(controller_id, body.kp, body.ti, body.td)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     return CommandResponse(ok=True, controller_id=controller_id, detail="PID params updated")
 
 
@@ -109,8 +121,11 @@ async def set_pid_mode(
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
-    mode_int = 1 if body.mode == "AUTO" else 0
-    adapter.set_pid_mode(controller_id, mode_int)
+    try:
+        mode_int = 1 if body.mode == "AUTO" else 0
+        adapter.set_pid_mode(controller_id, mode_int)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID mode={body.mode}")
 
 
@@ -120,5 +135,38 @@ async def get_pid_status(
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> SimulatorPIDStatusResponse:
-    status = adapter.get_pid_status(controller_id)
+    try:
+        status = adapter.get_pid_status(controller_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     return SimulatorPIDStatusResponse(**status)
+
+
+@router.put("/{controller_id}/auto-sp", response_model=ControllerSimStatus)
+async def set_auto_sp(
+    controller_id: int,
+    body: AutoSPRequest,
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> ControllerSimStatus:
+    try:
+        adapter.set_auto_sp(controller_id, body)
+        return adapter.get_controller_status(controller_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
+
+
+@router.put("/{controller_id}/auto-disturbance", response_model=ControllerSimStatus)
+async def set_auto_disturbance(
+    controller_id: int,
+    body: AutoDisturbanceRequest,
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> ControllerSimStatus:
+    try:
+        adapter.set_auto_disturbance(controller_id, body)
+        return adapter.get_controller_status(controller_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404, detail="Controller not found in simulator"
+        ) from exc
