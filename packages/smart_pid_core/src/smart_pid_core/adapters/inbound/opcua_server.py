@@ -19,16 +19,8 @@ _PID_NODES = (
     "pv", "sp", "co", "mode", "status",
     "kp", "ti", "td", "pid_mode", "pid_sp", "pid_enabled", "pid_cv", "error",
 )
-_PROCESS_NODES = (
-    "process_gain", "process_tau1", "process_tau2", "process_dead_time",
-    "process_preset", "process_pv_min", "process_pv_max",
-    "process_input", "process_output",
-)
-_DISTURBANCE_NODES = (
-    "step_active", "step_amplitude", "noise_active", "noise_amplitude",
-    "auto_sp_enabled", "auto_sp_min_pct", "auto_sp_max_pct",
-    "auto_dist_enabled", "auto_dist_max_pct",
-)
+_PROCESS_NODES = ("process_input", "process_output")
+_DISTURBANCE_NODES = ("disturbance_output",)
 
 
 class OPCUAServer:
@@ -188,20 +180,17 @@ class OPCUAServer:
         Address space layout per controller::
 
             CTRL_{id}/
-              PID/        — PV, SP, CO, Mode, Status, Kp, Ti, Td, PID_Mode, PID_SP,
-                            PID_Enabled, PID_CV, Error
-              Process/    — Gain, Tau1, Tau2, DeadTime, Preset, PV_Min, PV_Max,
-                            Input (CO→process), Output (raw process out)
-              Disturbance/ — Step_Active, Step_Amplitude, Noise_Active, Noise_Amplitude,
-                             Auto_SP_Enabled, Auto_SP_Min, Auto_SP_Max,
-                             Auto_Dist_Enabled, Auto_Dist_Max
+              PID/         — PV, SP, CO, Mode, Status, Kp, Ti, Td, PID_Mode, PID_SP,
+                             PID_Enabled, PID_CV, Error
+              Process/     — Input (CO fed to process model), Output (raw model output)
+              Disturbance/ — Output (combined disturbance contribution)
         """
         from asyncua import ua
 
         tag = f"CTRL_{controller_id}"
         ctrl_folder = await self._controllers_folder.add_folder(self._ns_idx, tag)
 
-        # --- PID sub-folder ---
+        # --- PID sub-folder (13 nodes) ---
         pid_folder = await ctrl_folder.add_folder(self._ns_idx, "PID")
         nodes: dict[str, object] = {}
 
@@ -245,30 +234,8 @@ class OPCUAServer:
             self._ns_idx, "Error", 0.0, ua.VariantType.Float,
         )
 
-        # --- Process sub-folder ---
+        # --- Process sub-folder (2 nodes) ---
         proc_folder = await ctrl_folder.add_folder(self._ns_idx, "Process")
-
-        nodes["process_gain"] = await proc_folder.add_variable(
-            self._ns_idx, "Gain", 1.2, ua.VariantType.Float,
-        )
-        nodes["process_tau1"] = await proc_folder.add_variable(
-            self._ns_idx, "Tau1", 3.0, ua.VariantType.Float,
-        )
-        nodes["process_tau2"] = await proc_folder.add_variable(
-            self._ns_idx, "Tau2", 0.0, ua.VariantType.Float,
-        )
-        nodes["process_dead_time"] = await proc_folder.add_variable(
-            self._ns_idx, "DeadTime", 1.0, ua.VariantType.Float,
-        )
-        nodes["process_preset"] = await proc_folder.add_variable(
-            self._ns_idx, "Preset", "FLOW", ua.VariantType.String,
-        )
-        nodes["process_pv_min"] = await proc_folder.add_variable(
-            self._ns_idx, "PV_Min", 0.0, ua.VariantType.Float,
-        )
-        nodes["process_pv_max"] = await proc_folder.add_variable(
-            self._ns_idx, "PV_Max", 100.0, ua.VariantType.Float,
-        )
         nodes["process_input"] = await proc_folder.add_variable(
             self._ns_idx, "Input", 0.0, ua.VariantType.Float,
         )
@@ -276,35 +243,10 @@ class OPCUAServer:
             self._ns_idx, "Output", 0.0, ua.VariantType.Float,
         )
 
-        # --- Disturbance sub-folder ---
+        # --- Disturbance sub-folder (1 node) ---
         dist_folder = await ctrl_folder.add_folder(self._ns_idx, "Disturbance")
-
-        nodes["step_active"] = await dist_folder.add_variable(
-            self._ns_idx, "Step_Active", False, ua.VariantType.Boolean,
-        )
-        nodes["step_amplitude"] = await dist_folder.add_variable(
-            self._ns_idx, "Step_Amplitude", 0.0, ua.VariantType.Float,
-        )
-        nodes["noise_active"] = await dist_folder.add_variable(
-            self._ns_idx, "Noise_Active", False, ua.VariantType.Boolean,
-        )
-        nodes["noise_amplitude"] = await dist_folder.add_variable(
-            self._ns_idx, "Noise_Amplitude", 0.0, ua.VariantType.Float,
-        )
-        nodes["auto_sp_enabled"] = await dist_folder.add_variable(
-            self._ns_idx, "Auto_SP_Enabled", False, ua.VariantType.Boolean,
-        )
-        nodes["auto_sp_min_pct"] = await dist_folder.add_variable(
-            self._ns_idx, "Auto_SP_Min", 30.0, ua.VariantType.Float,
-        )
-        nodes["auto_sp_max_pct"] = await dist_folder.add_variable(
-            self._ns_idx, "Auto_SP_Max", 70.0, ua.VariantType.Float,
-        )
-        nodes["auto_dist_enabled"] = await dist_folder.add_variable(
-            self._ns_idx, "Auto_Dist_Enabled", False, ua.VariantType.Boolean,
-        )
-        nodes["auto_dist_max_pct"] = await dist_folder.add_variable(
-            self._ns_idx, "Auto_Dist_Max", 10.0, ua.VariantType.Float,
+        nodes["disturbance_output"] = await dist_folder.add_variable(
+            self._ns_idx, "Output", 0.0, ua.VariantType.Float,
         )
 
         # Make writable params accessible to external clients
@@ -333,16 +275,8 @@ class OPCUAServer:
         "kp": "Float", "ti": "Float", "td": "Float",
         "pid_mode": "Int32", "pid_sp": "Float",
         "pid_enabled": "Boolean", "pid_cv": "Float", "error": "Float",
-        "process_gain": "Float", "process_tau1": "Float",
-        "process_tau2": "Float", "process_dead_time": "Float",
-        "process_preset": "String",
-        "process_pv_min": "Float", "process_pv_max": "Float",
         "process_input": "Float", "process_output": "Float",
-        "step_active": "Boolean", "step_amplitude": "Float",
-        "noise_active": "Boolean", "noise_amplitude": "Float",
-        "auto_sp_enabled": "Boolean",
-        "auto_sp_min_pct": "Float", "auto_sp_max_pct": "Float",
-        "auto_dist_enabled": "Boolean", "auto_dist_max_pct": "Float",
+        "disturbance_output": "Float",
     }
 
     async def _async_update_values(

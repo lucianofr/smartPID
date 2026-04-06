@@ -391,11 +391,17 @@ class SimulatorAdapter:
                             ctrl.step_active = True
                             # step disturbance persists until next firing or manual clear
 
-                pv = ctrl.model.step(co=ctrl.last_co, dt=dt)
+                # Process model step (raw output before disturbances)
+                process_output = ctrl.model.step(co=ctrl.last_co, dt=dt)
+
+                # Disturbance contribution
+                disturbance = 0.0
                 if ctrl.step_active:
-                    pv += ctrl.step_amplitude
+                    disturbance += ctrl.step_amplitude
                 if ctrl.noise_active:
-                    pv += random.gauss(0, ctrl.noise_amplitude)
+                    disturbance += random.gauss(0, ctrl.noise_amplitude)
+
+                pv = process_output + disturbance
 
                 # Internal PID: compute CO when enabled and AUTO
                 error = ctrl.sp - pv
@@ -412,13 +418,10 @@ class SimulatorAdapter:
                     ctrl.pid_state = result.new_state
                     ctrl.last_co = result.cv
 
-                # Raw process output (before disturbances)
-                process_output = ctrl.model.pv
-
                 self._opcua_server.update_values(
                     controller_id=ctrl.controller_id,
                     values={
-                        # PID
+                        # PID (13)
                         "pv": pv,
                         "sp": ctrl.sp,
                         "co": ctrl.last_co,
@@ -432,25 +435,10 @@ class SimulatorAdapter:
                         "pid_enabled": ctrl.pid_enabled,
                         "pid_cv": ctrl.pid_state.cv,
                         "error": error,
-                        # Process
-                        "process_gain": ctrl.gain,
-                        "process_tau1": ctrl.tau1,
-                        "process_tau2": ctrl.tau2 if ctrl.tau2 is not None else 0.0,
-                        "process_dead_time": ctrl.dead_time,
-                        "process_preset": ctrl.preset_name,
-                        "process_pv_min": ctrl.pv_min,
-                        "process_pv_max": ctrl.pv_max,
+                        # Process (2)
                         "process_input": ctrl.last_co,
                         "process_output": process_output,
-                        # Disturbance
-                        "step_active": ctrl.step_active,
-                        "step_amplitude": ctrl.step_amplitude,
-                        "noise_active": ctrl.noise_active,
-                        "noise_amplitude": ctrl.noise_amplitude,
-                        "auto_sp_enabled": ctrl.auto_sp_enabled,
-                        "auto_sp_min_pct": ctrl.auto_sp_min_pct,
-                        "auto_sp_max_pct": ctrl.auto_sp_max_pct,
-                        "auto_dist_enabled": ctrl.auto_dist_enabled,
-                        "auto_dist_max_pct": ctrl.auto_dist_max_pct,
+                        # Disturbance (1)
+                        "disturbance_output": disturbance,
                     },
                 )
