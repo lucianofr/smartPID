@@ -123,7 +123,7 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 Phases 4/5/6 sao paralelizaveis apos Phase 3a.
 
 ## Convencoes
-- **Branching obrigatorio**: Toda modificacao de codigo, correcao de bug ou introducao de novo recurso DEVE ser feita em uma nova branch (nunca direto na main). O merge para main so acontece com autorizacao explicita do usuario.
+- **Branching obrigatorio — REGRA INVIOLAVEL**: Toda e qualquer modificacao de codigo, correcao de bug, melhoria ou introducao de novo recurso DEVE ser feita em uma **nova branch dedicada** criada especificamente para aquela tarefa. **NUNCA utilize branches ja existentes** de outras tarefas. **NUNCA faca modificacoes diretamente na main.** O fluxo obrigatorio e: (1) criar branch nova a partir de main com nome descritivo (ex: `feat/controller-tooltips`, `fix/pid-gain-validation`), (2) fazer as modificacoes e commits nessa branch, (3) aguardar aprovacao explicita do usuario, (4) so entao executar o merge para main. **Esta regra se aplica a TODOS os agentes e subagentes sem excecao.**
 - **Specs obrigatorias ao alterar UI**: Toda modificacao na interface (widgets, layout, cards, paginas, temas) DEVE ser acompanhada da atualizacao dos documentos de especificacao em `docs/` que descrevem o componente alterado. Isso inclui: `docs/smartPID.md`, `docs/smartPIDv2.md`, `docs/identidade_visual_*.md`, e as specs em `docs/superpowers/specs/`. Nao commitar codigo de UI sem atualizar as specs correspondentes.
 - TDD: write failing test -> implement -> green -> commit
 - Commits convencionais: feat(scope), fix(scope), chore(scope)
