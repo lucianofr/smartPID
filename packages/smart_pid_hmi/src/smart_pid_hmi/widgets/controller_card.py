@@ -115,12 +115,16 @@ class ControllerCardWidget(QFrame):
         # Gear button for settings
         self._settings_btn = QPushButton("\u2699")
         self._settings_btn.setObjectName("settings_btn")
-        self._settings_btn.setFixedSize(28, 28)
+        self._settings_btn.setFixedSize(30, 30)
         self._settings_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: none; "
-            f"color: {theme.fg_secondary}; font-size: 16px; }}"
-            f"QPushButton:hover {{ border: 1px solid {theme.border}; }}"
+            f"QPushButton {{ background: transparent;"
+            f" border: 1px solid {theme.border};"
+            f" border-radius: 4px;"
+            f" color: {theme.fg_primary}; font-size: 18px; }}"
+            f"QPushButton:hover {{ background: {theme.bg_widget};"
+            f" color: {theme.accent}; }}"
         )
+        self._settings_btn.setToolTip("Controller settings")
         self._settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._settings_btn.clicked.connect(self._on_settings_clicked)
         header.addWidget(self._settings_btn)
@@ -187,9 +191,12 @@ class ControllerCardWidget(QFrame):
             f"border: 1px solid {theme.border};"
         )
         self._settings_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: none; "
-            f"color: {theme.fg_secondary}; font-size: 16px; }}"
-            f"QPushButton:hover {{ border: 1px solid {theme.border}; }}"
+            f"QPushButton {{ background: transparent;"
+            f" border: 1px solid {theme.border};"
+            f" border-radius: 4px;"
+            f" color: {theme.fg_primary}; font-size: 18px; }}"
+            f"QPushButton:hover {{ background: {theme.bg_widget};"
+            f" color: {theme.accent}; }}"
         )
         self._bar_pv.apply_theme(theme)
         self._bar_sp.apply_theme(theme)
