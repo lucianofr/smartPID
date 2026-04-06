@@ -114,6 +114,13 @@ class MockAPIClient:
             mode="OOS", pv=0.0, sp=0.0, co=0.0,
         )
 
+    def update_controller(self, controller_id: int, data: dict) -> ControllerResponse:
+        base = self.get_controller(controller_id)
+        merged = base.model_dump()
+        merged.update(data)
+        merged["id"] = controller_id  # ensure id cannot be overwritten
+        return ControllerResponse.model_validate(merged)
+
     def set_setpoint(self, controller_id: int, value: float) -> CommandResponse:
         return CommandResponse(ok=True, controller_id=controller_id,
                                detail=f"SP set to {value}")
