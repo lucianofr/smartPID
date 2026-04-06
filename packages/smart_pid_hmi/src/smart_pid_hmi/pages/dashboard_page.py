@@ -107,15 +107,18 @@ class DashboardPage(QWidget):
         self._ai_log.setPlaceholderText("AI Log — reasoning and tuning actions")
         self._ai_log.setStyleSheet(
             "QPlainTextEdit {"
-            " background-color: #000000;"
-            " color: #00FF41;"
+            " background-color: #0A0A0A;"
+            " color: #33FF33;"
             " border: 1px solid #333333;"
-            " font-family: 'Courier New', 'Liberation Mono', 'Consolas', monospace;"
-            " font-size: 11px;"
-            " padding: 4px;"
+            " font-size: 13px;"
+            " padding: 6px;"
             " selection-background-color: #004400;"
             "}"
         )
+        from PySide6.QtGui import QFont
+        ai_font = QFont("Fira Code", 11)
+        ai_font.setStyleHint(QFont.StyleHint.Monospace)
+        self._ai_log.setFont(ai_font)
         left_layout.addWidget(self._ai_log)
 
         splitter.addWidget(left_panel)

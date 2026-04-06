@@ -68,6 +68,7 @@ class MockTelemetrySource:
                     "sp": round(sp, 2),
                     "co": round(co, 2),
                     "integral_val": 0.0,
+                    "mode": "AUTO",
                     "timestamp": datetime.now(tz=UTC).isoformat(),
                     "status": "GOOD",
                 }
