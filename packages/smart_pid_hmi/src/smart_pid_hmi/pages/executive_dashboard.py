@@ -497,10 +497,11 @@ class ExecutiveDashboardPage(QWidget):
 
     def update_controller_cards(self, controllers: list[dict]) -> None:
         """Create/update controller cards from a list of controller dicts."""
-        # Clear existing cards
-        for card in self._controller_cards.values():
-            card.setParent(None)
-            card.deleteLater()
+        # Clear existing cards — drain layout items to avoid stale references
+        while self._cards_layout.count():
+            item = self._cards_layout.takeAt(0)
+            if item and item.widget():
+                item.widget().deleteLater()
         self._controller_cards.clear()
 
         # Create new cards

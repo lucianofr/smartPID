@@ -70,6 +70,7 @@ def test_cards_update_on_second_call(qtbot):
         _make_controller_data(name="Y"),
     ])
     assert len(page._controller_cards) == 2
+    assert page._cards_layout.count() == 2
 
 
 def test_flow_layout_in_scroll_area(qtbot):
