@@ -1,7 +1,7 @@
 # Project Upload/Download Design
 
 **Date:** 2026-04-06
-**Status:** Approved
+**Status:** Implemented
 **Scope:** Backend project directory management, upload/download via REST, HMI Welcome Dialog and Settings page rework
 
 ## Problem

@@ -47,7 +47,7 @@ class TestProjectGroupExists:
 
 
 class TestProjectButtons:
-    """New, Open, Save As buttons must exist."""
+    """New, Open, Download, Import buttons must exist; Save As removed."""
 
     def test_new_button_exists(self, page):
         btn = page.findChild(QPushButton, "project_new_btn")
@@ -57,9 +57,17 @@ class TestProjectButtons:
         btn = page.findChild(QPushButton, "project_open_btn")
         assert btn is not None
 
-    def test_save_as_button_exists(self, page):
-        btn = page.findChild(QPushButton, "project_save_as_btn")
+    def test_download_button_exists(self, page):
+        btn = page.findChild(QPushButton, "project_download_btn")
         assert btn is not None
+
+    def test_import_button_exists(self, page):
+        btn = page.findChild(QPushButton, "project_import_btn")
+        assert btn is not None
+
+    def test_save_as_button_removed(self, page):
+        btn = page.findChild(QPushButton, "project_save_as_btn")
+        assert btn is None
 
 
 class TestProjectSignals:
@@ -74,8 +82,11 @@ class TestProjectSignals:
     def test_project_open_requested_signal_exists(self, page):
         assert hasattr(page, "project_open_requested")
 
-    def test_project_save_as_requested_signal_exists(self, page):
-        assert hasattr(page, "project_save_as_requested")
+    def test_project_download_requested_signal_exists(self, page):
+        assert hasattr(page, "project_download_requested")
+
+    def test_project_import_requested_signal_exists(self, page):
+        assert hasattr(page, "project_import_requested")
 
 
 class TestUpdateProjectInfo:
@@ -132,8 +143,10 @@ class TestProjectButtonsNotAffectedByApplyCancel:
 
         new_btn = page.findChild(QPushButton, "project_new_btn")
         open_btn = page.findChild(QPushButton, "project_open_btn")
-        save_btn = page.findChild(QPushButton, "project_save_as_btn")
+        download_btn = page.findChild(QPushButton, "project_download_btn")
+        import_btn = page.findChild(QPushButton, "project_import_btn")
 
         assert new_btn.isEnabled()
         assert open_btn.isEnabled()
-        assert save_btn.isEnabled()
+        assert download_btn.isEnabled()
+        assert import_btn.isEnabled()

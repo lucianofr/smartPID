@@ -48,12 +48,12 @@ class ProjectService:
         for spid in sorted(self._projects_dir.glob("*.spid")):
             count = 0
             try:
-                async with aiosqlite.connect(spid) as db:
-                    async with db.execute(
-                        "SELECT COUNT(*) FROM Controladores"
-                    ) as cur:
-                        row = await cur.fetchone()
-                        count = row[0] if row else 0
+                async with (
+                    aiosqlite.connect(spid) as db,
+                    db.execute("SELECT COUNT(*) FROM Controladores") as cur,
+                ):
+                    row = await cur.fetchone()
+                    count = row[0] if row else 0
             except Exception:
                 pass
             items.append(ProjectListItem(

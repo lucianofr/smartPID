@@ -1,4 +1,4 @@
-"""WelcomeDialog — shown on first run or when last project is unavailable."""
+"""WelcomeDialog — project selection shown after login."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 
 class _NameInputDialog(QDialog):
-    """Themed input dialog for project name (replaces QInputDialog)."""
+    """Themed input dialog for project name."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -53,11 +53,11 @@ class _NameInputDialog(QDialog):
 
 
 class WelcomeDialog(QDialog):
-    """Modal dialog for project selection on startup."""
+    """Modal dialog for project selection — shown after login."""
 
     def __init__(
         self,
-        recent_projects: list[dict] | None = None,
+        projects: list[dict] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -68,14 +68,16 @@ class WelcomeDialog(QDialog):
             self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint
         )
 
-        self.result_action: str | None = None
-        self.result_path: str | None = None
-        self.result_name: str | None = None
+        self.result_action: str | None = None  # "new", "open", "import"
+        self.result_name: str | None = None  # project name (new/open)
+        self.result_path: str | None = None  # local file path (import only)
+
+        self._projects = list(projects or [])
 
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        # Title — uses theme via inherited stylesheet
+        # Title
         title = QLabel("\u2699 Smart PID Edge Optimizer")
         title.setObjectName("welcome_title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -98,62 +100,83 @@ class WelcomeDialog(QDialog):
         new_btn.clicked.connect(self._on_new)
         btn_layout.addWidget(new_btn)
 
-        open_btn = QPushButton("Open Project")
-        open_btn.setObjectName("welcome_open_btn")
-        open_btn.setMinimumHeight(40)
-        open_btn.clicked.connect(self._on_open)
-        btn_layout.addWidget(open_btn)
+        import_btn = QPushButton("Import from File (.spid)")
+        import_btn.setObjectName("welcome_import_btn")
+        import_btn.setMinimumHeight(40)
+        import_btn.clicked.connect(self._on_import)
+        btn_layout.addWidget(import_btn)
 
         layout.addLayout(btn_layout)
 
-        # Recent projects
-        recent_label = QLabel("RECENT PROJECTS")
-        recent_label.setObjectName("welcome_recent_label")
-        recent_label.setProperty("muted", True)
-        layout.addWidget(recent_label)
+        # Available projects from backend
+        available_label = QLabel("AVAILABLE PROJECTS")
+        available_label.setObjectName("welcome_available_label")
+        available_label.setProperty("muted", True)
+        layout.addWidget(available_label)
 
-        self._recent_list = QListWidget()
-        self._recent_list.setObjectName("recent_list")
-        self._recent_list.itemDoubleClicked.connect(self._on_recent_selected)
-        recent = recent_projects or []
-        for proj in recent:
-            item = QListWidgetItem(
-                f"{proj['name']}  ({proj.get('controller_count', 0)} loops)\n"
-                f"{proj['path']}"
-            )
-            item.setData(Qt.ItemDataRole.UserRole, proj["path"])
-            self._recent_list.addItem(item)
-        layout.addWidget(self._recent_list)
+        self._project_list = QListWidget()
+        self._project_list.setObjectName("project_list")
+        self._project_list.itemDoubleClicked.connect(self._on_project_selected)
+        self._populate_list()
+        layout.addWidget(self._project_list)
+
+        # Delete button
+        delete_row = QHBoxLayout()
+        delete_row.addStretch()
+        delete_btn = QPushButton("Delete Selected")
+        delete_btn.setObjectName("welcome_delete_btn")
+        delete_btn.clicked.connect(self._on_delete)
+        delete_row.addWidget(delete_btn)
+        layout.addLayout(delete_row)
+
+    def _populate_list(self) -> None:
+        self._project_list.clear()
+        for proj in self._projects:
+            count = proj.get("controller_count", 0)
+            name = proj["name"]
+            item = QListWidgetItem(f"{name}  ({count} loops)")
+            item.setData(Qt.ItemDataRole.UserRole, name)
+            self._project_list.addItem(item)
+
+    def set_projects(self, projects: list[dict]) -> None:
+        """Update the project list (e.g. after a delete)."""
+        self._projects = list(projects)
+        self._populate_list()
 
     def _on_new(self) -> None:
         dlg = _NameInputDialog(parent=self)
         if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.text.strip():
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save New Project", "", "Smart PID Project (*.spid)",
-        )
-        if not path:
-            return
-        if not path.endswith(".spid"):
-            path += ".spid"
         self.result_action = "new"
         self.result_name = dlg.text.strip()
-        self.result_path = path
         self.accept()
 
-    def _on_open(self) -> None:
+    def _on_import(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open Project", "", "Smart PID Project (*.spid)",
+            self, "Import Project", "", "Smart PID Project (*.spid)",
         )
         if not path:
             return
-        self.result_action = "open"
+        self.result_action = "import"
         self.result_path = path
+        # Use filename stem as default name
+        from pathlib import Path as P
+        self.result_name = P(path).stem
         self.accept()
 
-    def _on_recent_selected(self, item: QListWidgetItem) -> None:
-        path = item.data(Qt.ItemDataRole.UserRole)
-        if path:
+    def _on_project_selected(self, item: QListWidgetItem) -> None:
+        name = item.data(Qt.ItemDataRole.UserRole)
+        if name:
             self.result_action = "open"
-            self.result_path = path
+            self.result_name = name
             self.accept()
+
+    def _on_delete(self) -> None:
+        item = self._project_list.currentItem()
+        if item is None:
+            return
+        name = item.data(Qt.ItemDataRole.UserRole)
+        if name:
+            self.result_action = "delete"
+            self.result_name = name
+            # Don't accept — caller handles delete and refreshes list

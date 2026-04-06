@@ -64,6 +64,7 @@ async def api_deps(tmp_path):
         "audit_repo": audit_repo,
         "loop_manager": loop_manager,
         "project_service": project_service,
+        "projects_dir": projects_dir,
         "settings": settings,
         "bus": bus,
     }
