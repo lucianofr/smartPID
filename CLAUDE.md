@@ -98,7 +98,7 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 - `SPID_OPCUA_ENDPOINT` — Default: opc.tcp://localhost:4840
 - `SPID_API_PORT` / `SPID_API_HOST` — Default: 8000 / 0.0.0.0
 - `SPID_ZMQ_PUBLISH_PORT` — Default: 5555
-- `SPID_SIMULATOR_ENABLED` / `SPID_SIMULATOR_PORT` — Default: false / 4841
+- `SPID_SIMULATOR_ENABLED` / `SPID_SIMULATOR_PORT` — Default: false / 4849
 - `SPID_PROJECTS_DIR` — Default: ~/.smart-pid/projects/ (diretorio de projetos gerenciados pelo backend)
 
 ## Documentos de referencia

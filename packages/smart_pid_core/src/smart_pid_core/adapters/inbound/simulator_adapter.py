@@ -78,11 +78,31 @@ class SimulatorAdapter:
         self._opcua_server = OPCUAServer(port=settings.simulator_port)
         self._opcua_server.set_on_write(self._on_opcua_write)
 
+    def start_opcua(self) -> None:
+        """Start only the OPC-UA server (without simulation loop)."""
+        self._opcua_server.start()
+
+    def stop_opcua(self) -> None:
+        """Stop only the OPC-UA server (without affecting simulation loop)."""
+        self._opcua_server.stop()
+
+    @property
+    def opcua_running(self) -> bool:
+        return self._opcua_server.is_running
+
+    @property
+    def opcua_port(self) -> int:
+        return self._opcua_server.port
+
+    @property
+    def opcua_endpoint(self) -> str:
+        return self._opcua_server.endpoint
+
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return
         self._stop_event.clear()
-        self._opcua_server.start()
+        # OPC-UA server is managed independently via start_opcua()/stop_opcua()
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name="simulator")
         self._thread.start()
         logger.info("Simulator started (interval=%dms)", self._settings.simulator_interval_ms)
@@ -92,7 +112,7 @@ class SimulatorAdapter:
         if self._thread is not None:
             self._thread.join(timeout=2.0)
             self._thread = None
-        self._opcua_server.stop()
+        # OPC-UA server is managed independently via start_opcua()/stop_opcua()
         logger.info("Simulator stopped")
 
     @property

@@ -159,3 +159,53 @@ class TestSimulatorPIDEndpoints:
         assert data["enabled"] is True
         assert data["kp"] == 3.0
         assert data["ti"] == 8.0
+
+
+class TestOPCUAEndpoints:
+    @pytest.mark.asyncio
+    async def test_opcua_status(
+        self,
+        client_with_simulator: AsyncClient,
+        admin_headers: dict[str, str],
+    ) -> None:
+        """GET /simulator/opcua/status returns OPC-UA server status."""
+        resp = await client_with_simulator.get("/simulator/opcua/status", headers=admin_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "running" in data
+        assert "port" in data
+        assert "endpoint" in data
+
+    @pytest.mark.asyncio
+    async def test_opcua_status_requires_auth(
+        self,
+        client_with_simulator: AsyncClient,
+    ) -> None:
+        """GET /simulator/opcua/status requires authentication."""
+        resp = await client_with_simulator.get("/simulator/opcua/status")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_opcua_start_stop(
+        self,
+        client_with_simulator: AsyncClient,
+        admin_headers: dict[str, str],
+        sim_api_deps: dict,
+    ) -> None:
+        """POST /simulator/opcua/start and /stop control OPC-UA server."""
+        resp = await client_with_simulator.post(
+            "/simulator/opcua/start", headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+        status = await client_with_simulator.get(
+            "/simulator/opcua/status", headers=admin_headers,
+        )
+        assert status.json()["running"] is True
+
+        resp = await client_with_simulator.post(
+            "/simulator/opcua/stop", headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True

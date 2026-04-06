@@ -23,7 +23,7 @@ class OPCUAServer:
     each containing Float variables PV, SP, CO and Int variables Mode, Status.
     """
 
-    def __init__(self, port: int = 4841) -> None:
+    def __init__(self, port: int = 4849) -> None:
         self._port = port
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None

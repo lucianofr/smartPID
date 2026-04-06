@@ -22,20 +22,25 @@ def settings() -> CoreSettings:
 
 @pytest.fixture
 def adapter(settings: CoreSettings) -> SimulatorAdapter:
+    def _make_mock_server(port: int = 4849, **_kwargs: object) -> MagicMock:
+        return _mock_opcua_server(port=port)
+
     with patch(
         "smart_pid_core.adapters.inbound.simulator_adapter.OPCUAServer",
-        return_value=_mock_opcua_server(),
+        side_effect=_make_mock_server,
     ):
         a = SimulatorAdapter(settings=settings)
         yield a
         a.stop()
 
 
-def _mock_opcua_server() -> MagicMock:
+def _mock_opcua_server(port: int = 4849) -> MagicMock:
     """Create a mock OPCUAServer with the same interface."""
     mock = MagicMock()
     mock.is_running = False
     mock.controller_node_ids = {}
+    mock.port = port
+    mock.endpoint = f"opc.tcp://0.0.0.0:{port}"
 
     def _start() -> None:
         mock.is_running = True
@@ -141,9 +146,12 @@ class TestSimulatorAdapterOPCUA:
 
     @pytest.fixture
     def mock_adapter(self, settings: CoreSettings) -> SimulatorAdapter:
+        def _make_mock_server(port: int = 4849, **_kwargs: object) -> MagicMock:
+            return _mock_opcua_server(port=port)
+
         with patch(
             "smart_pid_core.adapters.inbound.simulator_adapter.OPCUAServer",
-            return_value=_mock_opcua_server(),
+            side_effect=_make_mock_server,
         ):
             a = SimulatorAdapter(settings=settings)
             yield a
@@ -155,14 +163,18 @@ class TestSimulatorAdapterOPCUA:
 
     def test_start_starts_opcua_server(self, mock_adapter: SimulatorAdapter) -> None:
         mock_adapter.register_controller(1)
+        mock_adapter.start_opcua()
         mock_adapter.start()
         assert mock_adapter._opcua_server.is_running
         mock_adapter.stop()
+        mock_adapter.stop_opcua()
 
     def test_stop_stops_opcua_server(self, mock_adapter: SimulatorAdapter) -> None:
         mock_adapter.register_controller(1)
+        mock_adapter.start_opcua()
         mock_adapter.start()
         mock_adapter.stop()
+        mock_adapter.stop_opcua()
         assert not mock_adapter._opcua_server.is_running
 
     def test_register_controller_creates_opcua_nodes(
@@ -307,3 +319,44 @@ class TestSimulatorPIDInternal:
         adapter.register_controller(1)
         adapter._on_opcua_write(1, "pid_sp", 75.0)
         assert adapter._controllers[1].sp == 75.0
+
+
+class TestSimulatorAdapterDecoupledLifecycle:
+    """Tests for independent OPC-UA and simulation loop lifecycle."""
+
+    def test_start_opcua_independent(self, adapter: SimulatorAdapter) -> None:
+        """OPC-UA server can be started without simulation loop."""
+        adapter.start_opcua()
+        assert adapter.opcua_running is True
+        assert adapter.is_running is False  # sim loop NOT started
+        adapter.stop_opcua()
+        assert adapter.opcua_running is False
+
+    def test_stop_opcua_independent(self, adapter: SimulatorAdapter) -> None:
+        """Stopping OPC-UA does not stop simulation loop."""
+        adapter.start_opcua()
+        adapter.start()
+        assert adapter.is_running is True
+        assert adapter.opcua_running is True
+        adapter.stop_opcua()
+        assert adapter.opcua_running is False
+        assert adapter.is_running is True  # sim loop still running
+        adapter.stop()
+
+    def test_start_stop_sim_loop_independent(self, adapter: SimulatorAdapter) -> None:
+        """Starting/stopping sim loop does not affect OPC-UA server."""
+        adapter.start_opcua()
+        assert adapter.opcua_running is True
+        adapter.start()
+        assert adapter.is_running is True
+        adapter.stop()
+        assert adapter.is_running is False
+        assert adapter.opcua_running is True  # OPC-UA still running
+        adapter.stop_opcua()
+
+    def test_opcua_port_property(self, adapter: SimulatorAdapter) -> None:
+        assert adapter.opcua_port == adapter._settings.simulator_port
+
+    def test_opcua_endpoint_property(self, adapter: SimulatorAdapter) -> None:
+        port = adapter._settings.simulator_port
+        assert adapter.opcua_endpoint == f"opc.tcp://0.0.0.0:{port}"

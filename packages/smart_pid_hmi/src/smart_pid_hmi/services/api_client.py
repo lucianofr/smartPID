@@ -147,6 +147,21 @@ class APIClient:
         resp.raise_for_status()
         return CommandResponse.model_validate(resp.json())
 
+    def start_opcua_server(self) -> CommandResponse:
+        resp = self._http.post("/simulator/opcua/start", headers=self._headers())
+        resp.raise_for_status()
+        return CommandResponse.model_validate(resp.json())
+
+    def stop_opcua_server(self) -> CommandResponse:
+        resp = self._http.post("/simulator/opcua/stop", headers=self._headers())
+        resp.raise_for_status()
+        return CommandResponse.model_validate(resp.json())
+
+    def get_opcua_status(self) -> dict:
+        resp = self._http.get("/simulator/opcua/status", headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
+
     def get_simulator_status(self) -> SimulatorStatusResponse:
         resp = self._http.get("/simulator/status", headers=self._headers())
         resp.raise_for_status()

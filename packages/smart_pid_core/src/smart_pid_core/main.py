@@ -196,6 +196,8 @@ async def run_daemon(settings: CoreSettings) -> None:
                 pv_min=ctrl.pv_scale.eu_min,
                 pv_max=ctrl.pv_scale.eu_max,
             )
+        simulator_adapter.start_opcua()
+        logger.info("opcua_server_started", port=settings.simulator_port)
         simulator_adapter.start()
         logger.info("simulator_started", port=settings.simulator_port)
     else:
@@ -358,6 +360,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         opcua_adapter.stop()
     if simulator_adapter is not None:
         simulator_adapter.stop()
+        simulator_adapter.stop_opcua()
     alarm_worker.stop()
     loop_manager.stop_all()
     bus.stop()

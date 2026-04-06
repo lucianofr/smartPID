@@ -41,7 +41,7 @@ class CoreSettings(BaseSettings):
 
     # Simulator
     simulator_enabled: bool = False
-    simulator_port: int = 4841
+    simulator_port: int = 4849
     simulator_interval_ms: int = 100
 
     # Logging

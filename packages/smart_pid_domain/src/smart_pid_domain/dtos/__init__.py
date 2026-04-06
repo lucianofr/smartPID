@@ -48,6 +48,7 @@ from smart_pid_domain.dtos.project import (
 )
 from smart_pid_domain.dtos.simulator import (
     ControllerSimStatus,
+    OPCUAServerStatus,
     SimulatorDisturbanceRequest,
     SimulatorParametersRequest,
     SimulatorPIDEnableRequest,
@@ -83,6 +84,7 @@ __all__ = [
     "OPCUABrowseResponse",
     "OPCUANodeInfo",
     "OPCUASearchResponse",
+    "OPCUAServerStatus",
     "OPCUAStatusResponse",
     "OutputCommand",
     "PIDParamsDTO",

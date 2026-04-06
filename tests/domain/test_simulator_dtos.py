@@ -131,3 +131,13 @@ class TestSimulatorPIDRequestDTOs:
         )
         assert resp.enabled is True
         assert resp.cv == 50.0
+
+
+class TestOPCUAServerStatus:
+    def test_opcua_server_status_dto(self) -> None:
+        from smart_pid_domain.dtos.simulator import OPCUAServerStatus
+
+        status = OPCUAServerStatus(running=True, port=4849, endpoint="opc.tcp://0.0.0.0:4849")
+        assert status.running is True
+        assert status.port == 4849
+        assert status.endpoint == "opc.tcp://0.0.0.0:4849"

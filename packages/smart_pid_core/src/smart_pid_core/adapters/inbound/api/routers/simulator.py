@@ -16,6 +16,7 @@ from smart_pid_domain.dtos.simulator import (
     AutoDisturbanceRequest,
     AutoSPRequest,
     ControllerSimStatus,
+    OPCUAServerStatus,
     SimulatorDisturbanceRequest,
     SimulatorParametersRequest,
     SimulatorPIDEnableRequest,
@@ -54,6 +55,36 @@ async def get_status(
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> SimulatorStatusResponse:
     return SimulatorStatusResponse(enabled=True, controllers=adapter.get_status())
+
+
+@router.get("/opcua/status", response_model=OPCUAServerStatus)
+async def get_opcua_status(
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> OPCUAServerStatus:
+    return OPCUAServerStatus(
+        running=adapter.opcua_running,
+        port=adapter.opcua_port,
+        endpoint=adapter.opcua_endpoint,
+    )
+
+
+@router.post("/opcua/start", response_model=CommandResponse)
+async def start_opcua_server(
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> CommandResponse:
+    adapter.start_opcua()
+    return CommandResponse(ok=True, detail="OPC-UA server started")
+
+
+@router.post("/opcua/stop", response_model=CommandResponse)
+async def stop_opcua_server(
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> CommandResponse:
+    adapter.stop_opcua()
+    return CommandResponse(ok=True, detail="OPC-UA server stopped")
 
 
 @router.post("/preset", response_model=CommandResponse)
