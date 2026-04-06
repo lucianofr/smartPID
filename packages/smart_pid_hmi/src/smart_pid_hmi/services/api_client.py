@@ -122,6 +122,21 @@ class APIClient:
         resp.raise_for_status()
         return HistoryResponse.model_validate(resp.json())
 
+    # OPC-UA Browse
+    def browse_opcua(self, node_id: str) -> list[dict]:
+        resp = self._http.get(
+            f"/opcua/browse/{node_id}", headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json().get("children", [])
+
+    def search_opcua(self, query: str) -> list[dict]:
+        resp = self._http.get(
+            "/opcua/search", params={"q": query}, headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json().get("results", [])
+
     def get_simulator_status(self) -> SimulatorStatusResponse:
         resp = self._http.get("/simulator/status", headers=self._headers())
         resp.raise_for_status()

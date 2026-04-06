@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QLabel,
     QLineEdit,
+    QPushButton,
     QScrollArea,
     QSpinBox,
     QTabWidget,
@@ -344,42 +345,60 @@ class ControllerDialog(QDialog):
         return _scrollable(form)
 
     def _build_opcua_tab(self) -> QWidget:
+        from PySide6.QtWidgets import QHBoxLayout
         form = QFormLayout()
 
-        self._tag_pv = QLineEdit()
-        self._tag_pv.setPlaceholderText("ns=2;s=PV")
-        form.addRow("Node ID \u2014 PV:", self._tag_pv)
+        tag_fields = [
+            ("PV", "ns=2;s=PV"), ("SP", "ns=2;s=SP"), ("CO", "ns=2;s=CO"),
+            ("Integral", ""), ("BkCal In", ""), ("BkCal Out", ""),
+            ("Kp", ""), ("Ti", ""), ("Td", ""), ("Mode", ""),
+        ]
+        attr_map = {
+            "PV": "_tag_pv", "SP": "_tag_sp", "CO": "_tag_co",
+            "Integral": "_tag_integral", "BkCal In": "_tag_bkcal_in",
+            "BkCal Out": "_tag_bkcal_out", "Kp": "_tag_kp",
+            "Ti": "_tag_ti", "Td": "_tag_td", "Mode": "_tag_mode",
+        }
 
-        self._tag_sp = QLineEdit()
-        self._tag_sp.setPlaceholderText("ns=2;s=SP")
-        form.addRow("Node ID \u2014 SP:", self._tag_sp)
+        for label, placeholder in tag_fields:
+            row = QHBoxLayout()
+            row.setSpacing(4)
+            line_edit = QLineEdit()
+            line_edit.setPlaceholderText(placeholder)
+            setattr(self, attr_map[label], line_edit)
+            row.addWidget(line_edit)
 
-        self._tag_co = QLineEdit()
-        self._tag_co.setPlaceholderText("ns=2;s=CO")
-        form.addRow("Node ID \u2014 CO:", self._tag_co)
-
-        self._tag_integral = QLineEdit()
-        form.addRow("Node ID \u2014 Integral:", self._tag_integral)
-
-        self._tag_bkcal_in = QLineEdit()
-        form.addRow("Node ID \u2014 BkCal In:", self._tag_bkcal_in)
-
-        self._tag_bkcal_out = QLineEdit()
-        form.addRow("Node ID \u2014 BkCal Out:", self._tag_bkcal_out)
-
-        self._tag_kp = QLineEdit()
-        form.addRow("Node ID \u2014 Kp:", self._tag_kp)
-
-        self._tag_ti = QLineEdit()
-        form.addRow("Node ID \u2014 Ti:", self._tag_ti)
-
-        self._tag_td = QLineEdit()
-        form.addRow("Node ID \u2014 Td:", self._tag_td)
-
-        self._tag_mode = QLineEdit()
-        form.addRow("Node ID \u2014 Mode:", self._tag_mode)
+            browse_btn = QPushButton("...")
+            browse_btn.setFixedWidth(30)
+            browse_btn.setToolTip(f"Browse OPC-UA for {label}")
+            browse_btn.clicked.connect(
+                lambda _=False, le=line_edit: self._open_tag_browse(le),
+            )
+            row.addWidget(browse_btn)
+            form.addRow(f"{label}:", row)
 
         return _scrollable(form)
+
+    def _open_tag_browse(self, target_line_edit: QLineEdit) -> None:
+        """Open the tag browse dialog and set result into the target field."""
+        from smart_pid_hmi.widgets.tag_browse_dialog import TagBrowseDialog
+
+        # Try to get browse/search functions from parent MainWindow's api_client
+        browse_fn = None
+        search_fn = None
+        main_win = self.parent()
+        if main_win and hasattr(main_win, "_api_client"):
+            api = main_win._api_client  # noqa: SLF001
+            if hasattr(api, "browse_opcua"):
+                browse_fn = api.browse_opcua
+            if hasattr(api, "search_opcua"):
+                search_fn = api.search_opcua
+
+        dlg = TagBrowseDialog(
+            browse_fn=browse_fn, search_fn=search_fn, parent=self,
+        )
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.selected_node_id:
+            target_line_edit.setText(dlg.selected_node_id)
 
     def _build_shed_tab(self) -> QWidget:
         form = QFormLayout()
