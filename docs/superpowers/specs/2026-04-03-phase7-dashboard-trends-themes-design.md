@@ -114,30 +114,40 @@ Toolbar buttons: **Dashboard | Executive | Trends | Simulator | Alarms | Setting
 
 ### ExecutiveDashboardPage
 
-High-level system overview with KPI cards and performance table.
+High-level system overview with KPI summary cards and per-controller dashboard-tile cards.
 
 **Layout:**
 ```
-┌─────────────────────────────────────────────┐
-│  KPI Cards Row (QHBoxLayout)                │
-│  ┌────────┐ ┌────────┐ ┌────────┐ ┌──────┐│
-│  │Total   │ │In Auto │ │Active  │ │AI    ││
-│  │Loops: 8│ │6 (75%) │ │Alarms:3│ │Tuning││
-│  └────────┘ └────────┘ └────────┘ └──────┘│
-│                                             │
-│  Performance Table (QTableWidget, sortable) │
-│  Tag  │ Mode │ IAE  │ ITAE │ TV │ σ/Range │
-│  FIC01│ AUTO │ 1.2  │ 34.5 │ 45 │ 3.2%   │
-│  PIC02│ MAN  │ 8.1  │ 201  │ 12 │ 7.8%   │
-│                                             │
-│  System Status Bar                          │
-│  Backend: Connected │ Uptime: 4h23m        │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  KPI Cards Row (QHBoxLayout)                     │
+│  ┌──────────┐ ┌──────────┐ ┌─────────┐ ┌──────┐│
+│  │Total     │ │In Auto   │ │Active   │ │AI    ││
+│  │Loops: 8  │ │6 (75%)   │ │Alarms:3 │ │Tuning││
+│  └──────────┘ └──────────┘ └─────────┘ └──────┘│
+│                                                  │
+│  QScrollArea + FlowLayout (responsive 3/2/1 col) │
+│  ┌──────────────┐ ┌──────────────┐ ┌───────────┐│
+│  │ FIC-101      │ │ LIC-201      │ │ TIC-301   ││
+│  │ AUTO FUZZY   │ │ AUTO NONE    │ │ MAN RL    ││
+│  │ DDC          │ │ SUPERVISORY  │ │ DDC       ││
+│  │ PV:50 SP:50  │ │ PV:65 SP:65  │ │ PV:180    ││
+│  │ Err: 0.0%    │ │ Err: 0.0%    │ │ Err: 0.5% ││
+│  │ AI: SP Track │ │ AI: Disabled │ │ AI: Dist  ││
+│  │ IAE ITAE ISE │ │ IAE ITAE ISE │ │ IAE ITAE  ││
+│  │ MSE σ TV     │ │ MSE σ TV     │ │ MSE σ TV  ││
+│  │ Var/SP Var/R │ │ Var/SP Var/R │ │ Var/SP    ││
+│  └──────────────┘ └──────────────┘ └───────────┘│
+└──────────────────────────────────────────────────┘
 ```
 
-- KPI cards: QFrame styled per theme, large numeric values
-- Performance table: data from `GET /controllers` + `GET /controllers/{id}/stats`
-- Sortable by any column (click header)
+- KPI cards: QFrame styled per theme, large numeric values (unchanged)
+- Controller cards (`_ControllerCard`): dashboard-tile style with:
+  - Header: LED status indicator, controller name, badges (Mode, AI Engine, DDC/Supervisory)
+  - Process values row: PV, SP, Error% as mini-tiles
+  - Optimization row: Objective, State, gamma (greyed out when AI engine = NONE)
+  - Performance grid (4x2): IAE, ITAE, ISE, MSE, Std Dev, TV, Var/SP, Var/Range
+- Responsive flow layout: 3 cards per row on wide screens, 2 on medium, 1 on narrow
+- Card data from `GET /controllers` + `GET /controllers/{id}/stats` (stats show "—" until Phase 5)
 - Auto-refresh: 5s polling (configurable in SettingsPage)
 
 ### MultiTrendPage
