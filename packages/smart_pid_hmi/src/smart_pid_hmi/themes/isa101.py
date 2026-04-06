@@ -519,6 +519,39 @@ class ISA101Theme:
             border-top: 1px solid {self.border};
             font-size: {self.font_size_label}px;
         }}
+
+        /* --- Welcome / Project Dialog --- */
+        QLabel#welcome_title {{
+            font-size: {self.font_size_title + 4}px;
+            font-weight: bold;
+            color: {self.fg_primary};
+            padding: 8px 0;
+        }}
+        QLabel#welcome_subtitle {{
+            font-size: {self.font_size_normal}px;
+            color: {self.fg_secondary};
+        }}
+        QLabel#welcome_recent_label {{
+            font-size: {self.font_size_label}px;
+            color: {self.fg_secondary};
+            letter-spacing: 1px;
+        }}
+        QListWidget#recent_list {{
+            background-color: {self.bg_secondary};
+            color: {self.fg_primary};
+            border: 1px solid {self.border};
+        }}
+        QListWidget#recent_list::item {{
+            padding: 6px 8px;
+            border-bottom: 1px solid {self.border};
+        }}
+        QListWidget#recent_list::item:hover {{
+            background-color: {self.bg_hover};
+        }}
+        QListWidget#recent_list::item:selected {{
+            background-color: {self.bg_hover};
+            color: {self.fg_primary};
+        }}
         """
 
     def apply(self, app: QApplication) -> None:
