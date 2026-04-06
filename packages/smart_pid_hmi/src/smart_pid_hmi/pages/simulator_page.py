@@ -27,12 +27,9 @@ if TYPE_CHECKING:
 _PARAM_RANGES = {
     "gain": (0.1, 10.0, 1.2, 2),
     "tau1": (0.5, 120.0, 3.0, 1),
-    "tau2": (0.5, 60.0, 15.0, 1),
+    "tau2": (0.0, 60.0, 15.0, 1),
     "dead_time": (0.0, 30.0, 1.0, 1),
 }
-
-# Which presets are FOPTD (tau2 disabled)
-_FOPTD_PRESETS = {ProcessPresetName.FLOW, ProcessPresetName.PRESSURE}
 
 
 class SimulatorPage(QWidget):
@@ -47,8 +44,12 @@ class SimulatorPage(QWidget):
     pid_enabled_changed = Signal(bool)
     pid_params_changed = Signal(float, float, float)
     pid_mode_changed = Signal(str)
+    pid_sp_changed = Signal(float)
     auto_sp_changed = Signal(bool, float, float)
     auto_disturbance_changed = Signal(bool, float)
+    sim_start_requested = Signal()
+    sim_stop_requested = Signal()
+    opcua_config_changed = Signal(int)  # port
 
     def __init__(self, theme: ThemeBase, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -120,6 +121,17 @@ class SimulatorPage(QWidget):
         pid_top_row.addWidget(self._pid_mode_combo)
         pid_layout.addLayout(pid_top_row)
 
+        sp_row = QHBoxLayout()
+        sp_row.addWidget(QLabel("SP:"))
+        self._pid_sp_spin = QDoubleSpinBox()
+        self._pid_sp_spin.setObjectName("pid_sp_spin")
+        self._pid_sp_spin.setRange(0.0, 100.0)
+        self._pid_sp_spin.setValue(50.0)
+        self._pid_sp_spin.setDecimals(1)
+        self._pid_sp_spin.setSuffix(" %")
+        sp_row.addWidget(self._pid_sp_spin, stretch=1)
+        pid_layout.addLayout(sp_row)
+
         kp_row = QHBoxLayout()
         kp_row.addWidget(QLabel("Kp:"))
         self._pid_kp_spin = QDoubleSpinBox()
@@ -157,6 +169,7 @@ class SimulatorPage(QWidget):
         # PID controls list (for enable/disable toggling)
         self._pid_controls: list[QWidget] = [
             self._pid_mode_combo,
+            self._pid_sp_spin,
             self._pid_kp_spin,
             self._pid_ti_spin,
             self._pid_td_spin,
@@ -178,6 +191,27 @@ class SimulatorPage(QWidget):
         # --- RIGHT COLUMN ---
         right_col = QVBoxLayout()
         right_col.setSpacing(12)
+
+        # OPC-UA Server Config group
+        opcua_group = QGroupBox("OPC-UA Server")
+        opcua_layout = QVBoxLayout(opcua_group)
+        endpoint_row = QHBoxLayout()
+        endpoint_row.addWidget(QLabel("Endpoint:"))
+        self._opcua_endpoint_label = QLabel("opc.tcp://0.0.0.0:")
+        self._opcua_endpoint_label.setObjectName("opcua_endpoint_label")
+        endpoint_row.addWidget(self._opcua_endpoint_label)
+        self._opcua_port_spin = QDoubleSpinBox()
+        self._opcua_port_spin.setObjectName("opcua_port_spin")
+        self._opcua_port_spin.setRange(1024, 65535)
+        self._opcua_port_spin.setValue(4841)
+        self._opcua_port_spin.setDecimals(0)
+        endpoint_row.addWidget(self._opcua_port_spin, stretch=1)
+        opcua_layout.addLayout(endpoint_row)
+        opcua_apply = QPushButton("Apply")
+        opcua_apply.setObjectName("opcua_apply_btn")
+        opcua_apply.clicked.connect(self._on_opcua_apply)
+        opcua_layout.addWidget(opcua_apply)
+        right_col.addWidget(opcua_group)
 
         # Auto SP Variation group
         auto_sp_group = QGroupBox("Auto SP Variation")
@@ -275,12 +309,22 @@ class SimulatorPage(QWidget):
         layout.addLayout(columns, stretch=1)
 
         # ============================================================
-        # Bottom row (full width): Apply / Cancel + Status
+        # Bottom row (full width): Status + Start/Stop + Apply/Cancel
         # ============================================================
         btn_row = QHBoxLayout()
-        self._status_label = QLabel("Status: Ready")
+        self._status_label = QLabel("Status: Stopped")
         self._status_label.setStyleSheet(f"color: {theme.fg_secondary};")
         btn_row.addWidget(self._status_label)
+        btn_row.addStretch()
+        self._sim_start_btn = QPushButton("Start")
+        self._sim_start_btn.setObjectName("sim_start_btn")
+        self._sim_start_btn.clicked.connect(self._on_sim_start)
+        btn_row.addWidget(self._sim_start_btn)
+        self._sim_stop_btn = QPushButton("Stop")
+        self._sim_stop_btn.setObjectName("sim_stop_btn")
+        self._sim_stop_btn.setEnabled(False)
+        self._sim_stop_btn.clicked.connect(self._on_sim_stop)
+        btn_row.addWidget(self._sim_stop_btn)
         btn_row.addStretch()
         self._sim_cancel_btn = QPushButton("Cancel")
         self._sim_cancel_btn.setObjectName("sim_cancel_btn")
@@ -305,6 +349,7 @@ class SimulatorPage(QWidget):
         self._committed_dead_time = self._dead_time_slider.value()
         self._committed_pid_enable = self._pid_enable_cb.isChecked()
         self._committed_pid_mode_idx = self._pid_mode_combo.currentIndex()
+        self._committed_pid_sp = self._pid_sp_spin.value()
         self._committed_kp = self._pid_kp_spin.value()
         self._committed_ti = self._pid_ti_spin.value()
         self._committed_td = self._pid_td_spin.value()
@@ -319,6 +364,7 @@ class SimulatorPage(QWidget):
         self._pid_enable_cb.toggled.connect(self._on_pid_enable_toggled)
         self._pid_enable_cb.toggled.connect(self._on_field_changed)
         self._pid_mode_combo.currentIndexChanged.connect(self._on_field_changed)
+        self._pid_sp_spin.valueChanged.connect(self._on_field_changed)
         self._pid_kp_spin.valueChanged.connect(self._on_field_changed)
         self._pid_ti_spin.valueChanged.connect(self._on_field_changed)
         self._pid_td_spin.valueChanged.connect(self._on_field_changed)
@@ -355,6 +401,7 @@ class SimulatorPage(QWidget):
             or self._dead_time_slider.value() != self._committed_dead_time
             or self._pid_enable_cb.isChecked() != self._committed_pid_enable
             or self._pid_mode_combo.currentIndex() != self._committed_pid_mode_idx
+            or self._pid_sp_spin.value() != self._committed_pid_sp
             or self._pid_kp_spin.value() != self._committed_kp
             or self._pid_ti_spin.value() != self._committed_ti
             or self._pid_td_spin.value() != self._committed_td
@@ -378,6 +425,8 @@ class SimulatorPage(QWidget):
             self.pid_enabled_changed.emit(self._pid_enable_cb.isChecked())
         if self._pid_mode_combo.currentIndex() != self._committed_pid_mode_idx:
             self.pid_mode_changed.emit(self._pid_mode_combo.currentText())
+        if self._pid_sp_spin.value() != self._committed_pid_sp:
+            self.pid_sp_changed.emit(self._pid_sp_spin.value())
         if (
             self._pid_kp_spin.value() != self._committed_kp
             or self._pid_ti_spin.value() != self._committed_ti
@@ -395,6 +444,7 @@ class SimulatorPage(QWidget):
         self._committed_dead_time = self._dead_time_slider.value()
         self._committed_pid_enable = self._pid_enable_cb.isChecked()
         self._committed_pid_mode_idx = self._pid_mode_combo.currentIndex()
+        self._committed_pid_sp = self._pid_sp_spin.value()
         self._committed_kp = self._pid_kp_spin.value()
         self._committed_ti = self._pid_ti_spin.value()
         self._committed_td = self._pid_td_spin.value()
@@ -405,8 +455,8 @@ class SimulatorPage(QWidget):
         widgets = [
             self._preset_combo, self._gain_slider, self._tau1_slider,
             self._tau2_slider, self._dead_time_slider, self._pid_enable_cb,
-            self._pid_mode_combo, self._pid_kp_spin, self._pid_ti_spin,
-            self._pid_td_spin,
+            self._pid_mode_combo, self._pid_sp_spin, self._pid_kp_spin,
+            self._pid_ti_spin, self._pid_td_spin,
         ]
         for w in widgets:
             w.blockSignals(True)
@@ -417,6 +467,7 @@ class SimulatorPage(QWidget):
         self._dead_time_slider.setValue(self._committed_dead_time)
         self._pid_enable_cb.setChecked(self._committed_pid_enable)
         self._pid_mode_combo.setCurrentIndex(self._committed_pid_mode_idx)
+        self._pid_sp_spin.setValue(self._committed_pid_sp)
         self._pid_kp_spin.setValue(self._committed_kp)
         self._pid_ti_spin.setValue(self._committed_ti)
         self._pid_td_spin.setValue(self._committed_td)
@@ -438,8 +489,6 @@ class SimulatorPage(QWidget):
             preset_enum = ProcessPresetName(preset_name)
         except ValueError:
             return
-        is_foptd = preset_enum in _FOPTD_PRESETS
-        self._tau2_slider.setEnabled(not is_foptd)
         if preset_enum != ProcessPresetName.CUSTOM and preset_enum in PRESETS:
             p = PRESETS[preset_enum]
             self._gain_slider.setValue(p.gain)
@@ -490,6 +539,21 @@ class SimulatorPage(QWidget):
             self._auto_dist_amp.value(),
         )
 
+    def _on_sim_start(self) -> None:
+        self.sim_start_requested.emit()
+
+    def _on_sim_stop(self) -> None:
+        self.sim_stop_requested.emit()
+
+    def _on_opcua_apply(self) -> None:
+        self.opcua_config_changed.emit(int(self._opcua_port_spin.value()))
+
+    def set_sim_running(self, running: bool) -> None:
+        """Update Start/Stop button states based on simulation status."""
+        self._sim_start_btn.setEnabled(not running)
+        self._sim_stop_btn.setEnabled(running)
+        self._status_label.setText(f"Status: {'Running' if running else 'Stopped'}")
+
     def set_status_text(self, text: str) -> None:
         self._status_label.setText(f"Status: {text}")
 
@@ -505,6 +569,7 @@ class SimulatorPage(QWidget):
 
     def populate_from_status(self, status: ControllerSimStatus) -> None:
         """Populate widgets from a ControllerSimStatus DTO."""
+        self._pid_sp_spin.setValue(getattr(status, "pid_sp", 50.0))
         if status.auto_sp is not None:
             self._auto_sp_enable.setChecked(status.auto_sp.enabled)
             self._auto_sp_min.setValue(status.auto_sp.sp_min_pct)
