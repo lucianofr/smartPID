@@ -1,6 +1,6 @@
 """Tests for MultiTrendPage."""
 import pyqtgraph as pg
-from PySide6.QtWidgets import QComboBox, QPushButton
+from PySide6.QtWidgets import QComboBox, QLabel, QPushButton
 
 from smart_pid_hmi.pages.multi_trend_page import MultiTrendPage
 
@@ -70,7 +70,38 @@ def test_clear_data(qtbot):
     # Should not crash; plot items should be cleared
 
 
+# --- Mode labels ---
+
+
+def test_mode_labels_exist(qtbot):
+    page = MultiTrendPage()
+    qtbot.addWidget(page)
+    assert len(page._mode_labels) == 4
+    for i in range(4):
+        label = page.findChild(QLabel, f"mode_label_{i}")
+        assert label is not None
+        assert label.text() == "\u2014"
+
+
+def test_set_mode(qtbot):
+    page = MultiTrendPage()
+    qtbot.addWidget(page)
+    page.set_mode(0, "AUTO")
+    assert page._mode_labels[0].text() == "AUTO"
+    page.set_mode(2, "MAN")
+    assert page._mode_labels[2].text() == "MAN"
+
+
+def test_set_mode_out_of_range(qtbot):
+    page = MultiTrendPage()
+    qtbot.addWidget(page)
+    # Should not crash
+    page.set_mode(5, "AUTO")
+    page.set_mode(-1, "MAN")
+
+
 # --- Gap #36: time-sync ---
+
 
 def test_x_range_sync_guard(qtbot):
     """Multi-trend page has a sync guard flag."""

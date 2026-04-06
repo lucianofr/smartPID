@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QGridLayout,
     QHBoxLayout,
+    QLabel,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -66,13 +67,26 @@ class MultiTrendPage(QWidget):
         self._sp_curves: list[pg.PlotDataItem] = []
         self._co_curves: list[pg.PlotDataItem] = []
         self._co_viewboxes: list[pg.ViewBox] = []
+        self._mode_labels: list[QLabel] = []
 
         for i in range(4):
             container = QVBoxLayout()
 
+            header_row = QHBoxLayout()
             loop_combo = QComboBox()
             loop_combo.setObjectName(f"loop_combo_{i}")
-            container.addWidget(loop_combo)
+            header_row.addWidget(loop_combo, stretch=1)
+
+            mode_label = QLabel("\u2014")
+            mode_label.setObjectName(f"mode_label_{i}")
+            mode_label.setFixedHeight(20)
+            mode_label.setStyleSheet(
+                "font-weight: bold; padding: 2px 6px; border-radius: 3px;"
+            )
+            header_row.addWidget(mode_label)
+            self._mode_labels.append(mode_label)
+
+            container.addLayout(header_row)
             self._loop_combos.append(loop_combo)
 
             pw = pg.PlotWidget()
@@ -155,6 +169,11 @@ class MultiTrendPage(QWidget):
             self._pv_curves[index].setData([], [])
             self._sp_curves[index].setData([], [])
             self._co_curves[index].setData([], [])
+
+    def set_mode(self, index: int, mode: str) -> None:
+        """Update the displayed controller mode for a plot panel (0-3)."""
+        if 0 <= index < 4:
+            self._mode_labels[index].setText(mode)
 
     def _on_x_range_changed(self, source_idx: int, x_range: list) -> None:
         """Sync X-axis range from *source_idx* to all other plots."""
