@@ -54,7 +54,9 @@ async def get_status(
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> SimulatorStatusResponse:
-    return SimulatorStatusResponse(enabled=True, controllers=adapter.get_status())
+    return SimulatorStatusResponse(
+        enabled=True, running=adapter.is_running, controllers=adapter.get_status(),
+    )
 
 
 @router.get("/opcua/status", response_model=OPCUAServerStatus)
