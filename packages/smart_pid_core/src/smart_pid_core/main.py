@@ -289,6 +289,7 @@ async def run_daemon(settings: CoreSettings) -> None:
     project_service = ProjectService(
         repo=repo,
         loop_manager=loop_manager,
+        projects_dir=settings.projects_dir,
         simulator_adapter=simulator_adapter,
     )
 
