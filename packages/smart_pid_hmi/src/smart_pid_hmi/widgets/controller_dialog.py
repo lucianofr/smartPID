@@ -166,19 +166,37 @@ class ControllerDialog(QDialog):
 
         self._name = QLineEdit()
         self._name.setPlaceholderText("e.g. TIC-101")
+        self._name.setToolTip(
+            "Unique tag name for this controller loop (e.g. TIC-101, FIC-302).\n"
+            "Used as identifier in the database, OPC-UA, and trending displays."
+        )
         form.addRow("Name:", self._name)
 
         self._description = QLineEdit()
         self._description.setPlaceholderText("optional")
+        self._description.setToolTip(
+            "Free-text description of the loop purpose.\n"
+            "Example: 'Reactor outlet temperature control'."
+        )
         form.addRow("Description:", self._description)
 
         self._execution_mode = _enum_combo(
             ExecutionMode, ExecutionMode.SUPERVISORY.value,
         )
+        self._execution_mode.setToolTip(
+            "DDC: SmartPID runs the PID algorithm internally.\n"
+            "SUPERVISORY: SmartPID monitors an external PID in the DCS/PLC\n"
+            "and writes tuning adjustments back via OPC-UA."
+        )
         self._execution_mode.currentTextChanged.connect(self._on_execution_mode_changed)
         form.addRow("Execution Mode:", self._execution_mode)
 
         self._scan_rate = QComboBox()
+        self._scan_rate.setToolTip(
+            "PID execution cycle period.\n"
+            "Faster rates give tighter control but increase CPU load.\n"
+            "Typical: 0.1-1 s for flow/pressure, 1-5 s for temperature/level."
+        )
         _SCAN_RATES = [
             ("0.1 s", 100), ("0.5 s", 500), ("1 s", 1000), ("2 s", 2000),
             ("5 s", 5000), ("10 s", 10000), ("15 s", 15000), ("20 s", 20000),
@@ -190,6 +208,13 @@ class ControllerDialog(QDialog):
         form.addRow("Scan Rate:", self._scan_rate)
 
         self._process_speed = QComboBox()
+        self._process_speed.setToolTip(
+            "Characterizes the process dynamic response speed.\n"
+            "Used by the AI engine to set the tuning cycle cadence.\n"
+            "Fast: flow, pressure (< 10 s dead time)\n"
+            "Medium: level, heat exchangers (10-60 s)\n"
+            "Slow: temperature, large vessels (> 60 s)"
+        )
         for member in ProcessSpeed:
             self._process_speed.addItem(member.label, member.value)
         idx = self._process_speed.findData(ProcessSpeed.MEDIUM.value)
@@ -198,14 +223,31 @@ class ControllerDialog(QDialog):
         form.addRow("Process Speed:", self._process_speed)
 
         self._pid_structure = _enum_combo(PIDStructure, PIDStructure.ISA.value)
+        self._pid_structure.setToolTip(
+            "PID equation form (DDC mode only).\n"
+            "ISA: Kp * [1 + 1/(Ti*s) + Td*s]\n"
+            "PARALLEL: Kp + Ki/s + Kd*s\n"
+            "SERIES: Kp * (1 + 1/(Ti*s)) * (1 + Td*s)"
+        )
         self._pid_structure_label = QLabel("PID Structure:")
         form.addRow(self._pid_structure_label, self._pid_structure)
 
         self._integral_type = _enum_combo(IntegralType, IntegralType.TIME_TI.value)
+        self._integral_type.setToolTip(
+            "How the integral parameter is expressed (DDC mode only).\n"
+            "TIME_TI: Integral time in seconds. Larger = slower.\n"
+            "GAIN_KI: Integral gain (Ki = 1/Ti). Larger = faster."
+        )
         self._integral_type_label = QLabel("Integral Type:")
         form.addRow(self._integral_type_label, self._integral_type)
 
         self._mode_normal = _enum_combo(ControllerMode, ControllerMode.AUTO.value)
+        self._mode_normal.setToolTip(
+            "Default operating mode after shed conditions clear.\n"
+            "AUTO: Automatic PID control\n"
+            "CAS: Cascade (SP from upstream controller)\n"
+            "MAN: Manual output"
+        )
         form.addRow("Normal Mode:", self._mode_normal)
 
         return _scrollable(form)
@@ -214,18 +256,44 @@ class ControllerDialog(QDialog):
         form = QFormLayout()
 
         self._gain = _double_spin(0.001, 999.0, 1.0, 3)
+        self._gain.setToolTip(
+            "Proportional gain (Kp).\n"
+            "Higher values give faster response but may cause oscillation.\n"
+            "Start with a low value and increase gradually."
+        )
         form.addRow("Gain (Kp):", self._gain)
 
         self._reset = _double_spin(0.1, 9999.0, 10.0, 1, " s")
+        self._reset.setToolTip(
+            "Integral time (Ti) in seconds.\n"
+            "Eliminates steady-state error (offset).\n"
+            "Larger values = slower integral action.\n"
+            "Rule of thumb: start at ~4x the process dead time."
+        )
         form.addRow("Reset (Ti):", self._reset)
 
         self._rate = _double_spin(0.0, 9999.0, 0.0, 1, " s")
+        self._rate.setToolTip(
+            "Derivative time (Td) in seconds.\n"
+            "Anticipates future error based on rate of change.\n"
+            "Set to 0 to disable. Typical: 0.25 x Ti. Avoid on noisy signals."
+        )
         form.addRow("Rate (Td):", self._rate)
 
         self._alpha = _double_spin(0.05, 1.0, 0.125, 3)
+        self._alpha.setToolTip(
+            "Derivative filter coefficient.\n"
+            "Limits high-frequency gain of the derivative term.\n"
+            "Smaller = more filtering. Typical range: 0.05-0.20."
+        )
         form.addRow("Alpha (filter):", self._alpha)
 
         self._deadband = _double_spin(0.0, 9999.0, 0.0, 3)
+        self._deadband.setToolTip(
+            "Integral deadband in engineering units.\n"
+            "When |error| < deadband, integral action is frozen.\n"
+            "Prevents valve cycling on noisy processes. 0 = disabled."
+        )
         form.addRow("Deadband:", self._deadband)
 
         return _scrollable(form)
@@ -235,52 +303,71 @@ class ControllerDialog(QDialog):
 
         # PV Scale
         grp_pv = QGroupBox("PV Scale")
+        grp_pv.setToolTip("Engineering unit range for the Process Variable (PV).")
         pv_form = QFormLayout()
         self._pv_eu_min = _double_spin(value=0.0)
+        self._pv_eu_min.setToolTip("PV lower range value (corresponds to 0 %).")
         pv_form.addRow("EU Min:", self._pv_eu_min)
         self._pv_eu_max = _double_spin(value=100.0)
+        self._pv_eu_max.setToolTip("PV upper range value (corresponds to 100 %).")
         pv_form.addRow("EU Max:", self._pv_eu_max)
         self._pv_unit = QLineEdit()
         self._pv_unit.setPlaceholderText("e.g. degC")
+        self._pv_unit.setToolTip("Engineering unit label (e.g. degC, bar, m3/h).")
         pv_form.addRow("Unit:", self._pv_unit)
         grp_pv.setLayout(pv_form)
         form.addRow(grp_pv)
 
         # OUT Scale
         grp_out = QGroupBox("Output Scale")
+        grp_out.setToolTip("Engineering unit range for the Controller Output (CO).")
         out_form = QFormLayout()
         self._out_eu_min = _double_spin(value=0.0)
+        self._out_eu_min.setToolTip("Output lower range value.")
         out_form.addRow("EU Min:", self._out_eu_min)
         self._out_eu_max = _double_spin(value=100.0)
+        self._out_eu_max.setToolTip("Output upper range value.")
         out_form.addRow("EU Max:", self._out_eu_max)
         self._out_unit = QLineEdit()
         self._out_unit.setPlaceholderText("e.g. %")
+        self._out_unit.setToolTip("Engineering unit label for output (e.g. %, RPM).")
         out_form.addRow("Unit:", self._out_unit)
         grp_out.setLayout(out_form)
         form.addRow(grp_out)
 
         # SP limits
         self._sp_hi = _double_spin(value=100.0)
+        self._sp_hi.setToolTip("Maximum allowed setpoint value in EU.")
         form.addRow("SP High Limit:", self._sp_hi)
         self._sp_lo = _double_spin(value=0.0)
+        self._sp_lo.setToolTip("Minimum allowed setpoint value in EU.")
         form.addRow("SP Low Limit:", self._sp_lo)
 
         # OUT limits
         self._out_hi = _double_spin(value=100.0)
+        self._out_hi.setToolTip("Maximum output clamp. Output will not exceed this value.")
         form.addRow("OUT High Limit:", self._out_hi)
         self._out_lo = _double_spin(value=0.0)
+        self._out_lo.setToolTip("Minimum output clamp. Output will not go below this value.")
         form.addRow("OUT Low Limit:", self._out_lo)
 
         # ARW limits
         self._arw_hi = _double_spin(value=100.0)
+        self._arw_hi.setToolTip(
+            "Anti-Reset Windup high limit.\n"
+            "Clamps integral accumulator to prevent overshoot when saturated."
+        )
         form.addRow("ARW High Limit:", self._arw_hi)
         self._arw_lo = _double_spin(value=0.0)
+        self._arw_lo.setToolTip("Anti-Reset Windup low limit. Prevents negative windup.")
         form.addRow("ARW Low Limit:", self._arw_lo)
 
         # SP rate limits
         self._sp_rate_up = _double_spin(0.0, 99999.0, 0.0, 2, " /s")
+        self._sp_rate_up.setToolTip("Max rate of SP increase in EU/s. 0 = unlimited.")
         form.addRow("SP Rate Up:", self._sp_rate_up)
         self._sp_rate_dn = _double_spin(0.0, 99999.0, 0.0, 2, " /s")
+        self._sp_rate_dn.setToolTip("Max rate of SP decrease in EU/s. 0 = unlimited.")
         form.addRow("SP Rate Down:", self._sp_rate_dn)
 
         return _scrollable(form)
@@ -289,30 +376,51 @@ class ControllerDialog(QDialog):
         form = QFormLayout()
 
         self._pv_ftime = _double_spin(0.0, 9999.0, 0.0, 2, " s")
+        self._pv_ftime.setToolTip("First-order low-pass filter for PV (seconds). 0 = disabled.")
         form.addRow("PV Filter Time:", self._pv_ftime)
 
         self._sp_ftime = _double_spin(0.0, 9999.0, 0.0, 2, " s")
+        self._sp_ftime.setToolTip("First-order low-pass filter for SP (seconds). 0 = disabled.")
         form.addRow("SP Filter Time:", self._sp_ftime)
 
         self._low_cut = _double_spin(0.0, 9999.0, 0.0, 2)
+        self._low_cut.setToolTip(
+            "Low cutoff threshold. Output snaps to low limit below this.\n"
+            "Prevents valve hunting at very low openings. 0 = disabled."
+        )
         form.addRow("Low Cutoff:", self._low_cut)
 
         self._ff_enable = QCheckBox("Enable Feedforward")
+        self._ff_enable.setToolTip(
+            "Enable feedforward compensation.\n"
+            "Adds a disturbance signal to the output before the PID reacts."
+        )
         form.addRow(self._ff_enable)
 
         self._ff_gain = _double_spin(0.0, 999.0, 1.0, 3)
+        self._ff_gain.setToolTip("Feedforward gain. Scales the FF signal before adding to output.")
         form.addRow("FF Gain:", self._ff_gain)
 
         # IO Options
         grp_io = QGroupBox("IO Options")
         io_form = QFormLayout()
         self._io_low_cutoff = QCheckBox("Low Cutoff")
+        self._io_low_cutoff.setToolTip("Snap output to low limit when below cutoff threshold.")
         io_form.addRow(self._io_low_cutoff)
         self._io_increase_to_close = QCheckBox("Increase to Close")
+        self._io_increase_to_close.setToolTip(
+            "Reverses output: 100% = valve closed.\n"
+            "Used for air-to-close or fail-open valves."
+        )
         io_form.addRow(self._io_increase_to_close)
         self._io_target_to_man = QCheckBox("Target to MAN if Fault")
+        self._io_target_to_man.setToolTip("On I/O fault, transfer to Manual and hold safe target.")
         io_form.addRow(self._io_target_to_man)
         self._io_fault_state_value = QCheckBox("Fault State to Value")
+        self._io_fault_state_value.setToolTip(
+            "On I/O fault, drive output to a predefined\n"
+            "safe value instead of holding last output."
+        )
         io_form.addRow(self._io_fault_state_value)
         grp_io.setLayout(io_form)
         form.addRow(grp_io)
@@ -321,15 +429,32 @@ class ControllerDialog(QDialog):
         grp_ctrl = QGroupBox("Control Options")
         ctrl_form = QFormLayout()
         self._ctrl_direct_acting = QCheckBox("Direct Acting")
+        self._ctrl_direct_acting.setToolTip(
+            "Direct: output increases when PV increases.\n"
+            "Reverse (unchecked): output increases when PV decreases."
+        )
         ctrl_form.addRow(self._ctrl_direct_acting)
         self._ctrl_track_enable = QCheckBox("Track Enable")
+        self._ctrl_track_enable.setToolTip("Enable external tracking for cascade anti-windup.")
         ctrl_form.addRow(self._ctrl_track_enable)
         self._ctrl_track_in_manual = QCheckBox("Track in Manual")
+        self._ctrl_track_in_manual.setToolTip(
+            "Continue tracking even in Manual mode.\n"
+            "Ensures bumpless transfer back to Auto."
+        )
         ctrl_form.addRow(self._ctrl_track_in_manual)
         self._ctrl_sp_pv_track_man = QCheckBox("SP/PV Track in MAN")
+        self._ctrl_sp_pv_track_man.setToolTip(
+            "In Manual, SP tracks PV for bumpless\n"
+            "MAN-to-AUTO transfer."
+        )
         ctrl_form.addRow(self._ctrl_sp_pv_track_man)
         self._ctrl_sp_pv_track_lo_iman = QCheckBox(
             "SP/PV Track in LO/IMAN"
+        )
+        self._ctrl_sp_pv_track_lo_iman.setToolTip(
+            "SP tracks PV in LO/IMAN modes.\n"
+            "Prevents output bumps when returning to auto."
         )
         ctrl_form.addRow(self._ctrl_sp_pv_track_lo_iman)
         grp_ctrl.setLayout(ctrl_form)
@@ -341,20 +466,35 @@ class ControllerDialog(QDialog):
         form = QFormLayout()
 
         self._ai_engine = _enum_combo(AIEngine, AIEngine.NONE.value)
+        self._ai_engine.setToolTip(
+            "AI auto-tuning engine for Ki optimization.\n"
+            "NONE: Manual only. FUZZY: Rule-based. RL: Learns from data."
+        )
         form.addRow("AI Engine:", self._ai_engine)
 
         self._ai_objective = _enum_combo(
             ControlObjective, ControlObjective.DISTURBANCE_REJECTION.value
         )
+        self._ai_objective.setToolTip(
+            "Control objective guiding AI tuning strategy.\n"
+            "SP_TRACKING: Fast response. DISTURBANCE_REJECTION: Minimize offset.\n"
+            "SURGE_LEVEL: Valve stability over tight control."
+        )
         form.addRow("Objective:", self._ai_objective)
 
         self._ai_dead_time = _double_spin(0.0, 9999.0, 1.0, 2, " s")
+        self._ai_dead_time.setToolTip(
+            "Process dead time (L) in seconds.\n"
+            "Used by AI to compute tuning cycle: T_cycle = 3 x L."
+        )
         form.addRow("Dead Time (L):", self._ai_dead_time)
 
         self._ai_limit_min = _double_spin(0.001, 9999.0, 0.1, 3)
+        self._ai_limit_min.setToolTip("Minimum allowed Ki after AI adjustment (safety guardrail).")
         form.addRow("Limit Min:", self._ai_limit_min)
 
         self._ai_limit_max = _double_spin(0.001, 9999.0, 100.0, 3)
+        self._ai_limit_max.setToolTip("Maximum allowed Ki after AI adjustment (safety guardrail).")
         form.addRow("Limit Max:", self._ai_limit_max)
 
         return _scrollable(form)
@@ -447,12 +587,26 @@ class ControllerDialog(QDialog):
             "Ti": "_tag_ti", "Td": "_tag_td", "Mode": "_tag_mode",
         }
 
+        tag_tooltips = {
+            "PV": "OPC-UA node ID for the Process Variable (measured value).",
+            "SP": "OPC-UA node ID for the Setpoint (desired target value).",
+            "CO": "OPC-UA node ID for the Controller Output.",
+            "Integral": "OPC-UA node ID for the integral accumulator.",
+            "BkCal In": "OPC-UA node ID for Back-Calculation input (cascade).",
+            "BkCal Out": "OPC-UA node ID for Back-Calculation output.",
+            "Kp": "OPC-UA node ID for reading/writing proportional gain.",
+            "Ti": "OPC-UA node ID for reading/writing integral time.",
+            "Td": "OPC-UA node ID for reading/writing derivative time.",
+            "Mode": "OPC-UA node ID for reading/writing controller mode.",
+        }
         for row_idx, (label, placeholder) in enumerate(tag_fields):
             lbl = QLabel(f"{label}:")
             grid.addWidget(lbl, row_idx, 0)
 
             line_edit = QLineEdit()
             line_edit.setPlaceholderText(placeholder)
+            if label in tag_tooltips:
+                line_edit.setToolTip(tag_tooltips[label])
             setattr(self, attr_map[label], line_edit)
             grid.addWidget(line_edit, row_idx, 1)
 
@@ -496,17 +650,31 @@ class ControllerDialog(QDialog):
         form = QFormLayout()
 
         self._shed_opt = _enum_combo(ControllerMode, ControllerMode.MAN.value)
+        self._shed_opt.setToolTip(
+            "Mode on communication loss or safety trip.\n"
+            "MAN: Hold last output. LO: Lock output. OOS: Fault-safe value."
+        )
         form.addRow("Shed Option:", self._shed_opt)
 
         self._shed_time = _double_spin(0.0, 9999.0, 10.0, 1, " s")
+        self._shed_time.setToolTip("Time (s) before controller sheds to the Shed Option mode.")
         form.addRow("Shed Time:", self._shed_time)
 
         self._tuning_write_mode = _enum_combo(
             TuningWriteMode, TuningWriteMode.APPROVAL_REQUIRED.value
         )
+        self._tuning_write_mode.setToolTip(
+            "How AI tuning is applied to the DCS.\n"
+            "APPROVAL_REQUIRED: Operator approves. AUTO_WRITE: Automatic.\n"
+            "READ_ONLY: AI recommends but never writes."
+        )
         form.addRow("Tuning Write Mode:", self._tuning_write_mode)
 
         self._max_tuning_pct = _double_spin(0.0, 100.0, 10.0, 1, " %")
+        self._max_tuning_pct.setToolTip(
+            "Max allowed change per AI tuning cycle, as percentage.\n"
+            "Example: 10% means Ki can change at most +/-10% per cycle."
+        )
         form.addRow("Max Tuning Change %:", self._max_tuning_pct)
 
         return _scrollable(form)
