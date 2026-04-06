@@ -48,6 +48,7 @@ class MainWindow(QMainWindow):
     _api_error_signal = Signal(str)
     _users_loaded_signal = Signal(list)
     _kpi_data_signal = Signal(dict)  # KPI + performance data from background
+    _edit_dialog_signal = Signal(int, object)
 
     def __init__(
         self,
@@ -70,6 +71,7 @@ class MainWindow(QMainWindow):
         self._api_error_signal.connect(self._on_api_error)
         self._users_loaded_signal.connect(self._on_users_loaded)
         self._kpi_data_signal.connect(self._on_kpi_data_received)
+        self._edit_dialog_signal.connect(self._open_edit_dialog)
 
         # Cached controller list for KPI computation
         self._cached_controllers: list[dict] = []
@@ -245,6 +247,7 @@ class MainWindow(QMainWindow):
         self._dashboard_page.setpoint_requested.connect(self._send_setpoint)
         self._dashboard_page.mode_requested.connect(self._send_mode)
         self._dashboard_page.output_requested.connect(self._send_output)
+        self._dashboard_page.settings_requested.connect(self._on_edit_controller)
         bus_bridge.connection_lost.connect(
             lambda: self._conn_indicator.setStyleSheet(
                 "color: red; background: transparent;"
@@ -272,6 +275,16 @@ class MainWindow(QMainWindow):
         self._user_mgmt_page.user_update_requested.connect(self._update_user)
         self._user_mgmt_page.user_deactivate_requested.connect(self._deactivate_user)
         self._user_mgmt_page.user_reactivate_requested.connect(self._reactivate_user)
+
+        # Optimizer signals from faceplate
+        faceplate = self._dashboard_page._faceplate  # noqa: SLF001
+        faceplate.optimizer_run_requested.connect(self._send_optimizer_start)
+        faceplate.optimizer_pause_requested.connect(
+            self._send_optimizer_pause,
+        )
+        faceplate.optimizer_stop_requested.connect(
+            self._send_optimizer_stop,
+        )
 
     def _on_login(self, server_url: str, username: str, password: str) -> None:
         """Handle login in background thread."""
@@ -306,6 +319,8 @@ class MainWindow(QMainWindow):
         self._stack.setCurrentWidget(self._dashboard_page)
         self._check_simulator_available()
         self._show_admin_controls()
+        # Load currently active alarms so alarm panel is populated
+        self._alarm_panel.load_active_alarms()
         # Start periodic KPI refresh (every 30 seconds)
         self._kpi_timer.start(30_000)
 
@@ -332,6 +347,40 @@ class MainWindow(QMainWindow):
                 self._api_error_signal.emit(str(e))
 
         threading.Thread(target=do_create, daemon=True).start()
+
+    def _on_edit_controller(self, controller_id: int) -> None:
+        """Fetch controller data in background, then open edit dialog via signal."""
+
+        def do_fetch():
+            try:
+                ctrl = self._api_client.get_controller(controller_id)
+                data = ctrl.model_dump()
+                self._edit_dialog_signal.emit(controller_id, data)
+            except Exception as e:
+                logger.error("Failed to fetch controller %d: %s", controller_id, e)
+                self._api_error_signal.emit(str(e))
+
+        threading.Thread(target=do_fetch, daemon=True).start()
+
+    @Slot(int, object)
+    def _open_edit_dialog(self, controller_id: int, data: dict) -> None:
+        """Open the edit dialog on the GUI thread with pre-fetched data."""
+        from smart_pid_hmi.widgets.controller_dialog import ControllerDialog
+
+        dialog = ControllerDialog(edit_data=data, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        updated = dialog.get_controller_data()
+
+        def do_update():
+            try:
+                self._api_client.update_controller(controller_id, updated)
+                self._load_dashboard()
+            except Exception as e:
+                logger.error("Failed to update controller %d: %s", controller_id, e)
+                self._api_error_signal.emit(str(e))
+
+        threading.Thread(target=do_update, daemon=True).start()
 
     @Slot(list)
     def _on_controllers_received(self, controllers: list[dict]) -> None:
@@ -414,6 +463,21 @@ class MainWindow(QMainWindow):
 
     def _send_ack_all(self) -> None:
         self._safe_api_call(self._api_client.ack_all_alarms)
+
+    def _send_optimizer_start(self, controller_id: int) -> None:
+        self._safe_api_call(
+            self._api_client.start_optimizer, controller_id,
+        )
+
+    def _send_optimizer_pause(self, controller_id: int) -> None:
+        self._safe_api_call(
+            self._api_client.pause_optimizer, controller_id,
+        )
+
+    def _send_optimizer_stop(self, controller_id: int) -> None:
+        self._safe_api_call(
+            self._api_client.stop_optimizer, controller_id,
+        )
 
     def _check_simulator_available(self) -> None:
         """Check if backend has simulator and enable button if so."""
