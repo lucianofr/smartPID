@@ -253,6 +253,14 @@ class TestTagBindingsExpanded:
         assert tb.node_id_mode == "ns=2;s=PID1.MODE"
 
 
+class TestController:
+    def test_controller_has_process_speed(self) -> None:
+        """process_speed is a direct field on Controller, not inside AIConfig."""
+        c = Controller()
+        assert c.process_speed == ProcessSpeed.MEDIUM
+        assert not hasattr(c.ai_config, "process_speed")
+
+
 class TestControllerTuningFields:
     def test_default_tuning_write_mode(self) -> None:
         from smart_pid_domain.enums import TuningWriteMode
