@@ -2,9 +2,6 @@
 from __future__ import annotations
 
 import httpx
-import pytest
-
-from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 
 
 class TestGetCurrentProject:
@@ -61,3 +58,86 @@ class TestOpenProject:
             "/project/open", json={"name": "nonexistent"},
         )
         assert resp.status_code == 404
+
+
+class TestListProjects:
+    async def test_list_empty(self, client: httpx.AsyncClient) -> None:
+        resp = await client.get("/project/list")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["projects"] == []
+
+    async def test_list_with_files(
+        self, client: httpx.AsyncClient, api_deps,
+    ) -> None:
+        import aiosqlite
+
+        projects_dir = api_deps["projects_dir"]
+        path = projects_dir / "testproj.spid"
+        async with aiosqlite.connect(path) as db:
+            await db.execute(
+                "CREATE TABLE IF NOT EXISTS Controladores "
+                "(id INTEGER PRIMARY KEY, nome TEXT NOT NULL)"
+            )
+            await db.execute("INSERT INTO Controladores (nome) VALUES (?)", ("c1",))
+            await db.commit()
+
+        resp = await client.get("/project/list")
+        assert resp.status_code == 200
+        projects = resp.json()["projects"]
+        assert len(projects) == 1
+        assert projects[0]["name"] == "testproj"
+        assert projects[0]["controller_count"] == 1
+
+
+class TestImportProject:
+    async def test_import_project(
+        self, client: httpx.AsyncClient, tmp_path,
+    ) -> None:
+        import aiosqlite
+
+        src = tmp_path / "upload.spid"
+        async with aiosqlite.connect(src) as db:
+            await db.execute(
+                "CREATE TABLE IF NOT EXISTS Controladores "
+                "(id INTEGER PRIMARY KEY, nome TEXT NOT NULL)"
+            )
+            await db.commit()
+        file_bytes = src.read_bytes()
+
+        resp = await client.post(
+            "/project/import",
+            files={"file": ("upload.spid", file_bytes, "application/octet-stream")},
+            data={"name": "uploaded"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "uploaded"
+
+
+class TestDownloadProject:
+    async def test_download(self, client: httpx.AsyncClient) -> None:
+        # Create a project first
+        await client.post("/project/new", json={"name": "dltest"})
+        resp = await client.get("/project/download")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/octet-stream"
+        assert "dltest.spid" in resp.headers.get("content-disposition", "")
+        assert len(resp.content) > 0
+
+
+class TestDeleteProject:
+    async def test_delete(
+        self, client: httpx.AsyncClient, api_deps,
+    ) -> None:
+        projects_dir = api_deps["projects_dir"]
+        (projects_dir / "removeme.spid").write_bytes(b"fake")
+        resp = await client.delete("/project/removeme")
+        assert resp.status_code == 204
+        assert not (projects_dir / "removeme.spid").exists()
+
+    async def test_delete_active_rejected(
+        self, client: httpx.AsyncClient,
+    ) -> None:
+        await client.post("/project/new", json={"name": "nodelete"})
+        resp = await client.delete("/project/nodelete")
+        assert resp.status_code == 409
