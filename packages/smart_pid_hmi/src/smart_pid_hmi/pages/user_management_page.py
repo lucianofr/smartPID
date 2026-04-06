@@ -149,7 +149,7 @@ class UserManagementPage(QWidget):
         header_view.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         header_view.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
         self.user_table.setColumnWidth(4, 220)
-        self.user_table.verticalHeader().setDefaultSectionSize(40)
+        self.user_table.verticalHeader().setDefaultSectionSize(48)
         self.user_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.user_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.user_table)
