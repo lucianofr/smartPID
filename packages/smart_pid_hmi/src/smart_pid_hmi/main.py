@@ -90,7 +90,7 @@ class MainWindow(QMainWindow):
         self._users_loaded_signal.connect(self._on_users_loaded)
         self._kpi_data_signal.connect(self._on_kpi_data_received)
         self._edit_dialog_signal.connect(self._open_edit_dialog)
-        self._project_info_signal.connect(self._apply_project_info)
+        self._project_info_signal.connect(self._on_project_info_received)
 
         # Cached controller list for KPI computation
         self._cached_controllers: list[dict] = []
@@ -356,6 +356,7 @@ class MainWindow(QMainWindow):
         self._kpi_timer.start(30_000)
 
         # Open pending project after login
+        has_pending = bool(self._pending_project_path)
         if self._pending_project_path:
             if self._pending_project_action == "new" and self._pending_project_name:
                 self._do_new_project(self._pending_project_name, self._pending_project_path)
@@ -365,9 +366,10 @@ class MainWindow(QMainWindow):
             self._pending_project_path = None
             self._pending_project_name = None
 
-        # Always refresh project info from backend after login (with delay
-        # to let pending project operations complete first)
-        QTimer.singleShot(2000, self._refresh_project_info)
+        # Always refresh project info from backend after login.
+        # Use longer delay when a project operation is in flight.
+        delay_ms = 3000 if has_pending else 500
+        QTimer.singleShot(delay_ms, self._refresh_project_info)
 
     @Slot(str)
     def _on_login_error_received(self, error_msg: str) -> None:
@@ -904,25 +906,26 @@ class MainWindow(QMainWindow):
 
         threading.Thread(target=do_save, daemon=True).start()
 
-    def _refresh_project_info(self) -> None:
-        """Fetch current project state from backend and update Settings page."""
-        def do_fetch():
-            try:
-                result = self._api_client.get_current_project()
-                name = result.get("name", "")
-                path = result.get("path", "")
-                count = int(result.get("controller_count", 0))
-                logger.info("project_info_fetched name=%s path=%s count=%s", name, path, count)
-                self._project_info_signal.emit(name, path, count)
-            except Exception as e:
-                logger.warning("Could not fetch current project info: %s", e)
-
-        threading.Thread(target=do_fetch, daemon=True).start()
-
     @Slot(str, str, int)
-    def _apply_project_info(self, name: str, path: str, count: int) -> None:
-        """Apply project info to Settings page (must run on main thread)."""
+    def _on_project_info_received(self, name: str, path: str, count: int) -> None:
+        """Handle project info from background threads."""
         self._settings_page.update_project_info(name, path, count)
+
+    @Slot()
+    def _refresh_project_info(self) -> None:
+        """Fetch current project state from backend and update Settings page.
+
+        Runs synchronously on the main thread — the GET is fast (<50ms).
+        """
+        try:
+            result = self._api_client.get_current_project()
+            name = result.get("name", "")
+            path = result.get("path", "")
+            count = int(result.get("controller_count", 0))
+            logger.info("project_info_fetched name=%s path=%s count=%s", name, path, count)
+            self._settings_page.update_project_info(name, path, count)
+        except Exception as e:
+            logger.warning("Could not fetch current project info: %s", e)
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._kpi_timer.stop()
