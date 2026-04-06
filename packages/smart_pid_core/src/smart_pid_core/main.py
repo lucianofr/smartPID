@@ -207,6 +207,9 @@ async def run_daemon(settings: CoreSettings) -> None:
                     node_id_sp=tb.node_id_sp,
                     node_id_co=tb.node_id_co,
                     node_id_integral=tb.node_id_integral,
+                    node_id_mode_target=tb.node_id_mode_target,
+                    node_id_mode_actual=tb.node_id_mode_actual,
+                    mode_int_map=tb.mode_int_map,
                 )
         opcua_adapter.start()
         logger.info("opcua_adapter_started", endpoint=settings.opcua_endpoint)

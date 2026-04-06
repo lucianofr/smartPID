@@ -31,13 +31,16 @@ class TestRegisterControllerTuningTags:
             node_id_kp="ns=2;s=KP",
             node_id_ti="ns=2;s=TI",
             node_id_td="ns=2;s=TD",
-            node_id_mode="ns=2;s=MODE",
+            node_id_mode_target="ns=2;s=MODE_TGT",
+            node_id_mode_actual="ns=2;s=MODE_ACT",
+            mode_int_map={"MAN": 1, "AUTO": 2},
         )
         tags = adapter._controllers[1]
         assert tags["kp"] == "ns=2;s=KP"
         assert tags["ti"] == "ns=2;s=TI"
         assert tags["td"] == "ns=2;s=TD"
-        assert tags["mode"] == "ns=2;s=MODE"
+        assert tags["mode_target"] == "ns=2;s=MODE_TGT"
+        assert tags["mode_actual"] == "ns=2;s=MODE_ACT"
 
     def test_tuning_tags_default_to_empty(self) -> None:
         adapter = _make_adapter()
@@ -51,7 +54,8 @@ class TestRegisterControllerTuningTags:
         assert tags["kp"] == ""
         assert tags["ti"] == ""
         assert tags["td"] == ""
-        assert tags["mode"] == ""
+        assert tags["mode_target"] == ""
+        assert tags["mode_actual"] == ""
 
     def test_existing_tags_preserved(self) -> None:
         """Existing pv/sp/co/integral/bkcal tags still stored correctly."""
@@ -109,8 +113,8 @@ class TestReadPIDParamsNoServer:
         assert result is None
 
 
-class TestReadExternalModeNoServer:
-    """read_external_mode() returns None when no mode tag or not connected."""
+class TestReadActualModeNoServer:
+    """read_actual_mode() returns None when no mode tag or not connected."""
 
     def test_returns_none_when_no_mode_tag(self) -> None:
         adapter = _make_adapter()
@@ -120,12 +124,12 @@ class TestReadExternalModeNoServer:
             node_id_sp="ns=2;s=SP",
             node_id_co="ns=2;s=CO",
         )
-        result = adapter.read_external_mode(1)
+        result = adapter.read_actual_mode(1)
         assert result is None
 
     def test_returns_none_for_unregistered_controller(self) -> None:
         adapter = _make_adapter()
-        result = adapter.read_external_mode(999)
+        result = adapter.read_actual_mode(999)
         assert result is None
 
     def test_returns_none_when_not_connected(self) -> None:
@@ -135,9 +139,10 @@ class TestReadExternalModeNoServer:
             node_id_pv="ns=2;s=PV",
             node_id_sp="ns=2;s=SP",
             node_id_co="ns=2;s=CO",
-            node_id_mode="ns=2;s=MODE",
+            node_id_mode_actual="ns=2;s=MODE",
+            mode_int_map={"MAN": 1, "AUTO": 2},
         )
-        result = adapter.read_external_mode(1)
+        result = adapter.read_actual_mode(1)
         assert result is None
 
 

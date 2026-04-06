@@ -1,7 +1,7 @@
 """Controller CRUD DTOs — full 30+ field coverage."""
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 # ── Nested sub-model DTOs ────────────────────────────────────────────────────
 
@@ -46,7 +46,17 @@ class TagBindingsDTO(BaseModel):
     node_id_kp: str = ""
     node_id_ti: str = ""
     node_id_td: str = ""
-    node_id_mode: str = ""
+    node_id_mode_target: str = ""
+    node_id_mode_actual: str = ""
+    mode_int_map: dict[str, int] = {}
+
+    @model_validator(mode="after")
+    def _no_duplicate_int_values(self) -> TagBindingsDTO:
+        vals = list(self.mode_int_map.values())
+        if len(vals) != len(set(vals)):
+            msg = "Duplicate integer values in mode_int_map"
+            raise ValueError(msg)
+        return self
 
 
 class ControlOptsDTO(BaseModel):
@@ -104,6 +114,7 @@ class ControllerCreate(BaseModel):
 
     # Mode config
     mode_normal: str = "AUTO"
+    permitted_modes: list[str] = ["MAN", "AUTO"]
 
     # SP limits
     sp_hi_lim: float = 100.0
@@ -158,6 +169,7 @@ class ControllerUpdate(BaseModel):
     max_tuning_change_pct: float | None = None
 
     mode_normal: str | None = None
+    permitted_modes: list[str] | None = None
 
     sp_hi_lim: float | None = None
     sp_lo_lim: float | None = None
@@ -211,6 +223,7 @@ class ControllerResponse(BaseModel):
     max_tuning_change_pct: float = 10.0
 
     mode_normal: str = "AUTO"
+    permitted_modes: list[str] = ["MAN", "AUTO"]
 
     sp_hi_lim: float = 100.0
     sp_lo_lim: float = 0.0

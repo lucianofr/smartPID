@@ -24,7 +24,7 @@ from smart_pid_domain.dtos.commands import (
     OutputCommand,
     SetpointCommand,
 )
-from smart_pid_domain.enums import AuditAction
+from smart_pid_domain.enums import AuditAction, ControllerMode
 
 router = APIRouter()
 
@@ -146,11 +146,11 @@ async def apply_tuning(
     # Check external PID mode
     opcua = getattr(request.app.state, "opcua_adapter", None)
     if opcua is not None:
-        ext_mode = opcua.read_external_mode(controller_id)
-        if ext_mode is not None and ext_mode.lower() != "auto":
+        ext_mode = opcua.read_actual_mode(controller_id)
+        if ext_mode is not None and ext_mode != ControllerMode.AUTO:
             raise HTTPException(
                 status_code=409,
-                detail=f"External PID is in {ext_mode} mode — tuning write-back requires Auto",
+                detail=f"External PID is in {ext_mode.value} mode — tuning write-back requires Auto",
             )
 
     # Apply guardrails

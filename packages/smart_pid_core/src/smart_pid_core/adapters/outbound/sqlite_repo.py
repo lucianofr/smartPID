@@ -1,6 +1,7 @@
 """SQLite-backed Controller repository adapter."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import aiosqlite
@@ -55,6 +56,9 @@ CREATE TABLE IF NOT EXISTS Controladores (
     node_id_sp          TEXT    NOT NULL DEFAULT '',
     node_id_co          TEXT    NOT NULL DEFAULT '',
     node_id_integral    TEXT    NOT NULL DEFAULT '',
+    node_id_mode_target TEXT    NOT NULL DEFAULT '',
+    node_id_mode_actual TEXT    NOT NULL DEFAULT '',
+    mode_int_map        TEXT    NOT NULL DEFAULT '{}',
     -- SP limits
     sp_hi_lim           REAL    NOT NULL DEFAULT 100.0,
     sp_lo_lim           REAL    NOT NULL DEFAULT 0.0,
@@ -321,6 +325,9 @@ class SQLiteRepository:
             "node_id_sp": c.tag_bindings.node_id_sp,
             "node_id_co": c.tag_bindings.node_id_co,
             "node_id_integral": c.tag_bindings.node_id_integral,
+            "node_id_mode_target": c.tag_bindings.node_id_mode_target,
+            "node_id_mode_actual": c.tag_bindings.node_id_mode_actual,
+            "mode_int_map": json.dumps(c.tag_bindings.mode_int_map),
             "sp_hi_lim": c.sp_hi_lim,
             "sp_lo_lim": c.sp_lo_lim,
             "sp_rate_up": c.sp_rate_up,
@@ -432,6 +439,9 @@ class SQLiteRepository:
                 node_id_sp=row["node_id_sp"],
                 node_id_co=row["node_id_co"],
                 node_id_integral=row["node_id_integral"],
+                node_id_mode_target=row["node_id_mode_target"],
+                node_id_mode_actual=row["node_id_mode_actual"],
+                mode_int_map=json.loads(row["mode_int_map"]),
             ),
             sp_hi_lim=row["sp_hi_lim"],
             sp_lo_lim=row["sp_lo_lim"],

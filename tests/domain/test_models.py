@@ -241,17 +241,20 @@ class TestTagBindingsExpanded:
         assert tb.node_id_kp == ""
         assert tb.node_id_ti == ""
         assert tb.node_id_td == ""
-        assert tb.node_id_mode == ""
+        assert tb.node_id_mode_target == ""
+        assert tb.node_id_mode_actual == ""
+        assert tb.mode_int_map == {}
 
-    def test_new_fields_set(self) -> None:
-        tb = TagBindings(
-            node_id_kp="ns=2;s=PID1.KP",
-            node_id_ti="ns=2;s=PID1.TI",
-            node_id_td="ns=2;s=PID1.TD",
-            node_id_mode="ns=2;s=PID1.MODE",
-        )
-        assert tb.node_id_kp == "ns=2;s=PID1.KP"
-        assert tb.node_id_mode == "ns=2;s=PID1.MODE"
+    def test_mode_int_map_stores_values(self) -> None:
+        tb = TagBindings(mode_int_map={"MAN": 1, "AUTO": 2, "CAS": 4})
+        assert tb.mode_int_map["MAN"] == 1
+        assert tb.mode_int_map["AUTO"] == 2
+        assert len(tb.mode_int_map) == 3
+
+    def test_no_node_id_mode_field(self) -> None:
+        """Old node_id_mode field must not exist."""
+        tb = TagBindings()
+        assert not hasattr(tb, "node_id_mode")
 
 
 class TestController:

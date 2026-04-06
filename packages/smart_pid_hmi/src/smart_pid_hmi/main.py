@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from smart_pid_hmi.bus_bridge import BusBridge
 from smart_pid_hmi.config import HMISettings
+from smart_pid_hmi.services.app_state import AppStateManager
 from smart_pid_hmi.pages.alarm_panel import AlarmPanel
 from smart_pid_hmi.pages.connection_page import ConnectionPage
 from smart_pid_hmi.pages.dashboard_page import DashboardPage

@@ -74,7 +74,9 @@ class TagBindings:
     node_id_kp: str = ""
     node_id_ti: str = ""
     node_id_td: str = ""
-    node_id_mode: str = ""
+    node_id_mode_target: str = ""
+    node_id_mode_actual: str = ""
+    mode_int_map: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass

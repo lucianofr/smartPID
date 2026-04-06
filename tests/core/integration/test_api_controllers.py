@@ -144,7 +144,9 @@ FULL_CREATE_PAYLOAD: dict = {
         "node_id_kp": "",
         "node_id_ti": "",
         "node_id_td": "",
-        "node_id_mode": "",
+        "node_id_mode_target": "",
+        "node_id_mode_actual": "",
+        "mode_int_map": {},
     },
     "control_opts": {
         "no_out_limits_in_manual": True,
@@ -276,7 +278,8 @@ class TestFullFieldUpdate:
             "tag_bindings": {"node_id_pv": "ns=3;s=LIC400.PV", "node_id_sp": "ns=3;s=LIC400.SP",
                             "node_id_co": "", "node_id_integral": "", "node_id_bkcal_in": "",
                             "node_id_bkcal_out": "", "node_id_kp": "", "node_id_ti": "",
-                            "node_id_td": "", "node_id_mode": ""},
+                            "node_id_td": "", "node_id_mode_target": "",
+                            "node_id_mode_actual": "", "mode_int_map": {}},
             "control_opts": {
                 "no_out_limits_in_manual": False, "obey_sp_limits_if_cas": False,
                 "track_in_manual": True, "track_enable": True, "direct_acting": False,
@@ -307,3 +310,36 @@ class TestFullFieldUpdate:
         assert data["arw_hi_lim"] == 85.0
         assert data["ff_enable"] is True
         assert data["shed_time_s"] == 60.0
+
+
+class TestModeBindingAPI:
+    @pytest.mark.asyncio
+    async def test_create_with_mode_bindings(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        payload = {
+            "name": "MODE-API-TEST",
+            "tag_bindings": {
+                "node_id_pv": "ns=2;s=PV",
+                "node_id_mode_target": "ns=2;s=MODE_TGT",
+                "node_id_mode_actual": "ns=2;s=MODE_ACT",
+                "mode_int_map": {"MAN": 1, "AUTO": 2},
+            },
+            "permitted_modes": ["MAN", "AUTO", "CAS"],
+        }
+        resp = await client.post("/controllers", json=payload, headers=admin_headers)
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["tag_bindings"]["node_id_mode_target"] == "ns=2;s=MODE_TGT"
+        assert data["tag_bindings"]["node_id_mode_actual"] == "ns=2;s=MODE_ACT"
+        assert data["tag_bindings"]["mode_int_map"] == {"MAN": 1, "AUTO": 2}
+        assert set(data["permitted_modes"]) == {"MAN", "AUTO", "CAS"}
+
+    @pytest.mark.asyncio
+    async def test_no_old_node_id_mode_in_response(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        payload = {"name": "NO-OLD-MODE"}
+        resp = await client.post("/controllers", json=payload, headers=admin_headers)
+        assert resp.status_code == 201
+        assert "node_id_mode" not in resp.json()["tag_bindings"]

@@ -76,13 +76,26 @@ class TestTagBindingsDTO:
         for field_name in [
             "node_id_pv", "node_id_sp", "node_id_co", "node_id_integral",
             "node_id_bkcal_in", "node_id_bkcal_out",
-            "node_id_kp", "node_id_ti", "node_id_td", "node_id_mode",
+            "node_id_kp", "node_id_ti", "node_id_td",
+            "node_id_mode_target", "node_id_mode_actual",
         ]:
             assert getattr(t, field_name) == ""
+        assert t.mode_int_map == {}
 
     def test_custom(self) -> None:
         t = TagBindingsDTO(node_id_pv="ns=2;s=TIC100.PV")
         assert t.node_id_pv == "ns=2;s=TIC100.PV"
+
+    def test_mode_int_map_accepted(self) -> None:
+        t = TagBindingsDTO(mode_int_map={"MAN": 1, "AUTO": 2})
+        assert t.mode_int_map == {"MAN": 1, "AUTO": 2}
+
+    def test_mode_int_map_rejects_duplicate_values(self) -> None:
+        with pytest.raises(ValidationError, match="[Dd]uplicate"):
+            TagBindingsDTO(mode_int_map={"MAN": 1, "AUTO": 1})
+
+    def test_no_old_node_id_mode(self) -> None:
+        assert "node_id_mode" not in TagBindingsDTO.model_fields
 
 
 class TestControlOptsDTO:
@@ -250,3 +263,28 @@ class TestControllerResponse:
         assert r2.ai_config.engine == "FUZZY"
         assert r2.ai_config.objective == "SP_TRACKING"
         assert r2 == r
+
+
+# ── Permitted Modes in DTOs ────────────────────────────────────────────────
+
+
+class TestPermittedModesDTOs:
+    def test_create_default_permitted_modes(self) -> None:
+        c = ControllerCreate(name="TIC-100")
+        assert c.permitted_modes == ["MAN", "AUTO"]
+
+    def test_create_custom_permitted_modes(self) -> None:
+        c = ControllerCreate(name="TIC-100", permitted_modes=["MAN", "AUTO", "CAS"])
+        assert "CAS" in c.permitted_modes
+
+    def test_update_permitted_modes_optional(self) -> None:
+        u = ControllerUpdate()
+        assert u.permitted_modes is None
+
+    def test_response_has_permitted_modes(self) -> None:
+        r = ControllerResponse(
+            id=1, name="TIC-100", description="", mode="AUTO",
+            pv=0.0, sp=0.0, co=0.0,
+            permitted_modes=["MAN", "AUTO", "CAS"],
+        )
+        assert r.permitted_modes == ["MAN", "AUTO", "CAS"]

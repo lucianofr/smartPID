@@ -9,7 +9,7 @@ import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from smart_pid_domain.enums import ConnectionState
+from smart_pid_domain.enums import ConnectionState, ControllerMode
 from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
 from smart_pid_domain.models.telemetry import TelemetryFrame
 from smart_pid_domain.models.tuning import PIDParamsRead
@@ -208,9 +208,13 @@ class OPCUAAdapter:
         node_id_kp: str = "",
         node_id_ti: str = "",
         node_id_td: str = "",
-        node_id_mode: str = "",
+        node_id_mode_target: str = "",
+        node_id_mode_actual: str = "",
+        mode_int_map: dict[str, int] | None = None,
     ) -> None:
         """Register a controller's OPC-UA node mappings."""
+        int_map = mode_int_map or {}
+        inv_map = {v: k for k, v in int_map.items()}
         with self._lock:
             self._controllers[controller_id] = {
                 "pv": node_id_pv,
@@ -222,7 +226,10 @@ class OPCUAAdapter:
                 "kp": node_id_kp,
                 "ti": node_id_ti,
                 "td": node_id_td,
-                "mode": node_id_mode,
+                "mode_target": node_id_mode_target,
+                "mode_actual": node_id_mode_actual,
+                "mode_int_map": int_map,
+                "mode_int_map_inv": inv_map,
             }
 
     def read_telemetry(self, controller_id: int) -> TelemetryFrame:
@@ -446,29 +453,70 @@ class OPCUAAdapter:
         for node_id, value in pairs:
             await self._async_write_value(client, node_id, value)
 
-    def read_external_mode(self, controller_id: int) -> str | None:
-        """Read PID mode from DCS. Returns None if node_id_mode not mapped."""
+    def read_actual_mode(self, controller_id: int) -> ControllerMode | None:
+        """Read actual PID mode from DCS via integer map.
+
+        Returns None if no mode_actual node is mapped, adapter is offline,
+        or the integer value read is not in the inverse map.
+        """
         with self._lock:
             tags = self._controllers.get(controller_id, {})
-            mode_id = tags.get("mode", "")
+            mode_id = tags.get("mode_actual", "")
+            inv_map = tags.get("mode_int_map_inv", {})
             client = self._client
 
-        if not mode_id or not self.is_connected:
-            return None
-        if client is None:
+        if not mode_id or not self.is_connected or client is None:
             return None
 
         future = asyncio.run_coroutine_threadsafe(
-            self._async_read_mode(client, mode_id),
+            self._async_read_actual_mode(client, mode_id, inv_map),
             self._loop,
         )
         return future.result(timeout=self._timeout_s)
 
-    async def _async_read_mode(self, client, mode_id: str) -> str:
-        """Async read of mode node, returning string representation."""
+    async def _async_read_actual_mode(
+        self, client, mode_id: str, inv_map: dict[int, str],
+    ) -> ControllerMode | None:
+        """Async read of mode integer node, mapped back to ControllerMode."""
         node = client.get_node(mode_id)
         value = await node.read_value()
-        return str(value)
+        int_val = int(value)
+        mode_str = inv_map.get(int_val)
+        if mode_str is None:
+            logger.warning("unmapped_mode_integer value=%d node=%s", int_val, mode_id)
+            return None
+        return ControllerMode(mode_str)
+
+    def write_target_mode(self, controller_id: int, mode: ControllerMode) -> bool:
+        """Write target mode to DCS as integer via mode_int_map.
+
+        Returns True on success, False if offline, no target node mapped,
+        or the mode is not present in the integer map.
+        """
+        with self._lock:
+            tags = self._controllers.get(controller_id, {})
+            target_id = tags.get("mode_target", "")
+            int_map = tags.get("mode_int_map", {})
+            client = self._client
+
+        if not target_id or not self.is_connected or client is None:
+            return False
+
+        int_val = int_map.get(mode.value)
+        if int_val is None:
+            logger.warning("mode_not_in_map mode=%s controller=%d", mode.value, controller_id)
+            return False
+
+        future = asyncio.run_coroutine_threadsafe(
+            self._async_write_value(client, target_id, int_val),
+            self._loop,
+        )
+        try:
+            future.result(timeout=self._timeout_s)
+            return True
+        except Exception:
+            logger.exception("write_target_mode_failed controller=%d", controller_id)
+            return False
 
     # ---- TagBrowser ----
 

@@ -18,6 +18,7 @@ from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopContext, LoopManager
 from smart_pid_core.application.workers.pid_worker import PIDWorker
 from smart_pid_core.config import CoreSettings
+from smart_pid_domain.enums import ControllerMode
 from smart_pid_core.domain.services.pid_engine import PIDEngine
 from smart_pid_core.domain.services.pid_mode_manager import ModeManager
 from smart_pid_domain.models.controller import Controller, PIDParams
@@ -239,7 +240,7 @@ class TestApplyTuning:
         cid = await self._register_controller(execute_deps)
 
         mock_opcua = MagicMock()
-        mock_opcua.read_external_mode.return_value = "MAN"
+        mock_opcua.read_actual_mode.return_value = ControllerMode.MAN
 
         app = create_app(
             repo=execute_deps["repo"],
@@ -272,7 +273,7 @@ class TestApplyTuning:
         cid = await self._register_controller(execute_deps)
 
         mock_opcua = MagicMock()
-        mock_opcua.read_external_mode.return_value = "AUTO"
+        mock_opcua.read_actual_mode.return_value = ControllerMode.AUTO
 
         app = create_app(
             repo=execute_deps["repo"],

@@ -102,7 +102,9 @@ def _to_response(c: Controller) -> ControllerResponse:
             node_id_kp=c.tag_bindings.node_id_kp,
             node_id_ti=c.tag_bindings.node_id_ti,
             node_id_td=c.tag_bindings.node_id_td,
-            node_id_mode=c.tag_bindings.node_id_mode,
+            node_id_mode_target=c.tag_bindings.node_id_mode_target,
+            node_id_mode_actual=c.tag_bindings.node_id_mode_actual,
+            mode_int_map=c.tag_bindings.mode_int_map,
         ),
         control_opts=ControlOptsDTO(
             no_out_limits_in_manual=c.control_opts.no_out_limits_in_manual,
@@ -134,6 +136,7 @@ def _to_response(c: Controller) -> ControllerResponse:
         tuning_write_mode=str(c.tuning_write_mode),
         max_tuning_change_pct=c.max_tuning_change_pct,
         mode_normal=str(c.mode_normal),
+        permitted_modes=sorted(str(m) for m in c.permitted_modes),
         sp_hi_lim=c.sp_hi_lim,
         sp_lo_lim=c.sp_lo_lim,
         sp_rate_up=c.sp_rate_up,
@@ -190,7 +193,9 @@ def _body_to_controller(body: ControllerCreate) -> Controller:
             node_id_kp=body.tag_bindings.node_id_kp,
             node_id_ti=body.tag_bindings.node_id_ti,
             node_id_td=body.tag_bindings.node_id_td,
-            node_id_mode=body.tag_bindings.node_id_mode,
+            node_id_mode_target=body.tag_bindings.node_id_mode_target,
+            node_id_mode_actual=body.tag_bindings.node_id_mode_actual,
+            mode_int_map=body.tag_bindings.mode_int_map,
         ),
         control_opts=ControlOpts(
             no_out_limits_in_manual=body.control_opts.no_out_limits_in_manual,
@@ -222,6 +227,7 @@ def _body_to_controller(body: ControllerCreate) -> Controller:
         tuning_write_mode=TuningWriteMode(body.tuning_write_mode),
         max_tuning_change_pct=body.max_tuning_change_pct,
         mode_normal=ControllerMode(body.mode_normal),
+        permitted_modes={ControllerMode(m) for m in body.permitted_modes},
         sp_hi_lim=body.sp_hi_lim,
         sp_lo_lim=body.sp_lo_lim,
         sp_rate_up=body.sp_rate_up,
@@ -255,7 +261,10 @@ _NESTED_BUILDERS: dict[str, tuple[type, callable]] = {
         node_id_pv=dto.node_id_pv, node_id_sp=dto.node_id_sp, node_id_co=dto.node_id_co,
         node_id_integral=dto.node_id_integral, node_id_bkcal_in=dto.node_id_bkcal_in,
         node_id_bkcal_out=dto.node_id_bkcal_out, node_id_kp=dto.node_id_kp,
-        node_id_ti=dto.node_id_ti, node_id_td=dto.node_id_td, node_id_mode=dto.node_id_mode,
+        node_id_ti=dto.node_id_ti, node_id_td=dto.node_id_td,
+        node_id_mode_target=dto.node_id_mode_target,
+        node_id_mode_actual=dto.node_id_mode_actual,
+        mode_int_map=dto.mode_int_map,
     )),
     "control_opts": (ControlOptsDTO, lambda dto: ControlOpts(
         no_out_limits_in_manual=dto.no_out_limits_in_manual,
@@ -354,6 +363,8 @@ async def update_controller(
             updates[field_name] = builder(dto)
         elif field_name in _ENUM_FIELDS:
             updates[field_name] = _ENUM_FIELDS[field_name](value)
+        elif field_name == "permitted_modes":
+            updates[field_name] = {ControllerMode(m) for m in value}
         else:
             updates[field_name] = value
 

@@ -30,6 +30,7 @@ EDIT_DATA: dict = {
         "limit_min": 0.5,
         "limit_max": 50.0,
     },
+    "permitted_modes": ["MAN", "AUTO", "CAS"],
     "tag_bindings": {
         "node_id_pv": "ns=2;s=TIC101.PV",
         "node_id_sp": "ns=2;s=TIC101.SP",
@@ -40,7 +41,9 @@ EDIT_DATA: dict = {
         "node_id_kp": "",
         "node_id_ti": "",
         "node_id_td": "",
-        "node_id_mode": "",
+        "node_id_mode_target": "ns=2;s=TIC101.MODE_TGT",
+        "node_id_mode_actual": "ns=2;s=TIC101.MODE_ACT",
+        "mode_int_map": {"MAN": 1, "AUTO": 2, "CAS": 4},
     },
     "control_opts": {
         "direct_acting": True,
@@ -99,12 +102,12 @@ class TestDialogCreation:
     def test_window_title(self, dialog):
         assert dialog.windowTitle() == "Add Controller"
 
-    def test_has_seven_tabs(self, dialog):
+    def test_has_eight_tabs(self, dialog):
         from PySide6.QtWidgets import QTabWidget
 
         tabs = dialog.findChild(QTabWidget)
         assert tabs is not None
-        assert tabs.count() == 7
+        assert tabs.count() == 8
 
     def test_tab_labels(self, dialog):
         from PySide6.QtWidgets import QTabWidget
@@ -117,6 +120,7 @@ class TestDialogCreation:
             "Scaling & Limits",
             "Filters & IO",
             "AI Configuration",
+            "Alarms",
             "OPC-UA Tags",
             "Shed & Safety",
         ]
@@ -180,13 +184,14 @@ class TestGetControllerData:
             "name", "description", "execution_mode", "scan_rate_ms",
             "process_speed",
             "pid_structure", "integral_type", "mode_normal",
+            "permitted_modes",
             "pid_params", "pv_scale", "out_scale",
             "sp_hi_lim", "sp_lo_lim", "out_hi_lim", "out_lo_lim",
             "arw_hi_lim", "arw_lo_lim", "sp_rate_up", "sp_rate_dn",
             "pv_ftime", "sp_ftime", "low_cut",
             "ff_enable", "ff_gain",
             "io_opts", "control_opts",
-            "ai_config", "tag_bindings",
+            "ai_config", "alarm_config", "tag_bindings",
             "shed_opt", "shed_time_s",
             "tuning_write_mode", "max_tuning_change_pct",
         }
@@ -210,7 +215,8 @@ class TestGetControllerData:
         assert set(data["tag_bindings"].keys()) == {
             "node_id_pv", "node_id_sp", "node_id_co",
             "node_id_integral", "node_id_bkcal_in", "node_id_bkcal_out",
-            "node_id_kp", "node_id_ti", "node_id_td", "node_id_mode",
+            "node_id_kp", "node_id_ti", "node_id_td",
+            "node_id_mode_target", "node_id_mode_actual", "mode_int_map",
         }
 
     def test_io_opts_sub_keys(self, dialog):
@@ -477,3 +483,74 @@ class TestEditMode:
         """In edit mode, accept() should succeed even though name is read-only."""
         edit_dialog.accept()
         assert edit_dialog.result() == 1
+
+
+# ============================================================ Permitted Modes
+
+
+class TestPermittedModes:
+    def test_default_permitted_modes(self, dialog):
+        data = dialog.get_controller_data()
+        assert set(data["permitted_modes"]) == {"MAN", "AUTO"}
+
+    def test_edit_mode_loads_permitted_modes(self, edit_dialog):
+        data = edit_dialog.get_controller_data()
+        assert set(data["permitted_modes"]) == {"MAN", "AUTO", "CAS"}
+
+    def test_check_additional_mode(self, dialog, qtbot):
+        dialog._permitted_mode_checks["CAS"].setChecked(True)
+        data = dialog.get_controller_data()
+        assert "CAS" in data["permitted_modes"]
+
+
+# ============================================================ Mode Int Mapping
+
+
+class TestModeIntMapping:
+    def test_tag_bindings_keys_updated(self, dialog):
+        data = dialog.get_controller_data()
+        tb = data["tag_bindings"]
+        assert "node_id_mode_target" in tb
+        assert "node_id_mode_actual" in tb
+        assert "mode_int_map" in tb
+        assert "node_id_mode" not in tb
+
+    def test_edit_populates_mode_target(self, edit_dialog):
+        assert edit_dialog._tag_mode_target.text() == "ns=2;s=TIC101.MODE_TGT"
+
+    def test_edit_populates_mode_actual(self, edit_dialog):
+        assert edit_dialog._tag_mode_actual.text() == "ns=2;s=TIC101.MODE_ACT"
+
+    def test_edit_populates_mode_int_map(self, edit_dialog):
+        data = edit_dialog.get_controller_data()
+        assert data["tag_bindings"]["mode_int_map"]["MAN"] == 1
+        assert data["tag_bindings"]["mode_int_map"]["AUTO"] == 2
+        assert data["tag_bindings"]["mode_int_map"]["CAS"] == 4
+
+    def test_mode_map_visibility_follows_permitted_modes(self, dialog, qtbot):
+        lbl_man, spin_man = dialog._mode_map_widgets["MAN"]
+        lbl_cas, spin_cas = dialog._mode_map_widgets["CAS"]
+        assert not lbl_man.isHidden()
+        assert not spin_man.isHidden()
+        assert lbl_cas.isHidden()
+        assert spin_cas.isHidden()
+        dialog._permitted_mode_checks["CAS"].setChecked(True)
+        assert not lbl_cas.isHidden()
+        assert not spin_cas.isHidden()
+
+    def test_mode_map_only_collects_visible_nonzero(self, dialog, qtbot):
+        dialog._mode_map_widgets["MAN"][1].setValue(1)
+        dialog._mode_map_widgets["AUTO"][1].setValue(2)
+        dialog._mode_map_widgets["CAS"][1].setValue(4)  # CAS not permitted
+        data = dialog.get_controller_data()
+        int_map = data["tag_bindings"]["mode_int_map"]
+        assert int_map == {"MAN": 1, "AUTO": 2}
+        assert "CAS" not in int_map
+
+    def test_zero_value_excluded_from_map(self, dialog, qtbot):
+        dialog._mode_map_widgets["MAN"][1].setValue(0)
+        dialog._mode_map_widgets["AUTO"][1].setValue(2)
+        data = dialog.get_controller_data()
+        int_map = data["tag_bindings"]["mode_int_map"]
+        assert "MAN" not in int_map
+        assert int_map == {"AUTO": 2}

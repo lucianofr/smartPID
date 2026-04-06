@@ -1,4 +1,4 @@
-"""End-to-end test: Simulator -> PID -> AIWorker (Fuzzy) -> Ki adjustment."""
+"""End-to-end test: Simulator -> StatsWorker -> AIWorker (Fuzzy) -> Ki adjustment."""
 from __future__ import annotations
 
 import time

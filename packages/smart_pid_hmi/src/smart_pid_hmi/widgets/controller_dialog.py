@@ -250,6 +250,19 @@ class ControllerDialog(QDialog):
         )
         form.addRow("Normal Mode:", self._mode_normal)
 
+        # Permitted Modes — checkbox group
+        from PySide6.QtWidgets import QHBoxLayout
+        perm_group = QGroupBox("Permitted Modes")
+        perm_layout = QHBoxLayout()
+        self._permitted_mode_checks: dict[str, QCheckBox] = {}
+        for mode in ControllerMode:
+            cb = QCheckBox(mode.value)
+            cb.setChecked(mode.value in ("MAN", "AUTO"))
+            self._permitted_mode_checks[mode.value] = cb
+            perm_layout.addWidget(cb)
+        perm_group.setLayout(perm_layout)
+        form.addRow(perm_group)
+
         return _scrollable(form)
 
     def _build_pid_tab(self) -> QWidget:
@@ -578,13 +591,15 @@ class ControllerDialog(QDialog):
         tag_fields = [
             ("PV", "ns=2;s=PV"), ("SP", "ns=2;s=SP"), ("CO", "ns=2;s=CO"),
             ("Integral", ""), ("BkCal In", ""), ("BkCal Out", ""),
-            ("Kp", ""), ("Ti", ""), ("Td", ""), ("Mode", ""),
+            ("Kp", ""), ("Ti", ""), ("Td", ""),
+            ("Mode (Target)", ""), ("Mode (Actual)", ""),
         ]
         attr_map = {
             "PV": "_tag_pv", "SP": "_tag_sp", "CO": "_tag_co",
             "Integral": "_tag_integral", "BkCal In": "_tag_bkcal_in",
             "BkCal Out": "_tag_bkcal_out", "Kp": "_tag_kp",
-            "Ti": "_tag_ti", "Td": "_tag_td", "Mode": "_tag_mode",
+            "Ti": "_tag_ti", "Td": "_tag_td",
+            "Mode (Target)": "_tag_mode_target", "Mode (Actual)": "_tag_mode_actual",
         }
 
         tag_tooltips = {
@@ -617,6 +632,29 @@ class ControllerDialog(QDialog):
                 lambda _=False, le=line_edit: self._open_tag_browse(le),
             )
             grid.addWidget(browse_btn, row_idx, 2)
+
+        # Mode Integer Mapping group
+        next_row = len(tag_fields)
+        map_group = QGroupBox("Mode Integer Mapping")
+        map_layout = QFormLayout()
+        self._mode_map_widgets: dict[str, tuple[QLabel, QSpinBox]] = {}
+
+        for mode in ControllerMode:
+            lbl = QLabel(f"{mode.value}:")
+            spin = QSpinBox()
+            spin.setRange(0, 255)
+            spin.setValue(0)
+            spin.setToolTip("0 = not mapped")
+            self._mode_map_widgets[mode.value] = (lbl, spin)
+            map_layout.addRow(lbl, spin)
+
+        map_group.setLayout(map_layout)
+        grid.addWidget(map_group, next_row, 0, 1, 3)
+
+        # Connect permitted_modes checkboxes to visibility refresh
+        for cb in self._permitted_mode_checks.values():
+            cb.toggled.connect(self._refresh_mode_map_visibility)
+        self._refresh_mode_map_visibility()
 
         container = QWidget()
         container.setLayout(grid)
@@ -679,6 +717,16 @@ class ControllerDialog(QDialog):
 
         return _scrollable(form)
 
+    # ------------------------------------------------------ mode map vis
+
+    def _refresh_mode_map_visibility(self) -> None:
+        """Show/hide mode map rows based on permitted_modes checkboxes."""
+        for mode_str, (lbl, spin) in self._mode_map_widgets.items():
+            cb = self._permitted_mode_checks.get(mode_str)
+            visible = cb.isChecked() if cb else False
+            lbl.setVisible(visible)
+            spin.setVisible(visible)
+
     # --------------------------------------------------------- mode toggle
 
     def _on_execution_mode_changed(self, mode_text: str) -> None:
@@ -719,6 +767,10 @@ class ControllerDialog(QDialog):
         self._set_combo(self._pid_structure, data.get("pid_structure"))
         self._set_combo(self._integral_type, data.get("integral_type"))
         self._set_combo(self._mode_normal, data.get("mode_normal"))
+
+        perm = set(data.get("permitted_modes", ["MAN", "AUTO"]))
+        for mode_str, cb in self._permitted_mode_checks.items():
+            cb.setChecked(mode_str in perm)
 
         # PID Tuning
         pid = data.get("pid_params", {})
@@ -815,10 +867,16 @@ class ControllerDialog(QDialog):
             "node_id_kp": self._tag_kp,
             "node_id_ti": self._tag_ti,
             "node_id_td": self._tag_td,
-            "node_id_mode": self._tag_mode,
+            "node_id_mode_target": self._tag_mode_target,
+            "node_id_mode_actual": self._tag_mode_actual,
         }
         for key, widget in tag_map.items():
             widget.setText(tags.get(key, ""))
+
+        # Mode integer mapping
+        int_map = tags.get("mode_int_map", {})
+        for mode_str, (lbl, spin) in self._mode_map_widgets.items():
+            spin.setValue(int_map.get(mode_str, 0))
 
         # Alarms
         alarms = data.get("alarm_config", {})
@@ -867,6 +925,10 @@ class ControllerDialog(QDialog):
             "pid_structure": self._pid_structure.currentText(),
             "integral_type": self._integral_type.currentText(),
             "mode_normal": self._mode_normal.currentText(),
+            "permitted_modes": [
+                mode_str for mode_str, cb in self._permitted_mode_checks.items()
+                if cb.isChecked()
+            ],
             # PID Tuning
             "pid_params": {
                 "gain": self._gain.value(),
@@ -935,7 +997,14 @@ class ControllerDialog(QDialog):
                 "node_id_kp": self._tag_kp.text().strip(),
                 "node_id_ti": self._tag_ti.text().strip(),
                 "node_id_td": self._tag_td.text().strip(),
-                "node_id_mode": self._tag_mode.text().strip(),
+                "node_id_mode_target": self._tag_mode_target.text().strip(),
+                "node_id_mode_actual": self._tag_mode_actual.text().strip(),
+                "mode_int_map": {
+                    mode_str: spin.value()
+                    for mode_str, (_lbl, spin) in self._mode_map_widgets.items()
+                    if self._permitted_mode_checks.get(mode_str, QCheckBox()).isChecked()
+                    and spin.value() > 0
+                },
             },
             # Alarms
             "alarm_config": self._get_alarm_data(),
