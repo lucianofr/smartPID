@@ -18,7 +18,7 @@ async def test_db_worker_persists_ai_log(tmp_path) -> None:
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
-    historian = SQLiteHistorian(repo.db)
+    historian = SQLiteHistorian(repo)
 
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
@@ -76,7 +76,7 @@ async def test_db_worker_ai_log_buffer_empty_noop(tmp_path) -> None:
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
-    historian = SQLiteHistorian(repo.db)
+    historian = SQLiteHistorian(repo)
 
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()

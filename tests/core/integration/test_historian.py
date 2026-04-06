@@ -15,7 +15,7 @@ async def historian(tmp_path):
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
-    return SQLiteHistorian(repo.db)
+    return SQLiteHistorian(repo)
 
 
 def _make_frame(controller_id: int, pv: float, ts: datetime) -> TelemetryFrame:

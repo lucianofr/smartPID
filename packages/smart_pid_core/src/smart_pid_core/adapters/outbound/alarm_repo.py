@@ -7,16 +7,20 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from datetime import datetime
 
-    import aiosqlite
-
+    from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
     from smart_pid_domain.enums import AlarmPriority, AlarmType
 
 
 class AlarmRepository:
     """Persistence layer for alarm events."""
 
-    def __init__(self, db: aiosqlite.Connection) -> None:
-        self._db = db
+    def __init__(self, repo: SQLiteRepository) -> None:
+        self._repo = repo
+
+    @property
+    def _db(self):  # noqa: ANN202
+        """Always return the current (possibly reopened) connection."""
+        return self._repo.db
 
     async def insert_alarm(
         self,
