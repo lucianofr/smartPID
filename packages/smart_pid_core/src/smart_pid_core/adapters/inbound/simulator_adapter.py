@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 from smart_pid_core.domain.services.pid_engine import PIDEngine, PIDState
 from smart_pid_core.domain.services.process_models import ProcessModel
-from smart_pid_domain.dtos.simulator import ControllerSimStatus
+from smart_pid_domain.dtos.simulator import AutoDisturbanceRequest, AutoSPRequest, ControllerSimStatus
 from smart_pid_domain.models.controller import PIDParams
 from smart_pid_domain.models.process_preset import PRESETS
 from smart_pid_domain.models.signal import FFSignal
@@ -47,6 +47,18 @@ class _ControllerSim:
     pid_params: PIDParams = field(default_factory=PIDParams)
     pid_state: PIDState = field(default_factory=PIDState)
     pid_mode: int = 0  # 0=MAN, 1=AUTO
+    # PV scale (used for auto-excitation span calculation)
+    pv_min: float = 0.0
+    pv_max: float = 100.0
+    # Auto SP variation
+    auto_sp_enabled: bool = False
+    auto_sp_min_pct: float = 30.0
+    auto_sp_max_pct: float = 70.0
+    auto_sp_elapsed_s: float = 0.0
+    # Auto disturbance injection
+    auto_dist_enabled: bool = False
+    auto_dist_max_pct: float = 10.0
+    auto_dist_elapsed_s: float = 0.0
 
 
 class SimulatorAdapter:
@@ -147,10 +159,16 @@ class SimulatorAdapter:
                 "cv": ctrl.pid_state.cv,
             }
 
-    def register_controller(self, controller_id: int) -> None:
+    def register_controller(
+        self, controller_id: int, pv_min: float = 0.0, pv_max: float = 100.0,
+    ) -> None:
         with self._lock:
             if controller_id not in self._controllers:
-                self._controllers[controller_id] = _ControllerSim(controller_id=controller_id)
+                self._controllers[controller_id] = _ControllerSim(
+                    controller_id=controller_id,
+                    pv_min=pv_min,
+                    pv_max=pv_max,
+                )
                 self._opcua_server.register_controller(controller_id)
 
     def set_preset(self, controller_id: int, preset: ProcessPresetName) -> None:
@@ -201,6 +219,29 @@ class SimulatorAdapter:
             ctrl.noise_active = False
             ctrl.noise_amplitude = 0.0
 
+    def set_auto_sp(self, controller_id: int, req: AutoSPRequest) -> None:
+        """Configure (and enable/disable) auto SP variation for a controller."""
+        with self._lock:
+            if controller_id not in self._controllers:
+                raise KeyError(controller_id)
+            ctrl = self._controllers[controller_id]
+            ctrl.auto_sp_enabled = req.enabled
+            ctrl.auto_sp_min_pct = req.sp_min_pct
+            ctrl.auto_sp_max_pct = req.sp_max_pct
+            if not req.enabled:
+                ctrl.auto_sp_elapsed_s = 0.0
+
+    def set_auto_disturbance(self, controller_id: int, req: AutoDisturbanceRequest) -> None:
+        """Configure (and enable/disable) auto disturbance injection for a controller."""
+        with self._lock:
+            if controller_id not in self._controllers:
+                raise KeyError(controller_id)
+            ctrl = self._controllers[controller_id]
+            ctrl.auto_dist_enabled = req.enabled
+            ctrl.auto_dist_max_pct = req.max_amplitude_pct
+            if not req.enabled:
+                ctrl.auto_dist_elapsed_s = 0.0
+
     def get_controller_status(self, controller_id: int) -> ControllerSimStatus:
         with self._lock:
             ctrl = self._controllers[controller_id]
@@ -220,6 +261,15 @@ class SimulatorAdapter:
                 pid_td=ctrl.pid_params.rate,
                 pid_mode=ctrl.pid_mode,
                 pid_cv=ctrl.pid_state.cv,
+                auto_sp=AutoSPRequest(
+                    enabled=ctrl.auto_sp_enabled,
+                    sp_min_pct=ctrl.auto_sp_min_pct,
+                    sp_max_pct=ctrl.auto_sp_max_pct,
+                ),
+                auto_disturbance=AutoDisturbanceRequest(
+                    enabled=ctrl.auto_dist_enabled,
+                    max_amplitude_pct=ctrl.auto_dist_max_pct,
+                ),
             )
 
     def get_status(self) -> dict[int, ControllerSimStatus]:
@@ -241,6 +291,15 @@ class SimulatorAdapter:
                     pid_td=ctrl.pid_params.rate,
                     pid_mode=ctrl.pid_mode,
                     pid_cv=ctrl.pid_state.cv,
+                    auto_sp=AutoSPRequest(
+                        enabled=ctrl.auto_sp_enabled,
+                        sp_min_pct=ctrl.auto_sp_min_pct,
+                        sp_max_pct=ctrl.auto_sp_max_pct,
+                    ),
+                    auto_disturbance=AutoDisturbanceRequest(
+                        enabled=ctrl.auto_dist_enabled,
+                        max_amplitude_pct=ctrl.auto_dist_max_pct,
+                    ),
                 )
                 for cid, ctrl in self._controllers.items()
             }
@@ -258,6 +317,28 @@ class SimulatorAdapter:
     def _tick(self, dt: float) -> None:
         with self._lock:
             for ctrl in self._controllers.values():
+                # --- Auto-excitation ---
+                period_s = max(10.0 * ctrl.tau1, 1.0)
+                span = ctrl.pv_max - ctrl.pv_min
+
+                if ctrl.auto_sp_enabled:
+                    ctrl.auto_sp_elapsed_s += dt
+                    if ctrl.auto_sp_elapsed_s >= period_s:
+                        ctrl.auto_sp_elapsed_s = 0.0
+                        if span > 0:
+                            lo = ctrl.pv_min + ctrl.auto_sp_min_pct / 100.0 * span
+                            hi = ctrl.pv_min + ctrl.auto_sp_max_pct / 100.0 * span
+                            ctrl.sp = random.uniform(lo, hi)
+
+                if ctrl.auto_dist_enabled:
+                    ctrl.auto_dist_elapsed_s += dt
+                    if ctrl.auto_dist_elapsed_s >= period_s:
+                        ctrl.auto_dist_elapsed_s = 0.0
+                        if span > 0:
+                            max_amp = ctrl.auto_dist_max_pct / 100.0 * span
+                            ctrl.step_amplitude = random.uniform(-max_amp, max_amp)
+                            ctrl.step_active = True
+
                 pv = ctrl.model.step(co=ctrl.last_co, dt=dt)
                 if ctrl.step_active:
                     pv += ctrl.step_amplitude
