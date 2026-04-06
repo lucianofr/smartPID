@@ -158,6 +158,9 @@ class TestDefaults:
     def test_default_pid_structure(self, dialog):
         assert dialog._pid_structure.currentText() == "ISA"
 
+    def test_default_process_speed(self, dialog):
+        assert dialog._process_speed.currentData() == "MEDIUM"
+
     def test_default_ai_engine(self, dialog):
         assert dialog._ai_engine.currentText() == "NONE"
 
@@ -175,6 +178,7 @@ class TestGetControllerData:
         data = dialog.get_controller_data()
         expected_keys = {
             "name", "description", "execution_mode", "scan_rate_ms",
+            "process_speed",
             "pid_structure", "integral_type", "mode_normal",
             "pid_params", "pv_scale", "out_scale",
             "sp_hi_lim", "sp_lo_lim", "out_hi_lim", "out_lo_lim",
@@ -418,10 +422,12 @@ class TestEditMode:
     def test_populated_ai_config(self, edit_dialog):
         assert edit_dialog._ai_engine.currentText() == "FUZZY"
         assert edit_dialog._ai_objective.currentText() == "SP_TRACKING"
-        assert edit_dialog._ai_speed.currentText() == "SLOW"
         assert edit_dialog._ai_dead_time.value() == pytest.approx(5.0)
         assert edit_dialog._ai_limit_min.value() == pytest.approx(0.5)
         assert edit_dialog._ai_limit_max.value() == pytest.approx(50.0)
+
+    def test_populated_process_speed(self, edit_dialog):
+        assert edit_dialog._process_speed.currentData() == "SLOW"
 
     # --- Tag Bindings ---
 
@@ -454,6 +460,7 @@ class TestEditMode:
         assert data["pid_params"]["reset"] == pytest.approx(5.0)
         assert data["pv_scale"]["eu_min"] == pytest.approx(-50.0)
         assert data["pv_scale"]["unit"] == "degC"
+        assert data["process_speed"] == "SLOW"
         assert data["ai_config"]["engine"] == "FUZZY"
         assert data["tag_bindings"]["node_id_pv"] == "ns=2;s=TIC101.PV"
         assert data["control_opts"]["direct_acting"] is True

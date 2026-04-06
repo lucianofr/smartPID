@@ -173,6 +173,14 @@ class ControllerDialog(QDialog):
         self._scan_rate.setSuffix(" ms")
         form.addRow("Scan Rate:", self._scan_rate)
 
+        self._process_speed = QComboBox()
+        for member in ProcessSpeed:
+            self._process_speed.addItem(member.label, member.value)
+        idx = self._process_speed.findData(ProcessSpeed.MEDIUM.value)
+        if idx >= 0:
+            self._process_speed.setCurrentIndex(idx)
+        form.addRow("Process Speed:", self._process_speed)
+
         self._pid_structure = _enum_combo(PIDStructure, PIDStructure.ISA.value)
         self._pid_structure_label = QLabel("PID Structure:")
         form.addRow(self._pid_structure_label, self._pid_structure)
@@ -324,9 +332,6 @@ class ControllerDialog(QDialog):
         )
         form.addRow("Objective:", self._ai_objective)
 
-        self._ai_speed = _enum_combo(ProcessSpeed, ProcessSpeed.MEDIUM.value)
-        form.addRow("Process Speed:", self._ai_speed)
-
         self._ai_dead_time = _double_spin(0.0, 9999.0, 1.0, 2, " s")
         form.addRow("Dead Time (L):", self._ai_dead_time)
 
@@ -426,6 +431,10 @@ class ControllerDialog(QDialog):
         self._set_combo(self._execution_mode, data.get("execution_mode"))
         if "scan_rate_ms" in data:
             self._scan_rate.setValue(data["scan_rate_ms"])
+        if "process_speed" in data:
+            idx = self._process_speed.findData(data["process_speed"])
+            if idx >= 0:
+                self._process_speed.setCurrentIndex(idx)
         self._set_combo(self._pid_structure, data.get("pid_structure"))
         self._set_combo(self._integral_type, data.get("integral_type"))
         self._set_combo(self._mode_normal, data.get("mode_normal"))
@@ -506,7 +515,6 @@ class ControllerDialog(QDialog):
         ai = data.get("ai_config", {})
         self._set_combo(self._ai_engine, ai.get("engine"))
         self._set_combo(self._ai_objective, ai.get("objective"))
-        self._set_combo(self._ai_speed, ai.get("process_speed"))
         if "dead_time_l" in ai:
             self._ai_dead_time.setValue(ai["dead_time_l"])
         if "limit_min" in ai:
@@ -558,6 +566,7 @@ class ControllerDialog(QDialog):
             "description": self._description.text().strip(),
             "execution_mode": self._execution_mode.currentText(),
             "scan_rate_ms": self._scan_rate.value(),
+            "process_speed": self._process_speed.currentData(),
             "pid_structure": self._pid_structure.currentText(),
             "integral_type": self._integral_type.currentText(),
             "mode_normal": self._mode_normal.currentText(),
@@ -614,7 +623,6 @@ class ControllerDialog(QDialog):
             "ai_config": {
                 "engine": self._ai_engine.currentText(),
                 "objective": self._ai_objective.currentText(),
-                "process_speed": self._ai_speed.currentText(),
                 "dead_time_l": self._ai_dead_time.value(),
                 "limit_min": self._ai_limit_min.value(),
                 "limit_max": self._ai_limit_max.value(),
