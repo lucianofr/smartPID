@@ -129,7 +129,7 @@ class MD3LightTheme:
         /* ===== Material Design 3 Light Theme ===== */
 
         /* --- Base --- */
-        QMainWindow, QWidget {{
+        QMainWindow, QDialog, QWidget {{
             background-color: {self.bg_primary};
             color: {self.fg_primary};
             font-family: "{self.font_family}", "Google Sans", "Segoe UI", sans-serif;

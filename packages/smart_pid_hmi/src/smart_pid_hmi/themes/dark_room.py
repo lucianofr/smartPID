@@ -127,7 +127,7 @@ class DarkRoomTheme:
         /* Pure black, zero color outside alarms, Fira Code monospace */
 
         /* --- Base --- */
-        QMainWindow, QWidget {{
+        QMainWindow, QDialog, QWidget {{
             background-color: {self.bg_primary};
             color: {self.fg_primary};
             font-family: "{self.font_family}", "JetBrains Mono", "Consolas", monospace;

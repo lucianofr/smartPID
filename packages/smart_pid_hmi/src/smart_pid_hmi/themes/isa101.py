@@ -135,7 +135,7 @@ class ISA101Theme:
         /* 100% flat, zero shadows/gradients/3D, color = alarm only */
 
         /* --- Base --- */
-        QMainWindow, QWidget {{
+        QMainWindow, QDialog, QWidget {{
             background-color: {self.bg_primary};
             color: {self.fg_primary};
             font-family: "{self.font_family}", "Arial", sans-serif;

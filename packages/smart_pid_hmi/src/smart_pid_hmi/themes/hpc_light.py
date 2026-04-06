@@ -136,7 +136,7 @@ class HPCLightTheme:
         /* Flat 2D, no shadows/gradients, color = alarm only */
 
         /* --- Base --- */
-        QMainWindow, QWidget {{
+        QMainWindow, QDialog, QWidget {{
             background-color: {self.bg_primary};
             color: {self.fg_primary};
             font-family: "{self.font_family}", sans-serif;

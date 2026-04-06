@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -34,7 +35,8 @@ class CreateUserDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Create User")
-        self.setMinimumWidth(320)
+        self.setMinimumWidth(400)
+        self.setMinimumHeight(220)
 
         layout = QFormLayout(self)
 
@@ -55,6 +57,8 @@ class CreateUserDialog(QDialog):
         self._buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
+        for btn in self._buttons.buttons():
+            btn.setIcon(QIcon())
         self._buttons.accepted.connect(self.accept)
         self._buttons.rejected.connect(self.reject)
         layout.addRow(self._buttons)
@@ -78,7 +82,8 @@ class EditUserDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Edit User")
-        self.setMinimumWidth(300)
+        self.setMinimumWidth(400)
+        self.setMinimumHeight(200)
 
         layout = QFormLayout(self)
 
@@ -95,6 +100,8 @@ class EditUserDialog(QDialog):
         self._buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
+        for btn in self._buttons.buttons():
+            btn.setIcon(QIcon())
         self._buttons.accepted.connect(self.accept)
         self._buttons.rejected.connect(self.reject)
         layout.addRow(self._buttons)

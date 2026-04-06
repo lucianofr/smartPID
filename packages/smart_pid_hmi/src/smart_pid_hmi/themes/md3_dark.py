@@ -127,7 +127,7 @@ class MD3DarkTheme:
         /* Tonal elevation, rounded corners, Roboto font */
 
         /* --- Base --- */
-        QMainWindow, QWidget {{
+        QMainWindow, QDialog, QWidget {{
             background-color: {self.bg_primary};
             color: {self.fg_primary};
             font-family: "{self.font_family}", "Google Sans", "Segoe UI", sans-serif;
