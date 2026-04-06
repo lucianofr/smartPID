@@ -342,6 +342,7 @@ class SimulatorAdapter:
                             max_amp = ctrl.auto_dist_max_pct / 100.0 * span
                             ctrl.step_amplitude = random.uniform(-max_amp, max_amp)
                             ctrl.step_active = True
+                            # step disturbance persists until next firing or manual clear
 
                 pv = ctrl.model.step(co=ctrl.last_co, dt=dt)
                 if ctrl.step_active:

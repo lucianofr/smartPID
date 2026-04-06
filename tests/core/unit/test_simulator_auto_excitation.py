@@ -117,6 +117,9 @@ class TestAutoExcitationTick:
         with adapter._lock:
             assert adapter._controllers[1].auto_dist_elapsed_s < period
             assert adapter._controllers[1].step_active is True
+            span = adapter._controllers[1].pv_max - adapter._controllers[1].pv_min
+            max_amp = 20.0 / 100.0 * span  # max_amplitude_pct=20.0, span=100.0 (defaults)
+            assert abs(adapter._controllers[1].step_amplitude) <= max_amp
 
     def test_zero_span_skips_excitation(self, adapter: SimulatorAdapter) -> None:
         """If pv_min == pv_max, no excitation should happen."""
