@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QGroupBox, QPushButton
+from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QGroupBox, QLabel, QPushButton
 
 from smart_pid_hmi.pages.simulator_page import SimulatorPage
 from smart_pid_hmi.themes.dark_room import DarkRoomTheme
@@ -280,3 +280,52 @@ class TestSimulatorPageStartStop:
         assert "Running" in pid_page._status_label.text()
         pid_page.set_sim_running(False)
         assert "Stopped" in pid_page._status_label.text()
+
+
+# ---------------------------------------------------------------------------
+# OPC-UA Server status indicator and start/stop controls tests
+# ---------------------------------------------------------------------------
+
+
+class TestSimulatorPageOPCUAControls:
+    def test_opcua_status_label_exists(self, pid_page: SimulatorPage) -> None:
+        label = pid_page.findChild(QLabel, "opcua_status_label")
+        assert label is not None
+        assert "Stopped" in label.text()
+
+    def test_opcua_start_button_exists(self, pid_page: SimulatorPage) -> None:
+        btn = pid_page.findChild(QPushButton, "opcua_start_btn")
+        assert btn is not None
+        assert btn.isEnabled()
+
+    def test_opcua_stop_button_exists(self, pid_page: SimulatorPage) -> None:
+        btn = pid_page.findChild(QPushButton, "opcua_stop_btn")
+        assert btn is not None
+        assert not btn.isEnabled()
+
+    def test_set_opcua_running_true(self, pid_page: SimulatorPage) -> None:
+        pid_page.set_opcua_running(True)
+        label = pid_page.findChild(QLabel, "opcua_status_label")
+        assert "Running" in label.text()
+        start_btn = pid_page.findChild(QPushButton, "opcua_start_btn")
+        stop_btn = pid_page.findChild(QPushButton, "opcua_stop_btn")
+        assert not start_btn.isEnabled()
+        assert stop_btn.isEnabled()
+
+    def test_set_opcua_running_false(self, pid_page: SimulatorPage) -> None:
+        pid_page.set_opcua_running(True)
+        pid_page.set_opcua_running(False)
+        label = pid_page.findChild(QLabel, "opcua_status_label")
+        assert "Stopped" in label.text()
+        start_btn = pid_page.findChild(QPushButton, "opcua_start_btn")
+        stop_btn = pid_page.findChild(QPushButton, "opcua_stop_btn")
+        assert start_btn.isEnabled()
+        assert not stop_btn.isEnabled()
+
+    def test_opcua_start_signal(self, pid_page: SimulatorPage, qtbot) -> None:
+        with qtbot.waitSignal(pid_page.opcua_start_requested, timeout=1000):
+            pid_page._on_opcua_start()
+
+    def test_opcua_stop_signal(self, pid_page: SimulatorPage, qtbot) -> None:
+        with qtbot.waitSignal(pid_page.opcua_stop_requested, timeout=1000):
+            pid_page._on_opcua_stop()

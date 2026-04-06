@@ -50,6 +50,8 @@ class SimulatorPage(QWidget):
     sim_start_requested = Signal()
     sim_stop_requested = Signal()
     opcua_config_changed = Signal(int)  # port
+    opcua_start_requested = Signal()
+    opcua_stop_requested = Signal()
 
     def __init__(self, theme: ThemeBase, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -195,6 +197,33 @@ class SimulatorPage(QWidget):
         # OPC-UA Server Config group
         opcua_group = QGroupBox("OPC-UA Server")
         opcua_layout = QVBoxLayout(opcua_group)
+
+        # Status indicator row
+        opcua_status_row = QHBoxLayout()
+        opcua_status_row.addWidget(QLabel("Status:"))
+        self._opcua_status_label = QLabel("Stopped")
+        self._opcua_status_label.setObjectName("opcua_status_label")
+        self._opcua_status_label.setStyleSheet(
+            f"font-weight: bold; color: {theme.alarm_critical};"
+        )
+        opcua_status_row.addWidget(self._opcua_status_label)
+        opcua_status_row.addStretch()
+        opcua_layout.addLayout(opcua_status_row)
+
+        # Start/Stop buttons row
+        opcua_btn_row = QHBoxLayout()
+        self._opcua_start_btn = QPushButton("Start")
+        self._opcua_start_btn.setObjectName("opcua_start_btn")
+        self._opcua_start_btn.clicked.connect(self._on_opcua_start)
+        opcua_btn_row.addWidget(self._opcua_start_btn)
+        self._opcua_stop_btn = QPushButton("Stop")
+        self._opcua_stop_btn.setObjectName("opcua_stop_btn")
+        self._opcua_stop_btn.setEnabled(False)
+        self._opcua_stop_btn.clicked.connect(self._on_opcua_stop)
+        opcua_btn_row.addWidget(self._opcua_stop_btn)
+        opcua_layout.addLayout(opcua_btn_row)
+
+        # Endpoint config row (keep existing)
         endpoint_row = QHBoxLayout()
         endpoint_row.addWidget(QLabel("Endpoint:"))
         self._opcua_endpoint_label = QLabel("opc.tcp://0.0.0.0:")
@@ -547,6 +576,28 @@ class SimulatorPage(QWidget):
 
     def _on_opcua_apply(self) -> None:
         self.opcua_config_changed.emit(int(self._opcua_port_spin.value()))
+
+    def _on_opcua_start(self) -> None:
+        self.opcua_start_requested.emit()
+
+    def _on_opcua_stop(self) -> None:
+        self.opcua_stop_requested.emit()
+
+    @Slot(bool)
+    def set_opcua_running(self, running: bool) -> None:
+        """Update OPC-UA status indicator and button states."""
+        self._opcua_start_btn.setEnabled(not running)
+        self._opcua_stop_btn.setEnabled(running)
+        if running:
+            self._opcua_status_label.setText("Running")
+            self._opcua_status_label.setStyleSheet(
+                f"font-weight: bold; color: {self._theme.bar_pv};"
+            )
+        else:
+            self._opcua_status_label.setText("Stopped")
+            self._opcua_status_label.setStyleSheet(
+                f"font-weight: bold; color: {self._theme.alarm_critical};"
+            )
 
     @Slot(bool)
     def set_sim_running(self, running: bool) -> None:
