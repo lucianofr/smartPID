@@ -5,29 +5,22 @@ from pydantic import BaseModel
 
 
 class ProjectCreate(BaseModel):
-    """Request to create a new project."""
+    """Request to create a new project file."""
 
     name: str
+    path: str
 
 
 class ProjectOpen(BaseModel):
-    """Request to open a project by name."""
+    """Request to open an existing project file."""
 
-    name: str
-
-
-class ProjectListItem(BaseModel):
-    """Single project in a list response."""
-
-    name: str
-    controller_count: int = 0
-    size_bytes: int = 0
+    path: str
 
 
-class ProjectListResponse(BaseModel):
-    """List of available projects."""
+class ProjectSaveAs(BaseModel):
+    """Request to save project to a new path."""
 
-    projects: list[ProjectListItem]
+    path: str
 
 
 class ProjectResponse(BaseModel):

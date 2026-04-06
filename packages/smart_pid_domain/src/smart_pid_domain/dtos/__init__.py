@@ -41,10 +41,9 @@ from smart_pid_domain.dtos.opcua import (
 )
 from smart_pid_domain.dtos.project import (
     ProjectCreate,
-    ProjectListItem,
-    ProjectListResponse,
     ProjectOpen,
     ProjectResponse,
+    ProjectSaveAs,
 )
 from smart_pid_domain.dtos.simulator import (
     ControllerSimStatus,
@@ -91,8 +90,7 @@ __all__ = [
     "ProjectCreate",
     "ProjectOpen",
     "ProjectResponse",
-    "ProjectListItem",
-    "ProjectListResponse",
+    "ProjectSaveAs",
     "ScaleConfigDTO",
     "SetpointCommand",
     "SimulatorDisturbanceRequest",

@@ -36,6 +36,9 @@ class CoreSettings(BaseSettings):
     # User database (app-level, separate from project)
     users_db_path: Path = Path.home() / ".config" / "smart-pid" / "users.db"
 
+    # Project files directory (backend-managed)
+    projects_dir: Path = Path.home() / ".smart-pid" / "projects"
+
     # Simulator
     simulator_enabled: bool = False
     simulator_port: int = 4841
