@@ -1,9 +1,15 @@
-# Estado Atual — AI Worker Mode Guard + Stats Sync
+# Estado Atual — OPC-UA Server Independent Control
 
 **Data:** 2026-04-06
-**Branch:** `feat/ai-worker-mode-guard-stats-sync` (merged to main)
+**Branch:** `feat/opcua-server-independent` (10 commits ahead of main)
 
 ## Implementado
-- AIWorker so executa Fuzzy/RL em modos automaticos (AUTO, CAS, RCAS)
-- Cadencia sincronizada com StatsWorker via topico STATS.{id}
-- 10 novos testes de integracao cobrindo mode guard e stats sync
+- Porta default do simulador OPC-UA corrigida de 4841 → 4849
+- Lifecycle do OPC-UA server desacoplado do loop de simulacao
+- 3 novos endpoints REST: GET/POST /simulator/opcua/{status,start,stop}
+- SimulatorPage com indicador de status OPC-UA + botoes Start/Stop independentes
+- 112 testes passando, lint limpo
+
+## Proximos passos
+- Merge para main (aguardando aprovacao do usuario)
+- Stash pendente em feat/project-upload-download (stash@{0})
