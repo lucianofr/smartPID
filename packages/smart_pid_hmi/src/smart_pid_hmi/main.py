@@ -147,7 +147,6 @@ class MainWindow(QMainWindow):
 
         self._dashboard_nav = _make_nav_btn("Dashboard")
         self._simulator_nav = _make_nav_btn("Simulator")
-        self._simulator_nav.setEnabled(False)
         self._alarms_nav = _make_nav_btn("Alarms")
         self._executive_nav = _make_nav_btn("Executive")
         self._trends_nav = _make_nav_btn("Multi-Trend")

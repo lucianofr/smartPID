@@ -486,7 +486,7 @@ class FaceplateWidget(QFrame):
     def _stat_cell_css(theme: ThemeBase) -> str:
         return (
             f"color: {theme.fg_primary}; background: transparent;"
-            f" font-size: {theme.font_size_label}px;"
+            f" font-size: {theme.font_size_normal}px;"
             f" font-family: 'Fira Code', monospace;"
             f" padding: 1px 4px;"
         )
