@@ -65,12 +65,22 @@ class SimulatorPage(QWidget):
         )
         layout.addWidget(title)
 
-        # Controller selector
+        # Controller selector (full width)
         ctrl_row = QHBoxLayout()
         ctrl_row.addWidget(QLabel("Controller:"))
         self._controller_combo = QComboBox()
         ctrl_row.addWidget(self._controller_combo, stretch=1)
         layout.addLayout(ctrl_row)
+
+        # ============================================================
+        # Two-column layout
+        # ============================================================
+        columns = QHBoxLayout()
+        columns.setSpacing(16)
+
+        # --- LEFT COLUMN ---
+        left_col = QVBoxLayout()
+        left_col.setSpacing(12)
 
         # Preset group
         preset_group = QGroupBox("Process Model Preset")
@@ -80,7 +90,7 @@ class SimulatorPage(QWidget):
         for p in ProcessPresetName:
             self._preset_combo.addItem(p.value)
         preset_layout.addWidget(self._preset_combo, stretch=1)
-        layout.addWidget(preset_group)
+        left_col.addWidget(preset_group)
 
         # Parameters group
         param_group = QGroupBox("Parameters")
@@ -92,7 +102,7 @@ class SimulatorPage(QWidget):
         self._dead_time_slider = self._make_param_row(
             param_layout, "Dead Time (s):", "dead_time",
         )
-        layout.addWidget(param_group)
+        left_col.addWidget(param_group)
 
         # Internal PID group
         pid_group = QGroupBox("Internal PID")
@@ -142,7 +152,7 @@ class SimulatorPage(QWidget):
         td_row.addWidget(self._pid_td_spin, stretch=1)
         pid_layout.addLayout(td_row)
 
-        layout.addWidget(pid_group)
+        left_col.addWidget(pid_group)
 
         # PID controls list (for enable/disable toggling)
         self._pid_controls: list[QWidget] = [
@@ -154,15 +164,22 @@ class SimulatorPage(QWidget):
         for ctrl in self._pid_controls:
             ctrl.setEnabled(False)
 
-        # --- Excitation period label ---
+        # Excitation period label
         self._period_label = QLabel()
         self._period_label.setStyleSheet(
             f"font-size: {theme.font_size_normal}px; color: {theme.fg_secondary};"
         )
-        layout.addWidget(self._period_label)
+        left_col.addWidget(self._period_label)
         self._update_period_label()
 
-        # --- Auto SP Variation group ---
+        left_col.addStretch()
+        columns.addLayout(left_col, stretch=1)
+
+        # --- RIGHT COLUMN ---
+        right_col = QVBoxLayout()
+        right_col.setSpacing(12)
+
+        # Auto SP Variation group
         auto_sp_group = QGroupBox("Auto SP Variation")
         auto_sp_layout = QVBoxLayout(auto_sp_group)
         auto_sp_enable_row = QHBoxLayout()
@@ -193,9 +210,9 @@ class SimulatorPage(QWidget):
         auto_sp_apply.setObjectName("auto_sp_apply")
         auto_sp_apply.clicked.connect(self._on_auto_sp_apply)
         auto_sp_layout.addWidget(auto_sp_apply)
-        layout.addWidget(auto_sp_group)
+        right_col.addWidget(auto_sp_group)
 
-        # --- Auto Disturbance group ---
+        # Auto Disturbance group
         auto_dist_group = QGroupBox("Auto Disturbance")
         auto_dist_layout = QVBoxLayout(auto_dist_group)
         auto_dist_enable_row = QHBoxLayout()
@@ -217,9 +234,9 @@ class SimulatorPage(QWidget):
         auto_dist_apply.setObjectName("auto_dist_apply")
         auto_dist_apply.clicked.connect(self._on_auto_dist_apply)
         auto_dist_layout.addWidget(auto_dist_apply)
-        layout.addWidget(auto_dist_group)
+        right_col.addWidget(auto_dist_group)
 
-        # Disturbance group (immediate actions — not buffered)
+        # Disturbance group (immediate actions)
         dist_group = QGroupBox("Disturbances")
         dist_layout = QVBoxLayout(dist_group)
 
@@ -250,10 +267,20 @@ class SimulatorPage(QWidget):
         clear_btn = QPushButton("Clear All Disturbances")
         clear_btn.clicked.connect(self._on_clear_disturbance)
         dist_layout.addWidget(clear_btn)
-        layout.addWidget(dist_group)
+        right_col.addWidget(dist_group)
 
-        # Apply / Cancel buttons
+        right_col.addStretch()
+        columns.addLayout(right_col, stretch=1)
+
+        layout.addLayout(columns, stretch=1)
+
+        # ============================================================
+        # Bottom row (full width): Apply / Cancel + Status
+        # ============================================================
         btn_row = QHBoxLayout()
+        self._status_label = QLabel("Status: Ready")
+        self._status_label.setStyleSheet(f"color: {theme.fg_secondary};")
+        btn_row.addWidget(self._status_label)
         btn_row.addStretch()
         self._sim_cancel_btn = QPushButton("Cancel")
         self._sim_cancel_btn.setObjectName("sim_cancel_btn")
@@ -266,13 +293,6 @@ class SimulatorPage(QWidget):
         self._sim_apply_btn.clicked.connect(self._on_apply)
         btn_row.addWidget(self._sim_apply_btn)
         layout.addLayout(btn_row)
-
-        # Status
-        self._status_label = QLabel("Status: Ready")
-        self._status_label.setStyleSheet(f"color: {theme.fg_secondary};")
-        layout.addWidget(self._status_label)
-
-        layout.addStretch()
 
         # Apply initial preset without triggering change tracking
         self._on_preset_changed(self._preset_combo.currentText())

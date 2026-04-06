@@ -6,14 +6,50 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
+
+
+class _NameInputDialog(QDialog):
+    """Themed input dialog for project name (replaces QInputDialog)."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("New Project")
+        self.setModal(True)
+        self.setMinimumWidth(320)
+        self.setWindowFlags(
+            self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+
+        layout.addWidget(QLabel("Project name:"))
+        self._input = QLineEdit()
+        self._input.setObjectName("name_input")
+        layout.addWidget(self._input)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(cancel_btn)
+        ok_btn = QPushButton("OK")
+        ok_btn.setDefault(True)
+        ok_btn.clicked.connect(self.accept)
+        btn_row.addWidget(ok_btn)
+        layout.addLayout(btn_row)
+
+    @property
+    def text(self) -> str:
+        return self._input.text()
 
 
 class WelcomeDialog(QDialog):
@@ -39,15 +75,17 @@ class WelcomeDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        # Title
+        # Title — uses theme via inherited stylesheet
         title = QLabel("\u2699 Smart PID Edge Optimizer")
+        title.setObjectName("welcome_title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 20px; font-weight: bold;")
+        title.setProperty("heading", True)
         layout.addWidget(title)
 
         subtitle = QLabel("Project Management")
+        subtitle.setObjectName("welcome_subtitle")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet("font-size: 13px; color: #888;")
+        subtitle.setProperty("muted", True)
         layout.addWidget(subtitle)
 
         # Buttons
@@ -70,9 +108,8 @@ class WelcomeDialog(QDialog):
 
         # Recent projects
         recent_label = QLabel("RECENT PROJECTS")
-        recent_label.setStyleSheet(
-            "font-size: 11px; color: #888; letter-spacing: 1px;"
-        )
+        recent_label.setObjectName("welcome_recent_label")
+        recent_label.setProperty("muted", True)
         layout.addWidget(recent_label)
 
         self._recent_list = QListWidget()
@@ -89,8 +126,8 @@ class WelcomeDialog(QDialog):
         layout.addWidget(self._recent_list)
 
     def _on_new(self) -> None:
-        name, ok = QInputDialog.getText(self, "New Project", "Project name:")
-        if not ok or not name.strip():
+        dlg = _NameInputDialog(parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.text.strip():
             return
         path, _ = QFileDialog.getSaveFileName(
             self, "Save New Project", "", "Smart PID Project (*.spid)",
@@ -100,7 +137,7 @@ class WelcomeDialog(QDialog):
         if not path.endswith(".spid"):
             path += ".spid"
         self.result_action = "new"
-        self.result_name = name.strip()
+        self.result_name = dlg.text.strip()
         self.result_path = path
         self.accept()
 
