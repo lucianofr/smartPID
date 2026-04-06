@@ -207,37 +207,6 @@ class HPCLightTheme:
             border-color: {self.border_focus};
             border-width: 2px;
         }}
-        QSpinBox::up-button, QDoubleSpinBox::up-button {{
-            background-color: {self.bg_secondary};
-            border: none;
-            border-left: 1px solid {self.border};
-            width: 20px;
-        }}
-        QSpinBox::down-button, QDoubleSpinBox::down-button {{
-            background-color: {self.bg_secondary};
-            border: none;
-            border-left: 1px solid {self.border};
-            width: 20px;
-        }}
-        QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
-        QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
-            background-color: {self.bg_hover};
-        }}
-        QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
-            image: none;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-bottom: 5px solid {self.fg_primary};
-            width: 0px; height: 0px;
-        }}
-        QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
-            image: none;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-top: 5px solid {self.fg_primary};
-            width: 0px; height: 0px;
-        }}
-
         /* --- Combo Boxes --- */
         QComboBox {{
             background-color: {self.bg_input};
@@ -252,18 +221,6 @@ class HPCLightTheme:
         QComboBox:focus {{
             border-color: {self.border_focus};
             border-width: 2px;
-        }}
-        QComboBox::drop-down {{
-            border: none;
-            border-left: 1px solid {self.border};
-            width: 24px;
-        }}
-        QComboBox::down-arrow {{
-            image: none;
-            border-left: 5px solid transparent;
-            border-right: 5px solid transparent;
-            border-top: 5px solid {self.fg_primary};
-            width: 0px; height: 0px;
         }}
         QComboBox QAbstractItemView {{
             background-color: {self.bg_input};
