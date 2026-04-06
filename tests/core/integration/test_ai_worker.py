@@ -46,17 +46,21 @@ class TestAIWorkerFuzzy:
             sub = bus.create_subscriber(f"ACTION.AI.{controller_fuzzy.id}".encode())
             time.sleep(0.05)
 
-            # Send telemetry samples
+            # Send telemetry samples with AUTO mode
             for _ in range(5):
-                telem = {"pv": 55.0, "sp": 50.0, "co": 48.0}
+                telem = {"pv": 55.0, "sp": 50.0, "co": 48.0, "mode": "AUTO"}
                 pub.send(
                     f"TELEMETRY.{controller_fuzzy.id}".encode(),
                     msgpack.packb(telem),
                 )
-                time.sleep(0.1)
+                time.sleep(0.05)
 
-            # Wait for AI cycle (T_cycle = dead_time_l * 3 = 0.3s)
-            time.sleep(0.35)
+            # Send STATS to trigger AI evaluation
+            stats = {"controller_id": controller_fuzzy.id, "iae": 1.0}
+            pub.send(
+                f"STATS.{controller_fuzzy.id}".encode(),
+                msgpack.packb(stats),
+            )
 
             msg = sub.recv(timeout_ms=2000)
             assert msg is not None

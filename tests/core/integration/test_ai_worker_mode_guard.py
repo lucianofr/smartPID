@@ -1,0 +1,189 @@
+"""Tests for AIWorker mode guard and stats-driven cadence.
+
+Rule 1: Fuzzy/RL must only execute when loop mode is AUTO, CAS, or RCAS.
+Rule 2: AI evaluation cadence must match stats publish cadence (trigger on STATS).
+"""
+from __future__ import annotations
+
+import time
+import uuid
+
+import msgpack
+import pytest
+
+from smart_pid_core.application.event_bus import EventBus
+from smart_pid_core.application.workers.ai_worker import AIWorker
+from smart_pid_domain.enums import AIEngine, ControlObjective, ProcessSpeed
+from smart_pid_domain.models.controller import AIConfig, Controller, ScaleConfig
+
+# Modes where AI MUST NOT run
+NON_AUTO_MODES = ["MAN", "OOS", "LO", "IMAN", "ROUT"]
+# Modes where AI MUST run
+AUTO_MODES = ["AUTO", "CAS", "RCAS"]
+
+
+@pytest.fixture
+def bus():
+    b = EventBus(url_prefix=f"inproc://test_ai_mode_{uuid.uuid4().hex[:8]}")
+    b.start()
+    yield b
+    b.stop()
+
+
+@pytest.fixture
+def controller_fuzzy():
+    return Controller(
+        id=1,
+        name="TestFuzzy",
+        scan_rate_ms=100,
+        process_speed=ProcessSpeed.MEDIUM,
+        pv_scale=ScaleConfig(eu_min=0.0, eu_max=100.0),
+        ai_config=AIConfig(
+            engine=AIEngine.FUZZY,
+            objective=ControlObjective.SP_TRACKING,
+            dead_time_l=0.1,
+            limit_min=0.1,
+            limit_max=100.0,
+        ),
+    )
+
+
+class TestAIWorkerModeGuard:
+    """AI must skip computation when loop is NOT in an automatic mode."""
+
+    @pytest.mark.parametrize("mode", NON_AUTO_MODES)
+    def test_skips_non_auto_modes(self, bus, controller_fuzzy, mode):
+        """When telemetry reports a non-auto mode, no ACTION.AI is published."""
+        worker = AIWorker(bus=bus, controller=controller_fuzzy)
+        worker.start()
+        try:
+            pub = bus.create_publisher()
+            sub = bus.create_subscriber(f"ACTION.AI.{controller_fuzzy.id}".encode())
+            time.sleep(0.05)
+
+            # Send telemetry with non-auto mode
+            for _ in range(5):
+                telem = {"pv": 55.0, "sp": 50.0, "co": 48.0, "mode": mode}
+                pub.send(
+                    f"TELEMETRY.{controller_fuzzy.id}".encode(),
+                    msgpack.packb(telem),
+                )
+                time.sleep(0.05)
+
+            # Send a STATS message to trigger AI evaluation
+            stats = {
+                "controller_id": controller_fuzzy.id,
+                "iae": 1.0,
+                "itae": 0.5,
+            }
+            pub.send(
+                f"STATS.{controller_fuzzy.id}".encode(),
+                msgpack.packb(stats),
+            )
+            time.sleep(0.5)
+
+            # AI should NOT have published any action
+            msg = sub.recv(timeout_ms=500)
+            assert msg is None, f"AI should not run in mode={mode}, but got ACTION.AI"
+        finally:
+            worker.stop()
+
+    @pytest.mark.parametrize("mode", AUTO_MODES)
+    def test_runs_in_auto_modes(self, bus, controller_fuzzy, mode):
+        """When telemetry reports an auto mode, AI computes and publishes ACTION.AI."""
+        worker = AIWorker(bus=bus, controller=controller_fuzzy)
+        worker.start()
+        try:
+            pub = bus.create_publisher()
+            sub = bus.create_subscriber(f"ACTION.AI.{controller_fuzzy.id}".encode())
+            time.sleep(0.05)
+
+            # Send telemetry with auto mode
+            for _ in range(5):
+                telem = {"pv": 55.0, "sp": 50.0, "co": 48.0, "mode": mode}
+                pub.send(
+                    f"TELEMETRY.{controller_fuzzy.id}".encode(),
+                    msgpack.packb(telem),
+                )
+                time.sleep(0.05)
+
+            # Send a STATS message to trigger AI evaluation
+            stats = {
+                "controller_id": controller_fuzzy.id,
+                "iae": 1.0,
+                "itae": 0.5,
+            }
+            pub.send(
+                f"STATS.{controller_fuzzy.id}".encode(),
+                msgpack.packb(stats),
+            )
+
+            msg = sub.recv(timeout_ms=2000)
+            assert msg is not None, f"AI should run in mode={mode}"
+            _topic, payload = msg
+            data = msgpack.unpackb(payload)
+            assert data["controller_id"] == controller_fuzzy.id
+            assert data["engine"] == "FUZZY"
+        finally:
+            worker.stop()
+
+
+class TestAIWorkerStatsDrivenCadence:
+    """AI must trigger on STATS publication, not on its own timer."""
+
+    def test_triggers_on_stats_message(self, bus, controller_fuzzy):
+        """AI computes only when a STATS message arrives."""
+        worker = AIWorker(bus=bus, controller=controller_fuzzy)
+        worker.start()
+        try:
+            pub = bus.create_publisher()
+            sub = bus.create_subscriber(f"ACTION.AI.{controller_fuzzy.id}".encode())
+            time.sleep(0.05)
+
+            # Send telemetry (with AUTO mode)
+            for _ in range(3):
+                telem = {"pv": 55.0, "sp": 50.0, "co": 48.0, "mode": "AUTO"}
+                pub.send(
+                    f"TELEMETRY.{controller_fuzzy.id}".encode(),
+                    msgpack.packb(telem),
+                )
+                time.sleep(0.05)
+
+            # Wait WITHOUT sending STATS — AI should not fire
+            time.sleep(0.5)
+            msg = sub.recv(timeout_ms=200)
+            assert msg is None, "AI should not fire without STATS trigger"
+
+            # Now send STATS — AI should fire
+            stats = {"controller_id": controller_fuzzy.id, "iae": 1.0}
+            pub.send(
+                f"STATS.{controller_fuzzy.id}".encode(),
+                msgpack.packb(stats),
+            )
+
+            msg = sub.recv(timeout_ms=2000)
+            assert msg is not None, "AI should fire after STATS trigger"
+        finally:
+            worker.stop()
+
+    def test_no_telemetry_no_action(self, bus, controller_fuzzy):
+        """Even with STATS, if no telemetry was received, no ACTION.AI."""
+        worker = AIWorker(bus=bus, controller=controller_fuzzy)
+        worker.start()
+        try:
+            pub = bus.create_publisher()
+            sub = bus.create_subscriber(f"ACTION.AI.{controller_fuzzy.id}".encode())
+            time.sleep(0.05)
+
+            # Send STATS without any prior telemetry
+            stats = {"controller_id": controller_fuzzy.id, "iae": 1.0}
+            pub.send(
+                f"STATS.{controller_fuzzy.id}".encode(),
+                msgpack.packb(stats),
+            )
+            time.sleep(0.5)
+
+            msg = sub.recv(timeout_ms=500)
+            assert msg is None, "AI should not fire without telemetry data"
+        finally:
+            worker.stop()
