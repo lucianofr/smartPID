@@ -1,10 +1,6 @@
 """Tests for AppStateManager — app.json read/write."""
 from __future__ import annotations
 
-import json
-
-import pytest
-
 from smart_pid_hmi.services.app_state import AppStateManager
 
 
