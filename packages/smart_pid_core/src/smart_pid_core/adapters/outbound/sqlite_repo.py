@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS Log_Sintonia_IA (
 
 CREATE TABLE IF NOT EXISTS Log_Auditoria (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    usuario_id      INTEGER REFERENCES Usuarios(id),
+    usuario_id      INTEGER,
     username        TEXT    NOT NULL DEFAULT '',
     timestamp       TEXT    NOT NULL DEFAULT (datetime('now')),
     acao            TEXT    NOT NULL,
@@ -203,12 +203,17 @@ CREATE TABLE IF NOT EXISTS Projeto_Meta (
 );
 
 CREATE TABLE IF NOT EXISTS Configuracao_Simulador (
-    controlador_id INTEGER PRIMARY KEY,
+    controlador_id INTEGER PRIMARY KEY REFERENCES Controladores(id) ON DELETE CASCADE,
     preset         TEXT NOT NULL DEFAULT 'fopdt_default',
     gain           REAL NOT NULL,
     tau1           REAL NOT NULL,
     tau2           REAL NOT NULL,
-    dead_time      REAL NOT NULL
+    dead_time      REAL NOT NULL,
+    pid_enabled    INTEGER NOT NULL DEFAULT 0,
+    pid_kp         REAL NOT NULL DEFAULT 1.0,
+    pid_ti         REAL NOT NULL DEFAULT 10.0,
+    pid_td         REAL NOT NULL DEFAULT 0.0,
+    pid_mode       INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -541,13 +546,22 @@ class SQLiteRepository:
         tau1: float,
         tau2: float,
         dead_time: float,
+        pid_enabled: bool = False,
+        pid_kp: float = 1.0,
+        pid_ti: float = 10.0,
+        pid_td: float = 0.0,
+        pid_mode: int = 0,
     ) -> None:
         """Insert or replace a simulator configuration for *controller_id*."""
         await self.db.execute(
             "INSERT OR REPLACE INTO Configuracao_Simulador"
-            " (controlador_id, preset, gain, tau1, tau2, dead_time)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (controller_id, preset, gain, tau1, tau2, dead_time),
+            " (controlador_id, preset, gain, tau1, tau2, dead_time,"
+            "  pid_enabled, pid_kp, pid_ti, pid_td, pid_mode)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                controller_id, preset, gain, tau1, tau2, dead_time,
+                int(pid_enabled), pid_kp, pid_ti, pid_td, pid_mode,
+            ),
         )
         await self.db.commit()
 
@@ -560,14 +574,7 @@ class SQLiteRepository:
             row = await cur.fetchone()
         if row is None:
             return None
-        return {
-            "controlador_id": row["controlador_id"],
-            "preset": row["preset"],
-            "gain": row["gain"],
-            "tau1": row["tau1"],
-            "tau2": row["tau2"],
-            "dead_time": row["dead_time"],
-        }
+        return self._sim_row_to_dict(row)
 
     async def list_sim_configs(self) -> list[dict]:
         """Return all simulator configurations."""
@@ -575,17 +582,23 @@ class SQLiteRepository:
             "SELECT * FROM Configuracao_Simulador ORDER BY controlador_id",
         ) as cur:
             rows = await cur.fetchall()
-        return [
-            {
-                "controlador_id": r["controlador_id"],
-                "preset": r["preset"],
-                "gain": r["gain"],
-                "tau1": r["tau1"],
-                "tau2": r["tau2"],
-                "dead_time": r["dead_time"],
-            }
-            for r in rows
-        ]
+        return [self._sim_row_to_dict(r) for r in rows]
+
+    @staticmethod
+    def _sim_row_to_dict(row: aiosqlite.Row) -> dict:
+        return {
+            "controlador_id": row["controlador_id"],
+            "preset": row["preset"],
+            "gain": row["gain"],
+            "tau1": row["tau1"],
+            "tau2": row["tau2"],
+            "dead_time": row["dead_time"],
+            "pid_enabled": bool(row["pid_enabled"]),
+            "pid_kp": row["pid_kp"],
+            "pid_ti": row["pid_ti"],
+            "pid_td": row["pid_td"],
+            "pid_mode": row["pid_mode"],
+        }
 
     # ------------------------------------------------------------------
     # Project lifecycle

@@ -60,6 +60,26 @@ class TestConfiguracaoSimulador:
         assert cfg["tau1"] == 10.0
         assert cfg["tau2"] == 0.0
         assert cfg["dead_time"] == 3.0
+        # PID defaults
+        assert cfg["pid_enabled"] is False
+        assert cfg["pid_kp"] == 1.0
+        assert cfg["pid_ti"] == 10.0
+        assert cfg["pid_td"] == 0.0
+        assert cfg["pid_mode"] == 0
+
+    async def test_save_and_get_sim_config_with_pid(self, repo: SQLiteRepository) -> None:
+        await repo.save_sim_config(
+            controller_id=1, preset="fopdt_default",
+            gain=2.0, tau1=10.0, tau2=0.0, dead_time=3.0,
+            pid_enabled=True, pid_kp=2.5, pid_ti=8.0, pid_td=0.5, pid_mode=1,
+        )
+        cfg = await repo.get_sim_config(1)
+        assert cfg is not None
+        assert cfg["pid_enabled"] is True
+        assert cfg["pid_kp"] == 2.5
+        assert cfg["pid_ti"] == 8.0
+        assert cfg["pid_td"] == 0.5
+        assert cfg["pid_mode"] == 1
 
     async def test_get_sim_config_missing_returns_none(self, repo: SQLiteRepository) -> None:
         cfg = await repo.get_sim_config(999)
