@@ -8,9 +8,11 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -45,6 +47,7 @@ class SimulatorPage(QWidget):
     pid_params_changed = Signal(float, float, float)
     pid_mode_changed = Signal(str)
     pid_sp_changed = Signal(float)
+    pid_co_changed = Signal(float)
     auto_sp_changed = Signal(bool, float, float)
     auto_disturbance_changed = Signal(bool, float)
     sim_start_requested = Signal()
@@ -109,72 +112,60 @@ class SimulatorPage(QWidget):
 
         # Internal PID group
         pid_group = QGroupBox("Internal PID")
-        pid_layout = QVBoxLayout(pid_group)
+        pid_outer = QVBoxLayout(pid_group)
 
         pid_top_row = QHBoxLayout()
         self._pid_enable_cb = QCheckBox("Enable PID")
         self._pid_enable_cb.setObjectName("pid_enable_cb")
         self._pid_enable_cb.setChecked(False)
         pid_top_row.addWidget(self._pid_enable_cb)
+        pid_top_row.addStretch()
         pid_top_row.addWidget(QLabel("Mode:"))
         self._pid_mode_combo = QComboBox()
         self._pid_mode_combo.setObjectName("pid_mode_combo")
         self._pid_mode_combo.addItems(["MAN", "AUTO"])
         pid_top_row.addWidget(self._pid_mode_combo)
-        pid_layout.addLayout(pid_top_row)
+        pid_outer.addLayout(pid_top_row)
 
-        sp_row = QHBoxLayout()
-        sp_row.addWidget(QLabel("SP:"))
-        self._pid_sp_spin = QDoubleSpinBox()
-        self._pid_sp_spin.setObjectName("pid_sp_spin")
-        self._pid_sp_spin.setRange(0.0, 100.0)
-        self._pid_sp_spin.setValue(50.0)
-        self._pid_sp_spin.setDecimals(1)
-        self._pid_sp_spin.setSuffix(" %")
-        sp_row.addWidget(self._pid_sp_spin, stretch=1)
-        pid_layout.addLayout(sp_row)
+        pid_form = QFormLayout()
+        pid_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
 
-        kp_row = QHBoxLayout()
-        kp_row.addWidget(QLabel("Kp:"))
-        self._pid_kp_spin = QDoubleSpinBox()
-        self._pid_kp_spin.setObjectName("pid_kp_spin")
-        self._pid_kp_spin.setRange(0.01, 50.0)
-        self._pid_kp_spin.setValue(1.0)
-        self._pid_kp_spin.setDecimals(2)
-        kp_row.addWidget(self._pid_kp_spin, stretch=1)
-        pid_layout.addLayout(kp_row)
+        self._pid_pv_edit = QLineEdit("0.0")
+        self._pid_pv_edit.setObjectName("pid_pv_edit")
+        self._pid_pv_edit.setReadOnly(True)
+        pid_form.addRow("PV:", self._pid_pv_edit)
 
-        ti_row = QHBoxLayout()
-        ti_row.addWidget(QLabel("Ti:"))
-        self._pid_ti_spin = QDoubleSpinBox()
-        self._pid_ti_spin.setObjectName("pid_ti_spin")
-        self._pid_ti_spin.setRange(0.1, 999.0)
-        self._pid_ti_spin.setValue(10.0)
-        self._pid_ti_spin.setDecimals(1)
-        self._pid_ti_spin.setSuffix(" s")
-        ti_row.addWidget(self._pid_ti_spin, stretch=1)
-        pid_layout.addLayout(ti_row)
+        self._pid_sp_edit = QLineEdit("50.0")
+        self._pid_sp_edit.setObjectName("pid_sp_edit")
+        pid_form.addRow("SP:", self._pid_sp_edit)
 
-        td_row = QHBoxLayout()
-        td_row.addWidget(QLabel("Td:"))
-        self._pid_td_spin = QDoubleSpinBox()
-        self._pid_td_spin.setObjectName("pid_td_spin")
-        self._pid_td_spin.setRange(0.0, 999.0)
-        self._pid_td_spin.setValue(0.0)
-        self._pid_td_spin.setDecimals(1)
-        self._pid_td_spin.setSuffix(" s")
-        td_row.addWidget(self._pid_td_spin, stretch=1)
-        pid_layout.addLayout(td_row)
+        self._pid_co_edit = QLineEdit("0.0")
+        self._pid_co_edit.setObjectName("pid_co_edit")
+        pid_form.addRow("CO:", self._pid_co_edit)
 
+        self._pid_kp_edit = QLineEdit("1.00")
+        self._pid_kp_edit.setObjectName("pid_kp_edit")
+        pid_form.addRow("Kp:", self._pid_kp_edit)
+
+        self._pid_ti_edit = QLineEdit("10.0")
+        self._pid_ti_edit.setObjectName("pid_ti_edit")
+        pid_form.addRow("Ti:", self._pid_ti_edit)
+
+        self._pid_td_edit = QLineEdit("0.0")
+        self._pid_td_edit.setObjectName("pid_td_edit")
+        pid_form.addRow("Td:", self._pid_td_edit)
+
+        pid_outer.addLayout(pid_form)
         left_col.addWidget(pid_group)
 
         # PID controls list (for enable/disable toggling)
         self._pid_controls: list[QWidget] = [
             self._pid_mode_combo,
-            self._pid_sp_spin,
-            self._pid_kp_spin,
-            self._pid_ti_spin,
-            self._pid_td_spin,
+            self._pid_sp_edit,
+            self._pid_co_edit,
+            self._pid_kp_edit,
+            self._pid_ti_edit,
+            self._pid_td_edit,
         ]
         for ctrl in self._pid_controls:
             ctrl.setEnabled(False)
@@ -378,10 +369,11 @@ class SimulatorPage(QWidget):
         self._committed_dead_time = self._dead_time_slider.value()
         self._committed_pid_enable = self._pid_enable_cb.isChecked()
         self._committed_pid_mode_idx = self._pid_mode_combo.currentIndex()
-        self._committed_pid_sp = self._pid_sp_spin.value()
-        self._committed_kp = self._pid_kp_spin.value()
-        self._committed_ti = self._pid_ti_spin.value()
-        self._committed_td = self._pid_td_spin.value()
+        self._committed_pid_sp = self._pid_sp_edit.text()
+        self._committed_pid_co = self._pid_co_edit.text()
+        self._committed_kp = self._pid_kp_edit.text()
+        self._committed_ti = self._pid_ti_edit.text()
+        self._committed_td = self._pid_td_edit.text()
 
         # Connect change tracking after storing committed state
         self._preset_combo.currentIndexChanged.connect(self._on_preset_selected)
@@ -393,10 +385,11 @@ class SimulatorPage(QWidget):
         self._pid_enable_cb.toggled.connect(self._on_pid_enable_toggled)
         self._pid_enable_cb.toggled.connect(self._on_field_changed)
         self._pid_mode_combo.currentIndexChanged.connect(self._on_field_changed)
-        self._pid_sp_spin.valueChanged.connect(self._on_field_changed)
-        self._pid_kp_spin.valueChanged.connect(self._on_field_changed)
-        self._pid_ti_spin.valueChanged.connect(self._on_field_changed)
-        self._pid_td_spin.valueChanged.connect(self._on_field_changed)
+        self._pid_sp_edit.textChanged.connect(self._on_field_changed)
+        self._pid_co_edit.textChanged.connect(self._on_field_changed)
+        self._pid_kp_edit.textChanged.connect(self._on_field_changed)
+        self._pid_ti_edit.textChanged.connect(self._on_field_changed)
+        self._pid_td_edit.textChanged.connect(self._on_field_changed)
 
     def _make_param_row(
         self, layout: QVBoxLayout, label: str, key: str,
@@ -430,11 +423,19 @@ class SimulatorPage(QWidget):
             or self._dead_time_slider.value() != self._committed_dead_time
             or self._pid_enable_cb.isChecked() != self._committed_pid_enable
             or self._pid_mode_combo.currentIndex() != self._committed_pid_mode_idx
-            or self._pid_sp_spin.value() != self._committed_pid_sp
-            or self._pid_kp_spin.value() != self._committed_kp
-            or self._pid_ti_spin.value() != self._committed_ti
-            or self._pid_td_spin.value() != self._committed_td
+            or self._pid_sp_edit.text() != self._committed_pid_sp
+            or self._pid_co_edit.text() != self._committed_pid_co
+            or self._pid_kp_edit.text() != self._committed_kp
+            or self._pid_ti_edit.text() != self._committed_ti
+            or self._pid_td_edit.text() != self._committed_td
         )
+
+    @staticmethod
+    def _parse_float(text: str, fallback: float = 0.0) -> float:
+        try:
+            return float(text.replace(",", "."))
+        except (ValueError, AttributeError):
+            return fallback
 
     def _on_apply(self) -> None:
         if self._preset_combo.currentIndex() != self._committed_preset_idx:
@@ -454,16 +455,19 @@ class SimulatorPage(QWidget):
             self.pid_enabled_changed.emit(self._pid_enable_cb.isChecked())
         if self._pid_mode_combo.currentIndex() != self._committed_pid_mode_idx:
             self.pid_mode_changed.emit(self._pid_mode_combo.currentText())
-        if self._pid_sp_spin.value() != self._committed_pid_sp:
-            self.pid_sp_changed.emit(self._pid_sp_spin.value())
+        if self._pid_sp_edit.text() != self._committed_pid_sp:
+            self.pid_sp_changed.emit(self._parse_float(self._pid_sp_edit.text(), 50.0))
+        if self._pid_co_edit.text() != self._committed_pid_co:
+            self.pid_co_changed.emit(self._parse_float(self._pid_co_edit.text(), 0.0))
         if (
-            self._pid_kp_spin.value() != self._committed_kp
-            or self._pid_ti_spin.value() != self._committed_ti
-            or self._pid_td_spin.value() != self._committed_td
+            self._pid_kp_edit.text() != self._committed_kp
+            or self._pid_ti_edit.text() != self._committed_ti
+            or self._pid_td_edit.text() != self._committed_td
         ):
             self.pid_params_changed.emit(
-                self._pid_kp_spin.value(), self._pid_ti_spin.value(),
-                self._pid_td_spin.value(),
+                self._parse_float(self._pid_kp_edit.text(), 1.0),
+                self._parse_float(self._pid_ti_edit.text(), 10.0),
+                self._parse_float(self._pid_td_edit.text(), 0.0),
             )
 
         self._committed_preset_idx = self._preset_combo.currentIndex()
@@ -473,10 +477,11 @@ class SimulatorPage(QWidget):
         self._committed_dead_time = self._dead_time_slider.value()
         self._committed_pid_enable = self._pid_enable_cb.isChecked()
         self._committed_pid_mode_idx = self._pid_mode_combo.currentIndex()
-        self._committed_pid_sp = self._pid_sp_spin.value()
-        self._committed_kp = self._pid_kp_spin.value()
-        self._committed_ti = self._pid_ti_spin.value()
-        self._committed_td = self._pid_td_spin.value()
+        self._committed_pid_sp = self._pid_sp_edit.text()
+        self._committed_pid_co = self._pid_co_edit.text()
+        self._committed_kp = self._pid_kp_edit.text()
+        self._committed_ti = self._pid_ti_edit.text()
+        self._committed_td = self._pid_td_edit.text()
         self._sim_apply_btn.setEnabled(False)
         self._sim_cancel_btn.setEnabled(False)
 
@@ -484,8 +489,8 @@ class SimulatorPage(QWidget):
         widgets = [
             self._preset_combo, self._gain_slider, self._tau1_slider,
             self._tau2_slider, self._dead_time_slider, self._pid_enable_cb,
-            self._pid_mode_combo, self._pid_sp_spin, self._pid_kp_spin,
-            self._pid_ti_spin, self._pid_td_spin,
+            self._pid_mode_combo, self._pid_sp_edit, self._pid_co_edit,
+            self._pid_kp_edit, self._pid_ti_edit, self._pid_td_edit,
         ]
         for w in widgets:
             w.blockSignals(True)
@@ -496,10 +501,11 @@ class SimulatorPage(QWidget):
         self._dead_time_slider.setValue(self._committed_dead_time)
         self._pid_enable_cb.setChecked(self._committed_pid_enable)
         self._pid_mode_combo.setCurrentIndex(self._committed_pid_mode_idx)
-        self._pid_sp_spin.setValue(self._committed_pid_sp)
-        self._pid_kp_spin.setValue(self._committed_kp)
-        self._pid_ti_spin.setValue(self._committed_ti)
-        self._pid_td_spin.setValue(self._committed_td)
+        self._pid_sp_edit.setText(self._committed_pid_sp)
+        self._pid_co_edit.setText(self._committed_pid_co)
+        self._pid_kp_edit.setText(self._committed_kp)
+        self._pid_ti_edit.setText(self._committed_ti)
+        self._pid_td_edit.setText(self._committed_td)
         for w in widgets:
             w.blockSignals(False)
         self._sim_apply_btn.setEnabled(False)
@@ -619,9 +625,17 @@ class SimulatorPage(QWidget):
         data = self._controller_combo.currentData()
         return data if isinstance(data, int) else None
 
+    def update_pv(self, pv: float) -> None:
+        """Update the read-only PV display."""
+        self._pid_pv_edit.setText(f"{pv:.2f}")
+
     def populate_from_status(self, status: ControllerSimStatus) -> None:
         """Populate widgets from a ControllerSimStatus DTO."""
-        self._pid_sp_spin.setValue(getattr(status, "pid_sp", 50.0))
+        self._pid_sp_edit.setText(f"{getattr(status, 'pid_sp', 50.0):.1f}")
+        self._pid_kp_edit.setText(f"{status.pid_kp:.2f}")
+        self._pid_ti_edit.setText(f"{status.pid_ti:.1f}")
+        self._pid_td_edit.setText(f"{status.pid_td:.1f}")
+        self._pid_co_edit.setText(f"{status.pid_cv:.2f}")
         if status.auto_sp is not None:
             self._auto_sp_enable.setChecked(status.auto_sp.enabled)
             self._auto_sp_min.setValue(status.auto_sp.sp_min_pct)
