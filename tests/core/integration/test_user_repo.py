@@ -3,16 +3,16 @@ from __future__ import annotations
 
 import pytest
 
-from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
 
 
 @pytest.fixture
 async def user_repo(tmp_path) -> UserRepository:
-    db_path = tmp_path / "test.spid"
-    repo = SQLiteRepository(db_path)
+    db_path = tmp_path / "users.db"
+    repo = UserRepository(db_path)
     await repo.initialize()
-    return UserRepository(repo.db)
+    yield repo
+    await repo.close()
 
 
 class TestUserRepository:

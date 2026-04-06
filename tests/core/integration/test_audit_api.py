@@ -24,7 +24,9 @@ async def app_fixture(tmp_path):
     repo = SQLiteRepository(tmp_path / "test.db")
     await repo.initialize()
     historian = SQLiteHistorian(repo.db)
-    user_repo = UserRepository(repo.db)
+    user_db_path = tmp_path / "users.db"
+    user_repo = UserRepository(user_db_path)
+    await user_repo.initialize()
     alarm_repo = AlarmRepository(repo.db)
     audit_repo = AuditRepository(repo.db)
     bus = EventBus()
@@ -40,6 +42,7 @@ async def app_fixture(tmp_path):
         alarm_repo=alarm_repo, audit_repo=audit_repo,
     )
     yield app, audit_repo, settings
+    await user_repo.close()
     bus.stop()
 
 

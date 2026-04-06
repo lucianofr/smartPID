@@ -31,7 +31,9 @@ async def api_deps(tmp_path):
     repo = SQLiteRepository(db_path)
     await repo.initialize()
     historian = SQLiteHistorian(repo.db)
-    user_repo = UserRepository(repo.db)
+    user_db_path = tmp_path / "users.db"
+    user_repo = UserRepository(user_db_path)
+    await user_repo.initialize()
     alarm_repo = AlarmRepository(repo.db)
     audit_repo = AuditRepository(repo.db)
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
@@ -58,6 +60,7 @@ async def api_deps(tmp_path):
     }
     loop_manager.stop_all()
     bus.stop()
+    await user_repo.close()
     await repo.db.close()
 
 
@@ -121,7 +124,9 @@ async def sim_api_deps(tmp_path):
     repo = SQLiteRepository(db_path)
     await repo.initialize()
     historian = SQLiteHistorian(repo.db)
-    user_repo = UserRepository(repo.db)
+    user_db_path = tmp_path / "users.db"
+    user_repo = UserRepository(user_db_path)
+    await user_repo.initialize()
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
     loop_manager = LoopManager(bus=bus)
@@ -150,6 +155,7 @@ async def sim_api_deps(tmp_path):
     simulator_adapter.stop()
     loop_manager.stop_all()
     bus.stop()
+    await user_repo.close()
     await repo.db.close()
 
 
