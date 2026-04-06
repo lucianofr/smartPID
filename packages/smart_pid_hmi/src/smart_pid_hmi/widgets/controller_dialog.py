@@ -350,8 +350,9 @@ class ControllerDialog(QDialog):
         return _scrollable(form)
 
     def _build_opcua_tab(self) -> QWidget:
-        from PySide6.QtWidgets import QHBoxLayout
-        form = QFormLayout()
+        from PySide6.QtWidgets import QGridLayout
+        grid = QGridLayout()
+        grid.setSpacing(6)
 
         tag_fields = [
             ("PV", "ns=2;s=PV"), ("SP", "ns=2;s=SP"), ("CO", "ns=2;s=CO"),
@@ -365,24 +366,29 @@ class ControllerDialog(QDialog):
             "Ti": "_tag_ti", "Td": "_tag_td", "Mode": "_tag_mode",
         }
 
-        for label, placeholder in tag_fields:
-            row = QHBoxLayout()
-            row.setSpacing(4)
+        for row_idx, (label, placeholder) in enumerate(tag_fields):
+            lbl = QLabel(f"{label}:")
+            grid.addWidget(lbl, row_idx, 0)
+
             line_edit = QLineEdit()
             line_edit.setPlaceholderText(placeholder)
             setattr(self, attr_map[label], line_edit)
-            row.addWidget(line_edit)
+            grid.addWidget(line_edit, row_idx, 1)
 
-            browse_btn = QPushButton("...")
-            browse_btn.setFixedWidth(30)
+            browse_btn = QPushButton("Browse")
+            browse_btn.setFixedWidth(60)
             browse_btn.setToolTip(f"Browse OPC-UA for {label}")
             browse_btn.clicked.connect(
                 lambda _=False, le=line_edit: self._open_tag_browse(le),
             )
-            row.addWidget(browse_btn)
-            form.addRow(f"{label}:", row)
+            grid.addWidget(browse_btn, row_idx, 2)
 
-        return _scrollable(form)
+        container = QWidget()
+        container.setLayout(grid)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(container)
+        return scroll
 
     def _open_tag_browse(self, target_line_edit: QLineEdit) -> None:
         """Open the tag browse dialog and set result into the target field."""
