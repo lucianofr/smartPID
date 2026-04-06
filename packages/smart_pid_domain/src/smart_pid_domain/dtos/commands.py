@@ -23,5 +23,5 @@ class OutputCommand(BaseModel):
 
 class CommandResponse(BaseModel):
     ok: bool
-    controller_id: int
+    controller_id: int | None = None
     detail: str | None = None

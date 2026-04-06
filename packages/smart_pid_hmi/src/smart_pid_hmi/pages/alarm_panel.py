@@ -173,6 +173,23 @@ class AlarmPanel(QWidget):
         """Expose AI log widget for testing."""
         return self._ai_log
 
+    def load_active_alarms(self) -> None:
+        """Fetch currently active alarms from backend and populate table."""
+        if self._api_client is None:
+            return
+        try:
+            alarms = self._api_client.get_active_alarms()
+        except Exception:  # noqa: BLE001
+            return
+        self._active_alarms.clear()
+        for alarm in alarms:
+            key = (alarm.get("controller_id", 0), alarm.get("alarm_type", ""))
+            self._active_alarms[key] = {
+                **alarm,
+                "status": alarm.get("status", "UNACKNOWLEDGED"),
+            }
+        self._rebuild_table()
+
     def on_alarm(self, controller_id: int, alarm: dict) -> None:
         """Handle an alarm transition from BusBridge."""
         atype = alarm.get("alarm_type", "")
