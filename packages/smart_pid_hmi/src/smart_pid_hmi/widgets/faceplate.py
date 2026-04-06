@@ -197,13 +197,28 @@ class FaceplateWidget(QFrame):
         self._separators.append(sep5)
         layout.addWidget(sep5)
 
-        # -- Stats row --
-        self._stats_label = QLabel("IAE: \u2014 | 2\u03c3/Range: \u2014")
-        fg_muted = _theme_attr(theme, "fg_muted", theme.fg_secondary)
-        self._stats_label.setStyleSheet(
-            f"font-size: {theme.font_size_label}px; "
-            f"color: {fg_muted}; "
+        # -- Separator --
+        sep6 = _separator(theme)
+        self._separators.append(sep6)
+        layout.addWidget(sep6)
+
+        # -- PID Gains row --
+        self._gains_label = QLabel("Kp: \u2014  Ti: \u2014  Td: \u2014")
+        self._gains_label.setStyleSheet(
+            f"font-size: {theme.font_size_normal}px; "
+            f"color: {theme.fg_primary}; "
             f"background: transparent;"
+            f" font-family: 'Fira Code', monospace;"
+        )
+        layout.addWidget(self._gains_label)
+
+        # -- Stats row --
+        self._stats_label = QLabel("IAE: \u2014  |  2\u03c3/Range: \u2014")
+        self._stats_label.setStyleSheet(
+            f"font-size: {theme.font_size_normal}px; "
+            f"color: {theme.fg_secondary}; "
+            f"background: transparent;"
+            f" font-family: 'Fira Code', monospace;"
         )
         layout.addWidget(self._stats_label)
         layout.addStretch()
@@ -286,10 +301,15 @@ class FaceplateWidget(QFrame):
             sep.setStyleSheet(
                 f"background-color: {theme.border}; border: none;"
             )
-        fg_muted = _theme_attr(theme, "fg_muted", theme.fg_secondary)
+        self._gains_label.setStyleSheet(
+            f"font-size: {theme.font_size_normal}px; "
+            f"color: {theme.fg_primary}; background: transparent;"
+            f" font-family: 'Fira Code', monospace;"
+        )
         self._stats_label.setStyleSheet(
-            f"font-size: {theme.font_size_label}px; "
-            f"color: {fg_muted}; background: transparent;"
+            f"font-size: {theme.font_size_normal}px; "
+            f"color: {theme.fg_secondary}; background: transparent;"
+            f" font-family: 'Fira Code', monospace;"
         )
         self.update()
 
@@ -299,6 +319,7 @@ class FaceplateWidget(QFrame):
         tag_name: str,
         min_val: float,
         max_val: float,
+        pid_gains: dict | None = None,
     ) -> None:
         self._controller_id = controller_id
         self._tag_label.setText(tag_name)
@@ -311,6 +332,11 @@ class FaceplateWidget(QFrame):
             bar._max = max_val  # noqa: SLF001
             bar.set_value(0.0)
         self._bar_co.set_value(0.0)
+        # Update PID gains display
+        if pid_gains:
+            self.update_gains(pid_gains)
+        else:
+            self._gains_label.setText("Kp: \u2014  Ti: \u2014  Td: \u2014")
 
     def on_telemetry(self, controller_id: int, frame: dict) -> None:
         if (
@@ -347,6 +373,34 @@ class FaceplateWidget(QFrame):
             self.output_requested.emit(self._controller_id, val)
         except ValueError:
             pass
+
+    def update_gains(self, gains: dict) -> None:
+        """Update PID gains display.
+
+        Args:
+            gains: dict with keys 'gain', 'reset', 'rate',
+                   and optionally 'integral_type' (TIME_TI or GAIN_KI).
+        """
+        kp = gains.get("gain", 0.0)
+        reset_val = gains.get("reset", 0.0)
+        rate_val = gains.get("rate", 0.0)
+        integral_type = gains.get("integral_type", "TIME_TI")
+
+        # Integral: Ki if GAIN_KI, Ti if TIME_TI
+        if integral_type == "GAIN_KI":
+            i_label, i_val = "Ki", f"{reset_val:.3f}"
+        else:
+            i_label, i_val = "Ti", f"{reset_val:.1f}s"
+
+        # Derivative: Kd if GAIN_KI, Td if TIME_TI
+        if integral_type == "GAIN_KI":
+            d_label, d_val = "Kd", f"{rate_val:.3f}"
+        else:
+            d_label, d_val = "Td", f"{rate_val:.1f}s"
+
+        self._gains_label.setText(
+            f"Kp: {kp:.3f}  {i_label}: {i_val}  {d_label}: {d_val}"
+        )
 
     def update_stats(self, iae: float, variability: float) -> None:
         """Update performance stats display.

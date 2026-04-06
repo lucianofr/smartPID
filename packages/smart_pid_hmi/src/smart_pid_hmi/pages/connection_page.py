@@ -68,12 +68,15 @@ class ConnectionPage(QWidget):
         self._pass_input.setFixedWidth(300)
         self._pass_input.setEchoMode(QLineEdit.EchoMode.Password)
         self._pass_input.setPlaceholderText("password")
+        self._pass_input.returnPressed.connect(self._on_connect)
         layout.addWidget(self._pass_input)
 
-        # Connect button
+        # Connect button (Enter on any field also triggers connect)
         self._connect_btn = QPushButton("Connect")
         self._connect_btn.setFixedWidth(300)
         self._connect_btn.clicked.connect(self._on_connect)
+        self._url_input.returnPressed.connect(self._on_connect)
+        self._user_input.returnPressed.connect(self._on_connect)
         layout.addWidget(self._connect_btn)
 
         # Status / error label

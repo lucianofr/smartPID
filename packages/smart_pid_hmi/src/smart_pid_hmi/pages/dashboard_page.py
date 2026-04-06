@@ -158,9 +158,17 @@ class DashboardPage(QWidget):
             lo = ctrl.get("sp_lo_lim", 0.0)
             hi = ctrl.get("sp_hi_lim", 100.0)
             desc = ctrl.get("description", "")
+            pid_params = ctrl.get("pid_params", {})
+            integral_type = ctrl.get("integral_type", "TIME_TI")
             self._controller_meta[cid] = {
                 "name": name, "lo": lo, "hi": hi,
                 "description": desc,
+                "pid_gains": {
+                    "gain": pid_params.get("gain", 1.0),
+                    "reset": pid_params.get("reset", 10.0),
+                    "rate": pid_params.get("rate", 0.0),
+                    "integral_type": integral_type,
+                },
             }
 
             card = ControllerCardWidget(
@@ -190,6 +198,7 @@ class DashboardPage(QWidget):
         )
         self._faceplate.on_controller_selected(
             controller_id, meta["name"], meta["lo"], meta["hi"],
+            pid_gains=meta.get("pid_gains"),
         )
         self._trend.on_controller_selected(controller_id)
 
