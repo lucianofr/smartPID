@@ -126,7 +126,7 @@ class TestDefaults:
     """Verify sensible defaults match domain model defaults."""
 
     def test_default_scan_rate(self, dialog):
-        assert dialog._scan_rate.value() == 1000
+        assert dialog._scan_rate.currentData() == 1000
 
     def test_default_gain(self, dialog):
         assert dialog._gain.value() == 1.0
@@ -256,7 +256,8 @@ class TestEditing:
         assert data["name"] == "FIC-200"
 
     def test_scan_rate_change(self, dialog):
-        dialog._scan_rate.setValue(500)
+        idx = dialog._scan_rate.findData(500)
+        dialog._scan_rate.setCurrentIndex(idx)
         assert dialog.get_controller_data()["scan_rate_ms"] == 500
 
     def test_checkbox_ff_enable(self, dialog):
@@ -323,7 +324,7 @@ class TestEditMode:
         assert edit_dialog._execution_mode.currentText() == "SUPERVISORY"
 
     def test_populated_scan_rate(self, edit_dialog):
-        assert edit_dialog._scan_rate.value() == 500
+        assert edit_dialog._scan_rate.currentData() == 500
 
     def test_populated_pid_structure(self, edit_dialog):
         assert edit_dialog._pid_structure.currentText() == "PARALLEL"

@@ -167,10 +167,15 @@ class ControllerDialog(QDialog):
         self._execution_mode.currentTextChanged.connect(self._on_execution_mode_changed)
         form.addRow("Execution Mode:", self._execution_mode)
 
-        self._scan_rate = QSpinBox()
-        self._scan_rate.setRange(100, 10000)
-        self._scan_rate.setValue(1000)
-        self._scan_rate.setSuffix(" ms")
+        self._scan_rate = QComboBox()
+        _SCAN_RATES = [
+            ("0.1 s", 100), ("0.5 s", 500), ("1 s", 1000), ("2 s", 2000),
+            ("5 s", 5000), ("10 s", 10000), ("15 s", 15000), ("20 s", 20000),
+            ("30 s", 30000), ("60 s", 60000),
+        ]
+        for label, ms in _SCAN_RATES:
+            self._scan_rate.addItem(label, ms)
+        self._scan_rate.setCurrentIndex(2)  # default 1s
         form.addRow("Scan Rate:", self._scan_rate)
 
         self._pid_structure = _enum_combo(PIDStructure, PIDStructure.ISA.value)
@@ -425,7 +430,9 @@ class ControllerDialog(QDialog):
         self._description.setText(data.get("description", ""))
         self._set_combo(self._execution_mode, data.get("execution_mode"))
         if "scan_rate_ms" in data:
-            self._scan_rate.setValue(data["scan_rate_ms"])
+            idx = self._scan_rate.findData(data["scan_rate_ms"])
+            if idx >= 0:
+                self._scan_rate.setCurrentIndex(idx)
         self._set_combo(self._pid_structure, data.get("pid_structure"))
         self._set_combo(self._integral_type, data.get("integral_type"))
         self._set_combo(self._mode_normal, data.get("mode_normal"))
@@ -557,7 +564,7 @@ class ControllerDialog(QDialog):
             "name": self._name.text().strip(),
             "description": self._description.text().strip(),
             "execution_mode": self._execution_mode.currentText(),
-            "scan_rate_ms": self._scan_rate.value(),
+            "scan_rate_ms": self._scan_rate.currentData(),
             "pid_structure": self._pid_structure.currentText(),
             "integral_type": self._integral_type.currentText(),
             "mode_normal": self._mode_normal.currentText(),
