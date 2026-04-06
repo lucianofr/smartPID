@@ -33,6 +33,7 @@ from smart_pid_hmi.pages.user_management_page import UserManagementPage
 from smart_pid_hmi.services.session import Session
 from smart_pid_hmi.themes import (
     DarkRoomTheme,
+    HPCLightTheme,
     ISA101Theme,
     MD3DarkTheme,
     MD3LightTheme,
@@ -96,6 +97,7 @@ class MainWindow(QMainWindow):
         self._theme_manager.register(DarkRoomTheme())
         self._theme_manager.register(MD3DarkTheme())
         self._theme_manager.register(MD3LightTheme())
+        self._theme_manager.register(HPCLightTheme())
         self._theme_manager.set_theme("isa101")
         theme = isa_theme
         theme.apply(QApplication.instance())

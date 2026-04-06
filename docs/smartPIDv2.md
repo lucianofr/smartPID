@@ -263,8 +263,9 @@ O layout é projetado para o cliente visual. O usuário inicia a HMI e se depara
 O código da UI deve ser desenvolvido de maneira que permita a aplicação de temas:
 * **Tema Dark Mode**: Tema escuro, estilo dark room.
 * **Tema Material Design 3 Dark**: Baseado no padrão do Google (variante escura).
-* **Tema Material Design 3 Light**: Baseado no padrão do Google (variante clara, fundos brancos/lilás).
-* **Tema ISA-101**: Baseado na norma ISA-101, com tons cinza escuros, cores suaves para PVs e cores primárias restritas apenas aos alarmes.
+* **Tema Material Design 3 Light**: Baseado no padrão do Google (variante clara, azul marinho).
+* **Tema HPC Light**: Alta Performance inspirado em Rockwell/Elipse. Cinza claro (#E0E0E0), valores dinâmicos em azul frio (#475CA7), flat 2D, touch-friendly. Ver `docs/tema_rockwell_elipse.md`.
+* **Tema ISA-101**: Baseado na norma ISA-101, com tons cinza claro, cores neutras e primárias restritas apenas aos alarmes.
 
 ### **8.1. Dashboard Executivo (Landing Page)**
 Visão gerencial do ROI do software, consumida via API:
