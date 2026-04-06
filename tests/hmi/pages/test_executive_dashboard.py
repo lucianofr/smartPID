@@ -1,7 +1,7 @@
 """Tests for ExecutiveDashboardPage."""
-from PySide6.QtWidgets import QLabel, QTableWidget
+from PySide6.QtWidgets import QLabel, QPushButton, QTableWidget, QWidget
 
-from smart_pid_hmi.pages.executive_dashboard import ExecutiveDashboardPage
+from smart_pid_hmi.pages.executive_dashboard import ExecutiveDashboardPage, _FlowLayout
 
 
 def test_creation(qtbot):
@@ -73,3 +73,23 @@ def test_update_performance_table(qtbot):
     assert table.rowCount() == 2
     assert table.item(0, 0).text() == "FIC-101"
     assert table.item(1, 1).text() == "MAN"
+
+
+def test_flow_layout_add_and_count(qtbot):
+    container = QWidget()
+    qtbot.addWidget(container)
+    layout = _FlowLayout(container, h_spacing=10, v_spacing=10)
+    layout.addWidget(QPushButton("A"))
+    layout.addWidget(QPushButton("B"))
+    layout.addWidget(QPushButton("C"))
+    assert layout.count() == 3
+
+
+def test_flow_layout_item_at(qtbot):
+    container = QWidget()
+    qtbot.addWidget(container)
+    layout = _FlowLayout(container, h_spacing=10, v_spacing=10)
+    btn = QPushButton("A")
+    layout.addWidget(btn)
+    assert layout.itemAt(0).widget() is btn
+    assert layout.itemAt(1) is None
