@@ -35,30 +35,30 @@ def client():
         adapter = SimulatorAdapter(settings=settings)
         adapter.register_controller(1)
 
-    app = create_app(
-        repo=MagicMock(),
-        historian=MagicMock(),
-        user_repo=MagicMock(),
-        loop_manager=MagicMock(),
-        settings=settings,
-        simulator_adapter=adapter,
-        opcua_adapter=None,
-        stats_workers=[],
-        ai_workers=[],
-        ai_repo=MagicMock(),
-        alarm_repo=MagicMock(),
-        audit_repo=MagicMock(),
-    )
+        app = create_app(
+            repo=MagicMock(),
+            historian=MagicMock(),
+            user_repo=MagicMock(),
+            loop_manager=MagicMock(),
+            settings=settings,
+            simulator_adapter=adapter,
+            opcua_adapter=None,
+            stats_workers=[],
+            ai_workers=[],
+            ai_repo=MagicMock(),
+            alarm_repo=MagicMock(),
+            audit_repo=MagicMock(),
+        )
 
-    token = create_access_token(
-        user_id=1,
-        username="tester",
-        role="admin",
-        secret=settings.jwt_secret,
-    )
-    headers = {"Authorization": f"Bearer {token}"}
-    with TestClient(app) as c:
-        yield c, adapter, headers
+        token = create_access_token(
+            user_id=1,
+            username="tester",
+            role="admin",
+            secret=settings.jwt_secret,
+        )
+        headers = {"Authorization": f"Bearer {token}"}
+        with TestClient(app) as c:
+            yield c, adapter, headers
 
 
 class TestAutoSPEndpoint:
