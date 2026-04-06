@@ -83,7 +83,7 @@ class ControllerCreate(BaseModel):
 
     name: str
     description: str = ""
-    execution_mode: str = "DDC"
+    execution_mode: str = "SUPERVISORY"
     scan_rate_ms: int = 1000
     process_speed: str = "MEDIUM"
 
@@ -193,7 +193,7 @@ class ControllerResponse(BaseModel):
     sp: float
     co: float
 
-    execution_mode: str = "DDC"
+    execution_mode: str = "SUPERVISORY"
     scan_rate_ms: int = 1000
     process_speed: str = "MEDIUM"
 

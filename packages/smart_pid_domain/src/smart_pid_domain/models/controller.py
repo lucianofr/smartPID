@@ -131,7 +131,7 @@ class Controller:
     id: int = 0
     name: str = ""
     description: str = ""
-    execution_mode: ExecutionMode = ExecutionMode.DDC
+    execution_mode: ExecutionMode = ExecutionMode.SUPERVISORY
     scan_rate_ms: int = 1000
     process_speed: ProcessSpeed = ProcessSpeed.MEDIUM
     process_type: ProcessType = ProcessType.SELF_REGULATING
