@@ -283,4 +283,9 @@ class SimulatorAdapter:
                     pv=pv,
                     sp=ctrl.sp,
                     co=ctrl.last_co,
+                    kp=ctrl.pid_params.gain,
+                    ti=ctrl.pid_params.reset,
+                    td=ctrl.pid_params.rate,
+                    pid_mode=ctrl.pid_mode,
+                    pid_sp=ctrl.sp,
                 )
