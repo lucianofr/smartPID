@@ -1,4 +1,11 @@
-"""ISA-101 concrete theme — dark industrial, color = alarm only."""
+"""ISA-101 concrete theme — light gray industrial, color = alarm only.
+
+Based on ANSI/ISA-101.01 High Performance HMI guidelines:
+- Light gray backgrounds for reduced eye strain
+- Neutral tones in normal state
+- Color reserved exclusively for abnormal conditions/alarms
+- Flat design, no 3D elements, no rounded corners
+"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -9,33 +16,33 @@ if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication
 
 _COLORS = ThemeColors(
-    bg_primary="#1E1E1E",
-    bg_secondary="#252526",
-    bg_widget="#2D2D30",
-    fg_primary="#CCCCCC",
-    fg_secondary="#808080",
-    border="#454548",
-    alarm_critical="#FF3333",
-    alarm_warning="#FFCC00",
-    alarm_text="#FFFFFF",
-    bar_pv="#4D8BCC",
-    bar_sp="#808080",
-    bar_co="#5A5A60",
-    chart_pv="#CCCCCC",
-    chart_sp="#808080",
-    chart_co="#5A5A60",
-    chart_grid="#333337",
-    chart_bg="#1E1E1E",
-    bg_card="#2D2D30",
-    bg_input="#252526",
-    bg_toolbar="#1E1E1E",
-    bg_hover="#3E3E42",
-    fg_muted="#555555",
-    border_focus="#4D8BCC",
-    border_radius="0px",
-    accent="#4D8BCC",
-    alarm_critical_bg="#3D1111",
-    alarm_warning_bg="#3D3011",
+    bg_primary="#C0C0C0",       # ISA-101 medium gray background
+    bg_secondary="#B0B0B0",     # Slightly darker for contrast
+    bg_widget="#D0D0D0",        # Lighter widget background
+    fg_primary="#1A1A1A",       # Near-black text
+    fg_secondary="#4A4A4A",     # Dark gray secondary text
+    border="#999999",           # Medium gray borders
+    alarm_critical="#CC0000",   # ISA red — abnormal critical
+    alarm_warning="#CCAA00",    # ISA amber/yellow — abnormal warning
+    alarm_text="#FFFFFF",       # White text on alarm backgrounds
+    bar_pv="#606060",           # Neutral dark gray bar (normal state)
+    bar_sp="#888888",           # SP marker gray
+    bar_co="#707070",           # CO bar gray
+    chart_pv="#1A1A1A",         # Black PV line
+    chart_sp="#888888",         # Gray SP line
+    chart_co="#555555",         # Dark gray CO line
+    chart_grid="#B8B8B8",       # Subtle grid lines
+    chart_bg="#C8C8C8",         # Chart background matches overall
+    bg_card="#D8D8D8",          # Card slightly lighter than bg
+    bg_input="#E8E8E8",         # Input fields light
+    bg_toolbar="#B8B8B8",       # Toolbar slightly darker
+    bg_hover="#C8C8C8",         # Hover state
+    fg_muted="#777777",         # Muted text
+    border_focus="#4A4A4A",     # Focus border (darker gray, no color)
+    border_radius="0px",       # ISA-101: flat, no rounded corners
+    accent="#4A4A4A",           # Accent is dark gray (no color in normal)
+    alarm_critical_bg="#FFCCCC",  # Light red background for critical
+    alarm_warning_bg="#FFF0CC",   # Light yellow background for warning
 )
 
 _FONTS = ThemeFonts(
@@ -46,21 +53,21 @@ _FONTS = ThemeFonts(
     size_title=16,
 )
 
-# Multi-trend chart palette (ISA-101: muted grays + alarm colors)
+# Multi-trend chart palette (ISA-101: dark lines on light background)
 _CHART_PALETTE = [
-    "#CCCCCC",  # primary text
-    "#808080",  # secondary
-    "#5A5A60",  # muted
-    "#999999",  # light gray
-    "#FF3333",  # alarm red
-    "#FFCC00",  # alarm yellow
-    "#4D8BCC",  # accent blue
-    "#AA55FF",  # diagnostic purple
+    "#1A1A1A",  # black (PV)
+    "#555555",  # dark gray (CO)
+    "#888888",  # medium gray (SP)
+    "#333333",  # near-black
+    "#CC0000",  # alarm red
+    "#CCAA00",  # alarm amber
+    "#606060",  # neutral
+    "#444444",  # dark
 ]
 
 
 class ISA101Theme:
-    """ISA-101 HMI theme: dark industrial, 100% flat, color only for alarms.
+    """ISA-101 HMI theme: light gray, 100% flat, color only for alarms.
 
     Design spec: docs/identidade_visual_ISA101.md
     - Dark background (#1E1E1E), NOT gray
@@ -124,8 +131,8 @@ class ISA101Theme:
 
     def stylesheet(self) -> str:
         return f"""
-        /* ===== ISA-101 Dark Industrial Theme ===== */
-        /* 100% flat, zero shadows/gradients/3D */
+        /* ===== ISA-101 Light Gray Industrial Theme ===== */
+        /* 100% flat, zero shadows/gradients/3D, color = alarm only */
 
         /* --- Base --- */
         QMainWindow, QWidget {{

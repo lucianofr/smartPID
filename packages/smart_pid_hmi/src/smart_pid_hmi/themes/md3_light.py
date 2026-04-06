@@ -8,35 +8,35 @@ from smart_pid_hmi.themes.base import ThemeColors, ThemeFonts
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication
 
-# Material Design 3 Light baseline palette
+# Material Design 3 Light baseline palette — navy blue accent
 # Reference: https://m3.material.io/styles/color/system/overview
 _COLORS = ThemeColors(
-    bg_primary="#FFFBFE",       # Surface
-    bg_secondary="#F3EDF7",     # Surface Container
-    bg_widget="#ECE6F0",        # Surface Container Low
-    fg_primary="#1C1B1F",       # On-Surface
-    fg_secondary="#49454F",     # On-Surface Variant
-    border="#CAC4D0",           # Outline Variant
-    alarm_critical="#B3261E",   # Error
-    alarm_warning="#7D5700",    # Warning (custom tertiary)
+    bg_primary="#FAFCFF",       # Surface (cool white)
+    bg_secondary="#EDF1F9",     # Surface Container
+    bg_widget="#E3E8F0",        # Surface Container Low
+    fg_primary="#191C20",       # On-Surface
+    fg_secondary="#43474E",     # On-Surface Variant
+    border="#C3C7CF",           # Outline Variant
+    alarm_critical="#BA1A1A",   # Error
+    alarm_warning="#7D5700",    # Warning
     alarm_text="#FFFFFF",       # On-Error
-    bar_pv="#6750A4",           # Primary
-    bar_sp="#625B71",           # Secondary
-    bar_co="#7D5260",           # Tertiary
-    chart_pv="#6750A4",         # Primary
-    chart_sp="#625B71",         # Secondary
-    chart_co="#7D5260",         # Tertiary
-    chart_grid="#E7E0EC",       # Surface Variant
-    chart_bg="#FFFBFE",         # Surface
-    bg_card="#F7F2FA",          # Surface Container High
-    bg_input="#FFFBFE",         # Surface
-    bg_toolbar="#F3EDF7",       # Surface Container
-    bg_hover="#E8DEF8",         # Secondary Container
-    fg_muted="#79747E",         # Outline
-    border_focus="#6750A4",     # Primary
+    bar_pv="#1B5FA0",           # Primary (navy blue)
+    bar_sp="#5A5F71",           # Secondary (slate)
+    bar_co="#715A60",           # Tertiary (muted rose)
+    chart_pv="#1B5FA0",         # Primary
+    chart_sp="#5A5F71",         # Secondary
+    chart_co="#715A60",         # Tertiary
+    chart_grid="#DEE3EB",       # Surface Variant
+    chart_bg="#FAFCFF",         # Surface
+    bg_card="#F0F4FC",          # Surface Container High (cool tint)
+    bg_input="#FAFCFF",         # Surface
+    bg_toolbar="#EDF1F9",       # Surface Container
+    bg_hover="#D3E4FF",         # Primary Container (light navy)
+    fg_muted="#73777F",         # Outline
+    border_focus="#1B5FA0",     # Primary
     border_radius="12px",
-    accent="#6750A4",           # Primary
-    alarm_critical_bg="#F9DEDC",  # Error Container
+    accent="#1B5FA0",           # Primary (navy blue)
+    alarm_critical_bg="#FFDAD6",  # Error Container
     alarm_warning_bg="#FFDDB3",   # Warning Container
 )
 
@@ -49,22 +49,23 @@ _FONTS = ThemeFonts(
 )
 
 _CHART_PALETTE = [
-    "#6750A4",  # primary
-    "#625B71",  # secondary
-    "#7D5260",  # tertiary
-    "#1C1B1F",  # on-surface
-    "#B3261E",  # error
+    "#1B5FA0",  # primary (navy blue)
+    "#5A5F71",  # secondary (slate)
+    "#715A60",  # tertiary (muted rose)
+    "#191C20",  # on-surface
+    "#BA1A1A",  # error
     "#7D5700",  # warning
-    "#49454F",  # on-surface-variant
-    "#79747E",  # outline
+    "#43474E",  # on-surface-variant
+    "#73777F",  # outline
 ]
 
 
 class MD3LightTheme:
-    """Material Design 3 Light theme with warm tones and rounded corners.
+    """Material Design 3 Light theme with navy blue accent and rounded corners.
 
     Design spec: docs/identidade_visual_MD3.md (light variant)
-    - Surface tonal elevation with light backgrounds
+    - Surface tonal elevation with cool white/blue-tint backgrounds
+    - Navy blue (#1B5FA0) accent for primary actions and bars
     - Color ONLY for alarms
     - Rounded corners (12px cards, 8px inputs)
     - Roboto / Google Sans font family
@@ -157,7 +158,7 @@ class MD3LightTheme:
             border-color: {self.fg_secondary};
         }}
         QPushButton:pressed {{
-            background-color: #D7CDE5;
+            background-color: #BDD3EE;
         }}
         QPushButton:checked {{
             background-color: {self.accent};
@@ -419,7 +420,7 @@ class MD3LightTheme:
             border-radius: 9px;
         }}
         QSlider::handle:horizontal:hover {{
-            background: #7965B3;
+            background: #2E7BC4;
         }}
         QSlider::sub-page:horizontal {{
             background: {self.accent};

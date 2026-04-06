@@ -18,9 +18,9 @@ def test_isa101_implements_protocol():
 
 def test_isa101_color_values():
     theme = ISA101Theme()
-    assert theme.bg_primary == "#1E1E1E"  # dark mode per ISA-101 spec
-    assert theme.alarm_critical == "#FF3333"
-    assert theme.alarm_warning == "#FFCC00"
+    assert theme.bg_primary == "#C0C0C0"  # light gray per ISA-101 HPC spec
+    assert theme.alarm_critical == "#CC0000"
+    assert theme.alarm_warning == "#CCAA00"
 
 
 def test_isa101_stylesheet_not_empty():
@@ -46,8 +46,8 @@ def test_isa101_has_colors_dataclass():
     assert hasattr(theme, "colors")
     colors = theme.colors
     assert isinstance(colors, ThemeColors)
-    assert colors.bg_primary == "#1E1E1E"  # dark mode per ISA-101 spec
-    assert colors.alarm_critical == "#FF3333"
+    assert colors.bg_primary == "#C0C0C0"  # light gray per ISA-101 HPC spec
+    assert colors.alarm_critical == "#CC0000"
 
 
 def test_isa101_has_fonts_dataclass():

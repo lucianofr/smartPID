@@ -546,7 +546,7 @@ First screen on launch. User provides server IP, ports (REST + ZeroMQ), username
 Four themes (detailed visual identity specs in dedicated documents):
 - **Dark Mode**: Dark room style for mission-critical control rooms. Absolute black background, zero unnecessary light emission, monochromatic in normal state, color reserved exclusively for alarms. See [identidade_visual_Dark.md](../../identidade_visual_Dark.md).
 - **Material Design 3 Dark**: Google MD3 neutral tones (dark variant), surface container elevation hierarchy, Roboto typography. See [identidade_visual_MD3.md](../../identidade_visual_MD3.md).
-- **Material Design 3 Light**: Google MD3 light variant with warm white/lilac backgrounds, purple accent, Roboto typography. Same rounded corners and tonal elevation as MD3 Dark but with light surface colors.
+- **Material Design 3 Light**: Google MD3 light variant with cool white/blue-tint backgrounds, navy blue accent (#1B5FA0), Roboto typography. Same rounded corners and tonal elevation as MD3 Dark but with light surface colors.
 - **ISA-101**: ANSI/ISA-101.01 High Performance HMI. Gray tones, 100% flat design, no 3D elements. Colors reserved exclusively for abnormal conditions/alarms. See [identidade_visual_ISA101.md](../../identidade_visual_ISA101.md).
 
 Each visual identity document defines the complete design system: color palette, typography, semantic alarm colors, and detailed widget specifications (AnalogBarWidget, ControllerCardWidget, FaceplateWidget, TrendChartWidget, AlarmFooterWidget). These documents are the authoritative source for theme implementation in Phase 7.
