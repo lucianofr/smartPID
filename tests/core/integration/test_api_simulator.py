@@ -90,3 +90,72 @@ class TestDisturbance:
         )
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
+
+
+class TestSimulatorPIDEndpoints:
+    @pytest.mark.asyncio
+    async def test_enable_pid(
+        self,
+        client_with_simulator: AsyncClient,
+        admin_headers: dict[str, str],
+        sim_api_deps: dict,
+    ) -> None:
+        sim_api_deps["simulator_adapter"].register_controller(1)
+        resp = await client_with_simulator.post(
+            "/simulator/1/pid/enable",
+            json={"controller_id": 1, "enabled": True},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_set_pid_params(
+        self,
+        client_with_simulator: AsyncClient,
+        admin_headers: dict[str, str],
+        sim_api_deps: dict,
+    ) -> None:
+        sim_api_deps["simulator_adapter"].register_controller(1)
+        resp = await client_with_simulator.post(
+            "/simulator/1/pid/params",
+            json={"controller_id": 1, "kp": 2.0, "ti": 5.0, "td": 1.0},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_set_pid_mode(
+        self,
+        client_with_simulator: AsyncClient,
+        admin_headers: dict[str, str],
+        sim_api_deps: dict,
+    ) -> None:
+        sim_api_deps["simulator_adapter"].register_controller(1)
+        resp = await client_with_simulator.post(
+            "/simulator/1/pid/mode",
+            json={"controller_id": 1, "mode": "AUTO"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_get_pid_status(
+        self,
+        client_with_simulator: AsyncClient,
+        admin_headers: dict[str, str],
+        sim_api_deps: dict,
+    ) -> None:
+        adapter = sim_api_deps["simulator_adapter"]
+        adapter.register_controller(1)
+        adapter.enable_pid(1, enabled=True)
+        adapter.set_pid_params(1, kp=3.0, ti=8.0, td=0.5)
+        resp = await client_with_simulator.get(
+            "/simulator/1/pid/status", headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["enabled"] is True
+        assert data["kp"] == 3.0
+        assert data["ti"] == 8.0
