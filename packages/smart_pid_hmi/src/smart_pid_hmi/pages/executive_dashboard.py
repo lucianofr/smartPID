@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QPoint, QRect, QSize, Qt
 from PySide6.QtWidgets import (
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -193,6 +194,7 @@ _PERF_METRICS: list[tuple[str, str, bool]] = [
 ]
 
 _PLACEHOLDER = "\u2014"  # em-dash
+_BADGE_BASE_STYLE = "padding: 2px 8px; border-radius: 4px; font-size: 10px;"
 
 
 class _ControllerCard(QFrame):
@@ -243,9 +245,7 @@ class _ControllerCard(QFrame):
         self._exec_badge = QLabel()
         for badge in (self._mode_badge, self._engine_badge, self._exec_badge):
             badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            badge.setStyleSheet(
-                "padding: 2px 8px; border-radius: 4px; font-size: 10px;"
-            )
+            badge.setStyleSheet(_BADGE_BASE_STYLE)
             header.addWidget(badge)
 
         root.addLayout(header)
@@ -273,8 +273,6 @@ class _ControllerCard(QFrame):
         root.addLayout(ai_row)
 
         # --- Performance grid (4x2) ---
-        from PySide6.QtWidgets import QGridLayout
-
         perf_grid = QGridLayout()
         perf_grid.setSpacing(4)
         self._perf_values: dict[str, QLabel] = {}
@@ -397,25 +395,21 @@ class _ControllerCard(QFrame):
         auto_modes = {"AUTO", "CAS", "RCAS", "ROUT"}
         if mode in auto_modes:
             self._mode_badge.setStyleSheet(
-                "background-color: #2d5a27; color: #7fff7f;"
-                " padding: 2px 8px; border-radius: 4px; font-size: 10px;"
+                f"background-color: #2d5a27; color: #7fff7f; {_BADGE_BASE_STYLE}"
             )
         else:
             self._mode_badge.setStyleSheet(
-                "background-color: #444; color: #ccc;"
-                " padding: 2px 8px; border-radius: 4px; font-size: 10px;"
+                f"background-color: #444; color: #ccc; {_BADGE_BASE_STYLE}"
             )
 
     def _style_engine_badge(self, engine: str) -> None:
         if engine in {"FUZZY", "RL"}:
             self._engine_badge.setStyleSheet(
-                "background-color: #3a2d10; color: #f0a030;"
-                " padding: 2px 8px; border-radius: 4px; font-size: 10px;"
+                f"background-color: #3a2d10; color: #f0a030; {_BADGE_BASE_STYLE}"
             )
         else:
             self._engine_badge.setStyleSheet(
-                "background-color: #333; color: #888;"
-                " padding: 2px 8px; border-radius: 4px; font-size: 10px;"
+                f"background-color: #333; color: #888; {_BADGE_BASE_STYLE}"
             )
 
     def _apply_styles(self, theme: ThemeBase) -> None:
