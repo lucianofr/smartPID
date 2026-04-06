@@ -185,6 +185,47 @@ class APIClient:
         resp.raise_for_status()
         return CommandResponse.model_validate(resp.json())
 
+    def enable_simulator_pid(
+        self, controller_id: int, enabled: bool,
+    ) -> CommandResponse:
+        resp = self._http.post(
+            f"/simulator/{controller_id}/pid/enable",
+            json={"controller_id": controller_id, "enabled": enabled},
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return CommandResponse.model_validate(resp.json())
+
+    def set_simulator_pid_params(
+        self, controller_id: int, kp: float, ti: float, td: float,
+    ) -> CommandResponse:
+        resp = self._http.post(
+            f"/simulator/{controller_id}/pid/params",
+            json={"controller_id": controller_id, "kp": kp, "ti": ti, "td": td},
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return CommandResponse.model_validate(resp.json())
+
+    def set_simulator_pid_mode(
+        self, controller_id: int, mode: str,
+    ) -> CommandResponse:
+        resp = self._http.post(
+            f"/simulator/{controller_id}/pid/mode",
+            json={"controller_id": controller_id, "mode": mode},
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return CommandResponse.model_validate(resp.json())
+
+    def get_simulator_pid_status(self, controller_id: int) -> dict:
+        resp = self._http.get(
+            f"/simulator/{controller_id}/pid/status",
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def get_active_alarms(self, controller_id: int | None = None) -> list[dict]:
         params: dict = {}
         if controller_id is not None:
