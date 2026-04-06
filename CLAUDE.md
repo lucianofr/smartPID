@@ -50,7 +50,9 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 ### Comunicacao
 - ZeroMQ inproc:// — Bus interno entre threads do Backend (XPUB/XSUB proxy, msgpack)
 - ZeroMQ tcp://5555 — PUB/SUB Backend->HMI (telemetria em tempo real)
-- FastAPI REST — HMI->Backend (comandos, historico, CRUD)
+- FastAPI REST — HMI->Backend (comandos, historico, CRUD, project upload/download)
+- Project management via REST: list, new, open (by name), import (multipart upload), download (FileResponse), delete
+- Welcome Dialog mostrado pos-login (precisa de auth para listar projetos do backend)
 - Topicos: TELEMETRY.{id}, ACTION.CTRL.{id}, ACTION.AI.{id}, STATUS.{id}
 
 ### PID Engine
@@ -97,6 +99,7 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 - `SPID_API_PORT` / `SPID_API_HOST` — Default: 8000 / 0.0.0.0
 - `SPID_ZMQ_PUBLISH_PORT` — Default: 5555
 - `SPID_SIMULATOR_ENABLED` / `SPID_SIMULATOR_PORT` — Default: false / 4841
+- `SPID_PROJECTS_DIR` — Default: ~/.smart-pid/projects/ (diretorio de projetos gerenciados pelo backend)
 
 ## Documentos de referencia
 - Spec V2: `docs/superpowers/specs/2026-04-02-smart-pid-v2-architecture-design.md`
