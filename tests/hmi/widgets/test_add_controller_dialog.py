@@ -17,10 +17,10 @@ class TestDialogCreation:
     def test_window_title(self, dialog):
         assert dialog.windowTitle() == "Add Controller"
 
-    def test_has_seven_tabs(self, dialog):
+    def test_has_eight_tabs(self, dialog):
         tabs = dialog.findChild(__import__("PySide6.QtWidgets", fromlist=["QTabWidget"]).QTabWidget)
         assert tabs is not None
-        assert tabs.count() == 7
+        assert tabs.count() == 8
 
     def test_tab_labels(self, dialog):
         from PySide6.QtWidgets import QTabWidget
@@ -33,6 +33,7 @@ class TestDialogCreation:
             "Scaling & Limits",
             "Filters & IO",
             "AI Configuration",
+            "Alarms",
             "OPC-UA Tags",
             "Shed & Safety",
         ]
@@ -102,7 +103,7 @@ class TestGetControllerData:
             "pv_ftime", "sp_ftime", "low_cut",
             "ff_enable", "ff_gain",
             "io_opts", "control_opts",
-            "ai_config", "tag_bindings",
+            "ai_config", "alarm_config", "tag_bindings",
             "shed_opt", "shed_time_s",
             "tuning_write_mode", "max_tuning_change_pct",
         }

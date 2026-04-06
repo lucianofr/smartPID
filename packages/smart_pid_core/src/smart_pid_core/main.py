@@ -49,8 +49,8 @@ async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
             "value": row["limite"],
             "priority": AlarmPriority(row["prioridade"]),
             "hysteresis": row["histerese"],
-            "delay_on_ms": row.get("delay_on_ms", 0) or 0,
-            "delay_off_ms": row.get("delay_off_ms", 0) or 0,
+            "delay_on_s": row.get("delay_on_s", 0.0) or 0.0,
+            "delay_off_s": row.get("delay_off_s", 0.0) or 0.0,
         }
 
     for cid, alarms in by_controller.items():
@@ -59,14 +59,14 @@ async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
             name: str,
             default_priority: AlarmPriority = AlarmPriority.WARNING,
             _alarms: dict = alarms,
-        ) -> tuple[bool, float, AlarmPriority, int, int]:
+        ) -> tuple[bool, float, AlarmPriority, float, float]:
             a = _alarms.get(name, {})
             return (
                 a.get("enabled", False),
                 a.get("value", 0.0),
                 a.get("priority", default_priority),
-                a.get("delay_on_ms", 0),
-                a.get("delay_off_ms", 0),
+                a.get("delay_on_s", 0.0),
+                a.get("delay_off_s", 0.0),
             )
 
         hihi_e, hihi_v, hihi_p, hihi_don, hihi_doff = _get("HIHI", AlarmPriority.CRITICAL)
@@ -81,33 +81,33 @@ async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
             hihi_enabled=hihi_e,
             hihi_value=hihi_v,
             hihi_priority=hihi_p,
-            hihi_delay_on_ms=hihi_don,
-            hihi_delay_off_ms=hihi_doff,
+            hihi_delay_on_s=hihi_don,
+            hihi_delay_off_s=hihi_doff,
             hi_enabled=hi_e,
             hi_value=hi_v,
             hi_priority=hi_p,
-            hi_delay_on_ms=hi_don,
-            hi_delay_off_ms=hi_doff,
+            hi_delay_on_s=hi_don,
+            hi_delay_off_s=hi_doff,
             lo_enabled=lo_e,
             lo_value=lo_v,
             lo_priority=lo_p,
-            lo_delay_on_ms=lo_don,
-            lo_delay_off_ms=lo_doff,
+            lo_delay_on_s=lo_don,
+            lo_delay_off_s=lo_doff,
             lolo_enabled=lolo_e,
             lolo_value=lolo_v,
             lolo_priority=lolo_p,
-            lolo_delay_on_ms=lolo_don,
-            lolo_delay_off_ms=lolo_doff,
+            lolo_delay_on_s=lolo_don,
+            lolo_delay_off_s=lolo_doff,
             dv_hi_enabled=dvhi_e,
             dv_hi_value=dvhi_v,
             dv_hi_priority=dvhi_p,
-            dv_hi_delay_on_ms=dvhi_don,
-            dv_hi_delay_off_ms=dvhi_doff,
+            dv_hi_delay_on_s=dvhi_don,
+            dv_hi_delay_off_s=dvhi_doff,
             dv_lo_enabled=dvlo_e,
             dv_lo_value=dvlo_v,
             dv_lo_priority=dvlo_p,
-            dv_lo_delay_on_ms=dvlo_don,
-            dv_lo_delay_off_ms=dvlo_doff,
+            dv_lo_delay_on_s=dvlo_don,
+            dv_lo_delay_off_s=dvlo_doff,
             deadband_percent=deadband,
         )
     return configs

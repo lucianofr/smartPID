@@ -1,6 +1,7 @@
 """Dialog for adding or editing a controller loop — all 30+ fields in tabbed layout."""
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -10,11 +11,13 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QScrollArea,
     QSpinBox,
+    QStyle,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -22,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from smart_pid_domain.enums import (
     AIEngine,
+    AlarmPriority,
     ControllerMode,
     ControlObjective,
     ExecutionMode,
@@ -115,7 +119,10 @@ class ControllerDialog(QDialog):
         # --- Tab 5: AI Configuration ---
         self._tabs.addTab(self._build_ai_tab(), "AI Configuration")
 
-        # --- Tab 6: OPC-UA Tags ---
+        # --- Tab 6: Alarms ---
+        self._tabs.addTab(self._build_alarms_tab(), "Alarms")
+
+        # --- Tab 7: OPC-UA Tags ---
         self._tabs.addTab(self._build_opcua_tab(), "OPC-UA Tags")
 
         # --- Tab 7: Shed & Safety (DDC only) ---
@@ -352,6 +359,77 @@ class ControllerDialog(QDialog):
 
         return _scrollable(form)
 
+    def _build_alarms_tab(self) -> QWidget:
+        from PySide6.QtWidgets import QGridLayout
+
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(10)
+
+        # Deadband at top
+        db_row = QHBoxLayout()
+        db_row.addWidget(QLabel("Deadband (%):"))
+        self._alarm_deadband = _double_spin(0.0, 50.0, 1.0, 1, " %")
+        self._alarm_deadband.setFixedWidth(120)
+        db_row.addWidget(self._alarm_deadband)
+        db_row.addStretch()
+        layout.addLayout(db_row)
+
+        # Grid with headers
+        grid = QGridLayout()
+        grid.setSpacing(4)
+        grid.setContentsMargins(4, 4, 4, 4)
+        headers = ["Alarm", "On", "Limit", "Priority", "Delay On (s)", "Delay Off (s)"]
+        for col, header in enumerate(headers):
+            lbl = QLabel(f"<b>{header}</b>")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            grid.addWidget(lbl, 0, col)
+
+        alarm_types = [
+            ("HIHI", "hihi"), ("HI", "hi"), ("LO", "lo"),
+            ("LOLO", "lolo"), ("DV High", "dv_hi"), ("DV Low", "dv_lo"),
+        ]
+
+        self._alarm_fields: dict[
+            str,
+            tuple[QCheckBox, QLineEdit, QComboBox, QDoubleSpinBox, QDoubleSpinBox],
+        ] = {}
+
+        for row, (display, key) in enumerate(alarm_types, start=1):
+            grid.addWidget(QLabel(display), row, 0)
+
+            chk = QCheckBox()
+            grid.addWidget(chk, row, 1, Qt.AlignmentFlag.AlignCenter)
+
+            limit_edit = QLineEdit("0.0")
+            limit_edit.setFixedWidth(80)
+            limit_edit.setAlignment(Qt.AlignmentFlag.AlignRight)
+            grid.addWidget(limit_edit, row, 2)
+
+            combo = QComboBox()
+            for p in AlarmPriority:
+                combo.addItem(p.value)
+            combo.setCurrentText("WARNING")
+            grid.addWidget(combo, row, 3)
+
+            delay_on = _double_spin(0.0, 9999.0, 0.0, 1, " s")
+            delay_on.setFixedWidth(100)
+            grid.addWidget(delay_on, row, 4)
+
+            delay_off = _double_spin(0.0, 9999.0, 0.0, 1, " s")
+            delay_off.setFixedWidth(100)
+            grid.addWidget(delay_off, row, 5)
+
+            self._alarm_fields[key] = (chk, limit_edit, combo, delay_on, delay_off)
+
+        layout.addLayout(grid)
+        layout.addStretch()
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(widget)
+        return scroll
+
     def _build_opcua_tab(self) -> QWidget:
         from PySide6.QtWidgets import QGridLayout
         grid = QGridLayout()
@@ -574,6 +652,22 @@ class ControllerDialog(QDialog):
         for key, widget in tag_map.items():
             widget.setText(tags.get(key, ""))
 
+        # Alarms
+        alarms = data.get("alarm_config", {})
+        if "deadband_percent" in alarms:
+            self._alarm_deadband.setValue(alarms["deadband_percent"])
+        for key, (chk, limit_edit, combo, delay_on, delay_off) in self._alarm_fields.items():
+            if f"{key}_enabled" in alarms:
+                chk.setChecked(alarms[f"{key}_enabled"])
+            if f"{key}_value" in alarms:
+                limit_edit.setText(str(alarms[f"{key}_value"]))
+            if f"{key}_priority" in alarms:
+                self._set_combo(combo, alarms[f"{key}_priority"])
+            if f"{key}_delay_on_s" in alarms:
+                delay_on.setValue(float(alarms[f"{key}_delay_on_s"]))
+            if f"{key}_delay_off_s" in alarms:
+                delay_off.setValue(float(alarms[f"{key}_delay_off_s"]))
+
         # Shed & Safety
         self._set_combo(self._shed_opt, data.get("shed_opt"))
         if "shed_time_s" in data:
@@ -675,12 +769,30 @@ class ControllerDialog(QDialog):
                 "node_id_td": self._tag_td.text().strip(),
                 "node_id_mode": self._tag_mode.text().strip(),
             },
+            # Alarms
+            "alarm_config": self._get_alarm_data(),
             # Shed & Safety
             "shed_opt": self._shed_opt.currentText(),
             "shed_time_s": self._shed_time.value(),
             "tuning_write_mode": self._tuning_write_mode.currentText(),
             "max_tuning_change_pct": self._max_tuning_pct.value(),
         }
+
+    def _get_alarm_data(self) -> dict:
+        """Collect alarm configuration from the Alarms tab."""
+        result: dict[str, object] = {
+            "deadband_percent": self._alarm_deadband.value(),
+        }
+        for key, (chk, limit_edit, combo, delay_on, delay_off) in self._alarm_fields.items():
+            result[f"{key}_enabled"] = chk.isChecked()
+            try:
+                result[f"{key}_value"] = float(limit_edit.text())
+            except ValueError:
+                result[f"{key}_value"] = 0.0
+            result[f"{key}_priority"] = combo.currentText()
+            result[f"{key}_delay_on_s"] = delay_on.value()
+            result[f"{key}_delay_off_s"] = delay_off.value()
+        return result
 
     # Keep backward compat with callers using the old method name
     def get_data(self) -> dict:
