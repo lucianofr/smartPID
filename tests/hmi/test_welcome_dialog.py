@@ -1,4 +1,4 @@
-"""Tests for WelcomeDialog — first-run project selection."""
+"""Tests for WelcomeDialog — project selection after login."""
 from __future__ import annotations
 
 import pytest
@@ -8,11 +8,13 @@ from smart_pid_hmi.dialogs.welcome_dialog import WelcomeDialog
 
 
 @pytest.fixture
-def dialog():
-    return WelcomeDialog(recent_projects=[
-        {"name": "Project A", "path": "/a.spid", "controller_count": 3},
-        {"name": "Project B", "path": "/b.spid", "controller_count": 1},
+def dialog(qtbot):
+    dlg = WelcomeDialog(projects=[
+        {"name": "Project A", "controller_count": 3, "size_bytes": 2048},
+        {"name": "Project B", "controller_count": 1, "size_bytes": 512},
     ])
+    qtbot.addWidget(dlg)
+    return dlg
 
 
 class TestWelcomeDialog:
@@ -20,18 +22,28 @@ class TestWelcomeDialog:
         btn = dialog.findChild(QPushButton, "welcome_new_btn")
         assert btn is not None
 
-    def test_open_button_exists(self, dialog) -> None:
-        btn = dialog.findChild(QPushButton, "welcome_open_btn")
+    def test_import_button_exists(self, dialog) -> None:
+        btn = dialog.findChild(QPushButton, "welcome_import_btn")
         assert btn is not None
 
-    def test_recent_list_populated(self, dialog) -> None:
-        lst = dialog.findChild(QListWidget, "recent_list")
+    def test_delete_button_exists(self, dialog) -> None:
+        btn = dialog.findChild(QPushButton, "welcome_delete_btn")
+        assert btn is not None
+
+    def test_no_open_file_button(self, dialog) -> None:
+        """Old 'Open Project' (QFileDialog) button should not exist."""
+        btn = dialog.findChild(QPushButton, "welcome_open_btn")
+        assert btn is None
+
+    def test_project_list_populated(self, dialog) -> None:
+        lst = dialog.findChild(QListWidget, "project_list")
         assert lst is not None
         assert lst.count() == 2
 
-    def test_empty_recent_list(self) -> None:
-        d = WelcomeDialog(recent_projects=[])
-        lst = d.findChild(QListWidget, "recent_list")
+    def test_empty_project_list(self, qtbot) -> None:
+        d = WelcomeDialog(projects=[])
+        qtbot.addWidget(d)
+        lst = d.findChild(QListWidget, "project_list")
         assert lst.count() == 0
 
     def test_result_defaults_none(self, dialog) -> None:
