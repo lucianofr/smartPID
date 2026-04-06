@@ -94,26 +94,25 @@ class TestMultiTrendWiring:
 # --- Gaps #38-41: Executive dashboard KPIs ---
 
 class TestExecutiveDashboardWiring:
-    def test_controllers_loaded_populates_controller_cards(self, main_window):
-        """After controllers load, exec dashboard should have cards."""
+    def test_controllers_loaded_populates_performance_table(self, main_window):
+        """After controllers load, exec dashboard table should have rows."""
         controllers = [
             {
                 "id": 1, "name": "FIC-101", "mode": "AUTO",
-                "execution_mode": "DDC",
                 "pv": 50.0, "sp": 50.0,
                 "sp_hi_lim": 100.0, "sp_lo_lim": 0.0,
             },
             {
                 "id": 2, "name": "LIC-201", "mode": "OOS",
-                "execution_mode": "DDC",
                 "pv": 65.0, "sp": 65.0,
                 "sp_hi_lim": 100.0, "sp_lo_lim": 0.0,
             },
         ]
         main_window._on_controllers_received(controllers)
-        cards = main_window._executive_page._controller_cards
-        assert len(cards) == 2
-        assert "FIC-101" in cards
+        table = main_window._executive_page._table
+        assert table.rowCount() == 2
+        assert table.item(0, 0).text() == "FIC-101"
+        assert table.item(1, 6).text() == "OOS"
 
     def test_controllers_loaded_updates_kpis(self, main_window):
         """Initial KPIs computed from controller list."""
