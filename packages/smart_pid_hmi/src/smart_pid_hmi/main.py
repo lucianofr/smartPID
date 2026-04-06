@@ -506,6 +506,17 @@ class MainWindow(QMainWindow):
                     QMetaObject.invokeMethod(
                         self, "_enable_simulator", Qt.ConnectionType.QueuedConnection,
                     )
+                if status.running:
+                    QMetaObject.invokeMethod(
+                        self._simulator_page, "set_sim_running",
+                        Qt.ConnectionType.QueuedConnection,
+                        Q_ARG(bool, True),
+                    )
+                    QMetaObject.invokeMethod(
+                        self._sim_poll_timer, "start",
+                        Qt.ConnectionType.QueuedConnection,
+                        Q_ARG(int, 1000),
+                    )
                 opcua_status = self._api_client.get_opcua_status()
                 if opcua_status.get("running"):
                     QMetaObject.invokeMethod(

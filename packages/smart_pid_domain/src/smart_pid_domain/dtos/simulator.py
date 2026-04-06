@@ -69,6 +69,7 @@ class ControllerSimStatus(BaseModel):
 
 class SimulatorStatusResponse(BaseModel):
     enabled: bool
+    running: bool = False
     controllers: dict[int, ControllerSimStatus]
 
 
