@@ -4,14 +4,21 @@ from __future__ import annotations
 from collections import deque
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from smart_pid_hmi.widgets.analog_bar import AnalogBarWidget
 
 if TYPE_CHECKING:
-    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtGui import QMouseEvent, QPaintEvent
 
     from smart_pid_hmi.themes.base import ThemeBase
 
@@ -20,93 +27,62 @@ _CARD_MIN_HEIGHT = 180
 _ALARM_STRIP_HEIGHT = 4
 
 
-def _theme_attr(theme: ThemeBase, attr: str, fallback: str) -> str:
-    """Return theme attribute if non-empty, else fallback."""
-    val = getattr(theme, attr, "")
-    return val if val else fallback
-
-
-_SPARKLINE_HEIGHT = 32
-_SPARKLINE_BUFFER = 30
-
-
 class SparklineWidget(QWidget):
-    """Mini trend showing last N PV values via QPainter."""
+    """Mini trend showing last N PV values as a line chart."""
 
     def __init__(
         self,
-        theme: ThemeBase,
-        buffer_size: int = _SPARKLINE_BUFFER,
+        theme: ThemeBase | None = None,
+        buffer_size: int = 30,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self._theme = theme
+        self._buffer_size = buffer_size
         self._data: deque[float] = deque(maxlen=buffer_size)
-        self.setFixedHeight(_SPARKLINE_HEIGHT)
+        self._theme = theme
+        self.setMaximumHeight(32)
+        self.setMinimumHeight(24)
 
     @property
     def data(self) -> deque[float]:
         return self._data
 
-    def add_value(self, val: float) -> None:
-        self._data.append(val)
+    def add_value(self, value: float) -> None:
+        self._data.append(value)
         self.update()
 
-    def clear_data(self) -> None:
-        self._data.clear()
-        self.update()
-
-    def apply_theme(self, theme: ThemeBase) -> None:
-        self._theme = theme
-        self.update()
-
-    def paintEvent(self, event) -> None:  # noqa: N802
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         if len(self._data) < 2:
             return
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w = self.width()
-        h = self.height()
-        margin = 2
-
-        values = list(self._data)
-        v_min = min(values)
-        v_max = max(values)
-        v_range = v_max - v_min if v_max != v_min else 1.0
-
-        # Draw background
-        bg = _theme_attr(self._theme, "bg_input", self._theme.bg_widget)
-        br = _theme_attr(self._theme, "border_radius", "0px")
-        try:
-            radius = int(br.replace("px", ""))
-        except (ValueError, AttributeError):
-            radius = 0
-        rect = QRectF(0, 0, w, h)
-        p.setBrush(QColor(bg))
-        p.setPen(Qt.PenStyle.NoPen)
-        if radius > 0:
-            p.drawRoundedRect(rect, min(radius, h // 2), min(radius, h // 2))
-        else:
-            p.fillRect(rect, QColor(bg))
-
-        # Build polyline
-        n = len(values)
-        step_x = (w - 2 * margin) / max(n - 1, 1)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        color = self._theme.accent if self._theme else "#00e5cc"
+        pen = QPen()
+        pen.setColor(Qt.GlobalColor.cyan if not self._theme else pen.color())
+        from PySide6.QtGui import QColor
+        pen.setColor(QColor(color))
+        pen.setWidthF(1.5)
+        painter.setPen(pen)
+        w, h = self.width(), self.height()
+        vals = list(self._data)
+        lo, hi = min(vals), max(vals)
+        span = hi - lo if hi != lo else 1.0
         path = QPainterPath()
-        for i, v in enumerate(values):
-            x = margin + i * step_x
-            y = margin + (h - 2 * margin) * (1.0 - (v - v_min) / v_range)
-            pt = QPointF(x, y)
+        for i, v in enumerate(vals):
+            x = i * w / (len(vals) - 1)
+            y = h - (v - lo) / span * h
             if i == 0:
-                path.moveTo(pt)
+                path.moveTo(x, y)
             else:
-                path.lineTo(pt)
+                path.lineTo(x, y)
+        painter.drawPath(path)
+        painter.end()
 
-        pen = QPen(QColor(self._theme.chart_pv), 1.5)
-        p.setPen(pen)
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawPath(path)
-        p.end()
+
+def _theme_attr(theme: ThemeBase, attr: str, fallback: str) -> str:
+    """Return theme attribute if non-empty, else fallback."""
+    val = getattr(theme, attr, "")
+    return val if val else fallback
 
 
 class ControllerCardWidget(QFrame):
@@ -114,6 +90,7 @@ class ControllerCardWidget(QFrame):
     and 3 analog bars (PV, SP, CO)."""
 
     controller_selected = Signal(int)
+    settings_requested = Signal(int)
 
     def __init__(
         self,
@@ -182,6 +159,20 @@ class ControllerCardWidget(QFrame):
         header.addWidget(self._tag_label)
         header.addStretch()
         header.addWidget(self._mode_label)
+
+        # Gear button for settings
+        self._settings_btn = QPushButton("\u2699")
+        self._settings_btn.setObjectName("settings_btn")
+        self._settings_btn.setFixedSize(28, 28)
+        self._settings_btn.setStyleSheet(
+            f"QPushButton {{ background: transparent; border: none; "
+            f"color: {theme.fg_secondary}; font-size: 16px; }}"
+            f"QPushButton:hover {{ border: 1px solid {theme.border}; }}"
+        )
+        self._settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._settings_btn.clicked.connect(self._on_settings_clicked)
+        header.addWidget(self._settings_btn)
+
         layout.addLayout(header)
 
         # Bars
@@ -199,8 +190,9 @@ class ControllerCardWidget(QFrame):
         layout.addWidget(self._bar_co)
 
         # Sparkline (mini PV trend)
-        self._sparkline = SparklineWidget(theme)
+        self._sparkline = SparklineWidget(theme=theme)
         layout.addWidget(self._sparkline)
+
         layout.addStretch()
 
     def _apply_card_style(
@@ -248,10 +240,14 @@ class ControllerCardWidget(QFrame):
             f"background: transparent; padding: 2px 6px; "
             f"border: 1px solid {theme.border};"
         )
+        self._settings_btn.setStyleSheet(
+            f"QPushButton {{ background: transparent; border: none; "
+            f"color: {theme.fg_secondary}; font-size: 16px; }}"
+            f"QPushButton:hover {{ border: 1px solid {theme.border}; }}"
+        )
         self._bar_pv.apply_theme(theme)
         self._bar_sp.apply_theme(theme)
         self._bar_co.apply_theme(theme)
-        self._sparkline.apply_theme(theme)
         self.update()
 
     def on_telemetry(self, controller_id: int, frame: dict) -> None:
@@ -317,6 +313,13 @@ class ControllerCardWidget(QFrame):
             self._apply_card_style(self._theme)
             self._bar_pv.set_alarm_state(None)
 
+    def _on_settings_clicked(self) -> None:
+        self.settings_requested.emit(self._controller_id)
+
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        # Don't emit controller_selected if the gear button was clicked
+        child = self.childAt(event.position().toPoint())
+        if child is self._settings_btn:
+            return
         self.controller_selected.emit(self._controller_id)
         super().mousePressEvent(event)
