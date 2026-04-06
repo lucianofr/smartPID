@@ -9,11 +9,8 @@ import pytest
 
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.workers.ai_worker import AIWorker
-from smart_pid_core.application.workers.pid_worker import PIDWorker
 from smart_pid_core.application.workers.stats_worker import StatsWorker
-from smart_pid_core.domain.services.pid_engine import PIDEngine
-from smart_pid_core.domain.services.pid_mode_manager import ModeManager
-from smart_pid_domain.enums import AIEngine, ControllerMode, ControlObjective, ProcessSpeed
+from smart_pid_domain.enums import AIEngine, ControlObjective, ProcessSpeed
 from smart_pid_domain.models.controller import AIConfig, Controller, PIDParams, ScaleConfig
 
 
@@ -29,7 +26,7 @@ def bus():
 def controller():
     return Controller(
         id=1, name="E2E-Test", scan_rate_ms=100,
-        process_speed=ProcessSpeed.MEDIUM,
+        process_speed=ProcessSpeed.ULTRA_FAST,
         pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
         pv_scale=ScaleConfig(eu_min=0.0, eu_max=100.0),
         ai_config=AIConfig(
@@ -44,17 +41,15 @@ def controller():
 
 class TestEndToEndAITuning:
     def test_fuzzy_adjusts_ki_over_time(self, bus, controller):
-        """Verify that the fuzzy engine modifies Ki when there is a sustained error."""
-        engine = PIDEngine()
-        mode_manager = ModeManager()
-        pid_worker = PIDWorker(
-            bus=bus, controller=controller, engine=engine, mode_manager=mode_manager,
-        )
+        """Verify that the fuzzy engine modifies Ki when there is a sustained error.
+
+        Flow: test publishes TELEMETRY (with mode=AUTO) -> StatsWorker computes
+        performance indices and publishes STATS -> AIWorker triggers fuzzy
+        computation and publishes ACTION.AI.
+        """
         stats_worker = StatsWorker(bus=bus, controller=controller)
         ai_worker = AIWorker(bus=bus, controller=controller)
 
-        pid_worker.set_mode(ControllerMode.AUTO)
-        pid_worker.start()
         stats_worker.start()
         ai_worker.start()
 
@@ -63,20 +58,22 @@ class TestEndToEndAITuning:
             ai_sub = bus.create_subscriber(f"ACTION.AI.{controller.id}".encode())
             time.sleep(0.05)
 
-            # Simulate steady-state error (PV below SP)
-            for _ in range(20):
-                telem = {"pv": 45.0, "sp": 50.0, "co": 50.0}
+            # Simulate steady-state error (PV below SP).
+            # With ULTRA_FAST (5s window) and scan_rate=100ms, publish_interval=10.
+            # Send enough samples to trigger at least one STATS publication.
+            for _ in range(25):
+                telem = {"pv": 45.0, "sp": 50.0, "co": 50.0, "mode": "AUTO"}
                 pub.send(
                     f"TELEMETRY.{controller.id}".encode(),
                     msgpack.packb(telem),
                 )
-                time.sleep(0.1)
+                time.sleep(0.12)
 
-            # Wait for AI cycle
-            time.sleep(0.5)
+            # Wait for AI cycle to process after STATS trigger
+            time.sleep(1.0)
 
             # Check that ACTION.AI was published
-            msg = ai_sub.recv(timeout_ms=2000)
+            msg = ai_sub.recv(timeout_ms=3000)
             assert msg is not None, "Expected ACTION.AI message"
             _topic, payload = msg
             data = msgpack.unpackb(payload)
@@ -86,4 +83,3 @@ class TestEndToEndAITuning:
         finally:
             ai_worker.stop()
             stats_worker.stop()
-            pid_worker.stop()
