@@ -34,6 +34,7 @@ def test_theme_combo_populated(qtbot):
 
 
 def test_theme_changed_signal(qtbot):
+    """With Apply/Cancel pattern, theme_changed emits on Apply, not on combo change."""
     mgr = _make_manager()
     page = SettingsPage(theme_manager=mgr)
     qtbot.addWidget(page)
@@ -46,6 +47,11 @@ def test_theme_changed_signal(qtbot):
     idx = combo.findText("dark_room")
     combo.setCurrentIndex(idx)
 
+    # Not emitted yet — buffered until Apply
+    assert "dark_room" not in signals
+
+    # Click Apply to commit the change
+    page._apply_btn.click()
     assert "dark_room" in signals
 
 
@@ -59,6 +65,7 @@ def test_refresh_spinbox_exists(qtbot):
 
 
 def test_refresh_rate_changed_signal(qtbot):
+    """With Apply/Cancel pattern, refresh_rate_changed emits on Apply."""
     mgr = _make_manager()
     page = SettingsPage(theme_manager=mgr)
     qtbot.addWidget(page)
@@ -69,6 +76,11 @@ def test_refresh_rate_changed_signal(qtbot):
     spinbox = page.findChild(QSpinBox, "refresh_spinbox")
     spinbox.setValue(500)
 
+    # Not emitted yet — buffered until Apply
+    assert 500 not in values
+
+    # Click Apply to commit the change
+    page._apply_btn.click()
     assert 500 in values
 
 

@@ -38,14 +38,14 @@ class SimulatorPage(QWidget):
     """Simulator control page with preset selection, parameters, and disturbances."""
 
     # Signals emitted to MainWindow for API calls
-    preset_changed = Signal(str)  # preset name
-    parameters_changed = Signal(float, float, float, float)  # gain, tau1, tau2, dead_time
-    step_requested = Signal(float)  # amplitude
-    noise_requested = Signal(float)  # amplitude
+    preset_changed = Signal(str)
+    parameters_changed = Signal(float, float, float, float)
+    step_requested = Signal(float)
+    noise_requested = Signal(float)
     clear_disturbance_requested = Signal()
     pid_enabled_changed = Signal(bool)
-    pid_params_changed = Signal(float, float, float)  # Kp, Ti, Td
-    pid_mode_changed = Signal(str)  # "MAN" or "AUTO"
+    pid_params_changed = Signal(float, float, float)
+    pid_mode_changed = Signal(str)
 
     def __init__(self, theme: ThemeBase, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -62,7 +62,7 @@ class SimulatorPage(QWidget):
         )
         layout.addWidget(title)
 
-        # Controller selector (populated externally)
+        # Controller selector
         ctrl_row = QHBoxLayout()
         ctrl_row.addWidget(QLabel("Controller:"))
         self._controller_combo = QComboBox()
@@ -76,44 +76,36 @@ class SimulatorPage(QWidget):
         self._preset_combo = QComboBox()
         for p in ProcessPresetName:
             self._preset_combo.addItem(p.value)
-        self._preset_combo.currentIndexChanged.connect(self._on_preset_selected)
         preset_layout.addWidget(self._preset_combo, stretch=1)
         layout.addWidget(preset_group)
 
         # Parameters group
         param_group = QGroupBox("Parameters")
         param_layout = QVBoxLayout(param_group)
-
         self._gain_slider = self._make_param_row(param_layout, "Gain (K):", "gain")
         self._tau1_slider = self._make_param_row(param_layout, "Tau1 (s):", "tau1")
         self._tau2_slider = self._make_param_row(param_layout, "Tau2 (s):", "tau2")
-        self._dead_time_slider = self._make_param_row(param_layout, "Dead Time (s):", "dead_time")
-
-        apply_btn = QPushButton("Apply Parameters")
-        apply_btn.clicked.connect(self._on_apply_parameters)
-        param_layout.addWidget(apply_btn)
+        self._dead_time_slider = self._make_param_row(
+            param_layout, "Dead Time (s):", "dead_time",
+        )
         layout.addWidget(param_group)
 
         # Internal PID group
         pid_group = QGroupBox("Internal PID")
         pid_layout = QVBoxLayout(pid_group)
 
-        # Enable + Mode row
         pid_top_row = QHBoxLayout()
         self._pid_enable_cb = QCheckBox("Enable PID")
         self._pid_enable_cb.setObjectName("pid_enable_cb")
         self._pid_enable_cb.setChecked(False)
-        self._pid_enable_cb.toggled.connect(self._on_pid_enable_toggled)
         pid_top_row.addWidget(self._pid_enable_cb)
         pid_top_row.addWidget(QLabel("Mode:"))
         self._pid_mode_combo = QComboBox()
         self._pid_mode_combo.setObjectName("pid_mode_combo")
         self._pid_mode_combo.addItems(["MAN", "AUTO"])
-        self._pid_mode_combo.currentTextChanged.connect(self._on_pid_mode_changed)
         pid_top_row.addWidget(self._pid_mode_combo)
         pid_layout.addLayout(pid_top_row)
 
-        # Kp row
         kp_row = QHBoxLayout()
         kp_row.addWidget(QLabel("Kp:"))
         self._pid_kp_spin = QDoubleSpinBox()
@@ -124,7 +116,6 @@ class SimulatorPage(QWidget):
         kp_row.addWidget(self._pid_kp_spin, stretch=1)
         pid_layout.addLayout(kp_row)
 
-        # Ti row
         ti_row = QHBoxLayout()
         ti_row.addWidget(QLabel("Ti:"))
         self._pid_ti_spin = QDoubleSpinBox()
@@ -136,7 +127,6 @@ class SimulatorPage(QWidget):
         ti_row.addWidget(self._pid_ti_spin, stretch=1)
         pid_layout.addLayout(ti_row)
 
-        # Td row
         td_row = QHBoxLayout()
         td_row.addWidget(QLabel("Td:"))
         self._pid_td_spin = QDoubleSpinBox()
@@ -148,23 +138,19 @@ class SimulatorPage(QWidget):
         td_row.addWidget(self._pid_td_spin, stretch=1)
         pid_layout.addLayout(td_row)
 
-        # Apply button
-        pid_apply_btn = QPushButton("Apply PID Parameters")
-        pid_apply_btn.setObjectName("pid_apply_btn")
-        pid_apply_btn.clicked.connect(self._on_pid_apply)
-        pid_layout.addWidget(pid_apply_btn)
-
         layout.addWidget(pid_group)
 
-        # Initial state: PID controls disabled
-        self._pid_controls = [
-            self._pid_mode_combo, self._pid_kp_spin,
-            self._pid_ti_spin, self._pid_td_spin, pid_apply_btn,
+        # PID controls list (for enable/disable toggling)
+        self._pid_controls: list[QWidget] = [
+            self._pid_mode_combo,
+            self._pid_kp_spin,
+            self._pid_ti_spin,
+            self._pid_td_spin,
         ]
         for ctrl in self._pid_controls:
             ctrl.setEnabled(False)
 
-        # Disturbance group
+        # Disturbance group (immediate actions — not buffered)
         dist_group = QGroupBox("Disturbances")
         dist_layout = QVBoxLayout(dist_group)
 
@@ -197,6 +183,21 @@ class SimulatorPage(QWidget):
         dist_layout.addWidget(clear_btn)
         layout.addWidget(dist_group)
 
+        # Apply / Cancel buttons
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        self._sim_cancel_btn = QPushButton("Cancel")
+        self._sim_cancel_btn.setObjectName("sim_cancel_btn")
+        self._sim_cancel_btn.setEnabled(False)
+        self._sim_cancel_btn.clicked.connect(self._on_cancel)
+        btn_row.addWidget(self._sim_cancel_btn)
+        self._sim_apply_btn = QPushButton("Apply")
+        self._sim_apply_btn.setObjectName("sim_apply_btn")
+        self._sim_apply_btn.setEnabled(False)
+        self._sim_apply_btn.clicked.connect(self._on_apply)
+        btn_row.addWidget(self._sim_apply_btn)
+        layout.addLayout(btn_row)
+
         # Status
         self._status_label = QLabel("Status: Ready")
         self._status_label.setStyleSheet(f"color: {theme.fg_secondary};")
@@ -204,8 +205,34 @@ class SimulatorPage(QWidget):
 
         layout.addStretch()
 
-        # Apply initial preset
+        # Apply initial preset without triggering change tracking
         self._on_preset_changed(self._preset_combo.currentText())
+
+        # Store committed state
+        self._committed_preset_idx = self._preset_combo.currentIndex()
+        self._committed_gain = self._gain_slider.value()
+        self._committed_tau1 = self._tau1_slider.value()
+        self._committed_tau2 = self._tau2_slider.value()
+        self._committed_dead_time = self._dead_time_slider.value()
+        self._committed_pid_enable = self._pid_enable_cb.isChecked()
+        self._committed_pid_mode_idx = self._pid_mode_combo.currentIndex()
+        self._committed_kp = self._pid_kp_spin.value()
+        self._committed_ti = self._pid_ti_spin.value()
+        self._committed_td = self._pid_td_spin.value()
+
+        # Connect change tracking after storing committed state
+        self._preset_combo.currentIndexChanged.connect(self._on_preset_selected)
+        self._preset_combo.currentIndexChanged.connect(self._on_field_changed)
+        self._gain_slider.valueChanged.connect(self._on_field_changed)
+        self._tau1_slider.valueChanged.connect(self._on_field_changed)
+        self._tau2_slider.valueChanged.connect(self._on_field_changed)
+        self._dead_time_slider.valueChanged.connect(self._on_field_changed)
+        self._pid_enable_cb.toggled.connect(self._on_pid_enable_toggled)
+        self._pid_enable_cb.toggled.connect(self._on_field_changed)
+        self._pid_mode_combo.currentIndexChanged.connect(self._on_field_changed)
+        self._pid_kp_spin.valueChanged.connect(self._on_field_changed)
+        self._pid_ti_spin.valueChanged.connect(self._on_field_changed)
+        self._pid_td_spin.valueChanged.connect(self._on_field_changed)
 
     def _make_param_row(
         self, layout: QVBoxLayout, label: str, key: str,
@@ -221,20 +248,109 @@ class SimulatorPage(QWidget):
         layout.addLayout(row)
         return spin
 
+    # ------------------------------------------------------------------
+    # Apply / Cancel
+    # ------------------------------------------------------------------
+
+    def _on_field_changed(self) -> None:
+        changed = self.has_unsaved_changes()
+        self._sim_apply_btn.setEnabled(changed)
+        self._sim_cancel_btn.setEnabled(changed)
+
+    def has_unsaved_changes(self) -> bool:
+        return (
+            self._preset_combo.currentIndex() != self._committed_preset_idx
+            or self._gain_slider.value() != self._committed_gain
+            or self._tau1_slider.value() != self._committed_tau1
+            or self._tau2_slider.value() != self._committed_tau2
+            or self._dead_time_slider.value() != self._committed_dead_time
+            or self._pid_enable_cb.isChecked() != self._committed_pid_enable
+            or self._pid_mode_combo.currentIndex() != self._committed_pid_mode_idx
+            or self._pid_kp_spin.value() != self._committed_kp
+            or self._pid_ti_spin.value() != self._committed_ti
+            or self._pid_td_spin.value() != self._committed_td
+        )
+
+    def _on_apply(self) -> None:
+        if self._preset_combo.currentIndex() != self._committed_preset_idx:
+            self.preset_changed.emit(self._preset_combo.currentText())
+        if (
+            self._gain_slider.value() != self._committed_gain
+            or self._tau1_slider.value() != self._committed_tau1
+            or self._tau2_slider.value() != self._committed_tau2
+            or self._dead_time_slider.value() != self._committed_dead_time
+        ):
+            tau2 = self._tau2_slider.value() if self._tau2_slider.isEnabled() else 0.0
+            self.parameters_changed.emit(
+                self._gain_slider.value(), self._tau1_slider.value(),
+                tau2, self._dead_time_slider.value(),
+            )
+        if self._pid_enable_cb.isChecked() != self._committed_pid_enable:
+            self.pid_enabled_changed.emit(self._pid_enable_cb.isChecked())
+        if self._pid_mode_combo.currentIndex() != self._committed_pid_mode_idx:
+            self.pid_mode_changed.emit(self._pid_mode_combo.currentText())
+        if (
+            self._pid_kp_spin.value() != self._committed_kp
+            or self._pid_ti_spin.value() != self._committed_ti
+            or self._pid_td_spin.value() != self._committed_td
+        ):
+            self.pid_params_changed.emit(
+                self._pid_kp_spin.value(), self._pid_ti_spin.value(),
+                self._pid_td_spin.value(),
+            )
+
+        self._committed_preset_idx = self._preset_combo.currentIndex()
+        self._committed_gain = self._gain_slider.value()
+        self._committed_tau1 = self._tau1_slider.value()
+        self._committed_tau2 = self._tau2_slider.value()
+        self._committed_dead_time = self._dead_time_slider.value()
+        self._committed_pid_enable = self._pid_enable_cb.isChecked()
+        self._committed_pid_mode_idx = self._pid_mode_combo.currentIndex()
+        self._committed_kp = self._pid_kp_spin.value()
+        self._committed_ti = self._pid_ti_spin.value()
+        self._committed_td = self._pid_td_spin.value()
+        self._sim_apply_btn.setEnabled(False)
+        self._sim_cancel_btn.setEnabled(False)
+
+    def _on_cancel(self) -> None:
+        widgets = [
+            self._preset_combo, self._gain_slider, self._tau1_slider,
+            self._tau2_slider, self._dead_time_slider, self._pid_enable_cb,
+            self._pid_mode_combo, self._pid_kp_spin, self._pid_ti_spin,
+            self._pid_td_spin,
+        ]
+        for w in widgets:
+            w.blockSignals(True)
+        self._preset_combo.setCurrentIndex(self._committed_preset_idx)
+        self._gain_slider.setValue(self._committed_gain)
+        self._tau1_slider.setValue(self._committed_tau1)
+        self._tau2_slider.setValue(self._committed_tau2)
+        self._dead_time_slider.setValue(self._committed_dead_time)
+        self._pid_enable_cb.setChecked(self._committed_pid_enable)
+        self._pid_mode_combo.setCurrentIndex(self._committed_pid_mode_idx)
+        self._pid_kp_spin.setValue(self._committed_kp)
+        self._pid_ti_spin.setValue(self._committed_ti)
+        self._pid_td_spin.setValue(self._committed_td)
+        for w in widgets:
+            w.blockSignals(False)
+        self._sim_apply_btn.setEnabled(False)
+        self._sim_cancel_btn.setEnabled(False)
+
+    # ------------------------------------------------------------------
+    # Preset handling
+    # ------------------------------------------------------------------
+
     def _on_preset_selected(self, index: int) -> None:
         text = self._preset_combo.itemText(index)
         self._on_preset_changed(text)
-        self.preset_changed.emit(text)
 
     def _on_preset_changed(self, preset_name: str) -> None:
         try:
             preset_enum = ProcessPresetName(preset_name)
         except ValueError:
             return
-
         is_foptd = preset_enum in _FOPTD_PRESETS
         self._tau2_slider.setEnabled(not is_foptd)
-
         if preset_enum != ProcessPresetName.CUSTOM and preset_enum in PRESETS:
             p = PRESETS[preset_enum]
             self._gain_slider.setValue(p.gain)
@@ -242,14 +358,9 @@ class SimulatorPage(QWidget):
             self._tau2_slider.setValue(p.tau2 if p.tau2 is not None else 0.0)
             self._dead_time_slider.setValue(p.dead_time)
 
-    def _on_apply_parameters(self) -> None:
-        tau2 = self._tau2_slider.value() if self._tau2_slider.isEnabled() else 0.0
-        self.parameters_changed.emit(
-            self._gain_slider.value(),
-            self._tau1_slider.value(),
-            tau2,
-            self._dead_time_slider.value(),
-        )
+    # ------------------------------------------------------------------
+    # Disturbance (immediate actions)
+    # ------------------------------------------------------------------
 
     def _on_step_inject(self) -> None:
         self.step_requested.emit(self._step_amplitude.value())
@@ -260,20 +371,17 @@ class SimulatorPage(QWidget):
     def _on_clear_disturbance(self) -> None:
         self.clear_disturbance_requested.emit()
 
+    # ------------------------------------------------------------------
+    # PID enable toggle
+    # ------------------------------------------------------------------
+
     def _on_pid_enable_toggled(self, checked: bool) -> None:
         for ctrl in self._pid_controls:
             ctrl.setEnabled(checked)
-        self.pid_enabled_changed.emit(checked)
 
-    def _on_pid_apply(self) -> None:
-        self.pid_params_changed.emit(
-            self._pid_kp_spin.value(),
-            self._pid_ti_spin.value(),
-            self._pid_td_spin.value(),
-        )
-
-    def _on_pid_mode_changed(self, mode: str) -> None:
-        self.pid_mode_changed.emit(mode)
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def set_status_text(self, text: str) -> None:
         self._status_label.setText(f"Status: {text}")

@@ -274,6 +274,20 @@ class MockAPIClient:
     def download_export(self, export_id: str, dest_path: object) -> object:
         return dest_path
 
+    # Project management
+
+    def get_current_project(self) -> dict:
+        return {"name": "Mock Project", "path": "/mock/project.spid", "controller_count": 2}
+
+    def new_project(self, name: str, path: str) -> dict:
+        return {"name": name, "path": path, "controller_count": 0}
+
+    def open_project(self, path: str) -> dict:
+        return {"name": "Opened", "path": path, "controller_count": 0}
+
+    def save_as_project(self, path: str) -> dict:
+        return {"name": "Copy", "path": path, "controller_count": 0}
+
     def set_base_url(self, url: str) -> None:
         pass
 

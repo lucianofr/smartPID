@@ -339,5 +339,33 @@ class APIClient:
         resp.raise_for_status()
         return UserResponse.model_validate(resp.json())
 
+    # Project management
+
+    def get_current_project(self) -> dict:
+        resp = self._http.get("/project/current", headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
+
+    def new_project(self, name: str, path: str) -> dict:
+        resp = self._http.post(
+            "/project/new", json={"name": name, "path": path}, headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def open_project(self, path: str) -> dict:
+        resp = self._http.post(
+            "/project/open", json={"path": path}, headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def save_as_project(self, path: str) -> dict:
+        resp = self._http.post(
+            "/project/save-as", json={"path": path}, headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def close(self) -> None:
         self._http.close()

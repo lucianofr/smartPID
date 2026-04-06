@@ -15,6 +15,7 @@ from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
+from smart_pid_core.application.project_service import ProjectService
 from smart_pid_core.config import CoreSettings
 from smart_pid_domain.models.controller import PIDParams
 
@@ -48,6 +49,10 @@ async def api_deps(tmp_path):
     admin_hash = hash_password("admin")
     await user_repo.create("admin", admin_hash, "ADMIN")
 
+    project_service = ProjectService(
+        repo=repo, loop_manager=loop_manager,
+    )
+
     yield {
         "repo": repo,
         "historian": historian,
@@ -55,6 +60,7 @@ async def api_deps(tmp_path):
         "alarm_repo": alarm_repo,
         "audit_repo": audit_repo,
         "loop_manager": loop_manager,
+        "project_service": project_service,
         "settings": settings,
         "bus": bus,
     }
@@ -73,6 +79,7 @@ async def app(api_deps):
         user_repo=api_deps["user_repo"],
         loop_manager=api_deps["loop_manager"],
         settings=api_deps["settings"],
+        project_service=api_deps["project_service"],
         alarm_repo=api_deps["alarm_repo"],
         audit_repo=api_deps["audit_repo"],
         event_bus=api_deps["bus"],

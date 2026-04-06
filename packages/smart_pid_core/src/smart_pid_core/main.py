@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import signal
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import structlog
@@ -111,6 +113,48 @@ async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
             deadband_percent=deadband,
         )
     return configs
+
+
+async def _migrate_users_if_needed(spid_path: Path, users_db_path: Path) -> None:
+    """Auto-migrate users from .spid to standalone users.db if needed."""
+    if users_db_path.exists():
+        return
+    if not spid_path.exists():
+        return
+
+    import aiosqlite
+
+    async with aiosqlite.connect(spid_path) as db:
+        async with db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='Usuarios'"
+        ) as cur:
+            if await cur.fetchone() is None:
+                return
+
+        async with db.execute(
+            "SELECT nome, senha_hash, perfil, ativo, criado_em FROM Usuarios"
+        ) as cur:
+            rows = await cur.fetchall()
+
+    if not rows:
+        return
+
+    user_repo = UserRepository(users_db_path)
+    await user_repo.initialize()
+    for row in rows:
+        with contextlib.suppress(Exception):
+            await user_repo.db.execute(
+                "INSERT INTO Usuarios (nome, senha_hash, perfil, ativo, criado_em)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (row[0], row[1], row[2], row[3], row[4]),
+            )
+    await user_repo.db.commit()
+    await user_repo.close()
+    logger.info(
+        "migrated_users", count=len(rows), source=str(spid_path), target=str(users_db_path),
+    )
+
+
 async def run_daemon(settings: CoreSettings) -> None:
     """Bootstrap and run the backend daemon until interrupted."""
     logger.info(
@@ -162,6 +206,9 @@ async def run_daemon(settings: CoreSettings) -> None:
                 )
         opcua_adapter.start()
         logger.info("opcua_adapter_started", endpoint=settings.opcua_endpoint)
+
+    # Migrate users from .spid to standalone users.db if needed
+    await _migrate_users_if_needed(settings.db_path, settings.users_db_path)
 
     # Phase 2: User repo + seed admin (standalone DB)
     user_repo = UserRepository(settings.users_db_path)
@@ -226,6 +273,15 @@ async def run_daemon(settings: CoreSettings) -> None:
     export_worker = ExportWorker(historian=historian, export_dir=export_dir)
     logger.info("export_worker_created", export_dir=export_dir)
 
+    # Project service
+    from smart_pid_core.application.project_service import ProjectService
+
+    project_service = ProjectService(
+        repo=repo,
+        loop_manager=loop_manager,
+        simulator_adapter=simulator_adapter,
+    )
+
     # Phase 2: FastAPI
     app = create_app(
         repo=repo,
@@ -240,6 +296,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         ai_repo=ai_repo,
         alarm_repo=alarm_repo,
         audit_repo=audit_repo,
+        project_service=project_service,
     )
 
     # Set export_worker on app.state so the export router can use it
