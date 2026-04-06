@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QGroupBox, QPushButton
 
 from smart_pid_hmi.pages.simulator_page import SimulatorPage
+from smart_pid_hmi.themes.dark_room import DarkRoomTheme
 from smart_pid_hmi.themes.isa101 import ISA101Theme
 
 
@@ -81,3 +84,100 @@ def test_preset_changed_signal(qtbot, theme):
         page._preset_combo.setCurrentText("TEMPERATURE")
         page._on_preset_selected(page._preset_combo.currentIndex())
     assert blocker.args[0] == "TEMPERATURE"
+
+
+# ---------------------------------------------------------------------------
+# Internal PID group tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def pid_page(qtbot):
+    t = DarkRoomTheme()
+    p = SimulatorPage(theme=t)
+    qtbot.addWidget(p)
+    return p
+
+
+class TestSimulatorPagePIDGroup:
+    def test_pid_group_exists(self, pid_page: SimulatorPage) -> None:
+        groups = pid_page.findChildren(QGroupBox)
+        names = [g.title() for g in groups]
+        assert "Internal PID" in names
+
+    def test_pid_enable_checkbox(self, pid_page: SimulatorPage) -> None:
+        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
+        assert cb is not None
+        assert cb.isChecked() is False
+
+    def test_pid_mode_combo(self, pid_page: SimulatorPage) -> None:
+        combo = pid_page.findChild(QComboBox, "pid_mode_combo")
+        assert combo is not None
+        assert combo.currentText() == "MAN"
+        assert combo.count() == 2
+
+    def test_pid_kp_spinbox(self, pid_page: SimulatorPage) -> None:
+        spin = pid_page.findChild(QDoubleSpinBox, "pid_kp_spin")
+        assert spin is not None
+        assert spin.value() == 1.0
+
+    def test_pid_ti_spinbox(self, pid_page: SimulatorPage) -> None:
+        spin = pid_page.findChild(QDoubleSpinBox, "pid_ti_spin")
+        assert spin is not None
+        assert spin.value() == 10.0
+        assert spin.suffix() == " s"
+
+    def test_pid_td_spinbox(self, pid_page: SimulatorPage) -> None:
+        spin = pid_page.findChild(QDoubleSpinBox, "pid_td_spin")
+        assert spin is not None
+        assert spin.value() == 0.0
+        assert spin.suffix() == " s"
+
+    def test_pid_apply_button(self, pid_page: SimulatorPage) -> None:
+        btn = pid_page.findChild(QPushButton, "pid_apply_btn")
+        assert btn is not None
+
+    def test_controls_disabled_when_unchecked(self, pid_page: SimulatorPage) -> None:
+        combo = pid_page.findChild(QComboBox, "pid_mode_combo")
+        spin_kp = pid_page.findChild(QDoubleSpinBox, "pid_kp_spin")
+        btn = pid_page.findChild(QPushButton, "pid_apply_btn")
+        assert not combo.isEnabled()
+        assert not spin_kp.isEnabled()
+        assert not btn.isEnabled()
+
+    def test_controls_enabled_when_checked(self, pid_page: SimulatorPage, qtbot) -> None:
+        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
+        cb.setChecked(True)
+        combo = pid_page.findChild(QComboBox, "pid_mode_combo")
+        spin_kp = pid_page.findChild(QDoubleSpinBox, "pid_kp_spin")
+        btn = pid_page.findChild(QPushButton, "pid_apply_btn")
+        assert combo.isEnabled()
+        assert spin_kp.isEnabled()
+        assert btn.isEnabled()
+
+
+class TestSimulatorPagePIDSignals:
+    def test_enable_signal(self, pid_page: SimulatorPage, qtbot) -> None:
+        with qtbot.waitSignal(pid_page.pid_enabled_changed, timeout=1000) as blocker:
+            cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
+            cb.setChecked(True)
+        assert blocker.args == [True]
+
+    def test_params_signal(self, pid_page: SimulatorPage, qtbot) -> None:
+        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
+        cb.setChecked(True)
+        with qtbot.waitSignal(pid_page.pid_params_changed, timeout=1000) as blocker:
+            btn = pid_page.findChild(QPushButton, "pid_apply_btn")
+            qtbot.mouseClick(btn, Qt.MouseButton.LeftButton)
+        kp, ti, td = blocker.args
+        assert kp == 1.0
+        assert ti == 10.0
+        assert td == 0.0
+
+    def test_mode_signal(self, pid_page: SimulatorPage, qtbot) -> None:
+        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
+        cb.setChecked(True)
+        with qtbot.waitSignal(pid_page.pid_mode_changed, timeout=1000) as blocker:
+            combo = pid_page.findChild(QComboBox, "pid_mode_combo")
+            combo.setCurrentText("AUTO")
+        assert blocker.args == ["AUTO"]

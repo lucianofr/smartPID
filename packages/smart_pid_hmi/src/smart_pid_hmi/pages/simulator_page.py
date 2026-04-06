@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QGroupBox,
@@ -42,6 +43,9 @@ class SimulatorPage(QWidget):
     step_requested = Signal(float)  # amplitude
     noise_requested = Signal(float)  # amplitude
     clear_disturbance_requested = Signal()
+    pid_enabled_changed = Signal(bool)
+    pid_params_changed = Signal(float, float, float)  # Kp, Ti, Td
+    pid_mode_changed = Signal(str)  # "MAN" or "AUTO"
 
     def __init__(self, theme: ThemeBase, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -89,6 +93,76 @@ class SimulatorPage(QWidget):
         apply_btn.clicked.connect(self._on_apply_parameters)
         param_layout.addWidget(apply_btn)
         layout.addWidget(param_group)
+
+        # Internal PID group
+        pid_group = QGroupBox("Internal PID")
+        pid_layout = QVBoxLayout(pid_group)
+
+        # Enable + Mode row
+        pid_top_row = QHBoxLayout()
+        self._pid_enable_cb = QCheckBox("Enable PID")
+        self._pid_enable_cb.setObjectName("pid_enable_cb")
+        self._pid_enable_cb.setChecked(False)
+        self._pid_enable_cb.toggled.connect(self._on_pid_enable_toggled)
+        pid_top_row.addWidget(self._pid_enable_cb)
+        pid_top_row.addWidget(QLabel("Mode:"))
+        self._pid_mode_combo = QComboBox()
+        self._pid_mode_combo.setObjectName("pid_mode_combo")
+        self._pid_mode_combo.addItems(["MAN", "AUTO"])
+        self._pid_mode_combo.currentTextChanged.connect(self._on_pid_mode_changed)
+        pid_top_row.addWidget(self._pid_mode_combo)
+        pid_layout.addLayout(pid_top_row)
+
+        # Kp row
+        kp_row = QHBoxLayout()
+        kp_row.addWidget(QLabel("Kp:"))
+        self._pid_kp_spin = QDoubleSpinBox()
+        self._pid_kp_spin.setObjectName("pid_kp_spin")
+        self._pid_kp_spin.setRange(0.01, 50.0)
+        self._pid_kp_spin.setValue(1.0)
+        self._pid_kp_spin.setDecimals(2)
+        kp_row.addWidget(self._pid_kp_spin, stretch=1)
+        pid_layout.addLayout(kp_row)
+
+        # Ti row
+        ti_row = QHBoxLayout()
+        ti_row.addWidget(QLabel("Ti:"))
+        self._pid_ti_spin = QDoubleSpinBox()
+        self._pid_ti_spin.setObjectName("pid_ti_spin")
+        self._pid_ti_spin.setRange(0.1, 999.0)
+        self._pid_ti_spin.setValue(10.0)
+        self._pid_ti_spin.setDecimals(1)
+        self._pid_ti_spin.setSuffix(" s")
+        ti_row.addWidget(self._pid_ti_spin, stretch=1)
+        pid_layout.addLayout(ti_row)
+
+        # Td row
+        td_row = QHBoxLayout()
+        td_row.addWidget(QLabel("Td:"))
+        self._pid_td_spin = QDoubleSpinBox()
+        self._pid_td_spin.setObjectName("pid_td_spin")
+        self._pid_td_spin.setRange(0.0, 999.0)
+        self._pid_td_spin.setValue(0.0)
+        self._pid_td_spin.setDecimals(1)
+        self._pid_td_spin.setSuffix(" s")
+        td_row.addWidget(self._pid_td_spin, stretch=1)
+        pid_layout.addLayout(td_row)
+
+        # Apply button
+        pid_apply_btn = QPushButton("Apply PID Parameters")
+        pid_apply_btn.setObjectName("pid_apply_btn")
+        pid_apply_btn.clicked.connect(self._on_pid_apply)
+        pid_layout.addWidget(pid_apply_btn)
+
+        layout.addWidget(pid_group)
+
+        # Initial state: PID controls disabled
+        self._pid_controls = [
+            self._pid_mode_combo, self._pid_kp_spin,
+            self._pid_ti_spin, self._pid_td_spin, pid_apply_btn,
+        ]
+        for ctrl in self._pid_controls:
+            ctrl.setEnabled(False)
 
         # Disturbance group
         dist_group = QGroupBox("Disturbances")
@@ -185,6 +259,21 @@ class SimulatorPage(QWidget):
 
     def _on_clear_disturbance(self) -> None:
         self.clear_disturbance_requested.emit()
+
+    def _on_pid_enable_toggled(self, checked: bool) -> None:
+        for ctrl in self._pid_controls:
+            ctrl.setEnabled(checked)
+        self.pid_enabled_changed.emit(checked)
+
+    def _on_pid_apply(self) -> None:
+        self.pid_params_changed.emit(
+            self._pid_kp_spin.value(),
+            self._pid_ti_spin.value(),
+            self._pid_td_spin.value(),
+        )
+
+    def _on_pid_mode_changed(self, mode: str) -> None:
+        self.pid_mode_changed.emit(mode)
 
     def set_status_text(self, text: str) -> None:
         self._status_label.setText(f"Status: {text}")
