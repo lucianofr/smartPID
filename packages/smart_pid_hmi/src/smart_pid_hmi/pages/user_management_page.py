@@ -145,9 +145,10 @@ class UserManagementPage(QWidget):
         # User table
         self.user_table = QTableWidget(0, len(_COLUMNS))
         self.user_table.setHorizontalHeaderLabels(_COLUMNS)
-        self.user_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch,
-        )
+        header_view = self.user_table.horizontalHeader()
+        header_view.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header_view.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.user_table.verticalHeader().setDefaultSectionSize(40)
         self.user_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.user_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.user_table)
