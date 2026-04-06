@@ -34,7 +34,7 @@ class CoreSettings(BaseSettings):
     db_batch_size: int = 500
 
     # User database (app-level, separate from project)
-    users_db_path: Path = Path.home() / ".config" / "smart-pid" / "users.db"
+    users_db_path: Path = Path.home() / ".smart-pid" / "users.db"
 
     # Project files directory (backend-managed)
     projects_dir: Path = Path.home() / ".smart-pid" / "projects"
