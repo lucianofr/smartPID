@@ -288,16 +288,28 @@ class MockAPIClient:
     # Project management
 
     def get_current_project(self) -> dict:
-        return {"name": "Mock Project", "path": "/mock/project.spid", "controller_count": 2}
+        return {"name": "Mock Project", "path": "mock.spid", "controller_count": 2}
 
-    def new_project(self, name: str, path: str) -> dict:
-        return {"name": name, "path": path, "controller_count": 0}
+    def list_projects(self) -> list[dict]:
+        return [
+            {"name": "Mock Project", "controller_count": 2, "size_bytes": 1024},
+            {"name": "Test Project", "controller_count": 0, "size_bytes": 512},
+        ]
 
-    def open_project(self, path: str) -> dict:
-        return {"name": "Opened", "path": path, "controller_count": 0}
+    def new_project(self, name: str) -> dict:
+        return {"name": name, "path": f"{name}.spid", "controller_count": 0}
 
-    def save_as_project(self, path: str) -> dict:
-        return {"name": "Copy", "path": path, "controller_count": 0}
+    def open_project(self, name: str) -> dict:
+        return {"name": name, "path": f"{name}.spid", "controller_count": 0}
+
+    def import_project(self, name: str, file_path: str) -> dict:
+        return {"name": name, "path": f"{name}.spid", "controller_count": 0}
+
+    def download_project(self, save_path: str) -> None:
+        pass  # No-op in mock mode
+
+    def delete_project(self, name: str) -> None:
+        pass  # No-op in mock mode
 
     def set_base_url(self, url: str) -> None:
         pass

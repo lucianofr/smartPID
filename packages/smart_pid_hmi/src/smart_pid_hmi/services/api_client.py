@@ -396,26 +396,48 @@ class APIClient:
         resp.raise_for_status()
         return resp.json()
 
-    def new_project(self, name: str, path: str) -> dict:
+    def list_projects(self) -> list[dict]:
+        resp = self._http.get("/project/list", headers=self._headers())
+        resp.raise_for_status()
+        return resp.json().get("projects", [])
+
+    def new_project(self, name: str) -> dict:
         resp = self._http.post(
-            "/project/new", json={"name": name, "path": path}, headers=self._headers(),
+            "/project/new", json={"name": name}, headers=self._headers(),
         )
         resp.raise_for_status()
         return resp.json()
 
-    def open_project(self, path: str) -> dict:
+    def open_project(self, name: str) -> dict:
         resp = self._http.post(
-            "/project/open", json={"path": path}, headers=self._headers(),
+            "/project/open", json={"name": name}, headers=self._headers(),
         )
         resp.raise_for_status()
         return resp.json()
 
-    def save_as_project(self, path: str) -> dict:
-        resp = self._http.post(
-            "/project/save-as", json={"path": path}, headers=self._headers(),
-        )
+    def import_project(self, name: str, file_path: str) -> dict:
+        with open(file_path, "rb") as f:
+            resp = self._http.post(
+                "/project/import",
+                files={"file": (f.name, f, "application/octet-stream")},
+                data={"name": name},
+                headers=self._headers(),
+            )
         resp.raise_for_status()
         return resp.json()
+
+    def download_project(self, save_path: str) -> None:
+        with self._http.stream("GET", "/project/download", headers=self._headers()) as resp:
+            resp.raise_for_status()
+            with open(save_path, "wb") as f:
+                for chunk in resp.iter_bytes():
+                    f.write(chunk)
+
+    def delete_project(self, name: str) -> None:
+        resp = self._http.delete(
+            f"/project/{name}", headers=self._headers(),
+        )
+        resp.raise_for_status()
 
     def close(self) -> None:
         self._http.close()
