@@ -124,6 +124,7 @@ Phases 4/5/6 sao paralelizaveis apos Phase 3a.
 
 ## Convencoes
 - **Branching obrigatorio**: Toda modificacao de codigo, correcao de bug ou introducao de novo recurso DEVE ser feita em uma nova branch (nunca direto na main). O merge para main so acontece com autorizacao explicita do usuario.
+- **Specs obrigatorias ao alterar UI**: Toda modificacao na interface (widgets, layout, cards, paginas, temas) DEVE ser acompanhada da atualizacao dos documentos de especificacao em `docs/` que descrevem o componente alterado. Isso inclui: `docs/smartPID.md`, `docs/smartPIDv2.md`, `docs/identidade_visual_*.md`, e as specs em `docs/superpowers/specs/`. Nao commitar codigo de UI sem atualizar as specs correspondentes.
 - TDD: write failing test -> implement -> green -> commit
 - Commits convencionais: feat(scope), fix(scope), chore(scope)
 - Hexagonal: domain NUNCA importa de adapters/application
