@@ -59,7 +59,7 @@ class MainWindow(QMainWindow):
     _users_loaded_signal = Signal(list)
     _kpi_data_signal = Signal(dict)  # KPI + performance data from background
     _edit_dialog_signal = Signal(int, object)
-    _project_loaded_signal = Signal(dict)
+    _project_info_signal = Signal(str, str, int)  # (name, path, controller_count)
 
     def __init__(
         self,
@@ -90,6 +90,7 @@ class MainWindow(QMainWindow):
         self._users_loaded_signal.connect(self._on_users_loaded)
         self._kpi_data_signal.connect(self._on_kpi_data_received)
         self._edit_dialog_signal.connect(self._open_edit_dialog)
+        self._project_info_signal.connect(self._apply_project_info)
 
         # Cached controller list for KPI computation
         self._cached_controllers: list[dict] = []
@@ -299,7 +300,7 @@ class MainWindow(QMainWindow):
         self._settings_page.project_new_requested.connect(self._on_project_new)
         self._settings_page.project_open_requested.connect(self._on_project_open)
         self._settings_page.project_save_as_requested.connect(self._on_project_save_as)
-        self._project_loaded_signal.connect(self._on_project_loaded)
+
         bus_bridge.telemetry_received.connect(self._on_telemetry_for_trends)
         self._user_mgmt_page.user_create_requested.connect(self._create_user)
         self._user_mgmt_page.user_update_requested.connect(self._update_user)
@@ -363,9 +364,10 @@ class MainWindow(QMainWindow):
             self._pending_project_action = None
             self._pending_project_path = None
             self._pending_project_name = None
-        else:
-            # No pending action — fetch current project state from backend
-            self._refresh_project_info()
+
+        # Always refresh project info from backend after login (with delay
+        # to let pending project operations complete first)
+        QTimer.singleShot(2000, self._refresh_project_info)
 
     @Slot(str)
     def _on_login_error_received(self, error_msg: str) -> None:
@@ -845,15 +847,15 @@ class MainWindow(QMainWindow):
                     result["path"], result["name"], result["controller_count"],
                 )
                 self._app_state.save()
-                self._project_loaded_signal.emit(result)
+                self._project_info_signal.emit(
+                    result["name"], result["path"],
+                    int(result.get("controller_count", 0)),
+                )
                 self._load_dashboard()
             except Exception as e:
                 self._api_error_signal.emit(str(e))
 
         threading.Thread(target=do_new, daemon=True).start()
-        # Fallback: refresh project info after a short delay to ensure
-        # Settings page is updated even if the signal is missed
-        QTimer.singleShot(1500, self._refresh_project_info)
 
     def _on_project_open(self, path: str) -> None:
         from PySide6.QtWidgets import QMessageBox
@@ -875,13 +877,15 @@ class MainWindow(QMainWindow):
                     result["path"], result["name"], result["controller_count"],
                 )
                 self._app_state.save()
-                self._project_loaded_signal.emit(result)
+                self._project_info_signal.emit(
+                    result["name"], result["path"],
+                    int(result.get("controller_count", 0)),
+                )
                 self._load_dashboard()
             except Exception as e:
                 self._api_error_signal.emit(str(e))
 
         threading.Thread(target=do_open, daemon=True).start()
-        QTimer.singleShot(1500, self._refresh_project_info)
 
     def _on_project_save_as(self, path: str) -> None:
         def do_save():
@@ -891,30 +895,34 @@ class MainWindow(QMainWindow):
                     result["path"], result["name"], result["controller_count"],
                 )
                 self._app_state.save()
-                self._project_loaded_signal.emit(result)
+                self._project_info_signal.emit(
+                    result["name"], result["path"],
+                    int(result.get("controller_count", 0)),
+                )
             except Exception as e:
                 self._api_error_signal.emit(str(e))
 
         threading.Thread(target=do_save, daemon=True).start()
-        QTimer.singleShot(1500, self._refresh_project_info)
-
-    @Slot(dict)
-    def _on_project_loaded(self, result: dict) -> None:
-        self._settings_page.update_project_info(
-            result.get("name", ""), result.get("path", ""),
-            result.get("controller_count", 0),
-        )
 
     def _refresh_project_info(self) -> None:
         """Fetch current project state from backend and update Settings page."""
         def do_fetch():
             try:
                 result = self._api_client.get_current_project()
-                self._project_loaded_signal.emit(result)
-            except Exception:
-                logger.debug("Could not fetch current project info")
+                name = result.get("name", "")
+                path = result.get("path", "")
+                count = int(result.get("controller_count", 0))
+                logger.info("project_info_fetched name=%s path=%s count=%s", name, path, count)
+                self._project_info_signal.emit(name, path, count)
+            except Exception as e:
+                logger.warning("Could not fetch current project info: %s", e)
 
         threading.Thread(target=do_fetch, daemon=True).start()
+
+    @Slot(str, str, int)
+    def _apply_project_info(self, name: str, path: str, count: int) -> None:
+        """Apply project info to Settings page (must run on main thread)."""
+        self._settings_page.update_project_info(name, path, count)
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._kpi_timer.stop()
