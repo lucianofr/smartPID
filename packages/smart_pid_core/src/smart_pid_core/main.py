@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import signal
 import sys
@@ -141,14 +142,12 @@ async def _migrate_users_if_needed(spid_path: Path, users_db_path: Path) -> None
     user_repo = UserRepository(users_db_path)
     await user_repo.initialize()
     for row in rows:
-        try:
+        with contextlib.suppress(Exception):
             await user_repo.db.execute(
                 "INSERT INTO Usuarios (nome, senha_hash, perfil, ativo, criado_em)"
                 " VALUES (?, ?, ?, ?, ?)",
                 (row[0], row[1], row[2], row[3], row[4]),
             )
-        except Exception:
-            pass  # Skip duplicates
     await user_repo.db.commit()
     await user_repo.close()
     logger.info(
