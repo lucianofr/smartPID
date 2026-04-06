@@ -90,6 +90,26 @@ class MockAPIClient:
         fake_token = f"{header}.{payload}.mocksig"
         return TokenResponse(access_token=fake_token)
 
+    def create_controller(self, data: dict) -> ControllerResponse:
+        new_id = max((c["id"] for c in _MOCK_CONTROLLERS), default=0) + 1
+        entry = {
+            "id": new_id,
+            "name": data.get("name", f"LOOP-{new_id}"),
+            "description": data.get("description", ""),
+            "sp": 50.0,
+            "sp_hi_lim": data.get("sp_hi_lim", 100.0),
+            "sp_lo_lim": data.get("sp_lo_lim", 0.0),
+            "out_hi_lim": data.get("out_hi_lim", 100.0),
+            "out_lo_lim": data.get("out_lo_lim", 0.0),
+        }
+        _MOCK_CONTROLLERS.append(entry)
+        return ControllerResponse(
+            id=new_id, name=entry["name"], description=entry["description"],
+            mode="AUTO", pv=0.0, sp=entry["sp"], co=0.0,
+            sp_hi_lim=entry["sp_hi_lim"], sp_lo_lim=entry["sp_lo_lim"],
+            out_hi_lim=entry["out_hi_lim"], out_lo_lim=entry["out_lo_lim"],
+        )
+
     def list_controllers(self) -> list[ControllerResponse]:
         return [
             ControllerResponse(
