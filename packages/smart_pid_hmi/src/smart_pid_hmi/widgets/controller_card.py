@@ -104,10 +104,13 @@ class ControllerCardWidget(QFrame):
         self._tag_label.setWordWrap(True)
         header.addWidget(self._tag_label, stretch=1)
 
-        # Settings button (text label — QIcon.fromTheme unreliable in Flatpak/Wayland)
-        self._settings_btn = QPushButton("CFG")
+        # Settings button — gear icon with symbol font
+        self._settings_btn = QPushButton("\u2699")
         self._settings_btn.setObjectName("settings_btn")
-        self._settings_btn.setFixedSize(36, 24)
+        self._settings_btn.setFixedSize(28, 28)
+        from PySide6.QtGui import QFont
+        btn_font = QFont("Symbola, Noto Sans Symbols2, Segoe UI Symbol", 16)
+        self._settings_btn.setFont(btn_font)
         self._apply_settings_btn_style(theme)
         self._settings_btn.setToolTip("Controller settings")
         self._settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -115,6 +118,12 @@ class ControllerCardWidget(QFrame):
         header.addWidget(self._settings_btn)
 
         content.addLayout(header)
+
+        # ── Mode badge ──
+        self._mode_label = QLabel("\u2014")
+        self._mode_label.setFixedHeight(18)
+        self._apply_mode_style(theme)
+        content.addWidget(self._mode_label)
 
         # ── Analog bars (PV, SP, CO) ──
         self._bar_pv = AnalogBarWidget("PV", "", min_val, max_val, theme)
@@ -143,6 +152,15 @@ class ControllerCardWidget(QFrame):
             f"ControllerCardWidget {{"
             f" background-color: {bg}; {border_css}"
             f" border-radius: {br}; }}"
+        )
+
+    def _apply_mode_style(self, theme: ThemeBase) -> None:
+        self._mode_label.setStyleSheet(
+            f"font-size: {theme.font_size_label}px;"
+            f" font-weight: bold;"
+            f" color: {theme.fg_secondary};"
+            f" background: transparent;"
+            f" padding: 0 2px;"
         )
 
     def _apply_settings_btn_style(self, theme: ThemeBase) -> None:
@@ -176,6 +194,7 @@ class ControllerCardWidget(QFrame):
             f"font-size: {theme.font_size_title}px;"
             f" color: {theme.fg_primary}; background: transparent;"
         )
+        self._apply_mode_style(theme)
         self._apply_settings_btn_style(theme)
         self._bar_pv.apply_theme(theme)
         self._bar_sp.apply_theme(theme)
@@ -193,11 +212,7 @@ class ControllerCardWidget(QFrame):
         self._bar_co.set_value(frame.get("co", 0.0))
         mode = frame.get("mode")
         if mode:
-            # Update tag label to include mode badge
-            desc = f" ({self._description})" if self._description else ""
-            self._tag_label.setText(
-                f"<b>{self._tag_name}</b>{desc}"
-            )
+            self._mode_label.setText(f"Mode: {mode}")
 
     def on_alarm(self, controller_id: int, alarm: dict) -> None:
         if controller_id != self._controller_id:

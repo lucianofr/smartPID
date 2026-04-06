@@ -84,6 +84,18 @@ def test_tag_label_with_description(qtbot, theme):
     assert "Flow control" in card._tag_label.text()
 
 
+def test_mode_badge_update(qtbot, theme):
+    card = ControllerCardWidget(
+        controller_id=1, tag_name="FIC-101",
+        min_val=0.0, max_val=100.0, theme=theme,
+    )
+    qtbot.addWidget(card)
+    assert card._mode_label.text() == "\u2014"
+    frame = {"pv": 50.0, "sp": 50.0, "co": 50.0, "mode": "AUTO"}
+    card.on_telemetry(1, frame)
+    assert "AUTO" in card._mode_label.text()
+
+
 # --- Gear button ---
 
 def test_gear_button_exists(qtbot, theme):

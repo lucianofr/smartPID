@@ -41,7 +41,8 @@ Widget base para exibir PV, SP e CO.
 ### 4.2. ControllerCardWidget (Nível 1 - Visão Geral)
 Card compacto (largura fixa 280px) que resume a saúde de uma malha PID. Cards dispostos lado a lado em linha horizontal, justificados à esquerda.
 * **Barra de alarme (topo):** Faixa de 5px no topo do card, colorida pela prioridade do alarme ativo (vermelho=CRITICAL, amarelo=WARNING), transparente quando sem alarme.
-* **Header:** Tag em negrito + descrição entre parênteses (ex: `**PIC-005** (Pressão Vaso)`), ícone de alarme (visível apenas em alarme: octógono para CRITICAL, triângulo para WARNING), e botão de configurações (⚙/CFG) à direita.
+* **Header:** Tag em negrito + descrição entre parênteses (ex: `**PIC-005** (Pressão Vaso)`), ícone de alarme (visível apenas em alarme: octógono para CRITICAL, triângulo para WARNING), e botão de configurações (⚙) à direita.
+* **Indicador de Modo:** Label abaixo do header mostrando o modo de operação atual (ex: `Mode: AUTO`, `Mode: MAN`, `Mode: CAS`). Atualizado em tempo real via telemetria.
 * **Barras:** Três instâncias do `AnalogBarWidget` (PV, SP, CO) empilhadas verticalmente.
 * **Indicador de Alarme:** Card inteiro ganha borda na cor do alarme quando ativo. A barra de alarme no topo fica colorida. Ícone geométrico aparece no header.
 * **Sem sparklines.** Dados de tendência ficam no TrendChart.
