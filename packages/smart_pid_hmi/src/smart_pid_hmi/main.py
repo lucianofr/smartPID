@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import sys
 import threading
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QMetaObject, Qt, QTimer, Signal, Slot
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from smart_pid_hmi.bus_bridge import BusBridge
 from smart_pid_hmi.config import HMISettings
+from smart_pid_hmi.services.app_state import AppStateManager
 from smart_pid_hmi.pages.alarm_panel import AlarmPanel
 from smart_pid_hmi.pages.connection_page import ConnectionPage
 from smart_pid_hmi.pages.dashboard_page import DashboardPage
@@ -57,6 +59,7 @@ class MainWindow(QMainWindow):
     _users_loaded_signal = Signal(list)
     _kpi_data_signal = Signal(dict)  # KPI + performance data from background
     _edit_dialog_signal = Signal(int, object)
+    _project_loaded_signal = Signal(dict)
 
     def __init__(
         self,
@@ -72,6 +75,13 @@ class MainWindow(QMainWindow):
         self._api_client = api_client
         self._telemetry_source = telemetry_source
         self._bus_bridge = bus_bridge
+        self._app_state = AppStateManager(settings.app_state_path)
+        self._app_state.prune()
+
+        # Pending project to open after login
+        self._pending_project_action: str | None = None
+        self._pending_project_path: str | None = None
+        self._pending_project_name: str | None = None
 
         # Connect thread-safe signals
         self._login_error_signal.connect(self._on_login_error_received)
@@ -283,6 +293,10 @@ class MainWindow(QMainWindow):
         self._simulator_page.pid_mode_changed.connect(self._send_sim_pid_mode)
         self._settings_page.theme_changed.connect(self._on_theme_switch)
         self._settings_page.refresh_rate_changed.connect(self._on_refresh_rate_changed)
+        self._settings_page.project_new_requested.connect(self._on_project_new)
+        self._settings_page.project_open_requested.connect(self._on_project_open)
+        self._settings_page.project_save_as_requested.connect(self._on_project_save_as)
+        self._project_loaded_signal.connect(self._on_project_loaded)
         bus_bridge.telemetry_received.connect(self._on_telemetry_for_trends)
         self._user_mgmt_page.user_create_requested.connect(self._create_user)
         self._user_mgmt_page.user_update_requested.connect(self._update_user)
@@ -336,6 +350,16 @@ class MainWindow(QMainWindow):
         self._alarm_panel.load_active_alarms()
         # Start periodic KPI refresh (every 30 seconds)
         self._kpi_timer.start(30_000)
+
+        # Open pending project after login
+        if self._pending_project_path:
+            if self._pending_project_action == "new" and self._pending_project_name:
+                self._do_new_project(self._pending_project_name, self._pending_project_path)
+            else:
+                self._do_open_project(self._pending_project_path)
+            self._pending_project_action = None
+            self._pending_project_path = None
+            self._pending_project_name = None
 
     @Slot(str)
     def _on_login_error_received(self, error_msg: str) -> None:
@@ -788,6 +812,85 @@ class MainWindow(QMainWindow):
                 self._api_error_signal.emit(str(e))
         threading.Thread(target=do_reactivate, daemon=True).start()
 
+    # ------------------------------------------------------------------
+    # Project management
+    # ------------------------------------------------------------------
+
+    def _on_project_new(self, name: str, path: str) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        reply = QMessageBox.question(
+            self, "New Project",
+            "This will stop all running loops. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._do_new_project(name, path)
+
+    def _do_new_project(self, name: str, path: str) -> None:
+        def do_new():
+            try:
+                result = self._api_client.new_project(name, path)
+                self._app_state.set_last_project(
+                    result["path"], result["name"], result["controller_count"],
+                )
+                self._app_state.save()
+                self._project_loaded_signal.emit(result)
+                self._load_dashboard()
+            except Exception as e:
+                self._api_error_signal.emit(str(e))
+
+        threading.Thread(target=do_new, daemon=True).start()
+
+    def _on_project_open(self, path: str) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        reply = QMessageBox.question(
+            self, "Open Project",
+            "This will stop all running loops. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._do_open_project(path)
+
+    def _do_open_project(self, path: str) -> None:
+        def do_open():
+            try:
+                result = self._api_client.open_project(path)
+                self._app_state.set_last_project(
+                    result["path"], result["name"], result["controller_count"],
+                )
+                self._app_state.save()
+                self._project_loaded_signal.emit(result)
+                self._load_dashboard()
+            except Exception as e:
+                self._api_error_signal.emit(str(e))
+
+        threading.Thread(target=do_open, daemon=True).start()
+
+    def _on_project_save_as(self, path: str) -> None:
+        def do_save():
+            try:
+                result = self._api_client.save_as_project(path)
+                self._app_state.set_last_project(
+                    result["path"], result["name"], result["controller_count"],
+                )
+                self._app_state.save()
+                self._project_loaded_signal.emit(result)
+            except Exception as e:
+                self._api_error_signal.emit(str(e))
+
+        threading.Thread(target=do_save, daemon=True).start()
+
+    @Slot(dict)
+    def _on_project_loaded(self, result: dict) -> None:
+        self._settings_page.update_project_info(
+            result.get("name", ""), result.get("path", ""),
+            result.get("controller_count", 0),
+        )
+
     def closeEvent(self, event) -> None:  # noqa: N802
         self._kpi_timer.stop()
         self._bus_bridge.stop()
@@ -824,6 +927,26 @@ def main() -> None:
         telemetry_source=telemetry_source,
         bus_bridge=bus_bridge,
     )
+
+    # Project management: open last project or show welcome dialog
+    app_state = window._app_state
+    if app_state.last_project and Path(app_state.last_project).exists():
+        window._pending_project_path = app_state.last_project
+    else:
+        from smart_pid_hmi.dialogs.welcome_dialog import WelcomeDialog
+
+        dialog = WelcomeDialog(recent_projects=app_state.recent_projects)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            if dialog.result_action == "new":
+                window._pending_project_action = "new"
+                window._pending_project_name = dialog.result_name
+                window._pending_project_path = dialog.result_path
+            elif dialog.result_action == "open":
+                window._pending_project_action = "open"
+                window._pending_project_path = dialog.result_path
+        else:
+            sys.exit(0)
+
     window.show()
     sys.exit(app.exec())
 
