@@ -166,10 +166,10 @@ FULL_CREATE_PAYLOAD: dict = {
         "sp_pv_track_in_lo_or_iman": False,
         "sp_pv_track_in_man": False,
     },
+    "process_speed": "SLOW",
     "ai_config": {
         "engine": "FUZZY",
         "objective": "SP_TRACKING",
-        "process_speed": "SLOW",
         "dead_time_l": 5.0,
         "limit_min": 0.2,
         "limit_max": 50.0,
@@ -219,7 +219,7 @@ class TestFullFieldCreateAndGet:
         assert data["io_opts"]["increase_to_close"] is True
         assert data["ai_config"]["engine"] == "FUZZY"
         assert data["ai_config"]["objective"] == "SP_TRACKING"
-        assert data["ai_config"]["process_speed"] == "SLOW"
+        assert data["process_speed"] == "SLOW"
         assert data["sp_hi_lim"] == 180.0
         assert data["arw_hi_lim"] == 90.0
         assert data["ff_enable"] is True
@@ -264,10 +264,10 @@ class TestFullFieldUpdate:
         update_payload = {
             "pid_params": {"gain": 3.0, "reset": 15.0, "rate": 1.0, "alpha": 0.2, "deadband": 1.0},
             "pid_structure": "SERIES",
+            "process_speed": "FAST",
             "ai_config": {
                 "engine": "RL",
                 "objective": "SURGE_LEVEL",
-                "process_speed": "FAST",
                 "dead_time_l": 10.0,
                 "limit_min": 0.5,
                 "limit_max": 80.0,

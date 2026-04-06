@@ -332,7 +332,7 @@ class SQLiteRepository:
             # AIConfig
             "ai_engine": str(c.ai_config.engine),
             "objetivo_controle": str(c.ai_config.objective),
-            "process_speed": str(c.ai_config.process_speed),
+            "process_speed": str(c.process_speed),
             "tempo_morto_l": c.ai_config.dead_time_l,
             "ai_limit_min": c.ai_config.limit_min,
             "ai_limit_max": c.ai_config.limit_max,
@@ -349,6 +349,7 @@ class SQLiteRepository:
             description=row["descricao"],
             execution_mode=ExecutionMode(row["modo_execucao"]),
             scan_rate_ms=row["scan_rate_ms"],
+            process_speed=ProcessSpeed(row["process_speed"]),
             pid_params=PIDParams(
                 gain=row["kp_manual"],
                 reset=row["ki_inicial"],
@@ -412,7 +413,6 @@ class SQLiteRepository:
             ai_config=AIConfig(
                 engine=AIEngine(row["ai_engine"]),
                 objective=ControlObjective(row["objetivo_controle"]),
-                process_speed=ProcessSpeed(row["process_speed"]),
                 dead_time_l=row["tempo_morto_l"],
                 limit_min=row["ai_limit_min"],
                 limit_max=row["ai_limit_max"],

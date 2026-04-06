@@ -72,6 +72,7 @@ def _to_response(c: Controller) -> ControllerResponse:
         co=0.0,
         execution_mode=str(c.execution_mode),
         scan_rate_ms=c.scan_rate_ms,
+        process_speed=str(c.process_speed),
         pid_params=PIDParamsDTO(
             gain=c.pid_params.gain,
             reset=c.pid_params.reset,
@@ -126,7 +127,6 @@ def _to_response(c: Controller) -> ControllerResponse:
         ai_config=AIConfigDTO(
             engine=str(c.ai_config.engine),
             objective=str(c.ai_config.objective),
-            process_speed=str(c.ai_config.process_speed),
             dead_time_l=c.ai_config.dead_time_l,
             limit_min=c.ai_config.limit_min,
             limit_max=c.ai_config.limit_max,
@@ -160,6 +160,7 @@ def _body_to_controller(body: ControllerCreate) -> Controller:
         description=body.description,
         execution_mode=ExecutionMode(body.execution_mode),
         scan_rate_ms=body.scan_rate_ms,
+        process_speed=ProcessSpeed(body.process_speed),
         pid_params=PIDParams(
             gain=body.pid_params.gain,
             reset=body.pid_params.reset,
@@ -214,7 +215,6 @@ def _body_to_controller(body: ControllerCreate) -> Controller:
         ai_config=AIConfig(
             engine=AIEngine(body.ai_config.engine),
             objective=ControlObjective(body.ai_config.objective),
-            process_speed=ProcessSpeed(body.ai_config.process_speed),
             dead_time_l=body.ai_config.dead_time_l,
             limit_min=body.ai_config.limit_min,
             limit_max=body.ai_config.limit_max,
@@ -274,7 +274,7 @@ _NESTED_BUILDERS: dict[str, tuple[type, callable]] = {
     )),
     "ai_config": (AIConfigDTO, lambda dto: AIConfig(
         engine=AIEngine(dto.engine), objective=ControlObjective(dto.objective),
-        process_speed=ProcessSpeed(dto.process_speed), dead_time_l=dto.dead_time_l,
+        dead_time_l=dto.dead_time_l,
         limit_min=dto.limit_min, limit_max=dto.limit_max,
     )),
 }
@@ -282,6 +282,7 @@ _NESTED_BUILDERS: dict[str, tuple[type, callable]] = {
 # Enum fields that need conversion from string
 _ENUM_FIELDS: dict[str, type] = {
     "execution_mode": ExecutionMode,
+    "process_speed": ProcessSpeed,
     "pid_structure": PIDStructure,
     "integral_type": IntegralType,
     "tuning_write_mode": TuningWriteMode,
