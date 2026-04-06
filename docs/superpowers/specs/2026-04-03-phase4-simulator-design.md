@@ -443,3 +443,29 @@ Note: `python-control` is NOT needed — `scipy.signal` handles FOPTD/SOPTD cons
 | core | `pyproject.toml` | Add asyncua, scipy dependencies |
 | hmi | `main.py` | Add Simulator toolbar button + page |
 | hmi | `services/api_client.py` | Add simulator API methods |
+
+---
+
+## 14. Internal PID (Phase 4 Enhancement)
+
+The simulator supports an optional **internal PID controller** that closes the loop
+entirely within the simulator, enabling end-to-end testing of SUPERVISORY mode without
+a real DCS. When enabled, the simulator acts as a self-contained "mini-DCS": process
+model + PID running internally, with tuning parameters exposed via OPC-UA.
+
+### Key design decisions
+
+- **Reuses existing `PIDEngine`** — no duplicate PID logic; the same engine that runs
+  in production is instantiated inside the simulator.
+- **Toggle on/off** via a UI checkbox on the Simulator page. When off, the simulator
+  works as before (CO comes from the external PID engine).
+- **OPC-UA writable nodes** per controller: `Kp`, `Ti`, `Td`, `PID_Mode`, `PID_SP` —
+  the smartPID system reads/writes these exactly as it would with a real DCS PLC.
+- **REST endpoints** for HMI control: enable/disable internal PID, set parameters,
+  query status.
+- **No changes to PIDEngine, Controller model, or controller creation flow.**
+
+### Detailed spec
+
+See [`docs/superpowers/specs/2026-04-06-simulator-internal-pid-design.md`](2026-04-06-simulator-internal-pid-design.md)
+for full architecture, OPC-UA node layout, REST API, and HMI integration details.

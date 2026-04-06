@@ -500,7 +500,7 @@ Handles `.spid` file lifecycle (all local to Backend):
 ### 9.1 Inbound
 
 - **OPCUAClient**: asyncua-based. Implements `TelemetrySource` + `TagBrowser`. Batch read for efficiency. Tag NodeIDs from Controller config.
-- **SimulatorAdapter**: Implements `TelemetrySource`. 4 presets (Flow/Level/Pressure/Temperature via `scipy.signal`) + Custom SOPTD (`python-control`). Dead time via Pade approximation. Embedded `asyncua.Server` on localhost. Noise and load step disturbance injection.
+- **SimulatorAdapter**: Implements `TelemetrySource`. 4 presets (Flow/Level/Pressure/Temperature via `scipy.signal`) + Custom SOPTD (`python-control`). Dead time via Pade approximation. Embedded `asyncua.Server` on localhost. Noise and load step disturbance injection. Optional internal PID (reuses `PIDEngine`) for SUPERVISORY mode testing without a real DCS — exposes Kp/Ti/Td/PID_Mode/PID_SP as writable OPC-UA nodes.
 
 ### 9.2 Outbound
 
@@ -749,6 +749,7 @@ Digital twin for offline validation.
 - 4 preset models (Flow/Level/Pressure/Temperature) + Custom SOPTD, embedded asyncua.Server
 - SimulatorAdapter implementing TelemetrySource port, disturbance injection (white noise, load step)
 - Basic Simulator UI page in HMI: preset selector, parameter sliders (gain, time constants, dead time), disturbance injection buttons
+- Optional internal PID (reuses existing `PIDEngine`) for SUPERVISORY mode testing without a real DCS; toggle via UI, OPC-UA writable nodes (Kp, Ti, Td, PID_Mode, PID_SP)
 - SVG process overlay and "Export Dynamics to Loop" deferred to Phase 7
 
 **Tests:** Unit: transfer functions, Pade approximation. Integration: simulator full loop via event bus.

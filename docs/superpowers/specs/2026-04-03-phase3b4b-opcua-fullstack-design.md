@@ -108,6 +108,11 @@ class OPCUAAdapter:
 Current: uses `SimpleQueue` for direct in-process communication.
 New: exposes process variables via embedded asyncua.Server.
 
+> **Note:** The SimulatorAdapter also supports an optional internal PID (reuses `PIDEngine`)
+> for SUPERVISORY mode testing. When enabled, additional writable OPC-UA nodes (Kp, Ti, Td,
+> PID_Mode, PID_SP) are created per controller. See
+> [`2026-04-06-simulator-internal-pid-design.md`](2026-04-06-simulator-internal-pid-design.md).
+
 ### New Methods
 
 - `_start_opcua_server()` — starts asyncua.Server in a dedicated asyncio event loop thread
