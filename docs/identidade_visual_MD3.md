@@ -40,10 +40,12 @@ Widget base para exibir PV, SP e CO.
 * O valor numérico e unidade acompanham a barra usando a tipografia `Label Large`.
 
 ### 4.2. ControllerCardWidget (Baseado no M3 Filled/Elevated Card)
-Card para visão geral da malha PID.
+Card compacto (largura fixa 280px) para visão geral da malha PID. Cards lado a lado em linha horizontal, justificados à esquerda.
+* **Barra de alarme (topo):** Faixa de 5px na cor do alarme ativo, transparente normalmente.
 * **Estilo:** `Filled Card` M3. Fundo na cor `Surface Container`, cantos arredondados (12px), sem borda externa (ou borda sutil se inativo).
-* **Estrutura:** Título da malha na parte superior. Logo abaixo, as três barras empilhadas (`AnalogBarWidget`) para PV, SP e CO. NADA de mini gráficos de tendência aqui.
-* **Indicador de Alarme:** Se entrar em alarme, o Card inteiro passa a ser um `M3 Outlined Card` com a borda espessa na cor do alarme correspondente, além de exibir o ícone (M3 Symbol) correspondente ao alarme no cabeçalho.
+* **Header:** Tag em negrito + descrição, ícone de alarme (visível apenas em alarme), botão de configurações (⚙/CFG) à direita.
+* **Barras:** Três `AnalogBarWidget` empilhadas (PV, SP, CO). NADA de mini gráficos de tendência.
+* **Indicador de Alarme:** Card inteiro passa a ser `M3 Outlined Card` com borda espessa na cor do alarme. Barra de alarme no topo colorida. Ícone (M3 Symbol) no header.
 
 ### 4.3. FaceplateWidget (Nível 3 - Baseado em M3 Standard Side Sheet)
 Painel de operação acoplado ou Modal Lateral.

@@ -64,21 +64,24 @@ def test_emits_controller_selected_on_click(qtbot, theme):
         qtbot.mouseClick(card, Qt.MouseButton.LeftButton)
 
 
-def test_mode_badge_update(qtbot, theme):
+def test_tag_label_shows_name(qtbot, theme):
     card = ControllerCardWidget(
         controller_id=1, tag_name="FIC-101",
         min_val=0.0, max_val=100.0, theme=theme,
     )
     qtbot.addWidget(card)
-    assert card._mode_label.text() == "\u2014"
-    frame = {
-        "controller_id": 1, "pv": 45.0, "sp": 50.0,
-        "co": 62.0, "integral_val": 0.0,
-        "timestamp": "2026-04-03T10:00:00", "status": "GOOD",
-        "mode": "AUTO",
-    }
-    card.on_telemetry(1, frame)
-    assert card._mode_label.text() == "AUTO"
+    assert "FIC-101" in card._tag_label.text()
+
+
+def test_tag_label_with_description(qtbot, theme):
+    card = ControllerCardWidget(
+        controller_id=1, tag_name="FIC-101",
+        min_val=0.0, max_val=100.0, theme=theme,
+        description="Flow control",
+    )
+    qtbot.addWidget(card)
+    assert "FIC-101" in card._tag_label.text()
+    assert "Flow control" in card._tag_label.text()
 
 
 # --- Gear button ---

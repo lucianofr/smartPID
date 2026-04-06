@@ -565,7 +565,7 @@ Each visual identity document defines the complete design system: color palette,
 
 - **TrendChart**: pyqtgraph PlotWidget. Y1 (PV/SP), Y2 (CO). Time window selector (value + unit dropdown). Auto-scale. Manual scale fields. AI action markers. CSV export. Downsampling.
 - **Faceplate**: Bar graphs (PV/SP/CO), numeric inputs, stats (2sigma/Range, IAE), mode indicator, optimizer controls (RUN/PAUSE/STOP), config gear icon.
-- **ControllerCard**: Name, mode badge, PV/SP/CO analog bars, gear button (⚙), AI status. Border color = alarm state. No sparklines.
+- **ControllerCard**: Fixed 280px width, left-justified horizontal row. Alarm strip (5px colored bar at top), tag name + description header with alarm icon and settings button (⚙/CFG), PV/SP/CO analog bars. Border color = alarm state. No sparklines or mode badge.
 - **AILogBox**: Terminal-style, timestamps, color-coded (Fuzzy orange, RL cyan).
 - **AlarmBar**: Fixed bottom, 10 most recent alarms across all controllers.
 - **OPCUABrowser**: Modal, tree from `GET /opcua/browse`, search bar, double-click selects NodeID.

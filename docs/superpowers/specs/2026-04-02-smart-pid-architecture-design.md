@@ -377,7 +377,7 @@ Hot-switch without restart via Settings dropdown.
 
 - **TrendChart**: pyqtgraph PlotWidget. Y1 (PV/SP), Y2 (CO). Time window selector (value + unit dropdown). Auto-scale checkbox. Manual scale fields. AI action markers (orange circles). CSV export button. Downsampling for large datasets.
 - **Faceplate**: Bar graphs (PV/SP/CO), numeric inputs, stats display (2σ/Range, IAE), mode indicator, optimizer state buttons (RUN/PAUSE/STOP), config gear icon.
-- **ControllerCard**: Name, mode badge, PV/SP/CO analog bars, gear button (⚙), AI status. Border color indicates alarm state. No sparklines — trend data shown in TrendChart.
+- **ControllerCard**: Fixed 280px width, left-justified horizontal row. Alarm strip (5px colored bar at top), tag name + description header with alarm icon and settings button (⚙/CFG), PV/SP/CO analog bars. Border color indicates alarm state. No sparklines or mode badge — trend data shown in TrendChart.
 - **AILogBox**: Terminal-style scrolling text with timestamps and color-coded entries (Fuzzy orange, RL cyan).
 - **AlarmBar**: Fixed bottom widget showing 10 most recent alarms across all controllers.
 - **OPCUABrowser**: Modal tree view for navigating OPC-UA address space, search bar, double-click to select NodeID.

@@ -40,10 +40,13 @@ Widget base para exibir PV, SP e CO.
 * **Comportamento em Alarme:** O preenchimento muda abruptamente para a cor do alarme (Vermelho ou Âmbar), criando o único ponto focal luminoso da tela.
 
 ### 4.2. ControllerCardWidget (Nível 1 - Visão Geral)
-Card stealth para monitoramento periférico.
-* **Layout:** Fundo `#0D0D11`, borda fina `#222228`. 
-* **Estrutura:** Tag e Descrição no topo com cor `#666670`. Abaixo, as três `AnalogBarWidget` (PV, SP, CO).
-* **Indicador de Alarme:** Se ativo, exibe um ícone geométrico preenchido (🛑 ou ⚠️) ao lado do Tag. A borda do card pode assumir a cor do alarme, mas com espessura de apenas 1px.
+Card stealth compacto (largura fixa 280px) para monitoramento periférico. Cards lado a lado em linha horizontal, justificados à esquerda.
+* **Barra de alarme (topo):** Faixa de 5px, colorida pela prioridade do alarme (vermelho/âmbar), transparente normalmente.
+* **Layout:** Fundo `#0D0D11`, borda fina `#222228`.
+* **Header:** Tag em negrito + descrição, ícone de alarme (visível apenas em alarme), botão de configurações (⚙/CFG) à direita.
+* **Barras:** Três `AnalogBarWidget` (PV, SP, CO) empilhadas.
+* **Indicador de Alarme:** Ícone geométrico preenchido (octógono ou triângulo) ao lado do Tag. Borda do card na cor do alarme. Barra de alarme no topo colorida.
+* **Sem sparklines.**
 
 ### 4.3. FaceplateWidget (Nível 3 - Painel de Controle)
 * Integra-se perfeitamente ao fundo preto.

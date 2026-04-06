@@ -307,13 +307,16 @@ Based on `docs/identidade_visual_ISA101.md`:
 
 ### 7.2 `ControllerCardWidget`
 
-- Compact card for grid overview. One per controller.
-- Content: tag name, mode badge (Auto/Man/Cas...), 3x AnalogBar (PV, SP, CO)
-- Border: 1px gray normal → alarm color when active
+- Compact card (fixed 280px width) for horizontal row overview. One per controller, left-justified.
+- Layout: alarm strip (5px, top) → header (tag bold + description, alarm icon, settings button ⚙) → 3x AnalogBar (PV, SP, CO)
+- Alarm strip: colored by priority (CRITICAL=red, WARNING=yellow), transparent when clear
+- Alarm icon: octagon (CRITICAL) or triangle (WARNING), hidden when clear
+- Settings button: opens controller config dialog (emits `settings_requested(int)`)
+- Border: 1px gray normal → 2px alarm color when active
 - Slot `on_telemetry(controller_id, frame)`: filters by ID, updates bars
-- Slot `on_alarm(controller_id, event)`: updates border
-- Single click: selects controller (emits `controller_selected(str)`)
-- Double-click: opens faceplate (same as select for now)
+- Slot `on_alarm(controller_id, alarm)`: updates strip, icon, border
+- Single click: selects controller (emits `controller_selected(int)`)
+- No sparklines, no mode badge on card
 
 ### 7.3 `FaceplateWidget`
 

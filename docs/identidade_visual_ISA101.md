@@ -39,10 +39,12 @@ Widget base para exibir PV, SP e CO.
 * O valor numérico e a unidade (ex: `150.2 °C`) devem vir sempre renderizados ao lado da barra, alinhados à direita.
 
 ### 4.2. ControllerCardWidget (Nível 1 - Visão Geral)
-Card que resume a saúde de uma malha PID.
-* **Layout Grid:** * Linha 1: Nome do Tag e Descrição (ex: `TIC-102 (Forno Reação A)`).
-  * Linhas 2, 3 e 4: Três instâncias do `AnalogBarWidget` (uma para PV, uma para SP, uma para CO).
-* **Indicador de Alarme:** Se a malha estiver em alarme, o cabeçalho do card deve ganhar uma borda ou preenchimento na cor do alarme, e um ícone geométrico deve ser exibido (Triângulo para Aviso, Quadrado/Octógono para Crítico).
+Card compacto (largura fixa 280px) que resume a saúde de uma malha PID. Cards dispostos lado a lado em linha horizontal, justificados à esquerda.
+* **Barra de alarme (topo):** Faixa de 5px no topo do card, colorida pela prioridade do alarme ativo (vermelho=CRITICAL, amarelo=WARNING), transparente quando sem alarme.
+* **Header:** Tag em negrito + descrição entre parênteses (ex: `**PIC-005** (Pressão Vaso)`), ícone de alarme (visível apenas em alarme: octógono para CRITICAL, triângulo para WARNING), e botão de configurações (⚙/CFG) à direita.
+* **Barras:** Três instâncias do `AnalogBarWidget` (PV, SP, CO) empilhadas verticalmente.
+* **Indicador de Alarme:** Card inteiro ganha borda na cor do alarme quando ativo. A barra de alarme no topo fica colorida. Ícone geométrico aparece no header.
+* **Sem sparklines.** Dados de tendência ficam no TrendChart.
 
 ### 4.3. FaceplateWidget (Nível 3 - Detalhe do Equipamento)
 Painel lateral exibido quando um `ControllerCardWidget` é clicado.
