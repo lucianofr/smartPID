@@ -1,16 +1,15 @@
 """ControllerCardWidget — compact summary card per controller loop."""
 from __future__ import annotations
 
-from collections import deque
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -18,65 +17,14 @@ from PySide6.QtWidgets import (
 from smart_pid_hmi.widgets.analog_bar import AnalogBarWidget
 
 if TYPE_CHECKING:
-    from PySide6.QtGui import QMouseEvent, QPaintEvent
+    from PySide6.QtGui import QMouseEvent
 
     from smart_pid_hmi.themes.base import ThemeBase
 
-_CARD_WIDTH = 260
-_CARD_MIN_HEIGHT = 180
+_CARD_MIN_WIDTH = 220
+_CARD_MAX_WIDTH = 400
+_CARD_MIN_HEIGHT = 140
 _ALARM_STRIP_HEIGHT = 4
-
-
-class SparklineWidget(QWidget):
-    """Mini trend showing last N PV values as a line chart."""
-
-    def __init__(
-        self,
-        theme: ThemeBase | None = None,
-        buffer_size: int = 30,
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self._buffer_size = buffer_size
-        self._data: deque[float] = deque(maxlen=buffer_size)
-        self._theme = theme
-        self.setMaximumHeight(32)
-        self.setMinimumHeight(24)
-
-    @property
-    def data(self) -> deque[float]:
-        return self._data
-
-    def add_value(self, value: float) -> None:
-        self._data.append(value)
-        self.update()
-
-    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
-        if len(self._data) < 2:
-            return
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        color = self._theme.accent if self._theme else "#00e5cc"
-        pen = QPen()
-        pen.setColor(Qt.GlobalColor.cyan if not self._theme else pen.color())
-        from PySide6.QtGui import QColor
-        pen.setColor(QColor(color))
-        pen.setWidthF(1.5)
-        painter.setPen(pen)
-        w, h = self.width(), self.height()
-        vals = list(self._data)
-        lo, hi = min(vals), max(vals)
-        span = hi - lo if hi != lo else 1.0
-        path = QPainterPath()
-        for i, v in enumerate(vals):
-            x = i * w / (len(vals) - 1)
-            y = h - (v - lo) / span * h
-            if i == 0:
-                path.moveTo(x, y)
-            else:
-                path.lineTo(x, y)
-        painter.drawPath(path)
-        painter.end()
 
 
 def _theme_attr(theme: ThemeBase, attr: str, fallback: str) -> str:
@@ -109,8 +57,12 @@ class ControllerCardWidget(QFrame):
         self._theme = theme
         self._alarm_priority: str | None = None
 
-        self.setFixedWidth(_CARD_WIDTH)
+        self.setMinimumWidth(_CARD_MIN_WIDTH)
+        self.setMaximumWidth(_CARD_MAX_WIDTH)
         self.setMinimumHeight(_CARD_MIN_HEIGHT)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred,
+        )
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._apply_card_style(theme)
@@ -189,12 +141,6 @@ class ControllerCardWidget(QFrame):
         layout.addWidget(self._bar_sp)
         layout.addWidget(self._bar_co)
 
-        # Sparkline (mini PV trend)
-        self._sparkline = SparklineWidget(theme=theme)
-        layout.addWidget(self._sparkline)
-
-        layout.addStretch()
-
     def _apply_card_style(
         self, theme: ThemeBase, alarm: str | None = None,
     ) -> None:
@@ -258,7 +204,6 @@ class ControllerCardWidget(QFrame):
         self._bar_pv.set_sp_marker(frame.get("sp"))
         self._bar_sp.set_value(frame.get("sp", 0.0))
         self._bar_co.set_value(frame.get("co", 0.0))
-        self._sparkline.add_value(pv)
         mode = frame.get("mode")
         if mode:
             self._mode_label.setText(str(mode))
