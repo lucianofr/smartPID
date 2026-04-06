@@ -363,6 +363,9 @@ class MainWindow(QMainWindow):
             self._pending_project_action = None
             self._pending_project_path = None
             self._pending_project_name = None
+        else:
+            # No pending action — fetch current project state from backend
+            self._refresh_project_info()
 
     @Slot(str)
     def _on_login_error_received(self, error_msg: str) -> None:
@@ -848,6 +851,9 @@ class MainWindow(QMainWindow):
                 self._api_error_signal.emit(str(e))
 
         threading.Thread(target=do_new, daemon=True).start()
+        # Fallback: refresh project info after a short delay to ensure
+        # Settings page is updated even if the signal is missed
+        QTimer.singleShot(1500, self._refresh_project_info)
 
     def _on_project_open(self, path: str) -> None:
         from PySide6.QtWidgets import QMessageBox
@@ -875,6 +881,7 @@ class MainWindow(QMainWindow):
                 self._api_error_signal.emit(str(e))
 
         threading.Thread(target=do_open, daemon=True).start()
+        QTimer.singleShot(1500, self._refresh_project_info)
 
     def _on_project_save_as(self, path: str) -> None:
         def do_save():
@@ -889,6 +896,7 @@ class MainWindow(QMainWindow):
                 self._api_error_signal.emit(str(e))
 
         threading.Thread(target=do_save, daemon=True).start()
+        QTimer.singleShot(1500, self._refresh_project_info)
 
     @Slot(dict)
     def _on_project_loaded(self, result: dict) -> None:
@@ -896,6 +904,17 @@ class MainWindow(QMainWindow):
             result.get("name", ""), result.get("path", ""),
             result.get("controller_count", 0),
         )
+
+    def _refresh_project_info(self) -> None:
+        """Fetch current project state from backend and update Settings page."""
+        def do_fetch():
+            try:
+                result = self._api_client.get_current_project()
+                self._project_loaded_signal.emit(result)
+            except Exception:
+                logger.debug("Could not fetch current project info")
+
+        threading.Thread(target=do_fetch, daemon=True).start()
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._kpi_timer.stop()
