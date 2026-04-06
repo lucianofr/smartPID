@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
 
 from smart_pid_hmi.bus_bridge import BusBridge
 from smart_pid_hmi.config import HMISettings
-from smart_pid_hmi.services.app_state import AppStateManager
 from smart_pid_hmi.pages.alarm_panel import AlarmPanel
 from smart_pid_hmi.pages.connection_page import ConnectionPage
 from smart_pid_hmi.pages.dashboard_page import DashboardPage
@@ -111,8 +110,9 @@ class MainWindow(QMainWindow):
         self._theme_manager.register(MD3LightTheme())
         self._theme_manager.register(HPCLightTheme())
         self._theme_manager.register(OceanTheme())
-        self._theme_manager.set_theme("isa101")
-        theme = isa_theme
+        initial_theme = self._app_state.last_theme or "isa101"
+        self._theme_manager.set_theme(initial_theme)
+        theme = self._theme_manager.current
         theme.apply(QApplication.instance())
 
         # Toolbar — polished header bar
@@ -706,6 +706,8 @@ class MainWindow(QMainWindow):
     def _on_theme_switch(self, name: str) -> None:
         """Apply the selected theme globally and propagate to child widgets."""
         self._theme_manager.set_theme(name)
+        self._app_state.set_last_theme(name)
+        self._app_state.save()
         theme = self._theme_manager.current
         theme.apply(QApplication.instance())
         # Update toolbar styling
