@@ -16,6 +16,8 @@ from smart_pid_domain.enums import (
     IntegralType,
     PIDStructure,
     ProcessSpeed,
+    ProcessType,
+    TrackOpt,
 )
 from smart_pid_domain.models.controller import (
     AIConfig,
@@ -24,6 +26,7 @@ from smart_pid_domain.models.controller import (
     IOOpts,
     PIDParams,
     ScaleConfig,
+    StatusOpts,
     TagBindings,
 )
 
@@ -96,6 +99,7 @@ CREATE TABLE IF NOT EXISTS Controladores (
     sp_pv_track_in_rout             INTEGER NOT NULL DEFAULT 0,
     ctrl_sp_pv_track_in_man         INTEGER NOT NULL DEFAULT 0,
     use_pv_for_bkcal_out            INTEGER NOT NULL DEFAULT 0,
+    bypass_enable                   INTEGER NOT NULL DEFAULT 0,
     -- IO opts
     low_cutoff                      INTEGER NOT NULL DEFAULT 0,
     target_to_man_if_fault          INTEGER NOT NULL DEFAULT 0,
@@ -103,6 +107,13 @@ CREATE TABLE IF NOT EXISTS Controladores (
     increase_to_close               INTEGER NOT NULL DEFAULT 0,
     io_sp_pv_track_in_lo_or_iman    INTEGER NOT NULL DEFAULT 0,
     io_sp_pv_track_in_man           INTEGER NOT NULL DEFAULT 0,
+    -- Status opts
+    bad_if_limited                  INTEGER NOT NULL DEFAULT 0,
+    use_uncertain_as_good           INTEGER NOT NULL DEFAULT 1,
+    -- Track opt
+    track_opt           TEXT    NOT NULL DEFAULT 'ALWAYS_USE_VALUE',
+    -- Process type
+    process_type        TEXT    NOT NULL DEFAULT 'SELF_REGULATING',
     -- AI config
     ai_engine           TEXT    NOT NULL DEFAULT 'NONE',
     objetivo_controle   TEXT    NOT NULL DEFAULT 'DISTURBANCE_REJECTION',
@@ -232,19 +243,24 @@ class SQLiteRepository:
 
     async def list_all(self) -> list[Controller]:
         """Return all controllers."""
-        async with self.db.execute("SELECT * FROM Controladores ORDER BY id") as cur:
+        async with self.db.execute(
+            "SELECT * FROM Controladores ORDER BY id",
+        ) as cur:
             rows = await cur.fetchall()
         return [self._row_to_controller(r) for r in rows]
 
     async def delete(self, controller_id: int) -> None:
         """Delete controller or raise KeyError."""
         async with self.db.execute(
-            "SELECT id FROM Controladores WHERE id = ?", (controller_id,)
+            "SELECT id FROM Controladores WHERE id = ?",
+            (controller_id,),
         ) as cur:
             row = await cur.fetchone()
         if row is None:
             raise KeyError(controller_id)
-        await self.db.execute("DELETE FROM Controladores WHERE id = ?", (controller_id,))
+        await self.db.execute(
+            "DELETE FROM Controladores WHERE id = ?", (controller_id,),
+        )
         await self.db.commit()
 
     # ------------------------------------------------------------------
@@ -255,7 +271,9 @@ class SQLiteRepository:
         params = self._controller_to_params(c)
         cols = ", ".join(params.keys())
         placeholders = ", ".join("?" for _ in params)
-        sql = f"INSERT INTO Controladores ({cols}) VALUES ({placeholders})"
+        sql = (
+            f"INSERT INTO Controladores ({cols}) VALUES ({placeholders})"
+        )
         async with self.db.execute(sql, list(params.values())) as cur:
             new_id = cur.lastrowid
         await self.db.commit()
@@ -266,14 +284,17 @@ class SQLiteRepository:
         params = self._controller_to_params(c)
         assignments = ", ".join(f"{k} = ?" for k in params)
         sql = (
-            f"UPDATE Controladores SET {assignments}, atualizado_em = datetime('now') WHERE id = ?"
+            f"UPDATE Controladores SET {assignments},"
+            " atualizado_em = datetime('now') WHERE id = ?"
         )
         await self.db.execute(sql, [*params.values(), c.id])
         await self.db.commit()
 
     def _controller_to_params(self, c: Controller) -> dict:
         """Map Controller fields to Controladores column dict."""
-        permitted = ",".join(sorted(str(m) for m in c.permitted_modes))
+        permitted = ",".join(
+            sorted(str(m) for m in c.permitted_modes),
+        )
         return {
             "nome": c.name,
             "descricao": c.description,
@@ -312,23 +333,53 @@ class SQLiteRepository:
             "permitted_modes": permitted,
             "mode_normal": str(c.mode_normal),
             # ControlOpts
-            "no_out_limits_in_manual": int(c.control_opts.no_out_limits_in_manual),
-            "obey_sp_limits_if_cas": int(c.control_opts.obey_sp_limits_if_cas),
+            "no_out_limits_in_manual": int(
+                c.control_opts.no_out_limits_in_manual,
+            ),
+            "obey_sp_limits_if_cas": int(
+                c.control_opts.obey_sp_limits_if_cas,
+            ),
             "track_in_manual": int(c.control_opts.track_in_manual),
             "track_enable": int(c.control_opts.track_enable),
             "direct_acting": int(c.control_opts.direct_acting),
-            "sp_track_retained_target": int(c.control_opts.sp_track_retained_target),
-            "ctrl_sp_pv_track_in_lo_or_iman": int(c.control_opts.sp_pv_track_in_lo_or_iman),
-            "sp_pv_track_in_rout": int(c.control_opts.sp_pv_track_in_rout),
-            "ctrl_sp_pv_track_in_man": int(c.control_opts.sp_pv_track_in_man),
-            "use_pv_for_bkcal_out": int(c.control_opts.use_pv_for_bkcal_out),
+            "sp_track_retained_target": int(
+                c.control_opts.sp_track_retained_target,
+            ),
+            "ctrl_sp_pv_track_in_lo_or_iman": int(
+                c.control_opts.sp_pv_track_in_lo_or_iman,
+            ),
+            "sp_pv_track_in_rout": int(
+                c.control_opts.sp_pv_track_in_rout,
+            ),
+            "ctrl_sp_pv_track_in_man": int(
+                c.control_opts.sp_pv_track_in_man,
+            ),
+            "use_pv_for_bkcal_out": int(
+                c.control_opts.use_pv_for_bkcal_out,
+            ),
+            "bypass_enable": int(c.control_opts.bypass_enable),
             # IOOpts
             "low_cutoff": int(c.io_opts.low_cutoff),
-            "target_to_man_if_fault": int(c.io_opts.target_to_man_if_fault),
-            "fault_state_to_value": int(c.io_opts.fault_state_to_value),
+            "target_to_man_if_fault": int(
+                c.io_opts.target_to_man_if_fault,
+            ),
+            "fault_state_to_value": int(
+                c.io_opts.fault_state_to_value,
+            ),
             "increase_to_close": int(c.io_opts.increase_to_close),
-            "io_sp_pv_track_in_lo_or_iman": int(c.io_opts.sp_pv_track_in_lo_or_iman),
+            "io_sp_pv_track_in_lo_or_iman": int(
+                c.io_opts.sp_pv_track_in_lo_or_iman,
+            ),
             "io_sp_pv_track_in_man": int(c.io_opts.sp_pv_track_in_man),
+            # StatusOpts
+            "bad_if_limited": int(c.status_opts.bad_if_limited),
+            "use_uncertain_as_good": int(
+                c.status_opts.use_uncertain_as_good,
+            ),
+            # TrackOpt
+            "track_opt": str(c.track_opt),
+            # ProcessType
+            "process_type": str(c.process_type),
             # AIConfig
             "ai_engine": str(c.ai_config.engine),
             "objetivo_controle": str(c.ai_config.objective),
@@ -341,7 +392,9 @@ class SQLiteRepository:
     def _row_to_controller(self, row: aiosqlite.Row) -> Controller:
         """Convert a DB row to a Controller dataclass."""
         permitted_modes: set[ControllerMode] = {
-            ControllerMode(m) for m in str(row["permitted_modes"]).split(",") if m
+            ControllerMode(m)
+            for m in str(row["permitted_modes"]).split(",")
+            if m
         }
         return Controller(
             id=row["id"],
@@ -350,6 +403,7 @@ class SQLiteRepository:
             execution_mode=ExecutionMode(row["modo_execucao"]),
             scan_rate_ms=row["scan_rate_ms"],
             process_speed=ProcessSpeed(row["process_speed"]),
+            process_type=ProcessType(row["process_type"]),
             pid_params=PIDParams(
                 gain=row["kp_manual"],
                 reset=row["ki_inicial"],
@@ -391,25 +445,47 @@ class SQLiteRepository:
             permitted_modes=permitted_modes,
             mode_normal=ControllerMode(row["mode_normal"]),
             control_opts=ControlOpts(
-                no_out_limits_in_manual=bool(row["no_out_limits_in_manual"]),
-                obey_sp_limits_if_cas=bool(row["obey_sp_limits_if_cas"]),
+                no_out_limits_in_manual=bool(
+                    row["no_out_limits_in_manual"],
+                ),
+                obey_sp_limits_if_cas=bool(
+                    row["obey_sp_limits_if_cas"],
+                ),
                 track_in_manual=bool(row["track_in_manual"]),
                 track_enable=bool(row["track_enable"]),
                 direct_acting=bool(row["direct_acting"]),
-                sp_track_retained_target=bool(row["sp_track_retained_target"]),
-                sp_pv_track_in_lo_or_iman=bool(row["ctrl_sp_pv_track_in_lo_or_iman"]),
+                sp_track_retained_target=bool(
+                    row["sp_track_retained_target"],
+                ),
+                sp_pv_track_in_lo_or_iman=bool(
+                    row["ctrl_sp_pv_track_in_lo_or_iman"],
+                ),
                 sp_pv_track_in_rout=bool(row["sp_pv_track_in_rout"]),
                 sp_pv_track_in_man=bool(row["ctrl_sp_pv_track_in_man"]),
-                use_pv_for_bkcal_out=bool(row["use_pv_for_bkcal_out"]),
+                use_pv_for_bkcal_out=bool(
+                    row["use_pv_for_bkcal_out"],
+                ),
+                bypass_enable=bool(row["bypass_enable"]),
             ),
             io_opts=IOOpts(
                 low_cutoff=bool(row["low_cutoff"]),
-                target_to_man_if_fault=bool(row["target_to_man_if_fault"]),
+                target_to_man_if_fault=bool(
+                    row["target_to_man_if_fault"],
+                ),
                 fault_state_to_value=bool(row["fault_state_to_value"]),
                 increase_to_close=bool(row["increase_to_close"]),
-                sp_pv_track_in_lo_or_iman=bool(row["io_sp_pv_track_in_lo_or_iman"]),
+                sp_pv_track_in_lo_or_iman=bool(
+                    row["io_sp_pv_track_in_lo_or_iman"],
+                ),
                 sp_pv_track_in_man=bool(row["io_sp_pv_track_in_man"]),
             ),
+            status_opts=StatusOpts(
+                bad_if_limited=bool(row["bad_if_limited"]),
+                use_uncertain_as_good=bool(
+                    row["use_uncertain_as_good"],
+                ),
+            ),
+            track_opt=TrackOpt(row["track_opt"]),
             ai_config=AIConfig(
                 engine=AIEngine(row["ai_engine"]),
                 objective=ControlObjective(row["objetivo_controle"]),
@@ -425,7 +501,8 @@ class SQLiteRepository:
 
     async def _get_table_names(self) -> list[str]:
         async with self.db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            "SELECT name FROM sqlite_master"
+            " WHERE type='table' ORDER BY name",
         ) as cur:
             rows = await cur.fetchall()
         return [r["name"] for r in rows]

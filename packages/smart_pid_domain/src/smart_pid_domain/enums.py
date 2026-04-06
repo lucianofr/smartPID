@@ -14,6 +14,7 @@ class ControllerMode(StrEnum):
     CAS = "CAS"
     RCAS = "RCAS"
     ROUT = "ROUT"
+    BYPASS = "BYPASS"
 
 class ExecutionMode(StrEnum):
     SUPERVISORY = "SUPERVISORY"
@@ -197,3 +198,16 @@ class SystemExecutionMode(StrEnum):
     """System-wide execution mode: monitor-only or full execute."""
     MONITOR = "monitor"
     EXECUTE = "execute"
+
+
+class ProcessType(StrEnum):
+    """Informational: process dynamics classification for AI engine."""
+    SELF_REGULATING = "SELF_REGULATING"
+    INTEGRATING = "INTEGRATING"
+
+
+class TrackOpt(StrEnum):
+    """TRK_IN_D behavior when signal quality is BAD."""
+    ALWAYS_USE_VALUE = "ALWAYS_USE_VALUE"
+    USE_LAST_GOOD = "USE_LAST_GOOD"
+    TRACK_IF_BAD = "TRACK_IF_BAD"

@@ -12,14 +12,60 @@ import zmq
 
 from smart_pid_core.domain.services.pid_engine import PIDState
 from smart_pid_core.domain.services.pid_mode_manager import BlockStatus
-from smart_pid_domain.enums import ControllerMode, InitSubStatus
+from smart_pid_domain.enums import (
+    ControllerMode,
+    InitSubStatus,
+    LimitBits,
+    SignalSeverity,
+    TrackOpt,
+)
+from smart_pid_domain.models.controller import StatusOpts
 from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
 
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import EventBus
+    from smart_pid_core.domain.services.alarm_engine import AlarmEngine
     from smart_pid_core.domain.services.pid_engine import PIDEngine
     from smart_pid_core.domain.services.pid_mode_manager import ModeManager
     from smart_pid_domain.models.controller import Controller
+
+
+def _evaluate_pv_quality(signal: FFSignal, opts: StatusOpts) -> FFSignal:
+    """Apply STATUS_OPTS rules to interpret signal quality.
+
+    - If bad_if_limited and signal has any limit bits set -> treat as BAD severity
+    - If use_uncertain_as_good and severity is UNCERTAIN -> treat as GOOD
+    """
+    severity = signal.status.severity
+    limit_bits = signal.status.limit_bits
+
+    needs_change = False
+
+    # bad_if_limited: treat LIMITED as BAD
+    if opts.bad_if_limited and limit_bits != LimitBits.NONE:
+        severity = SignalSeverity.BAD
+        needs_change = True
+
+    # use_uncertain_as_good: treat UNCERTAIN as GOOD (but NOT BAD -> GOOD)
+    if (
+        opts.use_uncertain_as_good
+        and severity == SignalSeverity.UNCERTAIN
+    ):
+        severity = SignalSeverity.GOOD
+        needs_change = True
+
+    if not needs_change:
+        return signal
+
+    return FFSignal(
+        value=signal.value,
+        status=FFSignalStatus(
+            severity=severity,
+            limit_bits=signal.status.limit_bits,
+            sub_status=signal.status.sub_status,
+        ),
+        timestamp=signal.timestamp,
+    )
 
 
 def _deserialize_ff_signal(data: dict | float | int) -> FFSignal:
@@ -29,7 +75,6 @@ def _deserialize_ff_signal(data: dict | float | int) -> FFSignal:
     """
     if isinstance(data, (float, int)):
         return FFSignal.good(float(data))
-    from smart_pid_domain.enums import LimitBits, SignalSeverity
     return FFSignal(
         value=float(data.get("value", 0.0)),
         status=FFSignalStatus(
@@ -53,12 +98,18 @@ def _serialize_ff_signal(signal: FFSignal) -> dict:
 
 class PIDWorker:
     def __init__(
-        self, bus: EventBus, controller: Controller, engine: PIDEngine, mode_manager: ModeManager
+        self,
+        bus: EventBus,
+        controller: Controller,
+        engine: PIDEngine,
+        mode_manager: ModeManager,
+        alarm_engine: AlarmEngine | None = None,
     ) -> None:
         self._bus = bus
         self._controller = controller
         self._engine = engine
         self._mode_manager = mode_manager
+        self._alarm_engine = alarm_engine
         self._state = PIDState()
         self._mode = ControllerMode.MAN
         self._block_status = BlockStatus()
@@ -67,7 +118,14 @@ class PIDWorker:
         self._last_co: FFSignal = FFSignal.good(0.0)
         self._last_bkcal_in: FFSignal = FFSignal.good(0.0)
         self._last_bkcal_out: FFSignal = FFSignal.good(0.0)
+        self._last_cas_in: FFSignal = FFSignal.good(0.0)
+        self._last_rcas_in: FFSignal = FFSignal.good(0.0)
+        self._last_rout_in: float = 0.0
+        self._last_trk_val: float = 0.0
+        self._simulate_pv: float | None = None
+        self._last_good_trk_in_d: bool = False
         self._has_telemetry = False
+        self._last_telem_time: float = 0.0
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -75,6 +133,22 @@ class PIDWorker:
     @property
     def controller_id(self) -> int:
         return self._controller.id
+
+    @property
+    def simulate_active(self) -> bool:
+        return self._simulate_pv is not None
+
+    def set_simulate_pv(self, value: float) -> None:
+        """Activate simulation mode with a test PV value."""
+        with self._lock:
+            self._simulate_pv = value
+            self._block_status.simulate_active = True
+
+    def clear_simulate(self) -> None:
+        """Deactivate simulation mode, revert to real PV."""
+        with self._lock:
+            self._simulate_pv = None
+            self._block_status.simulate_active = False
 
     def start(self) -> None:
         self._stop_event.clear()
@@ -108,9 +182,31 @@ class PIDWorker:
         with self._lock:
             self._last_co = FFSignal.good(value)
 
+    def _resolve_trk_in_d(self, value: bool, is_bad: bool) -> None:
+        """Apply TRACK_OPT rules to resolve TRK_IN_D discrete input."""
+        track_opt = self._controller.track_opt
+
+        if not is_bad:
+            # Good quality: always use the value
+            self._controller.trk_in_d = value
+            self._last_good_trk_in_d = value
+            return
+
+        # Bad quality: apply track_opt
+        if track_opt == TrackOpt.ALWAYS_USE_VALUE:
+            self._controller.trk_in_d = value
+        elif track_opt == TrackOpt.USE_LAST_GOOD:
+            self._controller.trk_in_d = self._last_good_trk_in_d
+        elif track_opt == TrackOpt.TRACK_IF_BAD:
+            self._controller.trk_in_d = True
+
     def _run(self) -> None:
-        telem_sub = self._bus.create_subscriber(f"TELEMETRY.{self.controller_id}".encode())
-        ai_sub = self._bus.create_subscriber(f"ACTION.AI.{self.controller_id}".encode())
+        telem_sub = self._bus.create_subscriber(
+            f"TELEMETRY.{self.controller_id}".encode(),
+        )
+        ai_sub = self._bus.create_subscriber(
+            f"ACTION.AI.{self.controller_id}".encode(),
+        )
         reconnect_sub = self._bus.create_subscriber(
             f"SYS.RECONNECT.{self.controller_id}".encode(),
         )
@@ -127,10 +223,42 @@ class PIDWorker:
 
                 delta_cv = 0.0
 
+                # Shed timeout detection
+                if self._has_telemetry and self._controller.shed_time_s > 0:
+                    elapsed_since_telem = (
+                        time.monotonic() - self._last_telem_time
+                    )
+                    if elapsed_since_telem > self._controller.shed_time_s:
+                        self._block_status.shed_timeout_expired = True
+                    else:
+                        self._block_status.shed_timeout_expired = False
+
+                # Evaluate forced transitions
+                forced = self._mode_manager.evaluate_forced_transitions(
+                    current=self._mode,
+                    block_status=self._block_status,
+                    shed_mode=self._controller.shed_opt,
+                )
+                if forced is not None and forced != self._mode:
+                    self._mode = forced
+                    if forced in {
+                        ControllerMode.AUTO,
+                        ControllerMode.CAS,
+                        ControllerMode.RCAS,
+                    }:
+                        self._state = self._engine.bumpless_transfer(
+                            state=self._state,
+                            current_pv=self._last_pv.value,
+                            current_co=self._last_co.value,
+                            params=self._controller.pid_params,
+                        )
+
                 # Evaluate cascade handshake
-                cascade_action = self._mode_manager.evaluate_cascade_handshake(
-                    current_mode=self._mode,
-                    bkcal_in=self._last_bkcal_in,
+                cascade_action = (
+                    self._mode_manager.evaluate_cascade_handshake(
+                        current_mode=self._mode,
+                        bkcal_in=self._last_bkcal_in,
+                    )
                 )
                 if cascade_action.force_mode is not None:
                     self._mode = cascade_action.force_mode
@@ -143,16 +271,54 @@ class PIDWorker:
                         )
 
                 if self._has_telemetry:
+                    # Apply STATUS_OPTS to PV signal
+                    effective_pv = _evaluate_pv_quality(
+                        self._last_pv, self._controller.status_opts,
+                    )
+
+                    # If simulate active, override PV value
+                    if self._simulate_pv is not None:
+                        effective_pv = FFSignal.good(self._simulate_pv)
+
+                    # SP-PV tracking in certain modes
+                    effective_sp = self._last_sp
+                    ctrl_opts = self._controller.control_opts
+                    if (
+                        self._mode == ControllerMode.MAN
+                        and ctrl_opts.sp_pv_track_in_man
+                    ) or (
+                        self._mode
+                        in {ControllerMode.LO, ControllerMode.IMAN}
+                        and ctrl_opts.sp_pv_track_in_lo_or_iman
+                    ):
+                        effective_sp = FFSignal.good(effective_pv.value)
+                        self._last_sp = effective_sp
+
+                    # CAS/RCAS SP override
+                    if self._mode == ControllerMode.CAS:
+                        effective_sp = FFSignal.good(
+                            self._last_cas_in.value,
+                        )
+                        self._last_sp = effective_sp
+                    elif self._mode == ControllerMode.RCAS:
+                        effective_sp = FFSignal.good(
+                            self._last_rcas_in.value,
+                        )
+                        self._last_sp = effective_sp
+
+                    # Mode-dependent output computation
                     if (
                         self._mode == ControllerMode.IMAN
                         and cascade_action.tracking_target is not None
                     ):
                         result = self._engine.compute_iman_tracking(
                             state=self._state,
-                            pv=self._last_pv,
-                            sp=self._last_sp,
+                            pv=effective_pv,
+                            sp=effective_sp,
                             bkcal_in=self._last_bkcal_in,
-                            direct_acting=self._controller.control_opts.direct_acting,
+                            direct_acting=(
+                                self._controller.control_opts.direct_acting
+                            ),
                         )
                         self._state = result.new_state
                         self._last_co = result.bkcal_out
@@ -164,14 +330,22 @@ class PIDWorker:
                         ControllerMode.RCAS,
                     }:
                         params = self._controller.pid_params
-                        out_limits = (self._controller.out_lo_lim, self._controller.out_hi_lim)
-                        arw_limits = (self._controller.arw_lo_lim, self._controller.arw_hi_lim)
-                        direct_acting = self._controller.control_opts.direct_acting
+                        out_limits = (
+                            self._controller.out_lo_lim,
+                            self._controller.out_hi_lim,
+                        )
+                        arw_limits = (
+                            self._controller.arw_lo_lim,
+                            self._controller.arw_hi_lim,
+                        )
+                        direct_acting = (
+                            self._controller.control_opts.direct_acting
+                        )
                         result = self._engine.compute(
                             params=params,
                             state=self._state,
-                            pv=self._last_pv,
-                            sp=self._last_sp,
+                            pv=effective_pv,
+                            sp=effective_sp,
                             bkcal_in=self._last_bkcal_in,
                             dt=scan_s,
                             out_limits=out_limits,
@@ -179,21 +353,116 @@ class PIDWorker:
                             arw_limits=arw_limits,
                         )
                         self._state = result.new_state
-                        self._last_co = FFSignal.good(result.cv)
+                        co_val = result.cv
+                        # Increase-to-close: reverse output
+                        if self._controller.io_opts.increase_to_close:
+                            hi = self._controller.out_hi_lim
+                            lo = self._controller.out_lo_lim
+                            co_val = hi + lo - co_val
+                        self._last_co = FFSignal.good(co_val)
                         self._last_bkcal_out = result.bkcal_out
                         delta_cv = result.delta_cv
+                    elif self._mode == ControllerMode.MAN:
+                        # In MAN: output held at _last_co (set by
+                        # set_output), PID state tracks for bumpless
+                        self._state = self._engine.bumpless_transfer(
+                            state=self._state,
+                            current_pv=effective_pv.value,
+                            current_co=self._last_co.value,
+                            params=self._controller.pid_params,
+                        )
+                    elif self._mode == ControllerMode.ROUT:
+                        # ROUT: output from remote (rout_in)
+                        co_val = max(
+                            self._controller.out_lo_lim,
+                            min(
+                                self._last_rout_in,
+                                self._controller.out_hi_lim,
+                            ),
+                        )
+                        self._last_co = FFSignal.good(co_val)
+                        self._state = self._engine.bumpless_transfer(
+                            state=self._state,
+                            current_pv=effective_pv.value,
+                            current_co=co_val,
+                            params=self._controller.pid_params,
+                        )
+                    elif self._mode == ControllerMode.LO:
+                        # LO: output from track value
+                        co_val = max(
+                            self._controller.out_lo_lim,
+                            min(
+                                self._last_trk_val,
+                                self._controller.out_hi_lim,
+                            ),
+                        )
+                        self._last_co = FFSignal.good(co_val)
+                        self._state = self._engine.bumpless_transfer(
+                            state=self._state,
+                            current_pv=effective_pv.value,
+                            current_co=co_val,
+                            params=self._controller.pid_params,
+                        )
+                    elif self._mode == ControllerMode.BYPASS:
+                        # BYPASS: SP goes directly to output (clamped)
+                        co_val = max(
+                            self._controller.out_lo_lim,
+                            min(
+                                effective_sp.value,
+                                self._controller.out_hi_lim,
+                            ),
+                        )
+                        self._last_co = FFSignal.good(co_val)
+                        self._state = self._engine.bumpless_transfer(
+                            state=self._state,
+                            current_pv=effective_pv.value,
+                            current_co=co_val,
+                            params=self._controller.pid_params,
+                        )
 
                     # Publish control action
                     action_data = {
                         "controller_id": self.controller_id,
                         "co": _serialize_ff_signal(self._last_co),
-                        "bkcal_out": _serialize_ff_signal(self._last_bkcal_out),
+                        "bkcal_out": _serialize_ff_signal(
+                            self._last_bkcal_out,
+                        ),
                         "integral_val": self._state.cv,
                         "delta_cv": delta_cv,
                         "timestamp": datetime.now(tz=UTC).isoformat(),
                     }
-                    topic = f"ACTION.CTRL.{self.controller_id}".encode()
+                    topic = (
+                        f"ACTION.CTRL.{self.controller_id}".encode()
+                    )
                     pub.send(topic, msgpack.packb(action_data))
+
+                    # Alarm detection
+                    if (
+                        self._alarm_engine is not None
+                        and self._controller.alarm_config is not None
+                    ):
+                        transitions = self._alarm_engine.evaluate(
+                            controller_id=self.controller_id,
+                            pv=effective_pv.value,
+                            sp=effective_sp.value,
+                            alarm_config=self._controller.alarm_config,
+                            sp_ramping=False,
+                        )
+                        for t in transitions:
+                            alarm_data = {
+                                "controller_id": t.controller_id,
+                                "alarm_type": t.alarm_type.value,
+                                "priority": t.priority.value,
+                                "transition": t.transition,
+                                "value": t.value,
+                                "limit": t.limit,
+                                "timestamp": t.timestamp.isoformat(),
+                            }
+                            pub.send(
+                                f"EVENT.ALARM.{self.controller_id}"
+                                .encode(),
+                                msgpack.packb(alarm_data),
+                            )
 
                 if self._has_telemetry:
                     telem_data = {
@@ -201,8 +470,12 @@ class PIDWorker:
                         "pv": _serialize_ff_signal(self._last_pv),
                         "sp": _serialize_ff_signal(self._last_sp),
                         "co": _serialize_ff_signal(self._last_co),
-                        "bkcal_in": _serialize_ff_signal(self._last_bkcal_in),
-                        "bkcal_out": _serialize_ff_signal(self._last_bkcal_out),
+                        "bkcal_in": _serialize_ff_signal(
+                            self._last_bkcal_in,
+                        ),
+                        "bkcal_out": _serialize_ff_signal(
+                            self._last_bkcal_out,
+                        ),
                         "integral_val": self._state.cv,
                         "timestamp": datetime.now(tz=UTC).isoformat(),
                     }
@@ -218,7 +491,7 @@ class PIDWorker:
             except zmq.ZMQError:
                 break
 
-    def _drain_telemetry(self, sub) -> None:
+    def _drain_telemetry(self, sub) -> None:  # noqa: ANN001
         while True:
             msg = sub.recv(timeout_ms=0)
             if msg is None:
@@ -229,10 +502,37 @@ class PIDWorker:
                 self._last_pv = _deserialize_ff_signal(data["pv"])
                 self._last_sp = _deserialize_ff_signal(data["sp"])
                 if "bkcal_in" in data:
-                    self._last_bkcal_in = _deserialize_ff_signal(data["bkcal_in"])
+                    self._last_bkcal_in = _deserialize_ff_signal(
+                        data["bkcal_in"],
+                    )
+                if "cas_in" in data:
+                    self._last_cas_in = _deserialize_ff_signal(
+                        data["cas_in"],
+                    )
+                if "rcas_in" in data:
+                    self._last_rcas_in = _deserialize_ff_signal(
+                        data["rcas_in"],
+                    )
+                if "rout_in" in data:
+                    val = data["rout_in"]
+                    self._last_rout_in = (
+                        float(val)
+                        if isinstance(val, (float, int))
+                        else float(val.get("value", 0.0))
+                    )
+                if "trk_val" in data:
+                    val = data["trk_val"]
+                    self._last_trk_val = (
+                        float(val)
+                        if isinstance(val, (float, int))
+                        else float(val.get("value", 0.0))
+                    )
                 if not self._has_telemetry:
-                    self._last_co = _deserialize_ff_signal(data.get("co", 0.0))
+                    self._last_co = _deserialize_ff_signal(
+                        data.get("co", 0.0),
+                    )
                 self._has_telemetry = True
+                self._last_telem_time = time.monotonic()
             except (KeyError, ValueError, msgpack.UnpackException):
                 pass
 
@@ -256,7 +556,7 @@ class PIDWorker:
             except (KeyError, ValueError, msgpack.UnpackException):
                 pass
 
-    def _drain_ai_actions(self, sub) -> None:
+    def _drain_ai_actions(self, sub) -> None:  # noqa: ANN001
         while True:
             msg = sub.recv(timeout_ms=0)
             if msg is None:
@@ -267,8 +567,11 @@ class PIDWorker:
                 new_ki = data.get("new_ki")
                 if new_ki is not None:
                     with self._lock:
-                        self._controller.pid_params = dataclasses.replace(
-                            self._controller.pid_params, reset=float(new_ki)
+                        self._controller.pid_params = (
+                            dataclasses.replace(
+                                self._controller.pid_params,
+                                reset=float(new_ki),
+                            )
                         )
             except (KeyError, ValueError, msgpack.UnpackException):
                 pass

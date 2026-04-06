@@ -152,7 +152,7 @@ class DashboardPage(QWidget):
         self._cards.clear()
         self._controller_meta.clear()
 
-        for idx, ctrl in enumerate(controllers):
+        for _idx, ctrl in enumerate(controllers):
             cid = ctrl["id"]
             name = ctrl["name"]
             lo = ctrl.get("sp_lo_lim", 0.0)

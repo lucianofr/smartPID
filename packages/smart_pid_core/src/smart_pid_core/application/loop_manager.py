@@ -15,6 +15,7 @@ from smart_pid_domain.exceptions import ControllerNotFoundError, DomainError
 
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import EventBus
+    from smart_pid_core.domain.services.alarm_engine import AlarmEngine
     from smart_pid_domain.models.controller import Controller
 
 
@@ -33,9 +34,15 @@ class LoopContext:
 class LoopManager:
     """Manages the lifecycle of PID control loops."""
 
-    def __init__(self, bus: EventBus, execution_mode: str = "execute") -> None:
+    def __init__(
+        self,
+        bus: EventBus,
+        execution_mode: str = "execute",
+        alarm_engine: AlarmEngine | None = None,
+    ) -> None:
         self._bus = bus
         self._execution_mode = execution_mode
+        self._alarm_engine = alarm_engine
         self._loops: dict[int, LoopContext] = {}
 
     def start_loop(self, controller: Controller) -> None:
@@ -70,6 +77,7 @@ class LoopManager:
             pid_worker = PIDWorker(
                 bus=self._bus, controller=controller,
                 engine=engine, mode_manager=mode_manager,
+                alarm_engine=self._alarm_engine,
             )
             ctx = LoopContext(
                 controller=controller, pid_worker=pid_worker,
@@ -122,28 +130,38 @@ class LoopManager:
         """Set SP value. Validates against sp_limits."""
         if self._execution_mode == "monitor":
             raise DomainError(
-                "Cannot set setpoint in monitor mode — PID is controlled by external DCS"
+                "Cannot set setpoint in monitor mode"
+                " — PID is controlled by external DCS"
             )
         ctx = self._loops.get(controller_id)
         if ctx is None:
             raise ControllerNotFoundError(controller_id)
         c = ctx.controller
         if value > c.sp_hi_lim:
-            raise DomainError(f"SP {value} above high limit {c.sp_hi_lim}")
+            raise DomainError(
+                f"SP {value} above high limit {c.sp_hi_lim}",
+            )
         if value < c.sp_lo_lim:
-            raise DomainError(f"SP {value} below low limit {c.sp_lo_lim}")
+            raise DomainError(
+                f"SP {value} below low limit {c.sp_lo_lim}",
+            )
         ctx.pid_worker.set_sp(value)
 
-    def set_mode(self, controller_id: int, mode: ControllerMode) -> None:
+    def set_mode(
+        self, controller_id: int, mode: ControllerMode,
+    ) -> None:
         """Request mode transition. Raises DomainError if rejected."""
         if self._execution_mode == "monitor":
             raise DomainError(
-                "Cannot set mode in monitor mode — PID is controlled by external DCS"
+                "Cannot set mode in monitor mode"
+                " — PID is controlled by external DCS"
             )
         ctx = self._loops.get(controller_id)
         if ctx is None:
             raise ControllerNotFoundError(controller_id)
-        from smart_pid_core.domain.services.pid_mode_manager import BlockStatus
+        from smart_pid_core.domain.services.pid_mode_manager import (
+            BlockStatus,
+        )
 
         transition = ctx.mode_manager.request_mode(
             current=ctx.pid_worker.current_mode,
@@ -171,11 +189,14 @@ class LoopManager:
             if ctx.ai_worker is not None and ctx.ai_worker.is_alive()
         }
 
-    def set_output(self, controller_id: int, value: float) -> None:
+    def set_output(
+        self, controller_id: int, value: float,
+    ) -> None:
         """Set CO value in MAN mode only. Validates against out_limits."""
         if self._execution_mode == "monitor":
             raise DomainError(
-                "Cannot set output in monitor mode — PID is controlled by external DCS"
+                "Cannot set output in monitor mode"
+                " — PID is controlled by external DCS"
             )
         ctx = self._loops.get(controller_id)
         if ctx is None:
@@ -184,7 +205,11 @@ class LoopManager:
             raise DomainError("Output can only be set in MAN mode")
         c = ctx.controller
         if value > c.out_hi_lim:
-            raise DomainError(f"Output {value} above high limit {c.out_hi_lim}")
+            raise DomainError(
+                f"Output {value} above high limit {c.out_hi_lim}",
+            )
         if value < c.out_lo_lim:
-            raise DomainError(f"Output {value} below low limit {c.out_lo_lim}")
+            raise DomainError(
+                f"Output {value} below low limit {c.out_lo_lim}",
+            )
         ctx.pid_worker.set_output(value)

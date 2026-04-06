@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from smart_pid_domain.enums import (
     AIEngine,
@@ -11,8 +12,13 @@ from smart_pid_domain.enums import (
     IntegralType,
     PIDStructure,
     ProcessSpeed,
+    ProcessType,
+    TrackOpt,
     TuningWriteMode,
 )
+
+if TYPE_CHECKING:
+    from smart_pid_domain.models.alarm_config import AlarmConfig
 
 
 @dataclass
@@ -90,6 +96,7 @@ class ControlOpts:
     sp_pv_track_in_rout: bool = False
     sp_pv_track_in_man: bool = False
     use_pv_for_bkcal_out: bool = False
+    bypass_enable: bool = False
 
 
 @dataclass
@@ -110,6 +117,14 @@ class IOOpts:
 
 
 @dataclass
+class StatusOpts:
+    """Signal quality interpretation options (STATUS_OPTS)."""
+
+    bad_if_limited: bool = False      # Treat LIMITED as BAD
+    use_uncertain_as_good: bool = True  # Treat UNCERTAIN as GOOD
+
+
+@dataclass
 class Controller:
     """Complete configuration for a single PID control loop."""
 
@@ -119,6 +134,7 @@ class Controller:
     execution_mode: ExecutionMode = ExecutionMode.DDC
     scan_rate_ms: int = 1000
     process_speed: ProcessSpeed = ProcessSpeed.MEDIUM
+    process_type: ProcessType = ProcessType.SELF_REGULATING
     pid_params: PIDParams = field(default_factory=PIDParams)
     pid_structure: PIDStructure = PIDStructure.ISA
     integral_type: IntegralType = IntegralType.TIME_TI
@@ -127,9 +143,11 @@ class Controller:
     tag_bindings: TagBindings = field(default_factory=TagBindings)
     control_opts: ControlOpts = field(default_factory=ControlOpts)
     io_opts: IOOpts = field(default_factory=IOOpts)
+    status_opts: StatusOpts = field(default_factory=StatusOpts)
     ai_config: AIConfig = field(default_factory=AIConfig)
     tuning_write_mode: TuningWriteMode = TuningWriteMode.APPROVAL_REQUIRED
     max_tuning_change_pct: float = 10.0
+    track_opt: TrackOpt = TrackOpt.ALWAYS_USE_VALUE
     permitted_modes: set[ControllerMode] = field(
         default_factory=lambda: {ControllerMode.MAN, ControllerMode.AUTO}
     )
@@ -163,3 +181,9 @@ class Controller:
     # Shed (connection loss)
     shed_opt: ControllerMode = ControllerMode.MAN
     shed_time_s: float = 10.0
+
+    # Tracking discrete input (runtime mutable)
+    trk_in_d: bool = False
+
+    # Alarm config (optional, loaded from DB)
+    alarm_config: AlarmConfig | None = None

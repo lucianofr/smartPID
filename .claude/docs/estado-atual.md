@@ -1,63 +1,36 @@
-# Estado Atual — Loop Config Dialog
+# Estado Atual — ProcessSpeed Stats Window
 
-**Data:** 2026-04-05
-**Branch:** feat/loop-config-dialog (8 commits, NÃO merged)
-**Base:** main em 9730d9c
+**Data:** 2026-04-06
+**Branch:** main (merged de feat/process-speed-stats-window)
+**Commit:** 2b55f55
 
 ---
 
 ## O que foi feito
 
-### 1. DTOs expandidos (Task 1)
-- 6 sub-models pydantic: PIDParamsDTO, ScaleConfigDTO, AIConfigDTO, TagBindingsDTO, ControlOptsDTO, IOOptsDTO
-- ControllerCreate/Update/Response com 30+ campos
-- `packages/smart_pid_domain/src/smart_pid_domain/dtos/controllers.py`
+### ProcessSpeed como campo obrigatório do Controller
 
-### 2. Backend API expandida (Task 2)
-- `_to_response()` mapeia todos os campos do Controller
-- `_body_to_controller()` constrói Controller completo a partir do DTO
-- `update_controller` lida com todos os sub-models nested
-- `packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/routers/controllers.py`
+1. **Enum expandido** — 4 membros: ULTRA_FAST (5s/0.02), FAST (60s/0.05), MEDIUM (1200s/0.15), SLOW (7200s/0.30) com properties: stats_window_s, speed_factor, label
+2. **Campo movido** — process_speed saiu de AIConfig e foi para Controller (campo raiz, obrigatório, default MEDIUM)
+3. **DTOs atualizados** — process_speed no nível raiz de ControllerCreate/Update/Response, removido de AIConfigDTO
+4. **API router** — _to_response, _body_to_controller, _NESTED_BUILDERS, _ENUM_FIELDS atualizados
+5. **SQLite repo** — save/load mapeiam process_speed de Controller, não mais de AIConfig
+6. **AI engines** — SPEED_FACTORS dict removido, fuzzy/RL usam speed.speed_factor diretamente
+7. **StatsWorker** — window_size dinâmico: `stats_window_s * 1000 // scan_rate_ms`, publish_interval = max(1, window_size // 5)
+8. **ControllerDialog** — combo movido para aba General com labels descritivos ("Ultra Fast — Motors / Converters")
 
-### 3. ControllerDialog com modo edição (Task 3)
-- Renomeado AddControllerDialog → ControllerDialog
-- `edit_data: dict | None` para preencher todos os campos
-- Modo edit: título "Edit Controller — TAG", nome read-only
-- `packages/smart_pid_hmi/src/smart_pid_hmi/widgets/controller_dialog.py`
+### Conflito resolvido no merge
 
-### 4. Botão de engrenagem nos cards (Task 4)
-- QPushButton("⚙") no header de cada ControllerCardWidget
-- Signal `settings_requested(int)` emitido no clique
-- Não propaga controller_selected
-- `packages/smart_pid_hmi/src/smart_pid_hmi/widgets/controller_card.py`
-
-### 5. API client update_controller (Task 5)
-- `update_controller(id, data)` em APIClientPort, APIClient, MockAPIClient
-- PUT /controllers/{id}
-- `packages/smart_pid_hmi/src/smart_pid_hmi/services/`
-
-### 6. Wiring no MainWindow (Task 6)
-- DashboardPage.settings_requested → MainWindow._on_edit_controller
-- Background fetch → _edit_dialog_signal → _open_edit_dialog (thread-safe)
-- P&ID tab escondida (sem nav button, widget mantido dormant)
-- `packages/smart_pid_hmi/src/smart_pid_hmi/main.py`
-
-### 7. __main__.py adicionado
-- `python -m smart_pid_hmi` agora funciona
-
-### 8. Cleanup (Task 7)
-- Lint limpo, __all__ sorted, refs flat corrigidas em testes
-
----
-
-## Pendências
-
-- **NÃO fazer merge** até avaliar conflitos com a outra conversa (audit V2 em feat/hmi-theme-redesign)
-- Main foi resetada para 9730d9c (commits espúrios de subagentes removidos)
-- Conflitos esperados em: main.py, dashboard_page.py, controller_card.py, enums.py
+- `controller_dialog.py`: main tinha scan_rate como combo (findData/currentData), branch tinha spinbox. Mantido combo do main + process_speed da branch.
 
 ## Testes
 
-- Domain: 138 passed
-- Core API: 13 passed
-- HMI (widgets + services + main): 201 passed
+- Domain: 144 passed
+- Core unit: 341 passed
+- HMI: 347 passed (1 falha pré-existente em test_alarm_bar)
+- Total: 832 passed
+
+## Specs e Planos
+
+- Spec: `docs/superpowers/specs/2026-04-06-process-speed-stats-window-design.md`
+- Plano: `docs/superpowers/plans/2026-04-06-process-speed-stats-window.md`

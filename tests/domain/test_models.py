@@ -27,10 +27,11 @@ from smart_pid_domain.models.telemetry import ControlAction, TelemetryFrame
 
 
 class TestEnums:
-    def test_controller_mode_has_eight_values(self) -> None:
-        assert len(ControllerMode) == 8
+    def test_controller_mode_has_nine_values(self) -> None:
+        assert len(ControllerMode) == 9
         assert ControllerMode.OOS == "OOS"
         assert ControllerMode.AUTO == "AUTO"
+        assert ControllerMode.BYPASS == "BYPASS"
 
     def test_execution_mode_values(self) -> None:
         assert ExecutionMode.SUPERVISORY == "SUPERVISORY"

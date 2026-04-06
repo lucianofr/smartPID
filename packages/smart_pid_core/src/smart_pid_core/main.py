@@ -111,7 +111,13 @@ async def run_daemon(settings: CoreSettings) -> None:
     historian = SQLiteHistorian(repo.db)
     bus = EventBus()
     bus.start()
-    loop_manager = LoopManager(bus=bus, execution_mode=settings.execution_mode)
+    from smart_pid_core.domain.services.alarm_engine import AlarmEngine
+    _alarm_engine = AlarmEngine()
+    loop_manager = LoopManager(
+        bus=bus,
+        execution_mode=settings.execution_mode,
+        alarm_engine=_alarm_engine,
+    )
     logger.info("event_bus_started")
 
     # Phase 4: Adapter factory (simulator or OPC-UA)

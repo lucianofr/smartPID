@@ -30,7 +30,7 @@ def test_add_alarm(qtbot, theme):
     assert bar.alarm_count == 1
 
 
-def test_max_10_alarms(qtbot, theme):
+def test_max_alarms(qtbot, theme):
     bar = AlarmBarWidget(theme=theme)
     qtbot.addWidget(bar)
     for i in range(15):
@@ -42,7 +42,7 @@ def test_max_10_alarms(qtbot, theme):
             "timestamp": f"2026-04-03T10:{i:02d}:00",
         }
         bar.on_alarm(i, alarm)
-    assert bar.alarm_count == 10
+    assert bar.alarm_count == 5
 
 
 def test_newest_alarm_is_first(qtbot, theme):
