@@ -171,7 +171,7 @@ class SimulatorPage(QWidget):
         # --- Excitation period label ---
         self._period_label = QLabel()
         self._period_label.setStyleSheet(
-            f"font-size: {theme.font_size_label}px; color: {theme.fg_secondary};"
+            f"font-size: {theme.font_size_normal}px; color: {theme.fg_secondary};"
         )
         layout.addWidget(self._period_label)
         self._update_period_label()
