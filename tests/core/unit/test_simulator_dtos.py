@@ -1,6 +1,7 @@
 """Tests for new simulator auto-excitation DTOs."""
 import pytest
 from pydantic import ValidationError
+
 from smart_pid_domain.dtos.simulator import (
     AutoDisturbanceRequest,
     AutoSPRequest,
