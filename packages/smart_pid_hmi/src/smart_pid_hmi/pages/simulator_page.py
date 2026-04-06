@@ -111,6 +111,10 @@ class SimulatorPage(QWidget):
         )
         left_col.addWidget(param_group)
 
+        # --- PID + Computed Variables side-by-side ---
+        pid_computed_row = QHBoxLayout()
+        pid_computed_row.setSpacing(12)
+
         # Internal PID group
         pid_group = QGroupBox("Internal PID")
         pid_outer = QVBoxLayout(pid_group)
@@ -157,7 +161,7 @@ class SimulatorPage(QWidget):
         pid_form.addRow("Td:", self._pid_td_edit)
 
         pid_outer.addLayout(pid_form)
-        left_col.addWidget(pid_group)
+        pid_computed_row.addWidget(pid_group, stretch=1)
 
         # PID controls list (for enable/disable toggling)
         self._pid_controls: list[QWidget] = [
@@ -171,15 +175,7 @@ class SimulatorPage(QWidget):
         for ctrl in self._pid_controls:
             ctrl.setEnabled(False)
 
-        # Excitation period label
-        self._period_label = QLabel()
-        self._period_label.setStyleSheet(
-            f"font-size: {theme.font_size_normal}px; color: {theme.fg_secondary};"
-        )
-        left_col.addWidget(self._period_label)
-        self._update_period_label()
-
-        # Live computed variables group
+        # Computed Variables group (side-by-side with PID)
         live_group = QGroupBox("Computed Variables")
         live_form = QFormLayout(live_group)
         live_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
@@ -209,12 +205,21 @@ class SimulatorPage(QWidget):
         self._auto_dist_edit.setReadOnly(True)
         live_form.addRow("D_AUTO:", self._auto_dist_edit)
 
-        left_col.addWidget(live_group)
+        pid_computed_row.addWidget(live_group, stretch=1)
+        left_col.addLayout(pid_computed_row)
+
+        # Excitation period label
+        self._period_label = QLabel()
+        self._period_label.setStyleSheet(
+            f"font-size: {theme.font_size_normal}px; color: {theme.fg_secondary};"
+        )
+        left_col.addWidget(self._period_label)
+        self._update_period_label()
 
         # Block diagram SVG
         self._svg_widget = QSvgWidget()
         self._svg_widget.setObjectName("block_diagram_svg")
-        self._svg_widget.setMinimumHeight(160)
+        self._svg_widget.setMinimumHeight(140)
         self._svg_widget.load(self._build_block_diagram_svg(theme).encode("utf-8"))
         left_col.addWidget(self._svg_widget, stretch=1)
 
@@ -713,90 +718,73 @@ class SimulatorPage(QWidget):
         fg2 = theme.fg_secondary
         sp_c = theme.bar_sp
         pv_c = theme.bar_pv
-        co_c = "#4FC3F7"  # light blue for CO
+        co_c = "#4FC3F7"
         dist_c = theme.alarm_warning
         bg = theme.bg_card
 
         return f"""\
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 180">
-  <rect width="700" height="180" fill="{bg}" rx="6"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 140">
+  <rect width="560" height="140" fill="{bg}" rx="6"/>
 
-  <!-- SP arrow -->
-  <text x="10" y="55" fill="{sp_c}" font-size="11" font-family="monospace">SP</text>
-  <line x1="32" y1="50" x2="70" y2="50" stroke="{sp_c}" stroke-width="1.5"
+  <!-- SP -->
+  <text x="10" y="48" fill="{sp_c}" font-size="11" font-family="monospace">SP</text>
+  <line x1="32" y1="44" x2="62" y2="44" stroke="{sp_c}" stroke-width="1.5"
         marker-end="url(#ah)"/>
 
-  <!-- Summing junction (SP - PV) -->
-  <circle cx="82" cy="50" r="12" fill="none" stroke="{fg}" stroke-width="1.5"/>
-  <text x="76" y="54" fill="{fg}" font-size="12" font-family="monospace">+</text>
-  <text x="76" y="45" fill="{fg}" font-size="9" font-family="monospace">\u2212</text>
+  <!-- Summing junction -->
+  <circle cx="74" cy="44" r="10" fill="none" stroke="{fg}" stroke-width="1.5"/>
+  <text x="69" y="48" fill="{fg}" font-size="11" font-family="monospace">+</text>
+  <text x="70" y="39" fill="{fg}" font-size="8" font-family="monospace">\u2212</text>
 
-  <!-- Error to PID -->
-  <line x1="94" y1="50" x2="130" y2="50" stroke="{fg}" stroke-width="1.5"
+  <!-- Error -->
+  <line x1="84" y1="44" x2="120" y2="44" stroke="{fg}" stroke-width="1.5"
         marker-end="url(#ah)"/>
-  <text x="98" y="43" fill="{fg2}" font-size="9" font-family="monospace">e</text>
+  <text x="92" y="37" fill="{fg2}" font-size="9" font-family="monospace">e</text>
 
-  <!-- PID Sim block -->
-  <rect x="130" y="30" width="80" height="40" rx="4" fill="none" stroke="{co_c}"
+  <!-- PID Sim -->
+  <rect x="120" y="26" width="80" height="36" rx="4" fill="none" stroke="{co_c}"
         stroke-width="1.5"/>
-  <text x="143" y="55" fill="{co_c}" font-size="12" font-weight="bold"
+  <text x="130" y="49" fill="{co_c}" font-size="12" font-weight="bold"
         font-family="monospace">PID Sim</text>
 
-  <!-- CO out of PID -->
-  <line x1="210" y1="50" x2="260" y2="50" stroke="{co_c}" stroke-width="1.5"
+  <!-- CO -->
+  <line x1="200" y1="44" x2="250" y2="44" stroke="{co_c}" stroke-width="1.5"
         marker-end="url(#ah)"/>
-  <text x="220" y="43" fill="{co_c}" font-size="9" font-family="monospace">CO</text>
+  <text x="212" y="37" fill="{co_c}" font-size="9" font-family="monospace">CO</text>
 
-  <!-- Process block -->
-  <rect x="260" y="30" width="90" height="40" rx="4" fill="none" stroke="{pv_c}"
+  <!-- Process -->
+  <rect x="250" y="26" width="90" height="36" rx="4" fill="none" stroke="{pv_c}"
         stroke-width="1.5"/>
-  <text x="268" y="55" fill="{pv_c}" font-size="12" font-weight="bold"
+  <text x="260" y="49" fill="{pv_c}" font-size="12" font-weight="bold"
         font-family="monospace">Process</text>
 
   <!-- Process out -->
-  <line x1="350" y1="50" x2="400" y2="50" stroke="{pv_c}" stroke-width="1.5"
+  <line x1="340" y1="44" x2="380" y2="44" stroke="{pv_c}" stroke-width="1.5"
         marker-end="url(#ah)"/>
 
   <!-- Disturbance summing junction -->
-  <circle cx="412" cy="50" r="12" fill="none" stroke="{fg}" stroke-width="1.5"/>
-  <text x="406" y="54" fill="{fg}" font-size="12" font-family="monospace">+</text>
+  <circle cx="392" cy="44" r="10" fill="none" stroke="{fg}" stroke-width="1.5"/>
+  <text x="387" y="48" fill="{fg}" font-size="11" font-family="monospace">+</text>
 
   <!-- Disturbance input -->
-  <rect x="380" y="100" width="66" height="30" rx="4" fill="none" stroke="{dist_c}"
+  <rect x="365" y="85" width="56" height="26" rx="4" fill="none" stroke="{dist_c}"
         stroke-width="1.5"/>
-  <text x="386" y="120" fill="{dist_c}" font-size="10" font-weight="bold"
+  <text x="370" y="103" fill="{dist_c}" font-size="10" font-weight="bold"
         font-family="monospace">D_OUT</text>
-  <line x1="412" y1="100" x2="412" y2="62" stroke="{dist_c}" stroke-width="1.5"
+  <line x1="392" y1="85" x2="392" y2="54" stroke="{dist_c}" stroke-width="1.5"
         marker-end="url(#ah)"/>
 
-  <!-- PV out -->
-  <line x1="424" y1="50" x2="500" y2="50" stroke="{pv_c}" stroke-width="1.5"
-        marker-end="url(#ah)"/>
-  <text x="440" y="43" fill="{pv_c}" font-size="9" font-family="monospace">PV</text>
+  <!-- PV output -->
+  <line x1="402" y1="44" x2="530" y2="44" stroke="{pv_c}" stroke-width="1.5"/>
+  <text x="510" y="37" fill="{pv_c}" font-size="11" font-weight="bold"
+        font-family="monospace">PV</text>
 
-  <!-- PV to OPC-UA / DCS PID -->
-  <rect x="500" y="25" width="80" height="50" rx="4" fill="none" stroke="{fg}"
-        stroke-width="1.5" stroke-dasharray="4,3"/>
-  <text x="510" y="47" fill="{fg}" font-size="10" font-family="monospace">DCS PID</text>
-  <text x="512" y="62" fill="{fg2}" font-size="8" font-family="monospace">(OPC-UA)</text>
-
-  <!-- DCS PID CO back -->
-  <line x1="540" y1="75" x2="540" y2="155" stroke="{fg2}" stroke-width="1"
-        stroke-dasharray="4,3"/>
-  <line x1="540" y1="155" x2="170" y2="155" stroke="{fg2}" stroke-width="1"
-        stroke-dasharray="4,3"/>
-  <line x1="170" y1="155" x2="170" y2="70" stroke="{fg2}" stroke-width="1"
-        stroke-dasharray="4,3" marker-end="url(#ah)"/>
-  <text x="340" y="168" fill="{fg2}" font-size="8"
-        font-family="monospace">CO write-back (OPC-UA)</text>
-
-  <!-- PV feedback loop -->
-  <line x1="470" y1="50" x2="470" y2="15" stroke="{pv_c}" stroke-width="1"/>
-  <line x1="470" y1="15" x2="82" y2="15" stroke="{pv_c}" stroke-width="1"/>
-  <line x1="82" y1="15" x2="82" y2="38" stroke="{pv_c}" stroke-width="1"
+  <!-- PV feedback -->
+  <line x1="530" y1="44" x2="530" y2="12" stroke="{pv_c}" stroke-width="1"/>
+  <line x1="530" y1="12" x2="74" y2="12" stroke="{pv_c}" stroke-width="1"/>
+  <line x1="74" y1="12" x2="74" y2="34" stroke="{pv_c}" stroke-width="1"
         marker-end="url(#ah)"/>
 
-  <!-- Arrowhead marker -->
   <defs>
     <marker id="ah" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
       <path d="M0,0 L8,3 L0,6 Z" fill="{fg}"/>

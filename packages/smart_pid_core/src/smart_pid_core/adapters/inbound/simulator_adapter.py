@@ -63,6 +63,12 @@ class _ControllerSim:
     auto_dist_enabled: bool = False
     auto_dist_max_pct: float = 10.0
     auto_dist_elapsed_s: float = 0.0
+    # Live computed values (updated each tick)
+    live_pv: float = 0.0
+    live_error: float = 0.0
+    live_process_input: float = 0.0
+    live_process_output: float = 0.0
+    live_disturbance_output: float = 0.0
 
 
 class SimulatorAdapter:
@@ -293,65 +299,50 @@ class SimulatorAdapter:
             ctrl.pid_params.rate = cfg.get("pid_td", 0.0)
             ctrl.pid_mode = cfg.get("pid_mode", 0)
 
+    def _build_status(self, ctrl: _ControllerSim) -> ControllerSimStatus:
+        """Build a ControllerSimStatus from a _ControllerSim instance."""
+        return ControllerSimStatus(
+            preset=ctrl.preset_name,
+            gain=ctrl.gain,
+            tau1=ctrl.tau1,
+            tau2=ctrl.tau2,
+            dead_time=ctrl.dead_time,
+            step_active=ctrl.step_active,
+            step_amplitude=ctrl.step_amplitude,
+            noise_active=ctrl.noise_active,
+            noise_amplitude=ctrl.noise_amplitude,
+            pid_enabled=ctrl.pid_enabled,
+            pid_kp=ctrl.pid_params.gain,
+            pid_ti=ctrl.pid_params.reset,
+            pid_td=ctrl.pid_params.rate,
+            pid_mode=ctrl.pid_mode,
+            pid_cv=ctrl.pid_state.cv,
+            auto_sp=AutoSPRequest(
+                enabled=ctrl.auto_sp_enabled,
+                sp_min_pct=ctrl.auto_sp_min_pct,
+                sp_max_pct=ctrl.auto_sp_max_pct,
+            ),
+            auto_disturbance=AutoDisturbanceRequest(
+                enabled=ctrl.auto_dist_enabled,
+                max_amplitude_pct=ctrl.auto_dist_max_pct,
+            ),
+            pv=ctrl.live_pv,
+            sp=ctrl.sp,
+            co=ctrl.last_co,
+            error=ctrl.live_error,
+            process_input=ctrl.live_process_input,
+            process_output=ctrl.live_process_output,
+            disturbance_output=ctrl.live_disturbance_output,
+        )
+
     def get_controller_status(self, controller_id: int) -> ControllerSimStatus:
         with self._lock:
-            ctrl = self._controllers[controller_id]
-            return ControllerSimStatus(
-                preset=ctrl.preset_name,
-                gain=ctrl.gain,
-                tau1=ctrl.tau1,
-                tau2=ctrl.tau2,
-                dead_time=ctrl.dead_time,
-                step_active=ctrl.step_active,
-                step_amplitude=ctrl.step_amplitude,
-                noise_active=ctrl.noise_active,
-                noise_amplitude=ctrl.noise_amplitude,
-                pid_enabled=ctrl.pid_enabled,
-                pid_kp=ctrl.pid_params.gain,
-                pid_ti=ctrl.pid_params.reset,
-                pid_td=ctrl.pid_params.rate,
-                pid_mode=ctrl.pid_mode,
-                pid_cv=ctrl.pid_state.cv,
-                auto_sp=AutoSPRequest(
-                    enabled=ctrl.auto_sp_enabled,
-                    sp_min_pct=ctrl.auto_sp_min_pct,
-                    sp_max_pct=ctrl.auto_sp_max_pct,
-                ),
-                auto_disturbance=AutoDisturbanceRequest(
-                    enabled=ctrl.auto_dist_enabled,
-                    max_amplitude_pct=ctrl.auto_dist_max_pct,
-                ),
-            )
+            return self._build_status(self._controllers[controller_id])
 
     def get_status(self) -> dict[int, ControllerSimStatus]:
         with self._lock:
             return {
-                cid: ControllerSimStatus(
-                    preset=ctrl.preset_name,
-                    gain=ctrl.gain,
-                    tau1=ctrl.tau1,
-                    tau2=ctrl.tau2,
-                    dead_time=ctrl.dead_time,
-                    step_active=ctrl.step_active,
-                    step_amplitude=ctrl.step_amplitude,
-                    noise_active=ctrl.noise_active,
-                    noise_amplitude=ctrl.noise_amplitude,
-                    pid_enabled=ctrl.pid_enabled,
-                    pid_kp=ctrl.pid_params.gain,
-                    pid_ti=ctrl.pid_params.reset,
-                    pid_td=ctrl.pid_params.rate,
-                    pid_mode=ctrl.pid_mode,
-                    pid_cv=ctrl.pid_state.cv,
-                    auto_sp=AutoSPRequest(
-                        enabled=ctrl.auto_sp_enabled,
-                        sp_min_pct=ctrl.auto_sp_min_pct,
-                        sp_max_pct=ctrl.auto_sp_max_pct,
-                    ),
-                    auto_disturbance=AutoDisturbanceRequest(
-                        enabled=ctrl.auto_dist_enabled,
-                        max_amplitude_pct=ctrl.auto_dist_max_pct,
-                    ),
-                )
+                cid: self._build_status(ctrl)
                 for cid, ctrl in self._controllers.items()
             }
 
@@ -403,8 +394,15 @@ class SimulatorAdapter:
 
                 pv = process_output + disturbance
 
+                # Store live values for status queries
+                ctrl.live_pv = pv
+                ctrl.live_process_input = ctrl.last_co
+                ctrl.live_process_output = process_output
+                ctrl.live_disturbance_output = disturbance
+
                 # Internal PID: compute CO when enabled and AUTO
                 error = ctrl.sp - pv
+                ctrl.live_error = error
                 if ctrl.pid_enabled and ctrl.pid_mode == 1:
                     result = self._pid_engine.compute(
                         params=ctrl.pid_params,
