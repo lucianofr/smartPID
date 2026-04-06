@@ -153,7 +153,7 @@ class TestDefaults:
         assert dialog._arw_hi.value() == 100.0
 
     def test_default_execution_mode(self, dialog):
-        assert dialog._execution_mode.currentText() == "DDC"
+        assert dialog._execution_mode.currentText() == "SUPERVISORY"
 
     def test_default_pid_structure(self, dialog):
         assert dialog._pid_structure.currentText() == "ISA"

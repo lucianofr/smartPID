@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
+    QLabel,
     QLineEdit,
     QScrollArea,
     QSpinBox,
@@ -91,29 +92,44 @@ class ControllerDialog(QDialog):
         self.setMinimumHeight(480)
 
         root = QVBoxLayout(self)
-        tabs = QTabWidget()
-        root.addWidget(tabs)
+        self._tabs = QTabWidget()
+        root.addWidget(self._tabs)
 
         # --- Tab 1: General ---
-        tabs.addTab(self._build_general_tab(), "General")
+        self._tabs.addTab(self._build_general_tab(), "General")
 
-        # --- Tab 2: PID Tuning ---
-        tabs.addTab(self._build_pid_tab(), "PID Tuning")
+        # --- Tab 2: PID Tuning (DDC only) ---
+        self._pid_tab = self._build_pid_tab()
+        self._tabs.addTab(self._pid_tab, "PID Tuning")
 
-        # --- Tab 3: Scaling & Limits ---
-        tabs.addTab(self._build_scaling_tab(), "Scaling & Limits")
+        # --- Tab 3: Scaling & Limits (DDC only) ---
+        self._scaling_tab = self._build_scaling_tab()
+        self._tabs.addTab(self._scaling_tab, "Scaling & Limits")
 
-        # --- Tab 4: Filters & IO ---
-        tabs.addTab(self._build_filters_io_tab(), "Filters & IO")
+        # --- Tab 4: Filters & IO (DDC only) ---
+        self._filters_tab = self._build_filters_io_tab()
+        self._tabs.addTab(self._filters_tab, "Filters & IO")
 
         # --- Tab 5: AI Configuration ---
-        tabs.addTab(self._build_ai_tab(), "AI Configuration")
+        self._tabs.addTab(self._build_ai_tab(), "AI Configuration")
 
         # --- Tab 6: OPC-UA Tags ---
-        tabs.addTab(self._build_opcua_tab(), "OPC-UA Tags")
+        self._tabs.addTab(self._build_opcua_tab(), "OPC-UA Tags")
 
-        # --- Tab 7: Shed & Safety ---
-        tabs.addTab(self._build_shed_tab(), "Shed & Safety")
+        # --- Tab 7: Shed & Safety (DDC only) ---
+        self._shed_tab = self._build_shed_tab()
+        self._tabs.addTab(self._shed_tab, "Shed & Safety")
+
+        # Track DDC-only tab indices for show/hide
+        self._ddc_tab_indices: list[int] = []
+        for i in range(self._tabs.count()):
+            widget = self._tabs.widget(i)
+            if widget in (self._pid_tab, self._scaling_tab,
+                          self._filters_tab, self._shed_tab):
+                self._ddc_tab_indices.append(i)
+
+        # Apply initial mode visibility (default is SUPERVISORY)
+        self._on_execution_mode_changed(self._execution_mode.currentText())
 
         # Buttons
         buttons = QDialogButtonBox(
@@ -145,7 +161,10 @@ class ControllerDialog(QDialog):
         self._description.setPlaceholderText("optional")
         form.addRow("Description:", self._description)
 
-        self._execution_mode = _enum_combo(ExecutionMode, ExecutionMode.DDC.value)
+        self._execution_mode = _enum_combo(
+            ExecutionMode, ExecutionMode.SUPERVISORY.value,
+        )
+        self._execution_mode.currentTextChanged.connect(self._on_execution_mode_changed)
         form.addRow("Execution Mode:", self._execution_mode)
 
         self._scan_rate = QSpinBox()
@@ -155,10 +174,12 @@ class ControllerDialog(QDialog):
         form.addRow("Scan Rate:", self._scan_rate)
 
         self._pid_structure = _enum_combo(PIDStructure, PIDStructure.ISA.value)
-        form.addRow("PID Structure:", self._pid_structure)
+        self._pid_structure_label = QLabel("PID Structure:")
+        form.addRow(self._pid_structure_label, self._pid_structure)
 
         self._integral_type = _enum_combo(IntegralType, IntegralType.TIME_TI.value)
-        form.addRow("Integral Type:", self._integral_type)
+        self._integral_type_label = QLabel("Integral Type:")
+        form.addRow(self._integral_type_label, self._integral_type)
 
         self._mode_normal = _enum_combo(ControllerMode, ControllerMode.AUTO.value)
         form.addRow("Normal Mode:", self._mode_normal)
@@ -373,6 +394,27 @@ class ControllerDialog(QDialog):
         form.addRow("Max Tuning Change %:", self._max_tuning_pct)
 
         return _scrollable(form)
+
+    # --------------------------------------------------------- mode toggle
+
+    def _on_execution_mode_changed(self, mode_text: str) -> None:
+        """Show/hide DDC-only tabs and fields based on execution mode."""
+        is_ddc = mode_text == ExecutionMode.DDC.value
+
+        # DDC-only tabs: remove or re-add
+        # Strategy: store tabs, remove all DDC tabs, re-add if DDC
+        # Simpler: use setTabVisible (Qt 5.15+/PySide6)
+        for i in range(self._tabs.count()):
+            widget = self._tabs.widget(i)
+            if widget in (self._pid_tab, self._scaling_tab,
+                          self._filters_tab, self._shed_tab):
+                self._tabs.setTabVisible(i, is_ddc)
+
+        # DDC-only fields in General tab
+        self._pid_structure.setVisible(is_ddc)
+        self._pid_structure_label.setVisible(is_ddc)
+        self._integral_type.setVisible(is_ddc)
+        self._integral_type_label.setVisible(is_ddc)
 
     # ------------------------------------------------------------ populate
 

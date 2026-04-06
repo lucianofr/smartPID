@@ -61,8 +61,8 @@ O Backend adota o padrão **Dual-Thread por Malha** somado às threads de infrae
 Toda a matemática e execução do PID ocorre internamente no Backend.
 
 ### **3.1. Modos de Execução da Malha**
-* **Modo Supervisório (Externo):** O controle PID reside no PLC. O Backend monitora PV, SP e CO via OPC-UA e escreve *apenas* o ajuste do parâmetro integral no PLC.
-* **Modo DDC (Direct Digital Control / Interno):** O Backend executa a equação PID completa. Lê PV, calcula CO e escreve o valor no atuador via OPC-UA.
+* **Modo Supervisório (Externo) [DEFAULT]:** O controle PID reside no PLC. O Backend monitora PV, SP e CO via OPC-UA e escreve *apenas* o ajuste do parâmetro integral no PLC. Na interface de configuração, os campos exclusivos do DDC (PID Tuning, Scaling & Limits, Filters & IO, Shed & Safety, PID Structure, Integral Type) ficam ocultos.
+* **Modo DDC (Direct Digital Control / Interno):** O Backend executa a equação PID completa. Lê PV, calcula CO e escreve o valor no atuador via OPC-UA. Todos os campos de configuração ficam visíveis.
 * **Scan Rate**: Deverá ser possível escolher um SCAN RATE para cada controlador adicionado e configurado no sistema. Isso garante determinismo para malhas lentas vs rápidas.
 
 *Os detalhes de implantação do algoritmo PID no modo DDC estão no arquivo `./bloco_wpid.md`.*
