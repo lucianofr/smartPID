@@ -190,6 +190,11 @@ class TestSimulatorAdapterOPCUA:
         mock_adapter._opcua_server.update_values.assert_called_once()
         call_kwargs = mock_adapter._opcua_server.update_values.call_args
         assert call_kwargs.kwargs["controller_id"] == 1
+        values = call_kwargs.kwargs["values"]
+        assert "pv" in values
+        assert "process_gain" in values
+        assert "pid_enabled" in values
+        assert "step_active" in values
 
     def test_on_opcua_write_updates_co(self, mock_adapter: SimulatorAdapter) -> None:
         mock_adapter.register_controller(1)

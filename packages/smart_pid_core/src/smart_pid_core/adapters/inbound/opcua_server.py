@@ -14,6 +14,22 @@ logger = logging.getLogger(__name__)
 NAMESPACE_URI = "urn:smartpid:sim"
 _WRITABLE_PARAMS = ("co", "sp", "kp", "ti", "td", "pid_mode", "pid_sp")
 
+# All node keys grouped by sub-folder for address space organization
+_PID_NODES = (
+    "pv", "sp", "co", "mode", "status",
+    "kp", "ti", "td", "pid_mode", "pid_sp", "pid_enabled", "pid_cv", "error",
+)
+_PROCESS_NODES = (
+    "process_gain", "process_tau1", "process_tau2", "process_dead_time",
+    "process_preset", "process_pv_min", "process_pv_max",
+    "process_input", "process_output",
+)
+_DISTURBANCE_NODES = (
+    "step_active", "step_amplitude", "noise_active", "noise_amplitude",
+    "auto_sp_enabled", "auto_sp_min_pct", "auto_sp_max_pct",
+    "auto_dist_enabled", "auto_dist_max_pct",
+)
+
 
 class OPCUAServer:
     """Embedded asyncua.Server exposing simulated controller nodes.
@@ -99,29 +115,20 @@ class OPCUAServer:
         self._controller_node_ids[controller_id] = {}
         return {}
 
-    def update_values(
+    def update_values(  # noqa: PLR0913
         self,
         controller_id: int,
-        pv: float,
-        sp: float,
-        co: float,
-        mode: int = 0,
-        status: int = 0,
         *,
-        kp: float | None = None,
-        ti: float | None = None,
-        td: float | None = None,
-        pid_mode: int | None = None,
-        pid_sp: float | None = None,
+        values: dict[str, float | int | str | bool],
     ) -> None:
-        """Update OPC-UA node values for a controller. Thread-safe."""
+        """Update OPC-UA node values for a controller. Thread-safe.
+
+        ``values`` is a dict of node_key -> value for all nodes to update.
+        """
         if self._loop is None or not self._loop.is_running():
             return
         asyncio.run_coroutine_threadsafe(
-            self._async_update_values(
-                controller_id, pv, sp, co, mode, status,
-                kp=kp, ti=ti, td=td, pid_mode=pid_mode, pid_sp=pid_sp,
-            ),
+            self._async_update_values(controller_id, values),
             self._loop,
         )
 
@@ -176,79 +183,138 @@ class OPCUAServer:
                 await asyncio.sleep(0.1)
 
     async def _async_register_controller(self, controller_id: int) -> dict[str, str]:
-        """Create OPC-UA nodes for a controller under Controllers folder."""
+        """Create OPC-UA nodes for a controller under Controllers folder.
+
+        Address space layout per controller::
+
+            CTRL_{id}/
+              PID/        — PV, SP, CO, Mode, Status, Kp, Ti, Td, PID_Mode, PID_SP,
+                            PID_Enabled, PID_CV, Error
+              Process/    — Gain, Tau1, Tau2, DeadTime, Preset, PV_Min, PV_Max,
+                            Input (CO→process), Output (raw process out)
+              Disturbance/ — Step_Active, Step_Amplitude, Noise_Active, Noise_Amplitude,
+                             Auto_SP_Enabled, Auto_SP_Min, Auto_SP_Max,
+                             Auto_Dist_Enabled, Auto_Dist_Max
+        """
         from asyncua import ua
 
         tag = f"CTRL_{controller_id}"
         ctrl_folder = await self._controllers_folder.add_folder(self._ns_idx, tag)
 
-        pv_node = await ctrl_folder.add_variable(
+        # --- PID sub-folder ---
+        pid_folder = await ctrl_folder.add_folder(self._ns_idx, "PID")
+        nodes: dict[str, object] = {}
+
+        nodes["pv"] = await pid_folder.add_variable(
             self._ns_idx, "PV", 0.0, ua.VariantType.Float,
         )
-        sp_node = await ctrl_folder.add_variable(
+        nodes["sp"] = await pid_folder.add_variable(
             self._ns_idx, "SP", 50.0, ua.VariantType.Float,
         )
-        co_node = await ctrl_folder.add_variable(
+        nodes["co"] = await pid_folder.add_variable(
             self._ns_idx, "CO", 0.0, ua.VariantType.Float,
         )
-        mode_node = await ctrl_folder.add_variable(
+        nodes["mode"] = await pid_folder.add_variable(
             self._ns_idx, "Mode", 0, ua.VariantType.Int32,
         )
-        status_node = await ctrl_folder.add_variable(
+        nodes["status"] = await pid_folder.add_variable(
             self._ns_idx, "Status", 0, ua.VariantType.Int32,
         )
-
-        # PID tuning nodes (all writable)
-        kp_node = await ctrl_folder.add_variable(
+        nodes["kp"] = await pid_folder.add_variable(
             self._ns_idx, "Kp", 1.0, ua.VariantType.Float,
         )
-        ti_node = await ctrl_folder.add_variable(
+        nodes["ti"] = await pid_folder.add_variable(
             self._ns_idx, "Ti", 10.0, ua.VariantType.Float,
         )
-        td_node = await ctrl_folder.add_variable(
+        nodes["td"] = await pid_folder.add_variable(
             self._ns_idx, "Td", 0.0, ua.VariantType.Float,
         )
-        pid_mode_node = await ctrl_folder.add_variable(
+        nodes["pid_mode"] = await pid_folder.add_variable(
             self._ns_idx, "PID_Mode", 0, ua.VariantType.Int32,
         )
-        pid_sp_node = await ctrl_folder.add_variable(
+        nodes["pid_sp"] = await pid_folder.add_variable(
             self._ns_idx, "PID_SP", 50.0, ua.VariantType.Float,
+        )
+        nodes["pid_enabled"] = await pid_folder.add_variable(
+            self._ns_idx, "PID_Enabled", False, ua.VariantType.Boolean,
+        )
+        nodes["pid_cv"] = await pid_folder.add_variable(
+            self._ns_idx, "PID_CV", 0.0, ua.VariantType.Float,
+        )
+        nodes["error"] = await pid_folder.add_variable(
+            self._ns_idx, "Error", 0.0, ua.VariantType.Float,
+        )
+
+        # --- Process sub-folder ---
+        proc_folder = await ctrl_folder.add_folder(self._ns_idx, "Process")
+
+        nodes["process_gain"] = await proc_folder.add_variable(
+            self._ns_idx, "Gain", 1.2, ua.VariantType.Float,
+        )
+        nodes["process_tau1"] = await proc_folder.add_variable(
+            self._ns_idx, "Tau1", 3.0, ua.VariantType.Float,
+        )
+        nodes["process_tau2"] = await proc_folder.add_variable(
+            self._ns_idx, "Tau2", 0.0, ua.VariantType.Float,
+        )
+        nodes["process_dead_time"] = await proc_folder.add_variable(
+            self._ns_idx, "DeadTime", 1.0, ua.VariantType.Float,
+        )
+        nodes["process_preset"] = await proc_folder.add_variable(
+            self._ns_idx, "Preset", "FLOW", ua.VariantType.String,
+        )
+        nodes["process_pv_min"] = await proc_folder.add_variable(
+            self._ns_idx, "PV_Min", 0.0, ua.VariantType.Float,
+        )
+        nodes["process_pv_max"] = await proc_folder.add_variable(
+            self._ns_idx, "PV_Max", 100.0, ua.VariantType.Float,
+        )
+        nodes["process_input"] = await proc_folder.add_variable(
+            self._ns_idx, "Input", 0.0, ua.VariantType.Float,
+        )
+        nodes["process_output"] = await proc_folder.add_variable(
+            self._ns_idx, "Output", 0.0, ua.VariantType.Float,
+        )
+
+        # --- Disturbance sub-folder ---
+        dist_folder = await ctrl_folder.add_folder(self._ns_idx, "Disturbance")
+
+        nodes["step_active"] = await dist_folder.add_variable(
+            self._ns_idx, "Step_Active", False, ua.VariantType.Boolean,
+        )
+        nodes["step_amplitude"] = await dist_folder.add_variable(
+            self._ns_idx, "Step_Amplitude", 0.0, ua.VariantType.Float,
+        )
+        nodes["noise_active"] = await dist_folder.add_variable(
+            self._ns_idx, "Noise_Active", False, ua.VariantType.Boolean,
+        )
+        nodes["noise_amplitude"] = await dist_folder.add_variable(
+            self._ns_idx, "Noise_Amplitude", 0.0, ua.VariantType.Float,
+        )
+        nodes["auto_sp_enabled"] = await dist_folder.add_variable(
+            self._ns_idx, "Auto_SP_Enabled", False, ua.VariantType.Boolean,
+        )
+        nodes["auto_sp_min_pct"] = await dist_folder.add_variable(
+            self._ns_idx, "Auto_SP_Min", 30.0, ua.VariantType.Float,
+        )
+        nodes["auto_sp_max_pct"] = await dist_folder.add_variable(
+            self._ns_idx, "Auto_SP_Max", 70.0, ua.VariantType.Float,
+        )
+        nodes["auto_dist_enabled"] = await dist_folder.add_variable(
+            self._ns_idx, "Auto_Dist_Enabled", False, ua.VariantType.Boolean,
+        )
+        nodes["auto_dist_max_pct"] = await dist_folder.add_variable(
+            self._ns_idx, "Auto_Dist_Max", 10.0, ua.VariantType.Float,
         )
 
         # Make writable params accessible to external clients
-        await co_node.set_writable()
-        await sp_node.set_writable()
-        await kp_node.set_writable()
-        await ti_node.set_writable()
-        await td_node.set_writable()
-        await pid_mode_node.set_writable()
-        await pid_sp_node.set_writable()
+        for param in _WRITABLE_PARAMS:
+            await nodes[param].set_writable()
 
-        node_ids = {
-            "pv": pv_node.nodeid.to_string(),
-            "sp": sp_node.nodeid.to_string(),
-            "co": co_node.nodeid.to_string(),
-            "mode": mode_node.nodeid.to_string(),
-            "status": status_node.nodeid.to_string(),
-            "kp": kp_node.nodeid.to_string(),
-            "ti": ti_node.nodeid.to_string(),
-            "td": td_node.nodeid.to_string(),
-            "pid_mode": pid_mode_node.nodeid.to_string(),
-            "pid_sp": pid_sp_node.nodeid.to_string(),
-        }
+        # Build node_id mapping
+        node_ids = {key: node.nodeid.to_string() for key, node in nodes.items()}
         self._controller_node_ids[controller_id] = node_ids
-        self._controller_nodes[controller_id] = {
-            "pv": pv_node,
-            "sp": sp_node,
-            "co": co_node,
-            "mode": mode_node,
-            "status": status_node,
-            "kp": kp_node,
-            "ti": ti_node,
-            "td": td_node,
-            "pid_mode": pid_mode_node,
-            "pid_sp": pid_sp_node,
-        }
+        self._controller_nodes[controller_id] = nodes
         logger.info("opcua_server_registered controller=%d tag=%s", controller_id, tag)
 
         # Subscribe writable nodes if subscription exists (late registration)
@@ -260,20 +326,29 @@ class OPCUAServer:
 
         return node_ids
 
+    # Mapping from node key to asyncua VariantType
+    _VARIANT_TYPES: dict[str, str] = {
+        "pv": "Float", "sp": "Float", "co": "Float",
+        "mode": "Int32", "status": "Int32",
+        "kp": "Float", "ti": "Float", "td": "Float",
+        "pid_mode": "Int32", "pid_sp": "Float",
+        "pid_enabled": "Boolean", "pid_cv": "Float", "error": "Float",
+        "process_gain": "Float", "process_tau1": "Float",
+        "process_tau2": "Float", "process_dead_time": "Float",
+        "process_preset": "String",
+        "process_pv_min": "Float", "process_pv_max": "Float",
+        "process_input": "Float", "process_output": "Float",
+        "step_active": "Boolean", "step_amplitude": "Float",
+        "noise_active": "Boolean", "noise_amplitude": "Float",
+        "auto_sp_enabled": "Boolean",
+        "auto_sp_min_pct": "Float", "auto_sp_max_pct": "Float",
+        "auto_dist_enabled": "Boolean", "auto_dist_max_pct": "Float",
+    }
+
     async def _async_update_values(
         self,
         controller_id: int,
-        pv: float,
-        sp: float,
-        co: float,
-        mode: int,
-        status: int,
-        *,
-        kp: float | None = None,
-        ti: float | None = None,
-        td: float | None = None,
-        pid_mode: int | None = None,
-        pid_sp: float | None = None,
+        values: dict[str, float | int | str | bool],
     ) -> None:
         """Write new values to the controller's OPC-UA nodes."""
         nodes = self._controller_nodes.get(controller_id)
@@ -281,27 +356,15 @@ class OPCUAServer:
             return
         from asyncua import ua
 
-        await nodes["pv"].write_value(ua.DataValue(ua.Variant(pv, ua.VariantType.Float)))
-        await nodes["sp"].write_value(ua.DataValue(ua.Variant(sp, ua.VariantType.Float)))
-        await nodes["co"].write_value(ua.DataValue(ua.Variant(co, ua.VariantType.Float)))
-        await nodes["mode"].write_value(ua.DataValue(ua.Variant(mode, ua.VariantType.Int32)))
-        await nodes["status"].write_value(
-            ua.DataValue(ua.Variant(status, ua.VariantType.Int32)),
-        )
-        if kp is not None:
-            await nodes["kp"].write_value(ua.DataValue(ua.Variant(kp, ua.VariantType.Float)))
-        if ti is not None:
-            await nodes["ti"].write_value(ua.DataValue(ua.Variant(ti, ua.VariantType.Float)))
-        if td is not None:
-            await nodes["td"].write_value(ua.DataValue(ua.Variant(td, ua.VariantType.Float)))
-        if pid_mode is not None:
-            await nodes["pid_mode"].write_value(
-                ua.DataValue(ua.Variant(pid_mode, ua.VariantType.Int32)),
-            )
-        if pid_sp is not None:
-            await nodes["pid_sp"].write_value(
-                ua.DataValue(ua.Variant(pid_sp, ua.VariantType.Float)),
-            )
+        for key, value in values.items():
+            node = nodes.get(key)
+            if node is None:
+                continue
+            vtype_name = self._VARIANT_TYPES.get(key)
+            if vtype_name is None:
+                continue
+            vtype = getattr(ua.VariantType, vtype_name)
+            await node.write_value(ua.DataValue(ua.Variant(value, vtype)))
 
 
 class _WriteHandler:

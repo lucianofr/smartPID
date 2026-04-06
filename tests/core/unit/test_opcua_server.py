@@ -139,7 +139,8 @@ class TestOPCUAServerUpdateValues:
                 assert client.wait_connected(timeout_s=5.0)
 
                 server.update_values(
-                    controller_id=1, pv=72.5, sp=75.0, co=45.0, mode=4, status=0,
+                    controller_id=1,
+                    values={"pv": 72.5, "sp": 75.0, "co": 45.0, "mode": 4, "status": 0},
                 )
                 time.sleep(0.3)  # Allow async write to propagate
 

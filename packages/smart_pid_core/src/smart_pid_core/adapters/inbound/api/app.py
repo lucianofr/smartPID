@@ -87,6 +87,11 @@ def create_app(
     app.state.execution_mode = settings.execution_mode
 
     # Register routers
+    # Stats and AI routers share /controllers prefix but have literal sub-paths
+    # (e.g. /controllers/stats) — must be registered BEFORE the controllers CRUD
+    # router whose /{controller_id} path param would swallow "stats"/"ai" as int.
+    app.include_router(stats.router, prefix="/controllers", tags=["stats"])
+    app.include_router(ai.router, prefix="/controllers", tags=["ai"])
     app.include_router(project.router, prefix="/project", tags=["project"])
     app.include_router(system.router, prefix="/system", tags=["system"])
     app.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -95,8 +100,6 @@ def create_app(
     app.include_router(history.router, prefix="/history", tags=["history"])
     app.include_router(simulator.router, prefix="/simulator", tags=["simulator"])
     app.include_router(opcua.router, prefix="/opcua", tags=["opcua"])
-    app.include_router(stats.router, prefix="/controllers", tags=["stats"])
-    app.include_router(ai.router, prefix="/controllers", tags=["ai"])
     app.include_router(alarms.router, prefix="/alarms", tags=["alarms"])
     app.include_router(users.router, prefix="/users", tags=["users"])
     app.include_router(audit.router, prefix="/audit", tags=["audit"])
