@@ -2,8 +2,15 @@
 from __future__ import annotations
 
 import pytest
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QGroupBox, QLabel, QPushButton
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QGroupBox,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+)
 
 from smart_pid_hmi.pages.simulator_page import SimulatorPage
 from smart_pid_hmi.themes.dark_room import DarkRoomTheme
@@ -126,51 +133,58 @@ class TestSimulatorPagePIDGroup:
         assert combo.currentText() == "MAN"
         assert combo.count() == 2
 
-    def test_pid_sp_spinbox(self, pid_page: SimulatorPage) -> None:
-        spin = pid_page.findChild(QDoubleSpinBox, "pid_sp_spin")
-        assert spin is not None
-        assert spin.value() == 50.0
-        assert spin.suffix() == " %"
+    def test_pid_pv_readonly(self, pid_page: SimulatorPage) -> None:
+        edit = pid_page.findChild(QLineEdit, "pid_pv_edit")
+        assert edit is not None
+        assert edit.isReadOnly()
+        assert edit.text() == "0.0"
 
-    def test_pid_kp_spinbox(self, pid_page: SimulatorPage) -> None:
-        spin = pid_page.findChild(QDoubleSpinBox, "pid_kp_spin")
-        assert spin is not None
-        assert spin.value() == 1.0
+    def test_pid_sp_edit(self, pid_page: SimulatorPage) -> None:
+        edit = pid_page.findChild(QLineEdit, "pid_sp_edit")
+        assert edit is not None
+        assert edit.text() == "50.0"
 
-    def test_pid_ti_spinbox(self, pid_page: SimulatorPage) -> None:
-        spin = pid_page.findChild(QDoubleSpinBox, "pid_ti_spin")
-        assert spin is not None
-        assert spin.value() == 10.0
-        assert spin.suffix() == " s"
+    def test_pid_co_edit(self, pid_page: SimulatorPage) -> None:
+        edit = pid_page.findChild(QLineEdit, "pid_co_edit")
+        assert edit is not None
+        assert edit.text() == "0.0"
 
-    def test_pid_td_spinbox(self, pid_page: SimulatorPage) -> None:
-        spin = pid_page.findChild(QDoubleSpinBox, "pid_td_spin")
-        assert spin is not None
-        assert spin.value() == 0.0
-        assert spin.suffix() == " s"
+    def test_pid_kp_edit(self, pid_page: SimulatorPage) -> None:
+        edit = pid_page.findChild(QLineEdit, "pid_kp_edit")
+        assert edit is not None
+        assert edit.text() == "1.00"
+
+    def test_pid_ti_edit(self, pid_page: SimulatorPage) -> None:
+        edit = pid_page.findChild(QLineEdit, "pid_ti_edit")
+        assert edit is not None
+        assert edit.text() == "10.0"
+
+    def test_pid_td_edit(self, pid_page: SimulatorPage) -> None:
+        edit = pid_page.findChild(QLineEdit, "pid_td_edit")
+        assert edit is not None
+        assert edit.text() == "0.0"
 
     def test_controls_disabled_when_unchecked(self, pid_page: SimulatorPage) -> None:
         combo = pid_page.findChild(QComboBox, "pid_mode_combo")
-        spin_kp = pid_page.findChild(QDoubleSpinBox, "pid_kp_spin")
-        spin_sp = pid_page.findChild(QDoubleSpinBox, "pid_sp_spin")
+        kp = pid_page.findChild(QLineEdit, "pid_kp_edit")
+        sp = pid_page.findChild(QLineEdit, "pid_sp_edit")
         assert not combo.isEnabled()
-        assert not spin_kp.isEnabled()
-        assert not spin_sp.isEnabled()
+        assert not kp.isEnabled()
+        assert not sp.isEnabled()
 
     def test_controls_enabled_when_checked(self, pid_page: SimulatorPage, qtbot) -> None:
         cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
         cb.setChecked(True)
         combo = pid_page.findChild(QComboBox, "pid_mode_combo")
-        spin_kp = pid_page.findChild(QDoubleSpinBox, "pid_kp_spin")
-        spin_sp = pid_page.findChild(QDoubleSpinBox, "pid_sp_spin")
+        kp = pid_page.findChild(QLineEdit, "pid_kp_edit")
+        sp = pid_page.findChild(QLineEdit, "pid_sp_edit")
         assert combo.isEnabled()
-        assert spin_kp.isEnabled()
-        assert spin_sp.isEnabled()
+        assert kp.isEnabled()
+        assert sp.isEnabled()
 
 
 class TestSimulatorPagePIDSignals:
     def test_enable_signal(self, pid_page: SimulatorPage, qtbot) -> None:
-        # Toggle PID enable and apply
         cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
         cb.setChecked(True)
         with qtbot.waitSignal(pid_page.pid_enabled_changed, timeout=1000) as blocker:
@@ -181,8 +195,7 @@ class TestSimulatorPagePIDSignals:
         cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
         cb.setChecked(True)
         pid_page._on_apply()  # commit enable state
-        # Change a PID param
-        pid_page._pid_kp_spin.setValue(2.5)
+        pid_page._pid_kp_edit.setText("2.5")
         with qtbot.waitSignal(pid_page.pid_params_changed, timeout=1000) as blocker:
             pid_page._on_apply()
         kp, ti, td = blocker.args
@@ -194,7 +207,6 @@ class TestSimulatorPagePIDSignals:
         cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
         cb.setChecked(True)
         pid_page._on_apply()  # commit enable state
-        # Change mode
         pid_page._pid_mode_combo.setCurrentText("AUTO")
         with qtbot.waitSignal(pid_page.pid_mode_changed, timeout=1000) as blocker:
             pid_page._on_apply()
@@ -204,11 +216,19 @@ class TestSimulatorPagePIDSignals:
         cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
         cb.setChecked(True)
         pid_page._on_apply()  # commit enable state
-        # Change SP
-        pid_page._pid_sp_spin.setValue(65.0)
+        pid_page._pid_sp_edit.setText("65.0")
         with qtbot.waitSignal(pid_page.pid_sp_changed, timeout=1000) as blocker:
             pid_page._on_apply()
         assert blocker.args == [65.0]
+
+    def test_co_signal(self, pid_page: SimulatorPage, qtbot) -> None:
+        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
+        cb.setChecked(True)
+        pid_page._on_apply()  # commit enable state
+        pid_page._pid_co_edit.setText("42.0")
+        with qtbot.waitSignal(pid_page.pid_co_changed, timeout=1000) as blocker:
+            pid_page._on_apply()
+        assert blocker.args == [42.0]
 
 
 # ---------------------------------------------------------------------------
