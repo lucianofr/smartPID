@@ -9,6 +9,7 @@ import pytest
 
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.workers.stats_worker import StatsWorker
+from smart_pid_domain.enums import ProcessSpeed
 from smart_pid_domain.models.controller import Controller, ScaleConfig
 
 
@@ -25,20 +26,21 @@ def controller():
     return Controller(
         id=1, name="Test", scan_rate_ms=100,
         pv_scale=ScaleConfig(eu_min=0.0, eu_max=100.0),
+        process_speed=ProcessSpeed.ULTRA_FAST,
     )
 
 
 class TestStatsWorker:
     def test_publishes_stats_after_samples(self, bus, controller):
-        worker = StatsWorker(bus=bus, controller=controller, publish_interval=3)
+        worker = StatsWorker(bus=bus, controller=controller)
         worker.start()
         try:
             pub = bus.create_publisher()
             sub = bus.create_subscriber(f"STATS.{controller.id}".encode())
             time.sleep(0.05)
 
-            # Send telemetry + control action samples
-            for i in range(5):
+            # Send enough samples to trigger publish (window=50, interval=10)
+            for i in range(12):
                 telem = {"pv": 52.0, "sp": 50.0, "co": 48.0 + i}
                 pub.send(
                     f"TELEMETRY.{controller.id}".encode(),
@@ -64,7 +66,7 @@ class TestStatsWorker:
             worker.stop()
 
     def test_get_current_stats(self, bus, controller):
-        worker = StatsWorker(bus=bus, controller=controller, publish_interval=100)
+        worker = StatsWorker(bus=bus, controller=controller)
         worker.start()
         try:
             pub = bus.create_publisher()

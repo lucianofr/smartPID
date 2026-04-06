@@ -74,6 +74,9 @@ class TestDefaults:
     def test_default_pid_structure(self, dialog):
         assert dialog._pid_structure.currentText() == "ISA"
 
+    def test_default_process_speed(self, dialog):
+        assert dialog._process_speed.currentData() == "MEDIUM"
+
     def test_default_ai_engine(self, dialog):
         assert dialog._ai_engine.currentText() == "NONE"
 
@@ -91,6 +94,7 @@ class TestGetControllerData:
         data = dialog.get_controller_data()
         expected_keys = {
             "name", "description", "execution_mode", "scan_rate_ms",
+            "process_speed",
             "pid_structure", "integral_type", "mode_normal",
             "pid_params", "pv_scale", "out_scale",
             "sp_hi_lim", "sp_lo_lim", "out_hi_lim", "out_lo_lim",
@@ -113,7 +117,7 @@ class TestGetControllerData:
     def test_ai_config_sub_keys(self, dialog):
         data = dialog.get_controller_data()
         assert set(data["ai_config"].keys()) == {
-            "engine", "objective", "process_speed",
+            "engine", "objective",
             "dead_time_l", "limit_min", "limit_max",
         }
 

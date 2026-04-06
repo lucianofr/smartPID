@@ -50,7 +50,6 @@ class AIConfig:
 
     engine: AIEngine = AIEngine.NONE
     objective: ControlObjective = ControlObjective.DISTURBANCE_REJECTION
-    process_speed: ProcessSpeed = ProcessSpeed.MEDIUM
     dead_time_l: float = 1.0      # Estimated dead time (seconds)
     limit_min: float = 0.1        # Ki/Ti minimum clamp
     limit_max: float = 100.0      # Ki/Ti maximum clamp
@@ -119,6 +118,7 @@ class Controller:
     description: str = ""
     execution_mode: ExecutionMode = ExecutionMode.DDC
     scan_rate_ms: int = 1000
+    process_speed: ProcessSpeed = ProcessSpeed.MEDIUM
     pid_params: PIDParams = field(default_factory=PIDParams)
     pid_structure: PIDStructure = PIDStructure.ISA
     integral_type: IntegralType = IntegralType.TIME_TI

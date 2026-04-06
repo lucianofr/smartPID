@@ -45,7 +45,29 @@ class TestEnums:
         assert len(ControlObjective) == 3
 
     def test_process_speed_values(self) -> None:
-        assert len(ProcessSpeed) == 3
+        assert len(ProcessSpeed) == 4
+        assert ProcessSpeed.ULTRA_FAST == "ULTRA_FAST"
+        assert ProcessSpeed.FAST == "FAST"
+        assert ProcessSpeed.MEDIUM == "MEDIUM"
+        assert ProcessSpeed.SLOW == "SLOW"
+
+    def test_process_speed_stats_window(self) -> None:
+        assert ProcessSpeed.ULTRA_FAST.stats_window_s == 5
+        assert ProcessSpeed.FAST.stats_window_s == 60
+        assert ProcessSpeed.MEDIUM.stats_window_s == 1200
+        assert ProcessSpeed.SLOW.stats_window_s == 7200
+
+    def test_process_speed_speed_factor(self) -> None:
+        assert ProcessSpeed.ULTRA_FAST.speed_factor == 0.02
+        assert ProcessSpeed.FAST.speed_factor == 0.05
+        assert ProcessSpeed.MEDIUM.speed_factor == 0.15
+        assert ProcessSpeed.SLOW.speed_factor == 0.30
+
+    def test_process_speed_label(self) -> None:
+        assert "Motors" in ProcessSpeed.ULTRA_FAST.label
+        assert "Flow" in ProcessSpeed.FAST.label
+        assert "Level" in ProcessSpeed.MEDIUM.label
+        assert "Furnaces" in ProcessSpeed.SLOW.label
 
     def test_connection_state_values(self) -> None:
         assert len(ConnectionState) == 4
@@ -229,6 +251,14 @@ class TestTagBindingsExpanded:
         )
         assert tb.node_id_kp == "ns=2;s=PID1.KP"
         assert tb.node_id_mode == "ns=2;s=PID1.MODE"
+
+
+class TestController:
+    def test_controller_has_process_speed(self) -> None:
+        """process_speed is a direct field on Controller, not inside AIConfig."""
+        c = Controller()
+        assert c.process_speed == ProcessSpeed.MEDIUM
+        assert not hasattr(c.ai_config, "process_speed")
 
 
 class TestControllerTuningFields:

@@ -10,7 +10,7 @@ import math
 from collections import deque
 from typing import TYPE_CHECKING
 
-from smart_pid_core.domain.services.fuzzy_engine import SPEED_FACTORS, AIDecision
+from smart_pid_core.domain.services.fuzzy_engine import AIDecision
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -333,7 +333,7 @@ class RLEngine:
             self._try_online_train()
 
         # Update Ki
-        sv = SPEED_FACTORS[speed]
+        sv = speed.speed_factor
         new_ki = ki_current * (1.0 + gamma * sv)
         new_ki = max(limit_min, min(limit_max, new_ki))
 

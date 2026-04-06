@@ -29,7 +29,6 @@ class AIConfigDTO(BaseModel):
 
     engine: str = "NONE"
     objective: str = "DISTURBANCE_REJECTION"
-    process_speed: str = "MEDIUM"
     dead_time_l: float = 1.0
     limit_min: float = 0.1
     limit_max: float = 100.0
@@ -86,6 +85,7 @@ class ControllerCreate(BaseModel):
     description: str = ""
     execution_mode: str = "DDC"
     scan_rate_ms: int = 1000
+    process_speed: str = "MEDIUM"
 
     # Nested config groups
     pid_params: PIDParamsDTO = PIDParamsDTO()
@@ -142,6 +142,7 @@ class ControllerUpdate(BaseModel):
     description: str | None = None
     execution_mode: str | None = None
     scan_rate_ms: int | None = None
+    process_speed: str | None = None
 
     pid_params: PIDParamsDTO | None = None
     pid_structure: str | None = None
@@ -194,6 +195,7 @@ class ControllerResponse(BaseModel):
 
     execution_mode: str = "DDC"
     scan_rate_ms: int = 1000
+    process_speed: str = "MEDIUM"
 
     pid_params: PIDParamsDTO = PIDParamsDTO()
     pid_structure: str = "ISA"

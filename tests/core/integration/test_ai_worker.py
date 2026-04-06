@@ -25,11 +25,11 @@ def bus():
 def controller_fuzzy():
     return Controller(
         id=1, name="TestFuzzy", scan_rate_ms=100,
+        process_speed=ProcessSpeed.MEDIUM,
         pv_scale=ScaleConfig(eu_min=0.0, eu_max=100.0),
         ai_config=AIConfig(
             engine=AIEngine.FUZZY,
             objective=ControlObjective.SP_TRACKING,
-            process_speed=ProcessSpeed.MEDIUM,
             dead_time_l=0.1,  # T_cycle = 0.3s for fast testing
             limit_min=0.1,
             limit_max=100.0,

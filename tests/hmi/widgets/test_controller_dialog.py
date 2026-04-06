@@ -22,10 +22,10 @@ EDIT_DATA: dict = {
     },
     "pv_scale": {"eu_min": -50.0, "eu_max": 200.0, "unit": "degC"},
     "out_scale": {"eu_min": 0.0, "eu_max": 100.0, "unit": "%"},
+    "process_speed": "SLOW",
     "ai_config": {
         "engine": "FUZZY",
         "objective": "SP_TRACKING",
-        "process_speed": "SLOW",
         "dead_time_l": 5.0,
         "limit_min": 0.5,
         "limit_max": 50.0,
@@ -158,6 +158,9 @@ class TestDefaults:
     def test_default_pid_structure(self, dialog):
         assert dialog._pid_structure.currentText() == "ISA"
 
+    def test_default_process_speed(self, dialog):
+        assert dialog._process_speed.currentData() == "MEDIUM"
+
     def test_default_ai_engine(self, dialog):
         assert dialog._ai_engine.currentText() == "NONE"
 
@@ -175,6 +178,7 @@ class TestGetControllerData:
         data = dialog.get_controller_data()
         expected_keys = {
             "name", "description", "execution_mode", "scan_rate_ms",
+            "process_speed",
             "pid_structure", "integral_type", "mode_normal",
             "pid_params", "pv_scale", "out_scale",
             "sp_hi_lim", "sp_lo_lim", "out_hi_lim", "out_lo_lim",
@@ -197,7 +201,7 @@ class TestGetControllerData:
     def test_ai_config_sub_keys(self, dialog):
         data = dialog.get_controller_data()
         assert set(data["ai_config"].keys()) == {
-            "engine", "objective", "process_speed",
+            "engine", "objective",
             "dead_time_l", "limit_min", "limit_max",
         }
 
@@ -419,10 +423,12 @@ class TestEditMode:
     def test_populated_ai_config(self, edit_dialog):
         assert edit_dialog._ai_engine.currentText() == "FUZZY"
         assert edit_dialog._ai_objective.currentText() == "SP_TRACKING"
-        assert edit_dialog._ai_speed.currentText() == "SLOW"
         assert edit_dialog._ai_dead_time.value() == pytest.approx(5.0)
         assert edit_dialog._ai_limit_min.value() == pytest.approx(0.5)
         assert edit_dialog._ai_limit_max.value() == pytest.approx(50.0)
+
+    def test_populated_process_speed(self, edit_dialog):
+        assert edit_dialog._process_speed.currentData() == "SLOW"
 
     # --- Tag Bindings ---
 
@@ -455,6 +461,7 @@ class TestEditMode:
         assert data["pid_params"]["reset"] == pytest.approx(5.0)
         assert data["pv_scale"]["eu_min"] == pytest.approx(-50.0)
         assert data["pv_scale"]["unit"] == "degC"
+        assert data["process_speed"] == "SLOW"
         assert data["ai_config"]["engine"] == "FUZZY"
         assert data["tag_bindings"]["node_id_pv"] == "ns=2;s=TIC101.PV"
         assert data["control_opts"]["direct_acting"] is True
