@@ -8,14 +8,11 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLayout,
     QLayoutItem,
     QScrollArea,
     QSizePolicy,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -100,9 +97,6 @@ class _FlowLayout(QLayout):
             line_height = max(line_height, h)
 
         return y + line_height - rect.y() + m.bottom()
-
-
-_PERF_COLUMNS = ["Loop", "Mode", "PV", "SP", "Error%", "IAE", "Status"]
 
 
 class _KPICard(QFrame):
@@ -473,20 +467,20 @@ class ExecutiveDashboardPage(QWidget):
             kpi_row.addWidget(card)
         layout.addLayout(kpi_row)
 
-        # Performance table
-        self._table = QTableWidget(0, len(_PERF_COLUMNS))
-        self._table.setObjectName("performance_table")
-        self._table.setHorizontalHeaderLabels(_PERF_COLUMNS)
-        self._table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
+        # Controller cards in scroll area
+        self._scroll_area = QScrollArea()
+        self._scroll_area.setObjectName("cards_scroll_area")
+        self._scroll_area.setWidgetResizable(True)
+        self._scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+
+        self._cards_container = QWidget()
+        self._cards_layout = _FlowLayout(
+            self._cards_container, h_spacing=12, v_spacing=12,
         )
-        self._table.setSelectionBehavior(
-            QTableWidget.SelectionBehavior.SelectRows,
-        )
-        self._table.setEditTriggers(
-            QTableWidget.EditTrigger.NoEditTriggers,
-        )
-        layout.addWidget(self._table, stretch=1)
+        self._scroll_area.setWidget(self._cards_container)
+        layout.addWidget(self._scroll_area, stretch=1)
+
+        self._controller_cards: dict[str, _ControllerCard] = {}
 
     def update_kpis(
         self,
@@ -501,36 +495,29 @@ class ExecutiveDashboardPage(QWidget):
         self._kpi_alarms.setText(str(active_alarms))
         self._kpi_ai.setText(str(ai_active))
 
-    def update_performance_table(self, rows: list[dict]) -> None:
-        """Populate the performance table from a list of row dicts.
+    def update_controller_cards(self, controllers: list[dict]) -> None:
+        """Create/update controller cards from a list of controller dicts."""
+        # Clear existing cards
+        for card in self._controller_cards.values():
+            card.setParent(None)
+            card.deleteLater()
+        self._controller_cards.clear()
 
-        Expected keys: loop, mode, pv, sp, error_pct, iae, status.
-        """
-        self._table.setRowCount(0)
-        for row_data in rows:
-            row_idx = self._table.rowCount()
-            self._table.insertRow(row_idx)
-            values = [
-                str(row_data.get("loop", "")),
-                str(row_data.get("mode", "")),
-                f"{row_data.get('pv', 0.0):.1f}",
-                f"{row_data.get('sp', 0.0):.1f}",
-                f"{row_data.get('error_pct', 0.0):.1f}",
-                f"{row_data.get('iae', 0.0):.1f}",
-                str(row_data.get("status", "")),
-            ]
-            for col, val in enumerate(values):
-                item = QTableWidgetItem(val)
-                item.setFlags(
-                    item.flags() & ~Qt.ItemFlag.ItemIsEditable,
-                )
-                self._table.setItem(row_idx, col, item)
+        # Create new cards
+        for ctrl in controllers:
+            name = ctrl.get("name", f"Loop-{ctrl.get('id', '?')}")
+            card = _ControllerCard(theme=self._theme)
+            card.update_data(ctrl)
+            self._cards_layout.addWidget(card)
+            self._controller_cards[name] = card
 
     def apply_theme(self, theme: ThemeBase) -> None:
-        """Re-apply theme colors to KPI cards and labels."""
+        """Re-apply theme colors to KPI cards and controller cards."""
         self._theme = theme
         for card in (
             self._card_total, self._card_auto,
             self._card_alarms, self._card_ai,
         ):
             card.apply_theme(theme)
+        for ctrl_card in self._controller_cards.values():
+            ctrl_card.apply_theme(theme)

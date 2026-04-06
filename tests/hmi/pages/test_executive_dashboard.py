@@ -1,5 +1,5 @@
 """Tests for ExecutiveDashboardPage."""
-from PySide6.QtWidgets import QLabel, QPushButton, QTableWidget, QWidget
+from PySide6.QtWidgets import QLabel, QPushButton, QScrollArea, QWidget
 
 from smart_pid_hmi.pages.executive_dashboard import (
     ExecutiveDashboardPage,
@@ -31,12 +31,11 @@ def test_has_kpi_labels(qtbot):
     assert page._kpi_ai is not None
 
 
-def test_has_performance_table(qtbot):
+def test_has_scroll_area(qtbot):
     page = ExecutiveDashboardPage()
     qtbot.addWidget(page)
-    table = page.findChild(QTableWidget, "performance_table")
-    assert table is not None
-    assert table.columnCount() == 7
+    scroll = page.findChild(QScrollArea, "cards_scroll_area")
+    assert scroll is not None
 
 
 def test_update_kpis(qtbot):
@@ -49,34 +48,34 @@ def test_update_kpis(qtbot):
     assert page._kpi_ai.text() == "2"
 
 
-def test_update_performance_table(qtbot):
+def test_update_controller_cards_creates_cards(qtbot):
     page = ExecutiveDashboardPage()
     qtbot.addWidget(page)
-    rows = [
-        {
-            "loop": "FIC-101",
-            "mode": "AUTO",
-            "pv": 45.2,
-            "sp": 50.0,
-            "error_pct": 9.6,
-            "iae": 12.5,
-            "status": "GOOD",
-        },
-        {
-            "loop": "TIC-201",
-            "mode": "MAN",
-            "pv": 80.0,
-            "sp": 80.0,
-            "error_pct": 0.0,
-            "iae": 0.1,
-            "status": "GOOD",
-        },
+    controllers = [
+        _make_controller_data(name="FIC-101"),
+        _make_controller_data(name="LIC-201"),
+        _make_controller_data(name="TIC-301"),
     ]
-    page.update_performance_table(rows)
-    table = page.findChild(QTableWidget, "performance_table")
-    assert table.rowCount() == 2
-    assert table.item(0, 0).text() == "FIC-101"
-    assert table.item(1, 1).text() == "MAN"
+    page.update_controller_cards(controllers)
+    assert len(page._controller_cards) == 3
+
+
+def test_cards_update_on_second_call(qtbot):
+    page = ExecutiveDashboardPage()
+    qtbot.addWidget(page)
+    page.update_controller_cards([_make_controller_data(name="A")])
+    assert len(page._controller_cards) == 1
+    page.update_controller_cards([
+        _make_controller_data(name="X"),
+        _make_controller_data(name="Y"),
+    ])
+    assert len(page._controller_cards) == 2
+
+
+def test_flow_layout_in_scroll_area(qtbot):
+    page = ExecutiveDashboardPage()
+    qtbot.addWidget(page)
+    assert isinstance(page._cards_container.layout(), _FlowLayout)
 
 
 def test_flow_layout_add_and_count(qtbot):
