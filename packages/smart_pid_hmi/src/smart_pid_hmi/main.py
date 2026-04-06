@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from smart_pid_hmi.bus_bridge import BusBridge
-from smart_pid_hmi.config import HMISettings
+from smart_pid_hmi.config import HMISettings, ensure_config_file
 from smart_pid_hmi.pages.alarm_panel import AlarmPanel
 from smart_pid_hmi.pages.connection_page import ConnectionPage
 from smart_pid_hmi.pages.dashboard_page import DashboardPage
@@ -972,6 +972,7 @@ class MainWindow(QMainWindow):
 
 def main() -> None:
     """Entry point for the HMI application."""
+    ensure_config_file()
     settings = HMISettings()
     session = Session()
 
