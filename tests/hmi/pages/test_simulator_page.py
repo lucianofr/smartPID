@@ -232,6 +232,60 @@ class TestSimulatorPagePIDSignals:
 
 
 # ---------------------------------------------------------------------------
+# Computed variables + block diagram tests
+# ---------------------------------------------------------------------------
+
+
+class TestSimulatorPageComputedVars:
+    def test_computed_vars_group_exists(self, pid_page: SimulatorPage) -> None:
+        groups = pid_page.findChildren(QGroupBox)
+        names = [g.title() for g in groups]
+        assert "Computed Variables" in names
+
+    def test_proc_in_readonly(self, pid_page: SimulatorPage) -> None:
+        edit = pid_page.findChild(QLineEdit, "proc_in_edit")
+        assert edit is not None
+        assert edit.isReadOnly()
+
+    def test_proc_out_readonly(self, pid_page: SimulatorPage) -> None:
+        edit = pid_page.findChild(QLineEdit, "proc_out_edit")
+        assert edit is not None
+        assert edit.isReadOnly()
+
+    def test_dist_out_readonly(self, pid_page: SimulatorPage) -> None:
+        edit = pid_page.findChild(QLineEdit, "dist_out_edit")
+        assert edit is not None
+        assert edit.isReadOnly()
+
+    def test_auto_sp_readonly(self, pid_page: SimulatorPage) -> None:
+        edit = pid_page.findChild(QLineEdit, "auto_sp_edit")
+        assert edit is not None
+        assert edit.isReadOnly()
+
+    def test_auto_dist_readonly(self, pid_page: SimulatorPage) -> None:
+        edit = pid_page.findChild(QLineEdit, "auto_dist_edit")
+        assert edit is not None
+        assert edit.isReadOnly()
+
+    def test_update_live_values(self, pid_page: SimulatorPage) -> None:
+        pid_page.update_live_values(
+            pv=72.5, co=45.0, error=2.5, pid_cv=45.0,
+            process_in=45.0, process_out=70.0,
+            disturbance_out=2.5, sp=75.0,
+        )
+        assert pid_page._pid_pv_edit.text() == "72.50"
+        assert pid_page._proc_in_edit.text() == "45.00"
+        assert pid_page._proc_out_edit.text() == "70.00"
+        assert pid_page._dist_out_edit.text() == "2.50"
+        assert pid_page._auto_sp_edit.text() == "75.00"
+
+    def test_block_diagram_svg_exists(self, pid_page: SimulatorPage) -> None:
+        from PySide6.QtSvgWidgets import QSvgWidget
+        svg = pid_page.findChild(QSvgWidget, "block_diagram_svg")
+        assert svg is not None
+
+
+# ---------------------------------------------------------------------------
 # OPC-UA Server Config tests
 # ---------------------------------------------------------------------------
 

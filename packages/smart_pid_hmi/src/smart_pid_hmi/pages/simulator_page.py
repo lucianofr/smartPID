@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal, Slot
+from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -178,7 +179,45 @@ class SimulatorPage(QWidget):
         left_col.addWidget(self._period_label)
         self._update_period_label()
 
-        left_col.addStretch()
+        # Live computed variables group
+        live_group = QGroupBox("Computed Variables")
+        live_form = QFormLayout(live_group)
+        live_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+
+        self._proc_in_edit = QLineEdit("0.00")
+        self._proc_in_edit.setObjectName("proc_in_edit")
+        self._proc_in_edit.setReadOnly(True)
+        live_form.addRow("Process In:", self._proc_in_edit)
+
+        self._proc_out_edit = QLineEdit("0.00")
+        self._proc_out_edit.setObjectName("proc_out_edit")
+        self._proc_out_edit.setReadOnly(True)
+        live_form.addRow("Process Out:", self._proc_out_edit)
+
+        self._dist_out_edit = QLineEdit("0.00")
+        self._dist_out_edit.setObjectName("dist_out_edit")
+        self._dist_out_edit.setReadOnly(True)
+        live_form.addRow("D_OUT:", self._dist_out_edit)
+
+        self._auto_sp_edit = QLineEdit("---")
+        self._auto_sp_edit.setObjectName("auto_sp_edit")
+        self._auto_sp_edit.setReadOnly(True)
+        live_form.addRow("SP_V:", self._auto_sp_edit)
+
+        self._auto_dist_edit = QLineEdit("---")
+        self._auto_dist_edit.setObjectName("auto_dist_edit")
+        self._auto_dist_edit.setReadOnly(True)
+        live_form.addRow("D_AUTO:", self._auto_dist_edit)
+
+        left_col.addWidget(live_group)
+
+        # Block diagram SVG
+        self._svg_widget = QSvgWidget()
+        self._svg_widget.setObjectName("block_diagram_svg")
+        self._svg_widget.setMinimumHeight(160)
+        self._svg_widget.load(self._build_block_diagram_svg(theme).encode("utf-8"))
+        left_col.addWidget(self._svg_widget, stretch=1)
+
         columns.addLayout(left_col, stretch=1)
 
         # --- RIGHT COLUMN ---
@@ -629,6 +668,29 @@ class SimulatorPage(QWidget):
         """Update the read-only PV display."""
         self._pid_pv_edit.setText(f"{pv:.2f}")
 
+    def update_live_values(
+        self,
+        *,
+        pv: float,
+        co: float,
+        error: float,
+        pid_cv: float,
+        process_in: float,
+        process_out: float,
+        disturbance_out: float,
+        sp: float | None = None,
+    ) -> None:
+        """Bulk update all read-only live variables from simulation tick."""
+        self._pid_pv_edit.setText(f"{pv:.2f}")
+        self._pid_co_edit.setText(f"{co:.2f}")
+        self._proc_in_edit.setText(f"{process_in:.2f}")
+        self._proc_out_edit.setText(f"{process_out:.2f}")
+        self._dist_out_edit.setText(f"{disturbance_out:.2f}")
+        if sp is not None:
+            self._auto_sp_edit.setText(f"{sp:.2f}")
+        if abs(disturbance_out) > 1e-9:
+            self._auto_dist_edit.setText(f"{disturbance_out:.2f}")
+
     def populate_from_status(self, status: ControllerSimStatus) -> None:
         """Populate widgets from a ControllerSimStatus DTO."""
         self._pid_sp_edit.setText(f"{getattr(status, 'pid_sp', 50.0):.1f}")
@@ -644,6 +706,107 @@ class SimulatorPage(QWidget):
             self._auto_dist_enable.setChecked(status.auto_disturbance.enabled)
             self._auto_dist_amp.setValue(status.auto_disturbance.max_amplitude_pct)
 
+    @staticmethod
+    def _build_block_diagram_svg(theme: ThemeBase) -> str:
+        """Build an SVG block diagram showing the simulator signal flow."""
+        fg = theme.fg_primary
+        fg2 = theme.fg_secondary
+        sp_c = theme.bar_sp
+        pv_c = theme.bar_pv
+        co_c = "#4FC3F7"  # light blue for CO
+        dist_c = theme.alarm_warning
+        bg = theme.bg_card
+
+        return f"""\
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 180">
+  <rect width="700" height="180" fill="{bg}" rx="6"/>
+
+  <!-- SP arrow -->
+  <text x="10" y="55" fill="{sp_c}" font-size="11" font-family="monospace">SP</text>
+  <line x1="32" y1="50" x2="70" y2="50" stroke="{sp_c}" stroke-width="1.5"
+        marker-end="url(#ah)"/>
+
+  <!-- Summing junction (SP - PV) -->
+  <circle cx="82" cy="50" r="12" fill="none" stroke="{fg}" stroke-width="1.5"/>
+  <text x="76" y="54" fill="{fg}" font-size="12" font-family="monospace">+</text>
+  <text x="76" y="45" fill="{fg}" font-size="9" font-family="monospace">\u2212</text>
+
+  <!-- Error to PID -->
+  <line x1="94" y1="50" x2="130" y2="50" stroke="{fg}" stroke-width="1.5"
+        marker-end="url(#ah)"/>
+  <text x="98" y="43" fill="{fg2}" font-size="9" font-family="monospace">e</text>
+
+  <!-- PID Sim block -->
+  <rect x="130" y="30" width="80" height="40" rx="4" fill="none" stroke="{co_c}"
+        stroke-width="1.5"/>
+  <text x="143" y="55" fill="{co_c}" font-size="12" font-weight="bold"
+        font-family="monospace">PID Sim</text>
+
+  <!-- CO out of PID -->
+  <line x1="210" y1="50" x2="260" y2="50" stroke="{co_c}" stroke-width="1.5"
+        marker-end="url(#ah)"/>
+  <text x="220" y="43" fill="{co_c}" font-size="9" font-family="monospace">CO</text>
+
+  <!-- Process block -->
+  <rect x="260" y="30" width="90" height="40" rx="4" fill="none" stroke="{pv_c}"
+        stroke-width="1.5"/>
+  <text x="268" y="55" fill="{pv_c}" font-size="12" font-weight="bold"
+        font-family="monospace">Process</text>
+
+  <!-- Process out -->
+  <line x1="350" y1="50" x2="400" y2="50" stroke="{pv_c}" stroke-width="1.5"
+        marker-end="url(#ah)"/>
+
+  <!-- Disturbance summing junction -->
+  <circle cx="412" cy="50" r="12" fill="none" stroke="{fg}" stroke-width="1.5"/>
+  <text x="406" y="54" fill="{fg}" font-size="12" font-family="monospace">+</text>
+
+  <!-- Disturbance input -->
+  <rect x="380" y="100" width="66" height="30" rx="4" fill="none" stroke="{dist_c}"
+        stroke-width="1.5"/>
+  <text x="386" y="120" fill="{dist_c}" font-size="10" font-weight="bold"
+        font-family="monospace">D_OUT</text>
+  <line x1="412" y1="100" x2="412" y2="62" stroke="{dist_c}" stroke-width="1.5"
+        marker-end="url(#ah)"/>
+
+  <!-- PV out -->
+  <line x1="424" y1="50" x2="500" y2="50" stroke="{pv_c}" stroke-width="1.5"
+        marker-end="url(#ah)"/>
+  <text x="440" y="43" fill="{pv_c}" font-size="9" font-family="monospace">PV</text>
+
+  <!-- PV to OPC-UA / DCS PID -->
+  <rect x="500" y="25" width="80" height="50" rx="4" fill="none" stroke="{fg}"
+        stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="510" y="47" fill="{fg}" font-size="10" font-family="monospace">DCS PID</text>
+  <text x="512" y="62" fill="{fg2}" font-size="8" font-family="monospace">(OPC-UA)</text>
+
+  <!-- DCS PID CO back -->
+  <line x1="540" y1="75" x2="540" y2="155" stroke="{fg2}" stroke-width="1"
+        stroke-dasharray="4,3"/>
+  <line x1="540" y1="155" x2="170" y2="155" stroke="{fg2}" stroke-width="1"
+        stroke-dasharray="4,3"/>
+  <line x1="170" y1="155" x2="170" y2="70" stroke="{fg2}" stroke-width="1"
+        stroke-dasharray="4,3" marker-end="url(#ah)"/>
+  <text x="340" y="168" fill="{fg2}" font-size="8"
+        font-family="monospace">CO write-back (OPC-UA)</text>
+
+  <!-- PV feedback loop -->
+  <line x1="470" y1="50" x2="470" y2="15" stroke="{pv_c}" stroke-width="1"/>
+  <line x1="470" y1="15" x2="82" y2="15" stroke="{pv_c}" stroke-width="1"/>
+  <line x1="82" y1="15" x2="82" y2="38" stroke="{pv_c}" stroke-width="1"
+        marker-end="url(#ah)"/>
+
+  <!-- Arrowhead marker -->
+  <defs>
+    <marker id="ah" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="{fg}"/>
+    </marker>
+  </defs>
+</svg>"""
+
     def apply_theme(self, theme: ThemeBase) -> None:
         """Re-apply theme colors to dynamic elements."""
         self._theme = theme
+        self._svg_widget.load(
+            self._build_block_diagram_svg(theme).encode("utf-8"),
+        )
