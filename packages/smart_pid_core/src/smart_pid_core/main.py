@@ -162,6 +162,8 @@ async def run_daemon(settings: CoreSettings) -> None:
         api_port=settings.api_port,
         zmq_port=settings.zmq_publish_port,
         execution_mode=settings.execution_mode,
+        simulator_enabled=settings.simulator_enabled,
+        simulator_port=settings.simulator_port,
     )
     logger.info("SmartPID daemon starting in %s mode", settings.execution_mode)
 
@@ -196,6 +198,8 @@ async def run_daemon(settings: CoreSettings) -> None:
             )
         simulator_adapter.start()
         logger.info("simulator_started", port=settings.simulator_port)
+    else:
+        logger.info("simulator_disabled", hint="set SPID_SIMULATOR_ENABLED=true to enable")
 
     # Phase 3b: OPC-UA adapter lifecycle
     opcua_adapter = adapter_factory.opcua_adapter
@@ -215,7 +219,7 @@ async def run_daemon(settings: CoreSettings) -> None:
                     mode_int_map=tb.mode_int_map,
                 )
         opcua_adapter.start()
-        logger.info("opcua_adapter_started", endpoint=settings.opcua_endpoint)
+        logger.info("opcua_adapter_started", endpoint=opcua_adapter.endpoint)
 
     # Migrate users from .spid to standalone users.db if needed
     await _migrate_users_if_needed(settings.db_path, settings.users_db_path)
