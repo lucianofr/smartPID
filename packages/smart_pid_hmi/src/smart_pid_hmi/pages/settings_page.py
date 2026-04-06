@@ -10,11 +10,9 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
-    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -41,9 +39,10 @@ class SettingsPage(QWidget):
 
     # Project signals (immediate — not affected by Apply/Cancel)
     project_changed = Signal(str, str)  # (name, path)
-    project_new_requested = Signal(str, str)  # (name, path)
-    project_open_requested = Signal(str)  # (path)
-    project_save_as_requested = Signal(str)  # (path)
+    project_new_requested = Signal()  # open Welcome Dialog
+    project_open_requested = Signal()  # open Welcome Dialog
+    project_download_requested = Signal()
+    project_import_requested = Signal()
 
     def __init__(
         self,
@@ -80,23 +79,36 @@ class SettingsPage(QWidget):
         project_form.addRow("Controllers:", self._project_count)
 
         proj_btn_row = QHBoxLayout()
+
         self._project_new_btn = QPushButton("New")
         self._project_new_btn.setObjectName("project_new_btn")
-        self._project_new_btn.clicked.connect(self._on_project_new)
+        self._project_new_btn.clicked.connect(lambda: self.project_new_requested.emit())
         proj_btn_row.addWidget(self._project_new_btn)
 
         self._project_open_btn = QPushButton("Open")
         self._project_open_btn.setObjectName("project_open_btn")
-        self._project_open_btn.clicked.connect(self._on_project_open)
+        self._project_open_btn.clicked.connect(lambda: self.project_open_requested.emit())
         proj_btn_row.addWidget(self._project_open_btn)
 
-        self._project_save_as_btn = QPushButton("Save As")
-        self._project_save_as_btn.setObjectName("project_save_as_btn")
-        self._project_save_as_btn.clicked.connect(self._on_project_save_as)
-        proj_btn_row.addWidget(self._project_save_as_btn)
+        self._project_download_btn = QPushButton("Download")
+        self._project_download_btn.setObjectName("project_download_btn")
+        self._project_download_btn.clicked.connect(
+            lambda: self.project_download_requested.emit()
+        )
+        proj_btn_row.addWidget(self._project_download_btn)
+
+        proj_btn_row2 = QHBoxLayout()
+        self._project_import_btn = QPushButton("Import")
+        self._project_import_btn.setObjectName("project_import_btn")
+        self._project_import_btn.clicked.connect(
+            lambda: self.project_import_requested.emit()
+        )
+        proj_btn_row2.addWidget(self._project_import_btn)
+        proj_btn_row2.addStretch()
 
         proj_btn_row.addStretch()
         project_form.addRow(proj_btn_row)
+        project_form.addRow(proj_btn_row2)
 
         layout.addWidget(project_group)
 
@@ -280,30 +292,6 @@ class SettingsPage(QWidget):
         self._project_name.setText(name)
         self._project_path.setText(path)
         self._project_count.setText(str(count))
-
-    def _on_project_new(self) -> None:
-        name, ok = QInputDialog.getText(self, "New Project", "Project name:")
-        if not ok or not name.strip():
-            return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save New Project", "", "SmartPID Files (*.spid)"
-        )
-        if path:
-            self.project_new_requested.emit(name.strip(), path)
-
-    def _on_project_open(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Open Project", "", "SmartPID Files (*.spid)"
-        )
-        if path:
-            self.project_open_requested.emit(path)
-
-    def _on_project_save_as(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save Project As", "", "SmartPID Files (*.spid)"
-        )
-        if path:
-            self.project_save_as_requested.emit(path)
 
     def apply_theme(self, theme: ThemeBase) -> None:
         """Update styles for dynamic theme switching."""

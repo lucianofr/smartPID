@@ -137,3 +137,30 @@ def test_opcua_reconnect_signal(qtbot):
     page._opcua_endpoint.setText("opc.tcp://myserver:4840")
     page._opcua_reconnect_btn.click()
     assert received == ["opc.tcp://myserver:4840"]
+
+
+# --- Task 8: Download/Import buttons replace Save As ---
+
+
+def test_download_button_exists(qtbot):
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+    btn = page.findChild(QPushButton, "project_download_btn")
+    assert btn is not None
+
+
+def test_import_button_exists(qtbot):
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+    btn = page.findChild(QPushButton, "project_import_btn")
+    assert btn is not None
+
+
+def test_no_save_as_button(qtbot):
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+    btn = page.findChild(QPushButton, "project_save_as_btn")
+    assert btn is None
