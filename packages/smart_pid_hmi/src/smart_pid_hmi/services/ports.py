@@ -78,6 +78,7 @@ class APIClientPort(Protocol):
     def get_simulator_pid_status(
         self, controller_id: int,
     ) -> dict: ...
+
     def set_simulator_auto_sp(
         self,
         controller_id: int,
