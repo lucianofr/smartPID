@@ -115,7 +115,7 @@ class AlarmRepository:
         async with self._db.execute(
             """SELECT id, controlador_id as controller_id, tipo_alarme as alarm_type,
                       prioridade as priority, limite as "limit", habilitado as enabled,
-                      histerese as deadband
+                      histerese as deadband, delay_on_s, delay_off_s
                FROM Configuracao_Alarmes WHERE controlador_id = ?
                ORDER BY tipo_alarme""",
             (controller_id,),
@@ -136,8 +136,9 @@ class AlarmRepository:
         for t in thresholds:
             await self._db.execute(
                 """INSERT INTO Configuracao_Alarmes
-                   (controlador_id, tipo_alarme, prioridade, limite, habilitado, histerese)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
+                   (controlador_id, tipo_alarme, prioridade, limite, habilitado,
+                    histerese, delay_on_s, delay_off_s)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     controller_id,
                     t["alarm_type"],
@@ -145,6 +146,8 @@ class AlarmRepository:
                     t["limit"],
                     1 if t.get("enabled", True) else 0,
                     t.get("deadband", 0.0),
+                    t.get("delay_on_s", 0.0),
+                    t.get("delay_off_s", 0.0),
                 ),
             )
         await self._db.commit()

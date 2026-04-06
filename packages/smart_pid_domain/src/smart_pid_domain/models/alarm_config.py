@@ -12,27 +12,54 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class AlarmConfig:
-    """Alarm limits and priorities for a controller."""
+    """Alarm limits, priorities and delays for a controller.
 
-    hihi_enabled: bool
-    hihi_value: float
-    hihi_priority: AlarmPriority
-    hi_enabled: bool
-    hi_value: float
-    hi_priority: AlarmPriority
-    lo_enabled: bool
-    lo_value: float
-    lo_priority: AlarmPriority
-    lolo_enabled: bool
-    lolo_value: float
-    lolo_priority: AlarmPriority
-    dv_hi_enabled: bool
-    dv_hi_value: float
-    dv_hi_priority: AlarmPriority
-    dv_lo_enabled: bool
-    dv_lo_value: float
-    dv_lo_priority: AlarmPriority
-    deadband_percent: float  # 0.0-50.0, % of alarm limit
+    Each alarm type has:
+    - enabled: whether the alarm is active
+    - value: the limit threshold
+    - priority: CRITICAL / WARNING / ADVISORY / LOG
+    - delay_on_s: time (s) PV must remain in alarm condition before triggering
+    - delay_off_s: time (s) PV must remain normal before clearing
+    """
+
+    # -- HIHI --
+    hihi_enabled: bool = False
+    hihi_value: float = 0.0
+    hihi_priority: AlarmPriority = AlarmPriority.CRITICAL
+    hihi_delay_on_s: float = 0.0
+    hihi_delay_off_s: float = 0.0
+    # -- HI --
+    hi_enabled: bool = False
+    hi_value: float = 0.0
+    hi_priority: AlarmPriority = AlarmPriority.WARNING
+    hi_delay_on_s: float = 0.0
+    hi_delay_off_s: float = 0.0
+    # -- LO --
+    lo_enabled: bool = False
+    lo_value: float = 0.0
+    lo_priority: AlarmPriority = AlarmPriority.WARNING
+    lo_delay_on_s: float = 0.0
+    lo_delay_off_s: float = 0.0
+    # -- LOLO --
+    lolo_enabled: bool = False
+    lolo_value: float = 0.0
+    lolo_priority: AlarmPriority = AlarmPriority.CRITICAL
+    lolo_delay_on_s: float = 0.0
+    lolo_delay_off_s: float = 0.0
+    # -- Deviation High --
+    dv_hi_enabled: bool = False
+    dv_hi_value: float = 0.0
+    dv_hi_priority: AlarmPriority = AlarmPriority.WARNING
+    dv_hi_delay_on_s: float = 0.0
+    dv_hi_delay_off_s: float = 0.0
+    # -- Deviation Low --
+    dv_lo_enabled: bool = False
+    dv_lo_value: float = 0.0
+    dv_lo_priority: AlarmPriority = AlarmPriority.WARNING
+    dv_lo_delay_on_s: float = 0.0
+    dv_lo_delay_off_s: float = 0.0
+    # -- Shared --
+    deadband_percent: float = 1.0  # 0.0-50.0, % of alarm limit
 
 
 @dataclass(frozen=True)

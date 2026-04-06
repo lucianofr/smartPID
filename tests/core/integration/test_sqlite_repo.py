@@ -23,8 +23,8 @@ class TestSQLiteRepository:
         assert "Log_Alarmes" in tables
         assert "Log_Sintonia_IA" in tables
         assert "Log_Auditoria" in tables
-        assert "Usuarios" in tables
         assert "Configuracao_Alarmes" in tables
+        # Usuarios table moved to standalone users.db (UserRepository)
 
     @pytest.mark.asyncio
     async def test_save_and_get_controller(self, repo) -> None:
