@@ -403,23 +403,8 @@ class MainWindow(QMainWindow):
         loop_names = [c.get("name", f"Loop-{c.get('id', '?')}") for c in controllers]
         self._multi_trend_page.set_available_loops(loop_names)
 
-        # Feed executive dashboard performance table
-        perf_rows = []
-        for c in controllers:
-            sp = c.get("sp", 0.0)
-            pv = c.get("pv", 0.0)
-            sp_range = c.get("sp_hi_lim", 100.0) - c.get("sp_lo_lim", 0.0)
-            error_pct = (abs(pv - sp) / sp_range * 100.0) if sp_range else 0.0
-            perf_rows.append({
-                "loop": c.get("name", ""),
-                "mode": c.get("mode", ""),
-                "pv": pv,
-                "sp": sp,
-                "error_pct": round(error_pct, 1),
-                "iae": 0.0,
-                "status": "OK" if c.get("mode") != "OOS" else "OOS",
-            })
-        self._executive_page.update_performance_table(perf_rows)
+        # Feed executive dashboard controller cards
+        self._executive_page.update_controller_cards(controllers)
 
         # Also compute initial KPIs from controller data
         total = len(controllers)
