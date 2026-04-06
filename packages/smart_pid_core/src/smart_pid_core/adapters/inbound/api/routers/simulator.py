@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_simulator_adapter,
@@ -13,6 +13,9 @@ from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter  
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
 from smart_pid_domain.dtos.commands import CommandResponse
 from smart_pid_domain.dtos.simulator import (
+    AutoDisturbanceRequest,
+    AutoSPRequest,
+    ControllerSimStatus,
     SimulatorDisturbanceRequest,
     SimulatorParametersRequest,
     SimulatorPIDEnableRequest,
@@ -122,3 +125,31 @@ async def get_pid_status(
 ) -> SimulatorPIDStatusResponse:
     status = adapter.get_pid_status(controller_id)
     return SimulatorPIDStatusResponse(**status)
+
+
+@router.put("/{controller_id}/auto-sp", response_model=ControllerSimStatus)
+async def set_auto_sp(
+    controller_id: int,
+    body: AutoSPRequest,
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> ControllerSimStatus:
+    try:
+        adapter.set_auto_sp(controller_id, body)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Controller not found in simulator")
+    return adapter.get_controller_status(controller_id)
+
+
+@router.put("/{controller_id}/auto-disturbance", response_model=ControllerSimStatus)
+async def set_auto_disturbance(
+    controller_id: int,
+    body: AutoDisturbanceRequest,
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> ControllerSimStatus:
+    try:
+        adapter.set_auto_disturbance(controller_id, body)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Controller not found in simulator")
+    return adapter.get_controller_status(controller_id)
