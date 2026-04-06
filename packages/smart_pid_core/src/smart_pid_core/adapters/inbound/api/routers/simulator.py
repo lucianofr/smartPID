@@ -136,8 +136,8 @@ async def set_auto_sp(
 ) -> ControllerSimStatus:
     try:
         adapter.set_auto_sp(controller_id, body)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Controller not found in simulator")
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     return adapter.get_controller_status(controller_id)
 
 
@@ -150,6 +150,8 @@ async def set_auto_disturbance(
 ) -> ControllerSimStatus:
     try:
         adapter.set_auto_disturbance(controller_id, body)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Controller not found in simulator")
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404, detail="Controller not found in simulator"
+        ) from exc
     return adapter.get_controller_status(controller_id)
