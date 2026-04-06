@@ -1,6 +1,8 @@
 """HMI configuration via pydantic-settings."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
 
 
@@ -14,3 +16,4 @@ class HMISettings(BaseSettings):
     theme: str = "isa101"
     mock_mode: bool = False
     refresh_ms: int = 33
+    app_state_path: Path = Path.home() / ".config" / "smart-pid" / "app.json"
