@@ -24,12 +24,14 @@ class ProjectService:
         projects_dir: Path,
         simulator_adapter: object | None = None,
         daemon_state: DaemonState | None = None,
+        opcua_adapter: object | None = None,
     ) -> None:
         self._repo = repo
         self._loop_manager = loop_manager
         self._projects_dir = projects_dir
         self._simulator_adapter = simulator_adapter
         self._daemon_state = daemon_state
+        self._opcua_adapter = opcua_adapter
 
     @property
     def projects_dir(self) -> Path:
@@ -73,6 +75,7 @@ class ProjectService:
             raise FileExistsError(f"Project '{name}' already exists")
         self._loop_manager.stop_all()
         self._stop_simulator()
+        self._stop_opcua()
         await self._repo.reopen(dest)
         await self._repo.set_meta("nome", name)
         if self._daemon_state:
@@ -93,6 +96,7 @@ class ProjectService:
         await self._repo.reopen(path)
         await self._load_simulator_configs()
         await self._start_control_loops()
+        await self._load_opcua_endpoint()
         if self._daemon_state:
             self._daemon_state.set_active_project(name)
         return await self.get_current()
@@ -108,6 +112,7 @@ class ProjectService:
         await self._repo.reopen(dest)
         await self._load_simulator_configs()
         await self._start_control_loops()
+        await self._load_opcua_endpoint()
         if self._daemon_state:
             self._daemon_state.set_active_project(name)
         return await self.get_current()
@@ -166,3 +171,20 @@ class ProjectService:
             self._simulator_adapter, "stop"
         ):
             self._simulator_adapter.stop()
+
+    async def _load_opcua_endpoint(self) -> None:
+        """Read opcua_endpoint from metadata and auto-connect or stop adapter."""
+        if self._opcua_adapter is None:
+            return
+        endpoint = await self._repo.get_meta("opcua_endpoint")
+        if endpoint:
+            if endpoint != self._opcua_adapter.endpoint or not self._opcua_adapter.is_connected:
+                self._opcua_adapter.set_endpoint(endpoint)
+                self._opcua_adapter.start()
+        else:
+            self._opcua_adapter.stop()
+
+    def _stop_opcua(self) -> None:
+        """Stop the OPC-UA adapter if present."""
+        if self._opcua_adapter is not None and hasattr(self._opcua_adapter, "stop"):
+            self._opcua_adapter.stop()

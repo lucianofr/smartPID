@@ -225,7 +225,7 @@ class TestProjectServiceOPCUA:
 
         asyncio.get_event_loop().run_until_complete(service.open_project("myproj"))
 
-        mock_repo.get_meta.assert_awaited_with("opcua_endpoint")
+        mock_repo.get_meta.assert_any_await("opcua_endpoint")
         mock_opcua_adapter.set_endpoint.assert_called_once_with("opc.tcp://saved:4840")
         mock_opcua_adapter.start.assert_called()
 
