@@ -92,6 +92,7 @@ class ProjectService:
         self._stop_simulator()
         await self._repo.reopen(path)
         await self._load_simulator_configs()
+        await self._start_control_loops()
         if self._daemon_state:
             self._daemon_state.set_active_project(name)
         return await self.get_current()
@@ -106,6 +107,7 @@ class ProjectService:
         self._stop_simulator()
         await self._repo.reopen(dest)
         await self._load_simulator_configs()
+        await self._start_control_loops()
         if self._daemon_state:
             self._daemon_state.set_active_project(name)
         return await self.get_current()
@@ -151,6 +153,12 @@ class ProjectService:
             configs = await self._repo.list_sim_configs()
             for cfg in configs:
                 self._simulator_adapter.load_sim_config(cfg)
+
+    async def _start_control_loops(self) -> None:
+        """Start PID/Monitor loops for all controllers in the active project."""
+        controllers = await self._repo.list_all()
+        for ctrl in controllers:
+            self._loop_manager.start_loop(ctrl)
 
     def _stop_simulator(self) -> None:
         """Stop the simulator adapter if present."""

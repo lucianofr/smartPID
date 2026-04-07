@@ -307,6 +307,11 @@ async def run_daemon(settings: CoreSettings) -> None:
     io_worker.start()
     logger.info("io_worker_started")
 
+    # Start PID/Monitor control loops for all controllers
+    for ctrl in all_controllers:
+        loop_manager.start_loop(ctrl)
+    logger.info("control_loops_started", count=len(all_controllers))
+
     # C-INT-3: ExportWorker — CSV/JSON export jobs
     from smart_pid_core.application.export_worker import ExportWorker
 
