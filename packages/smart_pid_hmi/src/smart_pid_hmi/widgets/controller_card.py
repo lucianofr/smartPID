@@ -211,7 +211,7 @@ class ControllerCardWidget(QFrame):
         self._bar_sp.set_value(frame.get("sp", 0.0))
         self._bar_co.set_value(frame.get("co", 0.0))
         mode = frame.get("mode")
-        if mode:
+        if mode and str(mode).upper() != "UNKNOWN":
             self._mode_label.setText(f"Mode: {mode}")
 
     def on_alarm(self, controller_id: int, alarm: dict) -> None:
