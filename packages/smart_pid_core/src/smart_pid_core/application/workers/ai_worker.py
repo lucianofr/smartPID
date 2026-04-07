@@ -47,6 +47,7 @@ class AIWorker:
         self._last_pv: float = 0.0
         self._last_sp: float = 0.0
         self._last_co: float = 0.0
+        self._last_integral: float = 0.0
         self._last_mode: str = ""
         self._prev_error: float = 0.0
         self._has_telemetry = False
@@ -169,7 +170,7 @@ class AIWorker:
                         ki_current=self._ki_current,
                         span=self._controller.pv_scale.span,
                         co=self._last_co,
-                        integral_val=0.0,
+                        integral_val=self._last_integral,
                         objective=self._ai_config.objective,
                         speed=self._controller.process_speed,
                         limit_min=self._ai_config.limit_min,
@@ -245,6 +246,7 @@ class AIWorker:
                 self._last_pv = pv_raw["value"] if isinstance(pv_raw, dict) else float(pv_raw)
                 self._last_sp = sp_raw["value"] if isinstance(sp_raw, dict) else float(sp_raw)
                 self._last_co = co_raw["value"] if isinstance(co_raw, dict) else float(co_raw)
+                self._last_integral = float(data.get("integral_val", 0.0))
                 self._last_mode = data.get("mode", "")
                 self._has_telemetry = True
             except (KeyError, ValueError, msgpack.UnpackException):

@@ -38,32 +38,45 @@ def compute_reward_sp_tracking(
     prev_co: float | None,
     step: int,
 ) -> float:
-    """Reward for SP_TRACKING / DISTURBANCE_REJECTION objectives.
+    """Reward for SP_TRACKING objective.
 
-    Minimizes IAE/ITAE and penalizes total variation (valve chattering).
-
-    Args:
-        error: Normalized error in [-1, 1].
-        delta_error: Normalized delta_error in [-1, 1].
-        co: Current controller output in [0, 100].
-        prev_co: Previous controller output (None on first step).
-        step: Time step count for ITAE weighting.
+    Balanced: minimizes IAE/ITAE and penalizes overshoot via TV.
 
     Returns:
         Reward value (higher is better).
     """
-    # IAE component: penalize absolute error
     iae_penalty = -_IAE_WEIGHT * abs(error)
-
-    # ITAE component: penalize errors that persist over time
     itae_penalty = -_ITAE_WEIGHT * abs(error) * (step + 1) * 0.01
-
-    # TV penalty: penalize large CO changes (valve chattering)
     tv_penalty = 0.0
     if prev_co is not None:
         tv_penalty = -_TV_PENALTY * abs(co - prev_co) / 100.0
-
     return iae_penalty + itae_penalty + tv_penalty
+
+
+def compute_reward_disturbance_rejection(
+    error: float,
+    delta_error: float,
+    co: float,
+    prev_co: float | None,
+    step: int,
+) -> float:
+    """Reward for DISTURBANCE_REJECTION objective.
+
+    More aggressive near zero error — heavily penalizes persistent offset.
+    Less TV penalty to allow faster corrective action.
+
+    Returns:
+        Reward value (higher is better).
+    """
+    # Squared error: penalizes small residual offsets more aggressively
+    ise_penalty = -2.0 * error * error
+    # ITAE: strong penalty for lingering errors
+    itae_penalty = -1.0 * abs(error) * (step + 1) * 0.01
+    # Reduced TV penalty (allow aggressive valve movement to kill offset)
+    tv_penalty = 0.0
+    if prev_co is not None:
+        tv_penalty = -0.1 * abs(co - prev_co) / 100.0
+    return ise_penalty + itae_penalty + tv_penalty
 
 
 def compute_reward_surge_level(
@@ -140,7 +153,7 @@ class RLEngine:
         self._model = None
         self._sb3_available: bool | None = None
         self._is_trained = False
-        self._episode_count = 0
+        self._reward_steps = 0
         self._total_reward = 0.0
         self._step_count = 0
 
@@ -171,8 +184,8 @@ class RLEngine:
         return self._is_trained
 
     @property
-    def episode_count(self) -> int:
-        return self._episode_count
+    def reward_steps(self) -> int:
+        return self._reward_steps
 
     @property
     def step_count(self) -> int:
@@ -180,9 +193,9 @@ class RLEngine:
 
     @property
     def avg_reward(self) -> float:
-        if self._episode_count == 0:
+        if self._reward_steps == 0:
             return 0.0
-        return self._total_reward / self._episode_count
+        return self._total_reward / self._reward_steps
 
     def _check_sb3(self) -> bool:
         """Check if stable-baselines3 is available (cached)."""
@@ -240,8 +253,11 @@ class RLEngine:
             return compute_reward_surge_level(
                 error, delta_error, co, self._prev_co, span
             )
+        elif objective == CO.DISTURBANCE_REJECTION:
+            return compute_reward_disturbance_rejection(
+                error, delta_error, co, self._prev_co, self._step_count
+            )
         else:
-            # SP_TRACKING and DISTURBANCE_REJECTION use same reward
             return compute_reward_sp_tracking(
                 error, delta_error, co, self._prev_co, self._step_count
             )
@@ -286,7 +302,7 @@ class RLEngine:
                 observation[0], observation[1], co, span, objective
             )
             self._total_reward += reward
-            self._episode_count += 1
+            self._reward_steps += 1
 
             # Store transition in replay buffer
             self._replay_buffer.append((
@@ -352,7 +368,7 @@ class RLEngine:
         This allows external callers to provide reward feedback.
         The transition is stored in the replay buffer for training.
         """
-        self._episode_count += 1
+        self._reward_steps += 1
         self._total_reward += reward
 
         if self._last_observation is not None:
@@ -379,7 +395,7 @@ class RLEngine:
             logger.debug("rl_online_train_failed", exc_info=True)
 
     def _online_train_sb3(self) -> None:
-        """Run a few gradient steps with sb3 model."""
+        """Run online training with sb3 model (SAC or PPO)."""
         import numpy as np
 
         if self._model is None:
@@ -388,37 +404,69 @@ class RLEngine:
         if self._model is None:
             return
 
-        # For SAC/PPO, we use the built-in replay buffer
-        # Add transitions from our buffer
         buffer_list = list(self._replay_buffer)
         if len(buffer_list) < self._train_batch_size:
             return
 
-        for obs, action, reward, next_obs, done in buffer_list[-self._train_batch_size :]:
-            try:
-                obs_arr = np.array(obs, dtype=np.float32)
-                next_obs_arr = np.array(next_obs, dtype=np.float32)
-                action_arr = np.array([action], dtype=np.float32)
-                self._model.replay_buffer.add(
-                    obs_arr,
-                    next_obs_arr,
-                    action_arr,
-                    np.array([reward], dtype=np.float32),
-                    np.array([done], dtype=np.float32),
-                    [{}],
-                )
-            except (AttributeError, TypeError):
-                # PPO doesn't have replay_buffer; skip online training for PPO
-                return
+        if self._algorithm == "SAC":
+            self._train_sac(buffer_list, np)
+        else:
+            self._train_ppo(buffer_list, np)
 
-        # Train a few gradient steps
-        self._model.train(gradient_steps=4, batch_size=self._train_batch_size)
         self._is_trained = True
         logger.debug(
-            "rl_online_train step=%d buffer=%d",
-            self._step_count,
-            len(self._replay_buffer),
+            "rl_online_train algo=%s step=%d buffer=%d",
+            self._algorithm, self._step_count, len(self._replay_buffer),
         )
+
+    def _train_sac(self, buffer_list: list, np) -> None:  # noqa: ANN001
+        """Off-policy SAC: add transitions to replay buffer and run gradient steps."""
+        for obs, action, reward, next_obs, done in buffer_list[-self._train_batch_size:]:
+            self._model.replay_buffer.add(
+                np.array(obs, dtype=np.float32),
+                np.array(next_obs, dtype=np.float32),
+                np.array([action], dtype=np.float32),
+                np.array([reward], dtype=np.float32),
+                np.array([done], dtype=np.float32),
+                [{}],
+            )
+        self._model.train(gradient_steps=4, batch_size=self._train_batch_size)
+
+    def _train_ppo(self, buffer_list: list, np) -> None:  # noqa: ANN001
+        """On-policy PPO: fill rollout buffer and call learn().
+
+        PPO uses a RolloutBuffer (on-policy), not a ReplayBuffer.
+        We collect the last N transitions as a mini-rollout.
+        """
+        rollout = self._model.rollout_buffer
+        rollout.reset()
+
+        batch = buffer_list[-self._train_batch_size:]
+        for obs, action, reward, _next_obs, _done in batch:
+            rollout.add(
+                obs=np.array(obs, dtype=np.float32).reshape(1, -1),
+                action=np.array([action], dtype=np.float32).reshape(1, -1),
+                reward=np.array([reward], dtype=np.float32),
+                episode_start=np.array([False]),
+                value=self._model.policy.predict_values(
+                    self._model.policy.obs_to_tensor(
+                        np.array(obs, dtype=np.float32).reshape(1, -1)
+                    )[0]
+                ),
+                log_prob=np.array([0.0], dtype=np.float32),
+            )
+
+        # Compute returns and advantages
+        last_obs = np.array(batch[-1][3], dtype=np.float32).reshape(1, -1)
+        last_value = self._model.policy.predict_values(
+            self._model.policy.obs_to_tensor(last_obs)[0]
+        )
+        rollout.compute_returns_and_advantage(
+            last_values=last_value, dones=np.array([False]),
+        )
+
+        # Run PPO update
+        self._model.train()
 
     def _init_sb3_model(self) -> None:
         """Initialize a new sb3 model for online training."""
@@ -484,7 +532,7 @@ class RLEngine:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._model.save(str(path))
         logger.info(
-            "rl_model_saved path=%s episodes=%d", str(path), self._episode_count
+            "rl_model_saved path=%s episodes=%d", str(path), self._reward_steps
         )
 
     def load_model(self, path: Path) -> None:

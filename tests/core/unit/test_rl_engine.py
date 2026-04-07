@@ -30,7 +30,7 @@ class TestRLEngineInit:
         from smart_pid_core.domain.services.rl_engine import RLEngine
 
         engine = RLEngine()
-        assert engine.episode_count == 0
+        assert engine.reward_steps == 0
         assert engine.step_count == 0
         assert engine.avg_reward == 0.0
 
@@ -377,7 +377,7 @@ class TestUpdate:
 
         engine = RLEngine()
         engine.update(reward=1.0, observation=[0.0, 0.0, 0.5, 0.25])
-        assert engine.episode_count == 1
+        assert engine.reward_steps == 1
         assert engine.avg_reward == pytest.approx(1.0)
 
     def test_multiple_updates_average_reward(self):
@@ -386,7 +386,7 @@ class TestUpdate:
         engine = RLEngine()
         engine.update(reward=1.0)
         engine.update(reward=3.0)
-        assert engine.episode_count == 2
+        assert engine.reward_steps == 2
         assert engine.avg_reward == pytest.approx(2.0)
 
     def test_update_stores_transition_in_buffer(self):
