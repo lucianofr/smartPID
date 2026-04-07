@@ -25,3 +25,11 @@ class OPCUABrowseResponse(BaseModel):
 class OPCUASearchResponse(BaseModel):
     query: str
     results: list[OPCUANodeInfo]
+
+
+class OPCUAConnectRequest(BaseModel):
+    endpoint: str | None = None
+
+
+class OPCUAEndpointRequest(BaseModel):
+    endpoint: str  # must start with opc.tcp://

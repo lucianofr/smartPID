@@ -190,13 +190,23 @@ class APIClient:
         resp.raise_for_status()
         return resp.json()
 
-    def opcua_client_connect(self) -> dict:
-        resp = self._http.post("/opcua/connect", headers=self._headers())
+    def opcua_client_connect(self, endpoint: str | None = None) -> dict:
+        body = {}
+        if endpoint:
+            body["endpoint"] = endpoint
+        resp = self._http.post("/opcua/connect", json=body, headers=self._headers())
         resp.raise_for_status()
         return resp.json()
 
     def opcua_client_disconnect(self) -> dict:
         resp = self._http.post("/opcua/disconnect", headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
+
+    def save_opcua_endpoint(self, url: str) -> dict:
+        resp = self._http.put(
+            "/opcua/endpoint", json={"endpoint": url}, headers=self._headers(),
+        )
         resp.raise_for_status()
         return resp.json()
 

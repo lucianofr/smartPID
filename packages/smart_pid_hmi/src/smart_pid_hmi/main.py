@@ -321,6 +321,9 @@ class MainWindow(QMainWindow):
         self._settings_page.refresh_rate_changed.connect(self._on_refresh_rate_changed)
         self._settings_page.opcua_connect_requested.connect(self._on_opcua_connect)
         self._settings_page.opcua_disconnect_requested.connect(self._on_opcua_disconnect)
+        self._settings_page.opcua_endpoint_save_requested.connect(
+            self._on_opcua_endpoint_save,
+        )
         self._settings_page.project_new_requested.connect(self._show_project_dialog)
         self._settings_page.project_open_requested.connect(self._show_project_dialog)
         self._settings_page.project_download_requested.connect(self._on_project_download)
@@ -775,10 +778,10 @@ class MainWindow(QMainWindow):
         self._bus_bridge.set_refresh_ms(ms)
 
     def _on_opcua_connect(self, endpoint_url: str) -> None:
-        """Connect to OPC-UA server via backend."""
+        """Connect to OPC-UA server via backend, passing the current field endpoint."""
         def do_connect():
             try:
-                result = self._api_client.opcua_client_connect()
+                result = self._api_client.opcua_client_connect(endpoint=endpoint_url)
                 state = result.get("state", "")
                 connected = state.upper() == "ONLINE"
                 self._opcua_status_signal.emit(connected)
@@ -832,6 +835,46 @@ class MainWindow(QMainWindow):
                 self._opcua_status_signal.emit(False)
 
         threading.Thread(target=do_poll, daemon=True).start()
+
+    def _on_opcua_endpoint_save(self, url: str) -> None:
+        """Persist OPC-UA endpoint to project metadata via backend."""
+        def do_save():
+            try:
+                self._api_client.save_opcua_endpoint(url)
+                logger.info("OPC-UA endpoint saved: %s", url)
+            except Exception as e:
+                logger.error("Failed to save OPC-UA endpoint: %s", e)
+                self._api_error_signal.emit(f"Failed to save endpoint: {e}")
+
+        threading.Thread(target=do_save, daemon=True).start()
+
+    def _sync_opcua_status(self) -> None:
+        """Query backend OPC-UA status and sync settings page."""
+        def do_sync():
+            try:
+                result = self._api_client.opcua_client_status()
+                state = result.get("state", "")
+                endpoint = result.get("endpoint", "")
+                connected = state.upper() == "ONLINE"
+                QMetaObject.invokeMethod(
+                    self,
+                    "_apply_opcua_sync",
+                    Qt.ConnectionType.QueuedConnection,
+                    Q_ARG(str, endpoint),
+                    Q_ARG(bool, connected),
+                )
+            except Exception as e:
+                logger.error("OPC-UA status sync failed: %s", e)
+
+        threading.Thread(target=do_sync, daemon=True).start()
+
+    @Slot(str, bool)
+    def _apply_opcua_sync(self, endpoint: str, connected: bool) -> None:
+        """Apply OPC-UA sync results on the main thread."""
+        self._settings_page.set_opcua_endpoint_and_status(endpoint, connected)
+        self._opcua_connected = connected
+        if connected and not self._opcua_watchdog.isActive():
+            self._opcua_watchdog.start(5000)
 
     def _poll_stats(self) -> None:
         """Poll performance stats and AI optimizer status."""
@@ -1126,6 +1169,7 @@ class MainWindow(QMainWindow):
                 self._app_state.set_last_project_name(name)
                 self._app_state.save()
                 self._load_dashboard()
+                self._sync_opcua_status()
                 return
         except Exception as e:
             print(f"[PROJECT CHECK] Error: {e}")  # noqa: T201
@@ -1140,6 +1184,7 @@ class MainWindow(QMainWindow):
                 rcount = result.get("controller_count", 0)
                 self._settings_page.update_project_info(rname, rpath, rcount)
                 self._load_dashboard()
+                self._sync_opcua_status()
                 return
             except Exception as e:
                 print(f"[PROJECT RESTORE] Could not re-open '{last}': {e}")  # noqa: T201

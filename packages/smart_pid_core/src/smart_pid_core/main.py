@@ -355,6 +355,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         projects_dir=settings.projects_dir,
         simulator_adapter=simulator_adapter,
         daemon_state=daemon_state,
+        opcua_adapter=opcua_adapter,
     )
 
     # Phase 2: FastAPI

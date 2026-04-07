@@ -37,6 +37,7 @@ class SettingsPage(QWidget):
     refresh_rate_changed = Signal(int)
     opcua_connect_requested = Signal(str)  # (endpoint_url)
     opcua_disconnect_requested = Signal()
+    opcua_endpoint_save_requested = Signal(str)  # emitted on Apply when endpoint changed
 
     # Project signals (immediate — not affected by Apply/Cancel)
     project_changed = Signal(str, str)  # (name, path)
@@ -246,6 +247,14 @@ class SettingsPage(QWidget):
         self._opcua_connect_btn.setEnabled(False)
         self._opcua_disconnect_btn.setEnabled(False)
 
+    def set_opcua_endpoint_and_status(self, url: str, connected: bool) -> None:
+        """Bulk update endpoint + status for initial sync. Updates committed state."""
+        self._opcua_endpoint.blockSignals(True)
+        self._opcua_endpoint.setText(url)
+        self._opcua_endpoint.blockSignals(False)
+        self._committed_opcua_url = url
+        self.set_opcua_status(connected)
+
     # --- Apply / Cancel logic ---------------------------------------------------
 
     def _on_field_changed(self) -> None:
@@ -270,7 +279,7 @@ class SettingsPage(QWidget):
         if self._refresh_spin.value() != self._committed_refresh:
             self.refresh_rate_changed.emit(self._refresh_spin.value())
         if self._opcua_endpoint.text() != self._committed_opcua_url:
-            self.opcua_connect_requested.emit(self._opcua_endpoint.text())
+            self.opcua_endpoint_save_requested.emit(self._opcua_endpoint.text())
 
         # Update committed state
         self._committed_theme_idx = self._theme_combo.currentIndex()

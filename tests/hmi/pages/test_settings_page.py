@@ -194,3 +194,64 @@ def test_no_save_as_button(qtbot):
     qtbot.addWidget(page)
     btn = page.findChild(QPushButton, "project_save_as_btn")
     assert btn is None
+
+
+# --- OPC-UA endpoint persistence ---
+
+
+def test_set_opcua_endpoint_and_status_connected(qtbot):
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+
+    page.set_opcua_endpoint_and_status("opc.tcp://10.0.0.1:4840", connected=True)
+
+    assert page._opcua_endpoint.text() == "opc.tcp://10.0.0.1:4840"
+    assert page._opcua_status.text() == "Connected"
+    assert page._committed_opcua_url == "opc.tcp://10.0.0.1:4840"
+    assert not page.has_unsaved_changes()
+
+
+def test_set_opcua_endpoint_and_status_disconnected(qtbot):
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+
+    page.set_opcua_endpoint_and_status("opc.tcp://10.0.0.1:4840", connected=False)
+
+    assert page._opcua_endpoint.text() == "opc.tcp://10.0.0.1:4840"
+    assert page._opcua_status.text() == "Disconnected"
+    assert page._committed_opcua_url == "opc.tcp://10.0.0.1:4840"
+    assert not page.has_unsaved_changes()
+
+
+def test_opcua_endpoint_save_signal_on_apply(qtbot):
+    """Apply emits opcua_endpoint_save_requested when endpoint changed."""
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+
+    saved = []
+    page.opcua_endpoint_save_requested.connect(saved.append)
+
+    page._opcua_endpoint.setText("opc.tcp://newhost:4840")
+    page._apply_btn.click()
+
+    assert saved == ["opc.tcp://newhost:4840"]
+
+
+def test_no_save_signal_when_endpoint_unchanged(qtbot):
+    """Apply does NOT emit opcua_endpoint_save_requested if endpoint same."""
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+
+    saved = []
+    page.opcua_endpoint_save_requested.connect(saved.append)
+
+    # Change only the theme, not the endpoint
+    idx = page._theme_combo.currentIndex()
+    page._theme_combo.setCurrentIndex(1 if idx == 0 else 0)
+    page._apply_btn.click()
+
+    assert saved == []
