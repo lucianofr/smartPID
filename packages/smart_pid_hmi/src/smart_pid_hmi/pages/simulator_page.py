@@ -126,10 +126,18 @@ class SimulatorPage(QWidget):
         pid_top_row.addWidget(self._pid_enable_cb)
         pid_top_row.addStretch()
         pid_top_row.addWidget(QLabel("Mode:"))
-        self._pid_mode_combo = QComboBox()
-        self._pid_mode_combo.setObjectName("pid_mode_combo")
-        self._pid_mode_combo.addItems(["MAN", "AUTO"])
-        pid_top_row.addWidget(self._pid_mode_combo)
+        self._btn_pid_auto = QPushButton("AUTO")
+        self._btn_pid_man = QPushButton("MAN")
+        self._btn_pid_auto.setFixedHeight(28)
+        self._btn_pid_man.setFixedHeight(28)
+        self._btn_pid_auto.setFixedWidth(60)
+        self._btn_pid_man.setFixedWidth(60)
+        self._pid_active_mode = "MAN"
+        self._btn_pid_auto.clicked.connect(lambda: self._on_pid_mode_click("AUTO"))
+        self._btn_pid_man.clicked.connect(lambda: self._on_pid_mode_click("MAN"))
+        self._apply_pid_mode_style()
+        pid_top_row.addWidget(self._btn_pid_auto)
+        pid_top_row.addWidget(self._btn_pid_man)
         pid_outer.addLayout(pid_top_row)
 
         pid_form = QFormLayout()
@@ -172,7 +180,7 @@ class SimulatorPage(QWidget):
 
         # PID controls list (for enable/disable toggling)
         self._pid_controls: list[QWidget] = [
-            self._pid_mode_combo,
+            self._btn_pid_auto, self._btn_pid_man,
             self._pid_sp_edit,
             self._pid_co_edit,
             self._pid_kp_edit,
@@ -430,9 +438,7 @@ class SimulatorPage(QWidget):
         # PID controls act IMMEDIATELY (real-time, no Apply needed)
         self._pid_enable_cb.toggled.connect(self._on_pid_enable_toggled)
         self._pid_enable_cb.toggled.connect(lambda v: self.pid_enabled_changed.emit(v))
-        self._pid_mode_combo.currentIndexChanged.connect(
-            lambda _: self.pid_mode_changed.emit(self._pid_mode_combo.currentText())
-        )
+        # Mode buttons connected via _on_pid_mode_click
         self._pid_sp_edit.editingFinished.connect(
             lambda: self.pid_sp_changed.emit(
                 self._parse_float(self._pid_sp_edit.text(), 50.0)
@@ -469,6 +475,31 @@ class SimulatorPage(QWidget):
         changed = self.has_unsaved_changes()
         self._sim_apply_btn.setEnabled(changed)
         self._sim_cancel_btn.setEnabled(changed)
+
+    def _on_pid_mode_click(self, mode: str) -> None:
+        """Handle AUTO/MAN button click."""
+        self._pid_active_mode = mode
+        self._apply_pid_mode_style()
+        self.pid_mode_changed.emit(mode)
+
+    def _apply_pid_mode_style(self) -> None:
+        """Highlight active mode button."""
+        active_css = (
+            "background-color: #424242; color: #FFFFFF;"
+            " font-weight: bold; border: 1px solid #616161;"
+            " padding: 2px 8px;"
+        )
+        inactive_css = (
+            "background-color: #E0E0E0; color: #757575;"
+            " border: 1px solid #BDBDBD;"
+            " padding: 2px 8px;"
+        )
+        self._btn_pid_auto.setStyleSheet(
+            active_css if self._pid_active_mode == "AUTO" else inactive_css
+        )
+        self._btn_pid_man.setStyleSheet(
+            active_css if self._pid_active_mode == "MAN" else inactive_css
+        )
 
     def _on_pid_params_edited(self) -> None:
         """Send PID Kp/Ti/Td immediately on Enter or focus loss."""
@@ -670,6 +701,7 @@ class SimulatorPage(QWidget):
         kp: float | None = None,
         ti: float | None = None,
         td: float | None = None,
+        mode: int | None = None,
     ) -> None:
         """Bulk update all read-only live variables from simulation tick.
 
@@ -685,8 +717,13 @@ class SimulatorPage(QWidget):
             self._pid_ti_edit.setText(f"{ti:.1f}")
         if td is not None and not self._pid_td_edit.hasFocus():
             self._pid_td_edit.setText(f"{td:.1f}")
+        if mode is not None:
+            mode_str = "AUTO" if mode == 1 else "MAN"
+            if mode_str != self._pid_active_mode:
+                self._pid_active_mode = mode_str
+                self._apply_pid_mode_style()
         # Only overwrite CO when PID is computing it (enabled + AUTO)
-        if self._pid_enable_cb.isChecked() and self._pid_mode_combo.currentText() == "AUTO":
+        if self._pid_enable_cb.isChecked() and self._pid_active_mode == "AUTO":
             self._pid_co_edit.blockSignals(True)
             self._pid_co_edit.setText(f"{co:.2f}")
             self._pid_co_edit.blockSignals(False)
@@ -712,6 +749,8 @@ class SimulatorPage(QWidget):
         self._pid_ti_edit.setText(f"{status.pid_ti:.1f}")
         self._pid_td_edit.setText(f"{status.pid_td:.1f}")
         self._pid_co_edit.setText(f"{status.pid_cv:.2f}")
+        self._pid_active_mode = "AUTO" if status.pid_mode == 1 else "MAN"
+        self._apply_pid_mode_style()
         if status.auto_sp is not None:
             self._auto_sp_enable.setChecked(status.auto_sp.enabled)
             self._auto_sp_min.setValue(status.auto_sp.sp_min_pct)

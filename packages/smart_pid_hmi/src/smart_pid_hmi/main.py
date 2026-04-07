@@ -754,6 +754,7 @@ class MainWindow(QMainWindow):
                     "kp": ctrl_status.pid_kp,
                     "ti": ctrl_status.pid_ti,
                     "td": ctrl_status.pid_td,
+                    "mode": ctrl_status.pid_mode,
                 })
             except Exception as e:
                 logger.debug("sim poll error: %s", e)
@@ -767,6 +768,7 @@ class MainWindow(QMainWindow):
             process_out=vals["process_out"],
             disturbance_out=vals["disturbance_out"], sp=vals["sp"],
             kp=vals.get("kp"), ti=vals.get("ti"), td=vals.get("td"),
+            mode=vals.get("mode"),
         )
 
     def _on_refresh_rate_changed(self, ms: int) -> None:
