@@ -26,7 +26,7 @@ class IOWorker:
     reach the PID workers, DB worker, or telemetry publisher.
     """
 
-    _PARAMS_READ_INTERVAL_S: float = 10.0
+    _PARAMS_READ_INTERVAL_S: float = 2.0
 
     def __init__(
         self,
@@ -47,6 +47,7 @@ class IOWorker:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._last_params_read: float = 0.0
+        self._cached_params: dict[int, dict] = {}  # cid -> {kp, ti, td}
 
     def add_controller(self, controller_id: int) -> None:
         """Register an additional controller for scanning."""
@@ -140,6 +141,7 @@ class IOWorker:
                             "mode": mode.value if mode else "UNKNOWN",
                             "integral_val": frame.integral_val,
                             "timestamp": frame.timestamp.isoformat(),
+                            **self._cached_params.get(cid, {}),
                         })
                         pub.send(topic, payload)
                     except (KeyError, ConnectionError):
@@ -191,12 +193,16 @@ class IOWorker:
                 params = self._opcua.read_pid_params(cid)
                 if params is None:
                     continue
-                topic = f"PARAMS.{cid}".encode()
-                payload = msgpack.packb({
-                    "controller_id": cid,
+                params_dict = {
                     "kp": params.kp,
                     "ti": params.ti,
                     "td": params.td,
+                }
+                self._cached_params[cid] = params_dict
+                topic = f"PARAMS.{cid}".encode()
+                payload = msgpack.packb({
+                    "controller_id": cid,
+                    **params_dict,
                     "timestamp": params.timestamp,
                 })
                 pub.send(topic, payload)

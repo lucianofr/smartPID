@@ -417,6 +417,15 @@ class FaceplateWidget(QFrame):
                 self._active_mode = mode_str
                 self._apply_toggle_style(self._theme)
 
+        # Update gains from live OPC-UA reads (if present in frame)
+        kp = frame.get("kp")
+        if kp is not None:
+            self.update_gains({
+                "gain": kp,
+                "reset": frame.get("ti", 0.0),
+                "rate": frame.get("td", 0.0),
+            })
+
     def _on_sp_enter(self) -> None:
         if self._controller_id is None:
             return
