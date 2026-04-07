@@ -31,7 +31,8 @@ class TelemetrySub:
 
     def stop(self) -> None:
         self._stop_event.set()
-        self._thread.join(timeout=2.0)
+        if self._thread.is_alive():
+            self._thread.join(timeout=2.0)
 
     def _run(self) -> None:
         ctx = zmq.Context()
