@@ -122,6 +122,13 @@ class APIClient:
         resp.raise_for_status()
         return resp.json()
 
+    def get_ai_status(self, controller_id: int) -> dict:
+        resp = self._http.get(
+            f"/controllers/{controller_id}/ai/status", headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def start_optimizer(self, controller_id: int) -> dict:
         resp = self._http.post(
             f"/controllers/{controller_id}/ai/start", headers=self._headers(),
