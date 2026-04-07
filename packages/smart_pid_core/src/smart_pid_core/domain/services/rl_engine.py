@@ -24,11 +24,22 @@ logger = logging.getLogger(__name__)
 OBS_DIM = 4
 ACTION_DIM = 1
 
-# Reward weighting constants
-_IAE_WEIGHT = 1.0
-_TV_PENALTY = 0.3
-_ITAE_WEIGHT = 0.5
-_DEADBAND_FRACTION = 0.02  # 2% of span for surge level deadband
+# ── Reward Design Philosophy ─────────────────────────────────────────
+#
+# Each control objective defines a DIFFERENT reward function because the
+# RL agent must learn fundamentally different behaviors:
+#
+# ┌─────────────────────┬──────────────────┬──────────────┬────────────┐
+# │ Objective           │ Primary KPI      │ Secondary    │ TV Weight  │
+# ├─────────────────────┼──────────────────┼──────────────┼────────────┤
+# │ SP Tracking         │ IAE (fast resp.) │ Overshoot    │ Moderate   │
+# │ Disturbance Reject. │ ISE (kill offset)│ ITAE (time)  │ Low        │
+# │ Surge Level         │ TV (valve calm)  │ Deadband IAE │ Dominant   │
+# └─────────────────────┴──────────────────┴──────────────┴────────────┘
+#
+# All errors are normalized to [-1, +1] of span before entering here.
+
+_SURGE_DEADBAND = 0.02  # 2% of span — free floating zone
 
 
 def compute_reward_sp_tracking(
@@ -38,19 +49,35 @@ def compute_reward_sp_tracking(
     prev_co: float | None,
     step: int,
 ) -> float:
-    """Reward for SP_TRACKING objective.
+    """Reward for SP_TRACKING (Setpoint Following).
 
-    Balanced: minimizes IAE/ITAE and penalizes overshoot via TV.
-
-    Returns:
-        Reward value (higher is better).
+    Goal: reach new setpoint fast with ZERO overshoot.
+    Strategy:
+      - IAE: penalize distance from target (drives fast response)
+      - Overshoot detector: extra penalty when error flips sign
+        (PV crossed SP → overshoot happening)
+      - Moderate TV: some valve movement is OK for speed, but
+        excessive chattering wastes the actuator
+    KPIs: IAE, rise time, overshoot %
     """
-    iae_penalty = -_IAE_WEIGHT * abs(error)
-    itae_penalty = -_ITAE_WEIGHT * abs(error) * (step + 1) * 0.01
-    tv_penalty = 0.0
+    # IAE — primary driver for fast convergence
+    iae = -1.0 * abs(error)
+
+    # Overshoot penalty: if error and delta_error have opposite signs,
+    # PV is moving AWAY from SP after having crossed it
+    overshoot = 0.0
+    if error * delta_error < 0 and abs(error) < 0.1:
+        overshoot = -2.0 * abs(delta_error)
+
+    # TV — moderate penalty (allow valve movement for speed)
+    tv = 0.0
     if prev_co is not None:
-        tv_penalty = -_TV_PENALTY * abs(co - prev_co) / 100.0
-    return iae_penalty + itae_penalty + tv_penalty
+        tv = -0.3 * abs(co - prev_co) / 100.0
+
+    # Small bonus for being very close to setpoint
+    settle_bonus = 0.5 if abs(error) < 0.005 else 0.0
+
+    return iae + overshoot + tv + settle_bonus
 
 
 def compute_reward_disturbance_rejection(
@@ -60,23 +87,34 @@ def compute_reward_disturbance_rejection(
     prev_co: float | None,
     step: int,
 ) -> float:
-    """Reward for DISTURBANCE_REJECTION objective.
+    """Reward for DISTURBANCE_REJECTION (Regulatory Control).
 
-    More aggressive near zero error — heavily penalizes persistent offset.
-    Less TV penalty to allow faster corrective action.
-
-    Returns:
-        Reward value (higher is better).
+    Goal: SP is fixed. Kill offset FAST when disturbances hit.
+    Strategy:
+      - ISE: squared error penalizes ANY residual offset heavily
+        (small persistent errors are worse than brief large ones)
+      - ITAE: time-weighted — the longer offset persists, the worse
+      - Very low TV: allow aggressive valve action to fight disturbances
+      - Bonus for error recovery speed (delta_error toward zero)
+    KPIs: ISE, ITAE, time to recover to ±0.5% of span
     """
-    # Squared error: penalizes small residual offsets more aggressively
-    ise_penalty = -2.0 * error * error
-    # ITAE: strong penalty for lingering errors
-    itae_penalty = -1.0 * abs(error) * (step + 1) * 0.01
-    # Reduced TV penalty (allow aggressive valve movement to kill offset)
-    tv_penalty = 0.0
+    # ISE — squared error makes the agent extremely aggressive near zero
+    ise = -2.0 * error * error
+
+    # ITAE — time-weighted penalty for lingering offset
+    itae = -0.8 * abs(error) * min((step + 1) * 0.01, 5.0)
+
+    # Recovery bonus: reward when error is shrinking (delta_error opposing error)
+    recovery = 0.0
+    if abs(error) > 0.01 and error * delta_error < 0:
+        recovery = 0.3 * abs(delta_error)
+
+    # Minimal TV — let the valve fight the disturbance freely
+    tv = 0.0
     if prev_co is not None:
-        tv_penalty = -0.1 * abs(co - prev_co) / 100.0
-    return ise_penalty + itae_penalty + tv_penalty
+        tv = -0.05 * abs(co - prev_co) / 100.0
+
+    return ise + itae + recovery + tv
 
 
 def compute_reward_surge_level(
@@ -84,36 +122,42 @@ def compute_reward_surge_level(
     delta_error: float,
     co: float,
     prev_co: float | None,
-    span: float,
+    step: int,
 ) -> float:
-    """Reward for SURGE_LEVEL objective.
+    """Reward for SURGE_LEVEL (Buffer Tank / Averaging Level Control).
 
-    Rewards valve stability, penalizes IAE only outside deadband.
-
-    Args:
-        error: Normalized error in [-1, 1].
-        delta_error: Normalized delta_error in [-1, 1].
-        co: Current controller output in [0, 100].
-        prev_co: Previous controller output (None on first step).
-        span: Process span for deadband calculation.
-
-    Returns:
-        Reward value (higher is better).
+    Goal: keep the valve CALM. PV may float freely within a deadband.
+    Only react when PV approaches dangerous limits.
+    Strategy:
+      - Valve stability is the PRIMARY metric (TV dominance)
+      - Error inside deadband → zero penalty (let PV float)
+      - Error outside deadband → escalating penalty (approaching limits)
+      - CO direction change penalty (chattering is the worst outcome)
+    KPIs: TV, valve reversals, time inside deadband
     """
-    # Valve stability reward: small CO changes are good
-    stability_reward = 0.0
+    # Valve stability — DOMINANT reward component
+    stability = 0.0
     if prev_co is not None:
         co_change = abs(co - prev_co) / 100.0
-        # Reward = 1.0 when no change, decays with change magnitude
-        stability_reward = 1.0 * math.exp(-5.0 * co_change)
+        # Exponential reward: 1.0 when perfectly still, decays with movement
+        stability = 1.5 * math.exp(-8.0 * co_change)
+        # Extra penalty for valve direction reversal (chattering)
+        if hasattr(compute_reward_surge_level, "_prev_delta_co"):
+            prev_delta = compute_reward_surge_level._prev_delta_co
+            curr_delta = co - prev_co
+            if prev_delta * curr_delta < 0:  # sign changed = reversal
+                stability -= 0.5
+        compute_reward_surge_level._prev_delta_co = co - prev_co
 
-    # IAE penalty only outside deadband
-    deadband = _DEADBAND_FRACTION  # Normalized deadband
-    iae_penalty = (
-        -_IAE_WEIGHT * (abs(error) - deadband) if abs(error) > deadband else 0.0
-    )
+    # Deadband: zero penalty inside ±2% of span
+    error_penalty = 0.0
+    abs_err = abs(error)
+    if abs_err > _SURGE_DEADBAND:
+        # Quadratic escalation outside deadband — gentle near edge, aggressive at limits
+        excess = abs_err - _SURGE_DEADBAND
+        error_penalty = -3.0 * excess * excess
 
-    return stability_reward + iae_penalty
+    return stability + error_penalty
 
 
 class _FallbackPolicy:
@@ -251,7 +295,7 @@ class RLEngine:
 
         if objective == CO.SURGE_LEVEL:
             return compute_reward_surge_level(
-                error, delta_error, co, self._prev_co, span
+                error, delta_error, co, self._prev_co, self._step_count
             )
         elif objective == CO.DISTURBANCE_REJECTION:
             return compute_reward_disturbance_rejection(
