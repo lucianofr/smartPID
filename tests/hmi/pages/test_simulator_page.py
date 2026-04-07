@@ -1,10 +1,9 @@
-"""Tests for SimulatorPage — preset selector, parameter sliders, disturbance controls."""
+"""Tests for SimulatorPage — preset selector, parameter fields, disturbance controls."""
 from __future__ import annotations
 
 import pytest
 from PySide6.QtWidgets import (
     QCheckBox,
-    QDoubleSpinBox,
     QGroupBox,
     QLabel,
     QLineEdit,
@@ -60,18 +59,18 @@ def test_tau2_editable_for_soptd(qtbot, theme):
 
 
 def test_tau2_min_allows_zero(qtbot, theme):
-    """Tau2 min range should allow 0.0 for FOPTD presets."""
+    """Tau2 field should accept 0.0 for FOPTD presets."""
     page = SimulatorPage(theme=theme)
     qtbot.addWidget(page)
-    page._tau2_slider.setValue(0.0)
-    assert page._tau2_slider.value() == 0.0
+    page._tau2_slider.setText("0.0")
+    assert page._tau2_slider.text() == "0.0"
 
 
 def test_step_disturbance_signal(qtbot, theme):
     page = SimulatorPage(theme=theme)
     qtbot.addWidget(page)
     with qtbot.waitSignal(page.step_requested, timeout=1000) as blocker:
-        page._step_amplitude.setValue(5.0)
+        page._step_amplitude.setText("5.0")
         page._on_step_inject()
     assert blocker.args == [5.0]
 
@@ -80,7 +79,7 @@ def test_noise_disturbance_signal(qtbot, theme):
     page = SimulatorPage(theme=theme)
     qtbot.addWidget(page)
     with qtbot.waitSignal(page.noise_requested, timeout=1000) as blocker:
-        page._noise_amplitude.setValue(0.5)
+        page._noise_amplitude.setText("0.5")
         page._on_noise_inject()
     assert blocker.args == [0.5]
 
@@ -289,12 +288,12 @@ class TestSimulatorPageOPCUA:
         assert "OPC-UA Server" in names
 
     def test_opcua_port_default(self, pid_page: SimulatorPage) -> None:
-        spin = pid_page.findChild(QDoubleSpinBox, "opcua_port_spin")
-        assert spin is not None
-        assert spin.value() == 4849
+        edit = pid_page.findChild(QLineEdit, "opcua_port_edit")
+        assert edit is not None
+        assert edit.text() == "4849"
 
     def test_opcua_config_signal(self, pid_page: SimulatorPage, qtbot) -> None:
-        pid_page._opcua_port_spin.setValue(4842)
+        pid_page._opcua_port_edit.setText("4842")
         with qtbot.waitSignal(pid_page.opcua_config_changed, timeout=1000) as blocker:
             pid_page._on_opcua_apply()
         assert blocker.args == [4842]
@@ -434,8 +433,8 @@ class TestSimulatorPagePollingSync:
             auto_sp_enabled=True, auto_sp_min=20.0, auto_sp_max=80.0,
         )
         assert pid_page._auto_sp_enable.isChecked()
-        assert pid_page._auto_sp_min.value() == pytest.approx(20.0)
-        assert pid_page._auto_sp_max.value() == pytest.approx(80.0)
+        assert pid_page._auto_sp_min.text() == "20.0"
+        assert pid_page._auto_sp_max.text() == "80.0"
 
     def test_sync_auto_sp_disabled(self, pid_page: SimulatorPage) -> None:
         pid_page._auto_sp_enable.setChecked(True)
@@ -454,7 +453,7 @@ class TestSimulatorPagePollingSync:
             auto_dist_enabled=True, auto_dist_amp=15.0,
         )
         assert pid_page._auto_dist_enable.isChecked()
-        assert pid_page._auto_dist_amp.value() == pytest.approx(15.0)
+        assert pid_page._auto_dist_amp.text() == "15.0"
 
     def test_sync_auto_disturbance_disabled(self, pid_page: SimulatorPage) -> None:
         pid_page._auto_dist_enable.setChecked(True)
@@ -470,7 +469,7 @@ class TestSimulatorPagePollingSync:
     ) -> None:
         """Passing None for optional fields should not change widget state."""
         pid_page._auto_sp_enable.setChecked(True)
-        pid_page._auto_sp_min.setValue(25.0)
+        pid_page._auto_sp_min.setText("25.0")
         pid_page.update_live_values(
             pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
             process_in=0.0, process_out=50.0, disturbance_out=0.0,
@@ -478,4 +477,4 @@ class TestSimulatorPagePollingSync:
         )
         # Should remain unchanged
         assert pid_page._auto_sp_enable.isChecked()
-        assert pid_page._auto_sp_min.value() == pytest.approx(25.0)
+        assert pid_page._auto_sp_min.text() == "25.0"
