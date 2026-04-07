@@ -226,25 +226,46 @@ async def run_daemon(settings: CoreSettings) -> None:
     # Phase 3b: OPC-UA adapter lifecycle
     opcua_adapter = adapter_factory.opcua_adapter
     if opcua_adapter is not None:
-        controllers = await repo.list_all()
-        for ctrl in controllers:
-            tb = ctrl.tag_bindings
-            if tb.node_id_pv:  # Only register if tags are configured
+        if simulator_adapter is not None:
+            # Simulator mode: use the simulator's actual node IDs (auto-assigned)
+            # instead of database tag_bindings which may be stale
+            sim_node_ids = simulator_adapter._opcua_server.controller_node_ids
+            for ctrl_id, nodes in sim_node_ids.items():
                 opcua_adapter.register_controller(
-                    controller_id=ctrl.id,
-                    node_id_pv=tb.node_id_pv,
-                    node_id_sp=tb.node_id_sp,
-                    node_id_co=tb.node_id_co,
-                    node_id_integral=tb.node_id_integral,
-                    node_id_bkcal_in=tb.node_id_bkcal_in,
-                    node_id_bkcal_out=tb.node_id_bkcal_out,
-                    node_id_kp=tb.node_id_kp,
-                    node_id_ti=tb.node_id_ti,
-                    node_id_td=tb.node_id_td,
-                    node_id_mode_target=tb.node_id_mode_target,
-                    node_id_mode_actual=tb.node_id_mode_actual,
-                    mode_int_map=tb.mode_int_map,
+                    controller_id=ctrl_id,
+                    node_id_pv=nodes.get("pv", ""),
+                    node_id_sp=nodes.get("sp", ""),
+                    node_id_co=nodes.get("co", ""),
+                    node_id_kp=nodes.get("kp", ""),
+                    node_id_ti=nodes.get("ti", ""),
+                    node_id_td=nodes.get("td", ""),
+                    node_id_mode_actual=nodes.get("mode", ""),
                 )
+            logger.info(
+                "opcua_adapter_registered_from_simulator",
+                controllers=list(sim_node_ids.keys()),
+            )
+        else:
+            # Real OPC-UA: use database tag_bindings
+            controllers = await repo.list_all()
+            for ctrl in controllers:
+                tb = ctrl.tag_bindings
+                if tb.node_id_pv:
+                    opcua_adapter.register_controller(
+                        controller_id=ctrl.id,
+                        node_id_pv=tb.node_id_pv,
+                        node_id_sp=tb.node_id_sp,
+                        node_id_co=tb.node_id_co,
+                        node_id_integral=tb.node_id_integral,
+                        node_id_bkcal_in=tb.node_id_bkcal_in,
+                        node_id_bkcal_out=tb.node_id_bkcal_out,
+                        node_id_kp=tb.node_id_kp,
+                        node_id_ti=tb.node_id_ti,
+                        node_id_td=tb.node_id_td,
+                        node_id_mode_target=tb.node_id_mode_target,
+                        node_id_mode_actual=tb.node_id_mode_actual,
+                        mode_int_map=tb.mode_int_map,
+                    )
         opcua_adapter.start()
         logger.info("opcua_adapter_started", endpoint=opcua_adapter.endpoint)
 
