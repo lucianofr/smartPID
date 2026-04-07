@@ -188,7 +188,44 @@ _PERF_METRICS: list[tuple[str, str, bool]] = [
 ]
 
 _PLACEHOLDER = "\u2014"  # em-dash
-_BADGE_BASE_STYLE = "padding: 2px 8px; border-radius: 4px; font-size: 10px;"
+_BADGE_BASE_STYLE = (
+    "padding: 1px 10px; border-radius: 3px; font-size: 10px; font-weight: bold;"
+)
+
+# Badge color schemes: (background, text_color)
+_MODE_COLORS: dict[str, tuple[str, str]] = {
+    "AUTO": ("#1B5E20", "#A5D6A7"),
+    "CAS": ("#1B5E20", "#A5D6A7"),
+    "RCAS": ("#1B5E20", "#A5D6A7"),
+    "MAN": ("#E65100", "#FFCC80"),
+    "ROUT": ("#E65100", "#FFCC80"),
+    "OOS": ("#424242", "#9E9E9E"),
+    "LO": ("#424242", "#9E9E9E"),
+    "IMAN": ("#424242", "#9E9E9E"),
+}
+_MODE_DEFAULT = ("#424242", "#9E9E9E")
+
+_AI_ENGINE_COLORS: dict[str, tuple[str, str]] = {
+    "FUZZY": ("#4A148C", "#CE93D8"),
+    "RL": ("#006064", "#80DEEA"),
+    "NONE": ("#424242", "#9E9E9E"),
+}
+_AI_ENGINE_DEFAULT = ("#424242", "#9E9E9E")
+
+_OPT_STATE_COLORS: dict[str, tuple[str, str]] = {
+    "RUN": ("#0D47A1", "#90CAF9"),
+    "RUNNING": ("#0D47A1", "#90CAF9"),
+    "PAUSE": ("#F57F17", "#FFF176"),
+    "STOP": ("#424242", "#9E9E9E"),
+    "STOPPED": ("#424242", "#9E9E9E"),
+}
+_OPT_STATE_DEFAULT = ("#424242", "#9E9E9E")
+
+_EXEC_MODE_COLORS: dict[str, tuple[str, str]] = {
+    "SUPERVISORY": ("#1A237E", "#9FA8DA"),
+    "DDC": ("#BF360C", "#FFAB91"),
+}
+_EXEC_MODE_DEFAULT = ("#424242", "#9E9E9E")
 
 
 class _ControllerCard(QFrame):
@@ -197,7 +234,7 @@ class _ControllerCard(QFrame):
     # Card sizing
     CARD_MIN_W = 380
     CARD_MAX_W = 450
-    CARD_FIXED_H = 320
+    CARD_FIXED_H = 260
 
     def __init__(
         self,
@@ -236,9 +273,16 @@ class _ControllerCard(QFrame):
 
         self._mode_badge = QLabel()
         self._engine_badge = QLabel()
+        self._opt_state_badge = QLabel()
         self._exec_badge = QLabel()
-        for badge in (self._mode_badge, self._engine_badge, self._exec_badge):
+        for badge in (
+            self._mode_badge,
+            self._engine_badge,
+            self._opt_state_badge,
+            self._exec_badge,
+        ):
             badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge.setFixedHeight(18)
             badge.setStyleSheet(_BADGE_BASE_STYLE)
             header.addWidget(badge)
 
@@ -250,21 +294,13 @@ class _ControllerCard(QFrame):
         sep.setFixedHeight(1)
         root.addWidget(sep)
 
-        # --- Process values row (PV, SP, Error%) ---
-        pv_row = QHBoxLayout()
-        pv_row.setSpacing(8)
-        self._pv_value = self._make_tile("PV", pv_row)
-        self._sp_value = self._make_tile("SP", pv_row)
-        self._error_value = self._make_tile("Error", pv_row)
-        root.addLayout(pv_row)
-
-        # --- Optimization row (Objective, State, gamma) ---
-        ai_row = QHBoxLayout()
-        ai_row.setSpacing(8)
-        self._objective_value = self._make_tile("Objective", ai_row)
-        self._ai_state_value = self._make_tile("State", ai_row)
-        self._gamma_value = self._make_tile("\u03b3", ai_row)  # gamma symbol
-        root.addLayout(ai_row)
+        # --- Config row (Objective, Process Speed, Scan Rate) ---
+        cfg_row = QHBoxLayout()
+        cfg_row.setSpacing(8)
+        self._objective_value = self._make_tile("Objective", cfg_row)
+        self._speed_value = self._make_tile("Process Speed", cfg_row)
+        self._scan_rate_value = self._make_tile("Scan Rate", cfg_row)
+        root.addLayout(cfg_row)
 
         # --- Performance grid (4x2) ---
         perf_grid = QGridLayout()
@@ -281,7 +317,7 @@ class _ControllerCard(QFrame):
 
             lbl = QLabel(label)
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lbl.setStyleSheet("font-size: 9px;")
+            lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
             lbl.setObjectName("perf_label")
             tile_layout.addWidget(lbl)
 
@@ -306,7 +342,7 @@ class _ControllerCard(QFrame):
 
         lbl = QLabel(label_text)
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl.setStyleSheet("font-size: 9px;")
+        lbl.setStyleSheet("font-size: 11px; font-weight: bold;")
         lbl.setObjectName("tile_label")
         tile_layout.addWidget(lbl)
 
@@ -329,10 +365,13 @@ class _ControllerCard(QFrame):
         engine = str(ai_cfg.get("engine", "NONE")) if isinstance(ai_cfg, dict) else "NONE"
         objective = str(ai_cfg.get("objective", "")) if isinstance(ai_cfg, dict) else ""
 
+        opt_state = str(data.get("ai_optimizer_state", "STOP")).upper()
+
         self._name_label.setText(name)
         self._mode_badge.setText(mode)
-        self._exec_badge.setText(exec_mode)
         self._engine_badge.setText(engine)
+        self._opt_state_badge.setText(opt_state)
+        self._exec_badge.setText(exec_mode)
 
         # LED color based on mode
         auto_modes = {"AUTO", "CAS", "RCAS", "ROUT"}
@@ -344,33 +383,19 @@ class _ControllerCard(QFrame):
         else:
             self._led.setStyleSheet("color: #888888; font-size: 12px;")
 
-        # Process values
-        pv = data.get("pv")
-        sp = data.get("sp")
-        self._pv_value.setText(f"{pv:.1f}" if pv is not None else _PLACEHOLDER)
-        self._sp_value.setText(f"{sp:.1f}" if sp is not None else _PLACEHOLDER)
-
-        if pv is not None and sp is not None:
-            span = data.get("sp_hi_lim", 100.0) - data.get("sp_lo_lim", 0.0)
-            error_pct = abs(pv - sp) / span * 100.0 if span else 0.0
-            self._error_value.setText(f"{error_pct:.1f}%")
-        else:
-            self._error_value.setText(_PLACEHOLDER)
-
-        # Optimization section
-        ai_state = data.get("ai_state", "")
-        ai_gamma = data.get("ai_gamma")
+        # Config section
+        speed = str(data.get("process_speed", _PLACEHOLDER))
+        scan_rate = data.get("scan_rate_ms")
 
         if engine == "NONE":
             self._objective_value.setText(_PLACEHOLDER)
-            self._ai_state_value.setText("Disabled")
-            self._gamma_value.setText(_PLACEHOLDER)
         else:
             self._objective_value.setText(objective)
-            self._ai_state_value.setText(str(ai_state) if ai_state else _PLACEHOLDER)
-            self._gamma_value.setText(
-                f"{ai_gamma:.2f}" if ai_gamma is not None else _PLACEHOLDER
-            )
+
+        self._speed_value.setText(speed)
+        self._scan_rate_value.setText(
+            f"{scan_rate / 1000:.1f} s" if scan_rate is not None else _PLACEHOLDER
+        )
 
         # Performance metrics
         for label, key, is_pct in _PERF_METRICS:
@@ -384,27 +409,28 @@ class _ControllerCard(QFrame):
         # Badge styling
         self._style_mode_badge(mode)
         self._style_engine_badge(engine)
+        self._style_opt_state_badge(opt_state)
+        self._style_exec_badge(exec_mode)
+
+    @staticmethod
+    def _badge_style(bg: str, fg: str) -> str:
+        return f"background-color: {bg}; color: {fg}; {_BADGE_BASE_STYLE}"
 
     def _style_mode_badge(self, mode: str) -> None:
-        auto_modes = {"AUTO", "CAS", "RCAS", "ROUT"}
-        if mode in auto_modes:
-            self._mode_badge.setStyleSheet(
-                f"background-color: #2d5a27; color: #7fff7f; {_BADGE_BASE_STYLE}"
-            )
-        else:
-            self._mode_badge.setStyleSheet(
-                f"background-color: #444; color: #ccc; {_BADGE_BASE_STYLE}"
-            )
+        bg, fg = _MODE_COLORS.get(mode, _MODE_DEFAULT)
+        self._mode_badge.setStyleSheet(self._badge_style(bg, fg))
 
     def _style_engine_badge(self, engine: str) -> None:
-        if engine in {"FUZZY", "RL"}:
-            self._engine_badge.setStyleSheet(
-                f"background-color: #3a2d10; color: #f0a030; {_BADGE_BASE_STYLE}"
-            )
-        else:
-            self._engine_badge.setStyleSheet(
-                f"background-color: #333; color: #888; {_BADGE_BASE_STYLE}"
-            )
+        bg, fg = _AI_ENGINE_COLORS.get(engine, _AI_ENGINE_DEFAULT)
+        self._engine_badge.setStyleSheet(self._badge_style(bg, fg))
+
+    def _style_opt_state_badge(self, state: str) -> None:
+        bg, fg = _OPT_STATE_COLORS.get(state, _OPT_STATE_DEFAULT)
+        self._opt_state_badge.setStyleSheet(self._badge_style(bg, fg))
+
+    def _style_exec_badge(self, exec_mode: str) -> None:
+        bg, fg = _EXEC_MODE_COLORS.get(exec_mode, _EXEC_MODE_DEFAULT)
+        self._exec_badge.setStyleSheet(self._badge_style(bg, fg))
 
     def _apply_styles(self, theme: ThemeBase) -> None:
         """Apply theme colors to the card."""
@@ -497,20 +523,26 @@ class ExecutiveDashboardPage(QWidget):
 
     def update_controller_cards(self, controllers: list[dict]) -> None:
         """Create/update controller cards from a list of controller dicts."""
-        # Clear existing cards — drain layout items to avoid stale references
-        while self._cards_layout.count():
-            item = self._cards_layout.takeAt(0)
-            if item and item.widget():
-                item.widget().deleteLater()
-        self._controller_cards.clear()
-
-        # Create new cards
+        incoming_names = set()
         for ctrl in controllers:
             name = ctrl.get("name", f"Loop-{ctrl.get('id', '?')}")
-            card = _ControllerCard(theme=self._theme)
-            card.update_data(ctrl)
-            self._cards_layout.addWidget(card)
-            self._controller_cards[name] = card
+            incoming_names.add(name)
+            if name in self._controller_cards:
+                # Reuse existing card — just update data
+                self._controller_cards[name].update_data(ctrl)
+            else:
+                # Create new card
+                card = _ControllerCard(theme=self._theme)
+                card.update_data(ctrl)
+                self._cards_layout.addWidget(card)
+                self._controller_cards[name] = card
+
+        # Remove cards that no longer exist
+        for name in list(self._controller_cards):
+            if name not in incoming_names:
+                card = self._controller_cards.pop(name)
+                self._cards_layout.removeWidget(card)
+                card.deleteLater()
 
     def apply_theme(self, theme: ThemeBase) -> None:
         """Re-apply theme colors to KPI cards and controller cards."""

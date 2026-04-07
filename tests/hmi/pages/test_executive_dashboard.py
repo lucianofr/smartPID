@@ -135,35 +135,18 @@ def test_controller_card_shows_name_and_mode(qtbot):
     assert card._mode_badge.text() == "MAN"
 
 
-def test_controller_card_shows_process_values(qtbot):
-    card = _ControllerCard()
-    qtbot.addWidget(card)
-    card.update_data(_make_controller_data(pv=72.5, sp=70.0))
-    assert card._pv_value.text() == "72.5"
-    assert card._sp_value.text() == "70.0"
-
-
-def test_controller_card_shows_error_pct(qtbot):
-    card = _ControllerCard()
-    qtbot.addWidget(card)
-    card.update_data(_make_controller_data(
-        pv=55.0, sp=50.0, sp_hi_lim=100.0, sp_lo_lim=0.0,
-    ))
-    assert card._error_value.text() == "5.0%"
-
-
 def test_controller_card_shows_ai_info_fuzzy(qtbot):
     card = _ControllerCard()
     qtbot.addWidget(card)
     card.update_data(_make_controller_data(
         ai_config={"engine": "FUZZY", "objective": "SP_TRACKING"},
-        ai_state="RUN",
-        ai_gamma=0.12,
+        process_speed="MEDIUM",
+        scan_rate_ms=500,
     ))
     assert card._engine_badge.text() == "FUZZY"
     assert card._objective_value.text() == "SP_TRACKING"
-    assert card._ai_state_value.text() == "RUN"
-    assert card._gamma_value.text() == "0.12"
+    assert card._speed_value.text() == "MEDIUM"
+    assert card._scan_rate_value.text() == "0.5 s"
 
 
 def test_controller_card_ai_none_shows_disabled(qtbot):
@@ -173,8 +156,7 @@ def test_controller_card_ai_none_shows_disabled(qtbot):
         ai_config={"engine": "NONE", "objective": "DISTURBANCE_REJECTION"},
     ))
     assert card._engine_badge.text() == "NONE"
-    assert card._ai_state_value.text() == "Disabled"
-    assert card._gamma_value.text() == "\u2014"
+    assert card._objective_value.text() == "\u2014"
 
 
 def test_controller_card_shows_execution_mode(qtbot):
