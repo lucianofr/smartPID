@@ -63,7 +63,7 @@ class MainWindow(QMainWindow):
     _opcua_status_signal = Signal(bool)  # OPC-UA connection status from watchdog
     _stats_signal = Signal(int, dict)  # (controller_id, stats_dict)
     _sim_live_signal = Signal(dict)  # simulator live values from poll
-    _ai_status_signal = Signal(bool)  # AI optimizer running state
+    _ai_status_signal = Signal(int, str, bool)  # (controller_id, engine, running)
 
     def __init__(
         self,
@@ -111,9 +111,7 @@ class MainWindow(QMainWindow):
         self._stats_timer.timeout.connect(self._poll_stats)
         self._stats_signal.connect(self._on_stats_received)
         self._sim_live_signal.connect(self._on_sim_live_received)
-        self._ai_status_signal.connect(
-            lambda running: self._dashboard_page._faceplate.set_ai_running(running)  # noqa: SLF001
-        )
+        self._ai_status_signal.connect(self._on_ai_status_received)
 
         self.setWindowTitle("Smart PID HMI")
         self.setMinimumSize(1024, 700)
@@ -851,9 +849,11 @@ class MainWindow(QMainWindow):
             if cid is not None:
                 try:
                     ai = self._api_client.get_ai_status(cid)
-                    self._ai_status_signal.emit(ai.get("enabled", False))
+                    self._ai_status_signal.emit(
+                        cid, ai.get("engine", "NONE"), ai.get("enabled", False),
+                    )
                 except Exception:
-                    self._ai_status_signal.emit(False)
+                    self._ai_status_signal.emit(cid, "NONE", False)
 
         threading.Thread(target=do_poll, daemon=True).start()
 
@@ -861,6 +861,17 @@ class MainWindow(QMainWindow):
     def _on_stats_received(self, controller_id: int, stats: dict) -> None:
         """Update faceplate with performance stats."""
         self._dashboard_page._faceplate.update_stats(stats)  # noqa: SLF001
+
+    @Slot(int, str, bool)
+    def _on_ai_status_received(
+        self, controller_id: int, engine: str, running: bool,
+    ) -> None:
+        """Update faceplate and cards with AI optimizer status."""
+        self._dashboard_page._faceplate.set_ai_running(running)  # noqa: SLF001
+        self._dashboard_page._faceplate.set_ai_engine(engine)  # noqa: SLF001
+        opt_state = "RUN" if running else "STOP"
+        for card in self._dashboard_page._cards:  # noqa: SLF001
+            card.on_ai_status(controller_id, engine, opt_state)
 
     def _on_ai_action(self, controller_id: int, action: dict) -> None:
         """Handle AI optimizer action: log to AI panel and write Ki to OPC-UA."""
