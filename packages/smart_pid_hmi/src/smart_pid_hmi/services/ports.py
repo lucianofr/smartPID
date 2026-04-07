@@ -122,7 +122,8 @@ class APIClientPort(Protocol):
 
     # Tuning write
     def write_tuning(
-        self, controller_id: int, kp: float, ti: float, td: float,
+        self, controller_id: int,
+        kp: float | None = ..., ti: float | None = ..., td: float | None = ...,
     ) -> dict: ...
 
     # AI Optimizer

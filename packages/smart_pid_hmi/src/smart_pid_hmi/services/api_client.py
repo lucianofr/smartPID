@@ -112,12 +112,21 @@ class APIClient:
         return CommandResponse.model_validate(resp.json())
 
     def write_tuning(
-        self, controller_id: int, kp: float, ti: float, td: float,
+        self,
+        controller_id: int,
+        kp: float | None = None,
+        ti: float | None = None,
+        td: float | None = None,
     ) -> dict:
+        payload: dict = {"controller_id": controller_id}
+        if kp is not None:
+            payload["kp"] = kp
+        if ti is not None:
+            payload["ti"] = ti
+        if td is not None:
+            payload["td"] = td
         resp = self._http.post(
-            "/commands/tuning",
-            json={"controller_id": controller_id, "kp": kp, "ti": ti, "td": td},
-            headers=self._headers(),
+            "/commands/tuning", json=payload, headers=self._headers(),
         )
         resp.raise_for_status()
         return resp.json()

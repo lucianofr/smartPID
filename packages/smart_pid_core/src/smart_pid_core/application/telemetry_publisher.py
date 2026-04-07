@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 # Topics to bridge from internal bus to external PUB
-_BRIDGE_TOPICS = [b"STATUS.", b"ACTION.CTRL.", b"EVENT.ALARM."]
+_BRIDGE_TOPICS = [b"STATUS.", b"ACTION.CTRL.", b"ACTION.AI.", b"EVENT.ALARM."]
 
 
 class TelemetryPublisher:

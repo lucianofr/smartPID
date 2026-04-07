@@ -8,7 +8,7 @@ import msgpack
 import zmq
 
 # Topics to subscribe to
-_SUBSCRIBE_TOPICS = [b"STATUS.", b"ACTION.CTRL."]
+_SUBSCRIBE_TOPICS = [b"STATUS.", b"ACTION.CTRL.", b"ACTION.AI."]
 
 
 class TelemetrySub:
