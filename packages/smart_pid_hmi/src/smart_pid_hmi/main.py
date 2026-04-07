@@ -601,6 +601,9 @@ class MainWindow(QMainWindow):
 
     def _send_ack_all(self) -> None:
         self._safe_api_call(self._api_client.ack_all_alarms)
+        # Notify cards to stop blinking (ack all controllers)
+        for card in self._dashboard_page._cards:
+            card.on_alarm_ack(card.controller_id)
 
     def _send_tuning(self, controller_id: int, gains: dict) -> None:
         self._safe_api_call(

@@ -4,12 +4,18 @@ Visual reference: rounded card with alarm strip at top, tag + config button
 header, three analog bars (PV, SP, CO) with values.  Alarm state turns the
 top strip and card border to the priority color with an icon.
 Status badges show controller mode, optimizer state, and AI engine.
+
+Alarm visual behaviour (ISA-18.2 inspired):
+- ACTIVE + UNACKNOWLEDGED → blinking strip (500 ms) in priority color + icon
+- ACTIVE + ACKNOWLEDGED   → solid strip in priority color + icon (no blink)
+- CLEARED / NORMAL        → no strip, no icon
+When multiple alarms are active, the highest-priority one drives the visual.
 """
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -29,6 +35,22 @@ if TYPE_CHECKING:
 _CARD_WIDTH = 280
 _CARD_MIN_HEIGHT = 200
 _ALARM_STRIP_HEIGHT = 5
+_BLINK_INTERVAL_MS = 500
+
+# Priority ordering: lower index = higher priority
+_PRIORITY_RANK: dict[str, int] = {
+    "CRITICAL": 0,
+    "WARNING": 1,
+    "ADVISORY": 2,
+    "LOG": 3,
+}
+
+# Icons per priority (shown in upper-right corner)
+_PRIORITY_ICON: dict[str, str] = {
+    "CRITICAL": "\u26d4",   # no-entry (octagon)
+    "WARNING": "\u26a0",    # warning triangle
+    "ADVISORY": "\u2139",   # info circle
+}
 
 # Badge color schemes: (background, text_color)
 _MODE_COLORS: dict[str, tuple[str, str]] = {
@@ -76,6 +98,15 @@ def _badge_stylesheet(bg: str, fg: str) -> str:
     )
 
 
+def _alarm_color(theme: ThemeBase, priority: str) -> str:
+    """Return the theme color for a given alarm priority."""
+    if priority == "CRITICAL":
+        return theme.alarm_critical
+    if priority == "WARNING":
+        return theme.alarm_warning
+    return getattr(theme, "accent", "") or "#1976D2"
+
+
 class ControllerCardWidget(QFrame):
     """Summary card: tag, alarm strip, PV/SP/CO bars, status badges."""
 
@@ -104,6 +135,15 @@ class ControllerCardWidget(QFrame):
         self._current_ai_engine = ai_engine.upper()
         self._current_opt_state = optimizer_state.upper()
 
+        # Active alarms: {alarm_type: {"priority": str, "acked": bool}}
+        self._active_alarms: dict[str, dict] = {}
+
+        # Blink state
+        self._blink_visible = True
+        self._blink_timer = QTimer(self)
+        self._blink_timer.setInterval(_BLINK_INTERVAL_MS)
+        self._blink_timer.timeout.connect(self._on_blink_tick)
+
         self.setFixedWidth(_CARD_WIDTH)
         self.setMinimumHeight(_CARD_MIN_HEIGHT)
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -125,18 +165,9 @@ class ControllerCardWidget(QFrame):
         content.setContentsMargins(10, 2, 10, 0)
         content.setSpacing(4)
 
-        # ── Header row: alarm icon + tag(description) + config button ──
+        # ── Header row: tag(description) + alarm icon + config button ──
         header = QHBoxLayout()
         header.setSpacing(4)
-
-        # Alarm icon (hidden by default, shown on alarm)
-        self._alarm_icon = QLabel("")
-        self._alarm_icon.setFixedWidth(20)
-        self._alarm_icon.setStyleSheet(
-            "background: transparent; font-size: 16px;"
-        )
-        self._alarm_icon.hide()
-        header.addWidget(self._alarm_icon)
 
         # Tag + description
         display_text = f"<b>{tag_name}</b>"
@@ -149,6 +180,16 @@ class ControllerCardWidget(QFrame):
         )
         self._tag_label.setWordWrap(True)
         header.addWidget(self._tag_label, stretch=1)
+
+        # Alarm icon (hidden by default, shown on alarm) — right side
+        self._alarm_icon = QLabel("")
+        self._alarm_icon.setFixedWidth(20)
+        self._alarm_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._alarm_icon.setStyleSheet(
+            "background: transparent; font-size: 16px;"
+        )
+        self._alarm_icon.hide()
+        header.addWidget(self._alarm_icon)
 
         # Settings button — gear icon with symbol font
         self._settings_btn = QPushButton("\u2699")
@@ -277,6 +318,8 @@ class ControllerCardWidget(QFrame):
         self._bar_pv.apply_theme(theme)
         self._bar_sp.apply_theme(theme)
         self._bar_co.apply_theme(theme)
+        if self._alarm_priority:
+            self._refresh_alarm_visual()
         self.update()
 
     # ── Data updates ─────────────────────────────────────────────
@@ -305,54 +348,113 @@ class ControllerCardWidget(QFrame):
         self._update_opt_state_badge()
 
     def on_alarm(self, controller_id: int, alarm: dict) -> None:
+        """Handle alarm transition: TRIGGERED adds, CLEARED removes."""
         if controller_id != self._controller_id:
             return
+        alarm_type = alarm.get("alarm_type", "")
         priority = alarm.get("priority", "")
         transition = alarm.get("transition", "")
 
-        if transition == "CLEARED":
-            self._set_alarm_visual(None)
+        if transition == "TRIGGERED" and alarm_type:
+            self._active_alarms[alarm_type] = {
+                "priority": priority,
+                "acked": False,
+            }
+        elif transition == "CLEARED" and alarm_type:
+            self._active_alarms.pop(alarm_type, None)
+
+        self._resolve_top_alarm()
+
+    def on_alarm_ack(self, controller_id: int, alarm_type: str | None = None) -> None:
+        """Mark alarm(s) as acknowledged. None = ack all."""
+        if controller_id != self._controller_id:
+            return
+        if alarm_type is None:
+            for entry in self._active_alarms.values():
+                entry["acked"] = True
+        elif alarm_type in self._active_alarms:
+            self._active_alarms[alarm_type]["acked"] = True
+        self._resolve_top_alarm()
+
+    # ── Alarm visual logic ───────────────────────────────────────
+
+    def _resolve_top_alarm(self) -> None:
+        """Find the highest-priority active alarm and update the visual."""
+        if not self._active_alarms:
+            self._set_alarm_visual(None, acked=False)
             return
 
-        if priority in ("CRITICAL", "WARNING"):
-            self._set_alarm_visual(priority)
-        else:
-            self._set_alarm_visual(None)
+        # Find alarm with lowest rank (= highest priority)
+        top_type = min(
+            self._active_alarms,
+            key=lambda k: _PRIORITY_RANK.get(
+                self._active_alarms[k]["priority"], 99,
+            ),
+        )
+        top = self._active_alarms[top_type]
+        self._set_alarm_visual(top["priority"], acked=top["acked"])
 
-    def _set_alarm_visual(self, priority: str | None) -> None:
-        """Update strip, icon, border for alarm state."""
-        t = self._theme
+    def _set_alarm_visual(self, priority: str | None, *, acked: bool) -> None:
+        """Update strip, icon, border, and blink state for alarm."""
         self._alarm_priority = priority
+        self._blink_timer.stop()
 
-        if priority == "CRITICAL":
-            self._alarm_strip.setStyleSheet(
-                f"background: {t.alarm_critical};"
-            )
-            self._alarm_icon.setText("\u26d4")  # no-entry (octagon)
-            self._alarm_icon.setStyleSheet(
-                f"color: {t.alarm_critical};"
-                " background: transparent; font-size: 16px;"
-            )
-            self._alarm_icon.show()
-            self._apply_card_style(t, "CRITICAL")
-            self._bar_pv.set_alarm_state("CRITICAL")
-        elif priority == "WARNING":
-            self._alarm_strip.setStyleSheet(
-                f"background: {t.alarm_warning};"
-            )
-            self._alarm_icon.setText("\u26a0")  # warning triangle
-            self._alarm_icon.setStyleSheet(
-                f"color: {t.alarm_warning};"
-                " background: transparent; font-size: 16px;"
-            )
-            self._alarm_icon.show()
-            self._apply_card_style(t, "WARNING")
-            self._bar_pv.set_alarm_state("WARNING")
-        else:
+        if priority is None:
+            # Normal — clear everything
             self._alarm_strip.setStyleSheet("background: transparent;")
             self._alarm_icon.hide()
+            self._apply_card_style(self._theme)
+            self._bar_pv.set_alarm_state(None)
+            return
+
+        self._refresh_alarm_visual()
+
+        if not acked:
+            # UNACKNOWLEDGED → start blinking
+            self._blink_visible = True
+            self._blink_timer.start()
+        # else: solid strip, no blink — already rendered by _refresh_alarm_visual
+
+    def _refresh_alarm_visual(self) -> None:
+        """Render strip, icon, and border for the current alarm priority."""
+        priority = self._alarm_priority
+        if priority is None:
+            return
+        t = self._theme
+        color = _alarm_color(t, priority)
+        icon_char = _PRIORITY_ICON.get(priority, "")
+
+        self._alarm_strip.setStyleSheet(f"background: {color};")
+
+        if icon_char:
+            self._alarm_icon.setText(icon_char)
+            self._alarm_icon.setStyleSheet(
+                f"color: {color};"
+                " background: transparent; font-size: 16px;"
+            )
+            self._alarm_icon.show()
+        else:
+            self._alarm_icon.hide()
+
+        if priority in ("CRITICAL", "WARNING"):
+            self._apply_card_style(t, priority)
+            self._bar_pv.set_alarm_state(priority)
+        else:
             self._apply_card_style(t)
             self._bar_pv.set_alarm_state(None)
+
+    def _on_blink_tick(self) -> None:
+        """Toggle strip visibility for unacknowledged alarm blink."""
+        self._blink_visible = not self._blink_visible
+        if self._alarm_priority is None:
+            self._blink_timer.stop()
+            return
+
+        if self._blink_visible:
+            color = _alarm_color(self._theme, self._alarm_priority)
+            self._alarm_strip.setStyleSheet(f"background: {color};")
+        else:
+            self._alarm_strip.setStyleSheet("background: transparent;")
 
     # ── Interaction ──────────────────────────────────────────────
 
