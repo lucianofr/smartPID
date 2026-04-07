@@ -200,11 +200,6 @@ class FaceplateWidget(QFrame):
         self._separators.append(sep5)
         layout.addWidget(sep5)
 
-        # -- Separator --
-        sep6 = _separator(theme)
-        self._separators.append(sep6)
-        layout.addWidget(sep6)
-
         # -- PID Gains (editable) --
         self._integral_type = "TIME_TI"  # updated on controller select
         self._gains_write_time: float = 0.0  # suppress updates after user write
