@@ -667,14 +667,24 @@ class SimulatorPage(QWidget):
         process_out: float,
         disturbance_out: float,
         sp: float | None = None,
+        kp: float | None = None,
+        ti: float | None = None,
+        td: float | None = None,
     ) -> None:
         """Bulk update all read-only live variables from simulation tick.
 
         CO is only updated when PID is enabled+AUTO (computed by PID).
         In MAN mode, CO is user-editable and must not be overwritten.
         SP is never overwritten — user controls it directly.
+        Kp/Ti/Td updated only when field not focused (user may be editing).
         """
         self._pid_pv_edit.setText(f"{pv:.2f}")
+        if kp is not None and not self._pid_kp_edit.hasFocus():
+            self._pid_kp_edit.setText(f"{kp:.2f}")
+        if ti is not None and not self._pid_ti_edit.hasFocus():
+            self._pid_ti_edit.setText(f"{ti:.1f}")
+        if td is not None and not self._pid_td_edit.hasFocus():
+            self._pid_td_edit.setText(f"{td:.1f}")
         # Only overwrite CO when PID is computing it (enabled + AUTO)
         if self._pid_enable_cb.isChecked() and self._pid_mode_combo.currentText() == "AUTO":
             self._pid_co_edit.blockSignals(True)
