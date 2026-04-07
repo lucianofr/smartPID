@@ -29,6 +29,15 @@ def _theme_attr(theme: ThemeBase, attr: str, fallback: str) -> str:
     return val if val else fallback
 
 
+# Badge color schemes: (background, text_color)
+_FP_AI_ENGINE_COLORS: dict[str, tuple[str, str]] = {
+    "FUZZY": ("#4A148C", "#CE93D8"),  # purple
+    "RL": ("#006064", "#80DEEA"),     # teal
+    "NONE": ("#424242", "#9E9E9E"),   # gray
+}
+_FP_AI_DEFAULT = ("#424242", "#9E9E9E")
+
+
 def _separator(theme: ThemeBase) -> QFrame:
     """Create a horizontal separator line."""
     line = QFrame()
@@ -73,17 +82,13 @@ class FaceplateWidget(QFrame):
             f"font-weight: bold; "
             f"color: {theme.fg_primary}; background: transparent;"
         )
-        self._mode_label = QLabel("\u2014")
-        self._mode_label.setStyleSheet(
-            f"font-size: {theme.font_size_label}px; "
-            f"color: {theme.fg_secondary}; "
-            f"background: transparent; padding: 2px 8px; "
-            f"border: 1px solid {theme.border};"
-        )
+        self._ai_engine_badge = QLabel("NONE")
+        self._current_ai_engine = "NONE"
+        self._apply_ai_engine_badge(theme)
         header = QHBoxLayout()
         header.addWidget(self._tag_label)
         header.addStretch()
-        header.addWidget(self._mode_label)
+        header.addWidget(self._ai_engine_badge)
         layout.addLayout(header)
 
         # -- Separator --
@@ -272,6 +277,24 @@ class FaceplateWidget(QFrame):
         layout.addLayout(stats_grid)
         layout.addStretch()
 
+    def _apply_ai_engine_badge(self, theme: ThemeBase) -> None:
+        """Style the AI engine badge in the header."""
+        engine = self._current_ai_engine.upper()
+        label = "AI RL" if engine == "RL" else engine
+        bg, fg = _FP_AI_ENGINE_COLORS.get(engine, _FP_AI_DEFAULT)
+        self._ai_engine_badge.setText(label)
+        self._ai_engine_badge.setStyleSheet(
+            f"font-size: {theme.font_size_label}px; "
+            f"color: {fg}; "
+            f"background-color: {bg}; padding: 2px 8px; "
+            f"border-radius: 3px; border: none; font-weight: bold;"
+        )
+
+    def set_ai_engine(self, engine: str) -> None:
+        """Update the AI engine badge text."""
+        self._current_ai_engine = engine.upper()
+        self._apply_ai_engine_badge(self._theme)
+
     def _apply_frame_style(self, theme: ThemeBase) -> None:
         bg = _theme_attr(theme, "bg_card", theme.bg_secondary)
         br = _theme_attr(theme, "border_radius", "0px")
@@ -335,6 +358,7 @@ class FaceplateWidget(QFrame):
         """Update cached theme reference for dynamic theme switching."""
         self._theme = theme
         self._apply_frame_style(theme)
+        self._apply_ai_engine_badge(theme)
         self._bar_pv.apply_theme(theme)
         self._bar_sp.apply_theme(theme)
         self._bar_co.apply_theme(theme)
@@ -373,10 +397,12 @@ class FaceplateWidget(QFrame):
         min_val: float,
         max_val: float,
         pid_gains: dict | None = None,
+        ai_engine: str = "NONE",
     ) -> None:
         self._controller_id = controller_id
         self._tag_label.setText(tag_name)
-        self._mode_label.setText("\u2014")
+        self._current_ai_engine = ai_engine.upper()
+        self._apply_ai_engine_badge(self._theme)
         self._active_mode = ""
         self._apply_toggle_style(self._theme)
         # Reset bars with new range
@@ -406,7 +432,6 @@ class FaceplateWidget(QFrame):
         mode = frame.get("mode")
         if mode and str(mode).upper() not in ("UNKNOWN", ""):
             mode_str = str(mode).upper()
-            self._mode_label.setText(mode_str)
             if mode_str != self._active_mode:
                 self._active_mode = mode_str
                 self._apply_toggle_style(self._theme)

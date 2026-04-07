@@ -135,17 +135,6 @@ def test_optimizer_run_signal(qtbot, theme):
     assert received == [1]
 
 
-def test_optimizer_pause_signal(qtbot, theme):
-    """PAUSE button emits optimizer_pause_requested."""
-    fp = FaceplateWidget(theme=theme)
-    qtbot.addWidget(fp)
-    fp.on_controller_selected(1, "FIC-101", 0.0, 100.0)
-    received = []
-    fp.optimizer_pause_requested.connect(lambda cid: received.append(cid))
-    qtbot.mouseClick(fp._btn_opt_pause, Qt.MouseButton.LeftButton)
-    assert received == [1]
-
-
 def test_optimizer_stop_signal(qtbot, theme):
     """STOP button emits optimizer_stop_requested."""
     fp = FaceplateWidget(theme=theme)
@@ -165,3 +154,38 @@ def test_optimizer_buttons_no_emit_without_controller(qtbot, theme):
     fp.optimizer_run_requested.connect(lambda cid: received.append(cid))
     qtbot.mouseClick(fp._btn_opt_run, Qt.MouseButton.LeftButton)
     assert received == []
+
+
+# --- AI engine badge ---
+
+def test_ai_engine_badge_default(qtbot, theme):
+    """AI engine badge defaults to NONE."""
+    fp = FaceplateWidget(theme=theme)
+    qtbot.addWidget(fp)
+    assert fp._ai_engine_badge.text() == "NONE"
+
+
+def test_ai_engine_badge_on_controller_select(qtbot, theme):
+    """AI engine badge updates on controller selection."""
+    fp = FaceplateWidget(theme=theme)
+    qtbot.addWidget(fp)
+    fp.on_controller_selected(1, "FIC-101", 0.0, 100.0, ai_engine="FUZZY")
+    assert fp._ai_engine_badge.text() == "FUZZY"
+
+
+def test_ai_engine_badge_rl_label(qtbot, theme):
+    """RL engine shows as 'AI RL' label."""
+    fp = FaceplateWidget(theme=theme)
+    qtbot.addWidget(fp)
+    fp.set_ai_engine("RL")
+    assert fp._ai_engine_badge.text() == "AI RL"
+
+
+def test_set_ai_engine(qtbot, theme):
+    """set_ai_engine() updates badge dynamically."""
+    fp = FaceplateWidget(theme=theme)
+    qtbot.addWidget(fp)
+    fp.set_ai_engine("FUZZY")
+    assert fp._ai_engine_badge.text() == "FUZZY"
+    fp.set_ai_engine("NONE")
+    assert fp._ai_engine_badge.text() == "NONE"

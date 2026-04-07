@@ -3,6 +3,7 @@
 Visual reference: rounded card with alarm strip at top, tag + config button
 header, three analog bars (PV, SP, CO) with values.  Alarm state turns the
 top strip and card border to the priority color with an icon.
+Status badges show controller mode, optimizer state, and AI engine.
 """
 from __future__ import annotations
 
@@ -29,14 +30,54 @@ _CARD_WIDTH = 280
 _CARD_MIN_HEIGHT = 200
 _ALARM_STRIP_HEIGHT = 5
 
+# Badge color schemes: (background, text_color)
+_MODE_COLORS: dict[str, tuple[str, str]] = {
+    "AUTO": ("#1B5E20", "#A5D6A7"),   # green
+    "CAS": ("#1B5E20", "#A5D6A7"),    # green
+    "RCAS": ("#1B5E20", "#A5D6A7"),   # green
+    "MAN": ("#E65100", "#FFCC80"),     # orange
+    "ROUT": ("#E65100", "#FFCC80"),    # orange
+    "OOS": ("#424242", "#9E9E9E"),     # gray
+    "LO": ("#424242", "#9E9E9E"),      # gray
+    "IMAN": ("#424242", "#9E9E9E"),    # gray
+    "BYPASS": ("#424242", "#9E9E9E"),  # gray
+}
+_MODE_DEFAULT = ("#424242", "#9E9E9E")
+
+_OPT_STATE_COLORS: dict[str, tuple[str, str]] = {
+    "RUN": ("#0D47A1", "#90CAF9"),      # blue
+    "RUNNING": ("#0D47A1", "#90CAF9"),  # alias
+    "PAUSE": ("#F57F17", "#FFF176"),    # yellow
+    "STOP": ("#424242", "#9E9E9E"),     # gray
+    "STOPPED": ("#424242", "#9E9E9E"),  # alias
+}
+_OPT_STATE_DEFAULT = ("#424242", "#9E9E9E")
+
+_AI_ENGINE_COLORS: dict[str, tuple[str, str]] = {
+    "FUZZY": ("#4A148C", "#CE93D8"),  # purple
+    "RL": ("#006064", "#80DEEA"),     # teal
+    "NONE": ("#424242", "#9E9E9E"),   # gray
+}
+_AI_ENGINE_DEFAULT = ("#424242", "#9E9E9E")
+
 
 def _theme_attr(theme: ThemeBase, attr: str, fallback: str) -> str:
     val = getattr(theme, attr, "")
     return val if val else fallback
 
 
+def _badge_stylesheet(bg: str, fg: str) -> str:
+    """Return QLabel stylesheet for a status badge."""
+    return (
+        f"background-color: {bg}; color: {fg};"
+        " font-size: 10px; font-weight: bold;"
+        " border-radius: 3px; padding: 1px 5px;"
+        " border: none;"
+    )
+
+
 class ControllerCardWidget(QFrame):
-    """Summary card: tag, alarm strip, PV/SP/CO bars, config button."""
+    """Summary card: tag, alarm strip, PV/SP/CO bars, status badges."""
 
     controller_selected = Signal(int)
     settings_requested = Signal(int)
@@ -50,6 +91,8 @@ class ControllerCardWidget(QFrame):
         theme: ThemeBase,
         parent: QWidget | None = None,
         description: str = "",
+        ai_engine: str = "NONE",
+        optimizer_state: str = "STOP",
     ) -> None:
         super().__init__(parent)
         self._controller_id = controller_id
@@ -57,6 +100,9 @@ class ControllerCardWidget(QFrame):
         self._description = description
         self._theme = theme
         self._alarm_priority: str | None = None
+        self._current_mode = "\u2014"
+        self._current_ai_engine = ai_engine.upper()
+        self._current_opt_state = optimizer_state.upper()
 
         self.setFixedWidth(_CARD_WIDTH)
         self.setMinimumHeight(_CARD_MIN_HEIGHT)
@@ -127,11 +173,31 @@ class ControllerCardWidget(QFrame):
         content.addWidget(self._bar_sp)
         content.addWidget(self._bar_co)
 
-        # ── Mode indicator (below bars) ──
-        self._mode_label = QLabel("Mode: \u2014")
-        self._mode_label.setFixedHeight(16)
-        self._apply_mode_style(theme)
-        content.addWidget(self._mode_label)
+        # ── Status badges row (mode | optimizer state | AI engine) ──
+        badges_row = QHBoxLayout()
+        badges_row.setSpacing(4)
+        badges_row.setContentsMargins(0, 2, 0, 0)
+
+        self._badge_mode = QLabel(self._current_mode)
+        self._badge_mode.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._badge_mode.setFixedHeight(18)
+        self._update_mode_badge()
+        badges_row.addWidget(self._badge_mode)
+
+        self._badge_opt_state = QLabel(self._current_opt_state)
+        self._badge_opt_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._badge_opt_state.setFixedHeight(18)
+        self._update_opt_state_badge()
+        badges_row.addWidget(self._badge_opt_state)
+
+        self._badge_ai_engine = QLabel(self._current_ai_engine)
+        self._badge_ai_engine.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._badge_ai_engine.setFixedHeight(18)
+        self._update_ai_engine_badge()
+        badges_row.addWidget(self._badge_ai_engine)
+
+        badges_row.addStretch()
+        content.addLayout(badges_row)
 
         root.addLayout(content)
 
@@ -154,14 +220,24 @@ class ControllerCardWidget(QFrame):
             f" border-radius: {br}; }}"
         )
 
-    def _apply_mode_style(self, theme: ThemeBase) -> None:
-        self._mode_label.setStyleSheet(
-            f"font-size: {theme.font_size_label}px;"
-            f" font-weight: bold;"
-            f" color: {theme.fg_secondary};"
-            f" background: transparent;"
-            f" padding: 0 2px;"
-        )
+    def _update_mode_badge(self) -> None:
+        mode = self._current_mode.upper()
+        bg, fg = _MODE_COLORS.get(mode, _MODE_DEFAULT)
+        self._badge_mode.setText(mode)
+        self._badge_mode.setStyleSheet(_badge_stylesheet(bg, fg))
+
+    def _update_opt_state_badge(self) -> None:
+        state = self._current_opt_state.upper()
+        bg, fg = _OPT_STATE_COLORS.get(state, _OPT_STATE_DEFAULT)
+        self._badge_opt_state.setText(state)
+        self._badge_opt_state.setStyleSheet(_badge_stylesheet(bg, fg))
+
+    def _update_ai_engine_badge(self) -> None:
+        engine = self._current_ai_engine.upper()
+        label = "AI RL" if engine == "RL" else engine
+        bg, fg = _AI_ENGINE_COLORS.get(engine, _AI_ENGINE_DEFAULT)
+        self._badge_ai_engine.setText(label)
+        self._badge_ai_engine.setStyleSheet(_badge_stylesheet(bg, fg))
 
     def _apply_settings_btn_style(self, theme: ThemeBase) -> None:
         self._settings_btn.setStyleSheet(
@@ -194,8 +270,10 @@ class ControllerCardWidget(QFrame):
             f"font-size: {theme.font_size_title}px;"
             f" color: {theme.fg_primary}; background: transparent;"
         )
-        self._apply_mode_style(theme)
         self._apply_settings_btn_style(theme)
+        self._update_mode_badge()
+        self._update_opt_state_badge()
+        self._update_ai_engine_badge()
         self._bar_pv.apply_theme(theme)
         self._bar_sp.apply_theme(theme)
         self._bar_co.apply_theme(theme)
@@ -212,7 +290,19 @@ class ControllerCardWidget(QFrame):
         self._bar_co.set_value(frame.get("co", 0.0))
         mode = frame.get("mode")
         if mode and str(mode).upper() not in ("UNKNOWN", ""):
-            self._mode_label.setText(f"Mode: {mode}")
+            self._current_mode = str(mode).upper()
+            self._update_mode_badge()
+
+    def on_ai_status(
+        self, controller_id: int, ai_engine: str, optimizer_state: str,
+    ) -> None:
+        """Update AI engine and optimizer state badges."""
+        if controller_id != self._controller_id:
+            return
+        self._current_ai_engine = ai_engine.upper()
+        self._current_opt_state = optimizer_state.upper()
+        self._update_ai_engine_badge()
+        self._update_opt_state_badge()
 
     def on_alarm(self, controller_id: int, alarm: dict) -> None:
         if controller_id != self._controller_id:

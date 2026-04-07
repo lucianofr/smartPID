@@ -162,6 +162,7 @@ class DashboardPage(QWidget):
             desc = ctrl.get("description", "")
             pid_params = ctrl.get("pid_params", {})
             integral_type = ctrl.get("integral_type", "TIME_TI")
+            ai_cfg = ctrl.get("ai_config", {})
             self._controller_meta[cid] = {
                 "name": name, "lo": lo, "hi": hi,
                 "description": desc,
@@ -172,11 +173,14 @@ class DashboardPage(QWidget):
                     "rate": pid_params.get("rate", 0.0),
                     "integral_type": integral_type,
                 },
+                "ai_engine": ai_cfg.get("engine", "NONE"),
             }
+            ai_engine = ai_cfg.get("engine", "NONE")
 
             card = ControllerCardWidget(
                 controller_id=cid, tag_name=name,
                 min_val=lo, max_val=hi, theme=self._theme,
+                ai_engine=ai_engine,
             )
             card.controller_selected.connect(self._on_card_selected)
             card.settings_requested.connect(self.settings_requested)
@@ -202,6 +206,7 @@ class DashboardPage(QWidget):
         self._faceplate.on_controller_selected(
             controller_id, meta["name"], meta["lo"], meta["hi"],
             pid_gains=meta.get("pid_gains"),
+            ai_engine=meta.get("ai_engine", "NONE"),
         )
         self._trend.on_controller_selected(
             controller_id,
