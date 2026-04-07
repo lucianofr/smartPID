@@ -280,7 +280,8 @@ class MockAPIClient:
 
     # Tuning write
     def write_tuning(
-        self, controller_id: int, kp: float, ti: float, td: float,
+        self, controller_id: int,
+        kp: float | None = None, ti: float | None = None, td: float | None = None,
     ) -> dict:
         return {"ok": True, "controller_id": controller_id}
 

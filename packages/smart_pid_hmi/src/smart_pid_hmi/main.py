@@ -299,6 +299,7 @@ class MainWindow(QMainWindow):
             )
         )
         bus_bridge.alarm_received.connect(self._alarm_panel.on_alarm)
+        bus_bridge.ai_action_received.connect(self._on_ai_action)
         self._alarm_panel.ack_all_requested.connect(self._send_ack_all)
         self._alarm_panel.ack_requested.connect(self._send_ack_single)
         self._simulator_page.preset_changed.connect(self._send_sim_preset)
@@ -860,6 +861,23 @@ class MainWindow(QMainWindow):
     def _on_stats_received(self, controller_id: int, stats: dict) -> None:
         """Update faceplate with performance stats."""
         self._dashboard_page._faceplate.update_stats(stats)  # noqa: SLF001
+
+    def _on_ai_action(self, controller_id: int, action: dict) -> None:
+        """Handle AI optimizer action: log to AI panel and write Ki to OPC-UA."""
+        engine = action.get("engine", "?")
+        gamma = action.get("gamma", 0.0)
+        new_ki = action.get("new_ki", 0.0)
+        reasoning = action.get("reasoning", "")
+        ts = action.get("timestamp", "")[:19]
+        msg = f"[{ts}] {engine} γ={gamma:+.4f} Ki={new_ki:.4f} — {reasoning}"
+        self._dashboard_page.append_ai_log(msg)
+        self._alarm_panel.append_ai_log(msg)
+
+        # Write new Ki (Ti) to OPC-UA so the DCS uses the updated value
+        self._safe_api_call(
+            self._api_client.write_tuning, controller_id,
+            None, new_ki, None,
+        )
 
     def _on_telemetry_for_trends(self, controller_id: int, frame: object) -> None:
         """Forward telemetry to multi-trend page for matching plots."""
