@@ -62,6 +62,7 @@ class MainWindow(QMainWindow):
     _sim_controllers_signal = Signal(list)  # populate simulator combo from sim status
     _opcua_status_signal = Signal(bool)  # OPC-UA connection status from watchdog
     _stats_signal = Signal(int, dict)  # (controller_id, stats_dict)
+    _sim_live_signal = Signal(dict)  # simulator live values from poll
 
     def __init__(
         self,
@@ -108,6 +109,7 @@ class MainWindow(QMainWindow):
         self._stats_timer = QTimer(self)
         self._stats_timer.timeout.connect(self._poll_stats)
         self._stats_signal.connect(self._on_stats_received)
+        self._sim_live_signal.connect(self._on_sim_live_received)
 
         self.setWindowTitle("Smart PID HMI")
         self.setMinimumSize(1024, 700)
@@ -744,32 +746,31 @@ class MainWindow(QMainWindow):
                         cid, list(status.controllers.keys()),
                     )
                     return
-                QMetaObject.invokeMethod(
-                    self, "_apply_sim_live_values",
-                    Qt.ConnectionType.QueuedConnection,
-                    Q_ARG(float, ctrl_status.pv),
-                    Q_ARG(float, ctrl_status.co),
-                    Q_ARG(float, ctrl_status.error),
-                    Q_ARG(float, ctrl_status.pid_cv),
-                    Q_ARG(float, ctrl_status.process_input),
-                    Q_ARG(float, ctrl_status.process_output),
-                    Q_ARG(float, ctrl_status.disturbance_output),
-                    Q_ARG(float, ctrl_status.sp),
-                )
+                self._sim_live_signal.emit({
+                    "pv": ctrl_status.pv,
+                    "co": ctrl_status.co,
+                    "error": ctrl_status.error,
+                    "pid_cv": ctrl_status.pid_cv,
+                    "process_in": ctrl_status.process_input,
+                    "process_out": ctrl_status.process_output,
+                    "disturbance_out": ctrl_status.disturbance_output,
+                    "sp": ctrl_status.sp,
+                    "kp": ctrl_status.pid_kp,
+                    "ti": ctrl_status.pid_ti,
+                    "td": ctrl_status.pid_td,
+                })
             except Exception as e:
                 logger.debug("sim poll error: %s", e)
         threading.Thread(target=do_poll, daemon=True).start()
 
-    @Slot(float, float, float, float, float, float, float, float)
-    def _apply_sim_live_values(
-        self,
-        pv: float, co: float, error: float, pid_cv: float,
-        process_in: float, process_out: float, dist_out: float, sp: float,
-    ) -> None:
+    @Slot(dict)
+    def _on_sim_live_received(self, vals: dict) -> None:
         self._simulator_page.update_live_values(
-            pv=pv, co=co, error=error, pid_cv=pid_cv,
-            process_in=process_in, process_out=process_out,
-            disturbance_out=dist_out, sp=sp,
+            pv=vals["pv"], co=vals["co"], error=vals["error"],
+            pid_cv=vals["pid_cv"], process_in=vals["process_in"],
+            process_out=vals["process_out"],
+            disturbance_out=vals["disturbance_out"], sp=vals["sp"],
+            kp=vals.get("kp"), ti=vals.get("ti"), td=vals.get("td"),
         )
 
     def _on_refresh_rate_changed(self, ms: int) -> None:
