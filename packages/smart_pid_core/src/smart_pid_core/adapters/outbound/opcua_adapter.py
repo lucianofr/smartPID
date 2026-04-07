@@ -82,6 +82,11 @@ class OPCUAAdapter:
         self._client = None
         logger.info("opcua_adapter_stopped")
 
+    def set_endpoint(self, url: str) -> None:
+        """Stop the adapter and update the endpoint. Does NOT reconnect."""
+        self.stop()
+        self._endpoint = url
+
     def wait_connected(self, timeout_s: float = 10.0) -> bool:
         """Block until ONLINE or timeout. Returns True if connected."""
         deadline = time.monotonic() + timeout_s
