@@ -111,6 +111,7 @@ class MainWindow(QMainWindow):
     _exec_cards_signal = Signal(list)  # enriched controller dicts for executive cards
     _sim_live_signal = Signal(dict)  # simulator live values from poll
     _ai_status_signal = Signal(int, str, bool)  # (controller_id, engine, running)
+    _controller_updated_signal = Signal(int, object)  # (controller_id, controller_dict)
 
     def __init__(
         self,
@@ -135,6 +136,7 @@ class MainWindow(QMainWindow):
         self._users_loaded_signal.connect(self._on_users_loaded)
         self._kpi_data_signal.connect(self._on_kpi_data_received)
         self._edit_dialog_signal.connect(self._open_edit_dialog)
+        self._controller_updated_signal.connect(self._on_controller_updated)
         self._project_info_signal.connect(self._on_project_info_received)
         self._opcua_status_signal.connect(self._on_opcua_status_received)
         # Cached controller list for KPI computation
@@ -511,7 +513,10 @@ class MainWindow(QMainWindow):
                     self._api_client.update_alarm_config(
                         controller_id, {"thresholds": thresholds},
                     )
-                self._load_dashboard()
+                ctrl = self._api_client.get_controller(controller_id)
+                self._controller_updated_signal.emit(
+                    controller_id, ctrl.model_dump(),
+                )
             except Exception as e:
                 logger.error("Failed to update controller %d: %s", controller_id, e)
                 self._api_error_signal.emit(str(e))
@@ -541,6 +546,18 @@ class MainWindow(QMainWindow):
             active_alarms=0,
             ai_active=0,
         )
+
+    @Slot(int, object)
+    def _on_controller_updated(self, controller_id: int, ctrl: dict) -> None:
+        """Refresh a single controller's metadata without resetting the chart."""
+        # Update cached list
+        for i, c in enumerate(self._cached_controllers):
+            if c.get("id") == controller_id:
+                self._cached_controllers[i] = ctrl
+                break
+
+        self._dashboard_page.update_single_controller(controller_id, ctrl)
+        self._executive_page.update_controller_cards(self._cached_controllers)
 
     @Slot(str)
     def _on_api_error(self, error_msg: str) -> None:

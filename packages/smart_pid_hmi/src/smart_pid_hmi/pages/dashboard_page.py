@@ -213,6 +213,44 @@ class DashboardPage(QWidget):
             scan_rate_s=meta.get("scan_rate_s", 1.0),
         )
 
+    def update_single_controller(self, controller_id: int, ctrl: dict) -> None:
+        """Update metadata for one controller without recreating cards or resetting the chart."""
+        pid_params = ctrl.get("pid_params", {})
+        integral_type = ctrl.get("integral_type", "TIME_TI")
+        ai_cfg = ctrl.get("ai_config", {})
+        name = ctrl.get("name", "")
+        lo = ctrl.get("sp_lo_lim", 0.0)
+        hi = ctrl.get("sp_hi_lim", 100.0)
+        desc = ctrl.get("description", "")
+
+        self._controller_meta[controller_id] = {
+            "name": name, "lo": lo, "hi": hi,
+            "description": desc,
+            "scan_rate_s": ctrl.get("scan_rate_ms", 1000) / 1000.0,
+            "pid_gains": {
+                "gain": pid_params.get("gain", 1.0),
+                "reset": pid_params.get("reset", 10.0),
+                "rate": pid_params.get("rate", 0.0),
+                "integral_type": integral_type,
+            },
+            "ai_engine": ai_cfg.get("engine", "NONE"),
+        }
+
+        # Update the faceplate if this is the currently selected controller
+        if self._selected_id == controller_id:
+            meta = self._controller_meta[controller_id]
+            suffix = f" ({desc})" if desc else ""
+            self._detail_label.setText(
+                f"DETALHE DA MALHA: {name}{suffix} \u2014 Nivel 3"
+            )
+            self._faceplate.on_controller_selected(
+                controller_id, meta["name"], meta["lo"], meta["hi"],
+                pid_gains=meta.get("pid_gains"),
+                ai_engine=meta.get("ai_engine", "NONE"),
+            )
+            # NOTE: intentionally NOT calling self._trend.on_controller_selected()
+            # to preserve the running chart data
+
     def _on_card_selected(self, controller_id: int) -> None:
         self._select_controller(controller_id)
 
