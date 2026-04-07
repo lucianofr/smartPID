@@ -111,6 +111,17 @@ class APIClient:
         resp.raise_for_status()
         return CommandResponse.model_validate(resp.json())
 
+    def write_tuning(
+        self, controller_id: int, kp: float, ti: float, td: float,
+    ) -> dict:
+        resp = self._http.post(
+            "/commands/tuning",
+            json={"controller_id": controller_id, "kp": kp, "ti": ti, "td": td},
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def start_optimizer(self, controller_id: int) -> dict:
         resp = self._http.post(
             f"/controllers/{controller_id}/ai/start", headers=self._headers(),

@@ -278,6 +278,12 @@ class MockAPIClient:
             for c in _MOCK_CONTROLLERS
         ]
 
+    # Tuning write
+    def write_tuning(
+        self, controller_id: int, kp: float, ti: float, td: float,
+    ) -> dict:
+        return {"ok": True, "controller_id": controller_id}
+
     # AI Optimizer
     def start_optimizer(self, controller_id: int) -> dict:
         return {"ok": True, "controller_id": controller_id}

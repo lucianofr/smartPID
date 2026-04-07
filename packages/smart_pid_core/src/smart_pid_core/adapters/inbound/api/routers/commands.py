@@ -116,6 +116,33 @@ async def set_output(
     )
 
 
+@router.post("/tuning", response_model=CommandResponse)
+async def write_tuning(
+    request: Request,
+    body: dict,
+    user: Annotated[UserClaims, Depends(require_operator)],
+    audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+) -> CommandResponse:
+    """Write Kp/Ti/Td directly to OPC-UA."""
+    controller_id = body.get("controller_id", 0)
+    kp = body.get("kp")
+    ti = body.get("ti")
+    td = body.get("td")
+    opcua = getattr(request.app.state, "opcua_adapter", None)
+    if opcua is None or not opcua.is_connected:
+        raise HTTPException(status_code=409, detail="OPC-UA not connected")
+    opcua.write_pid_params(controller_id, kp, ti, td)
+    await audit_repo.record(
+        user.user_id, user.username, AuditAction.TUNE_PID,
+        f"controller:{controller_id}",
+        json.dumps({"kp": kp, "ti": ti, "td": td}),
+    )
+    return CommandResponse(
+        ok=True, controller_id=controller_id,
+        detail=f"Tuning written: Kp={kp}, Ti={ti}, Td={td}",
+    )
+
+
 @router.get("/tuning-recommendations/{controller_id}")
 async def get_tuning_recommendation(
     controller_id: int,

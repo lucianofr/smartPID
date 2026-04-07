@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import time
 from collections import deque
 from typing import TYPE_CHECKING
 
@@ -51,9 +52,8 @@ class TrendChartWidget(QWidget):
         self._sp_data: deque[float] = deque(maxlen=buffer_size)
         self._co_data: deque[float] = deque(maxlen=buffer_size)
         self._time_data: deque[float] = deque(maxlen=buffer_size)
-        self._tick = 0
+        self._t0: float = time.monotonic()
         self._auto_scale = True
-        self._scan_rate_s = 1.0  # default 1s, updated on controller select
         self._ai_markers: list[pg.InfiniteLine] = []
         self._ai_marker_color = "#FF9800"  # orange default
 
@@ -197,10 +197,10 @@ class TrendChartWidget(QWidget):
             )
 
     def on_controller_selected(
-        self, controller_id: int, scan_rate_s: float = 1.0,
+        self, controller_id: int, **_kwargs: object,
     ) -> None:
         self._controller_id = controller_id
-        self._scan_rate_s = scan_rate_s
+        self._t0 = time.monotonic()
         self._pv_data.clear()
         self._sp_data.clear()
         self._co_data.clear()
@@ -219,11 +219,11 @@ class TrendChartWidget(QWidget):
         if self._controller_id is None or controller_id != self._controller_id:
             return
 
+        now = time.monotonic() - self._t0
         self._pv_data.append(frame.get("pv", 0.0))
         self._sp_data.append(frame.get("sp", 0.0))
         self._co_data.append(frame.get("co", 0.0))
-        self._time_data.append(float(self._tick))
-        self._tick += 1
+        self._time_data.append(now)
 
         x = list(self._time_data)
         self._pv_curve.setData(x, list(self._pv_data))
@@ -231,12 +231,9 @@ class TrendChartWidget(QWidget):
         if self._co_curve:
             self._co_curve.setData(x, list(self._co_data))
 
-        # Apply time window using scan_rate to calculate samples per window
-        if len(x) > 1 and self._scan_rate_s > 0:
-            samples_per_sec = 1.0 / self._scan_rate_s
-            samples_in_window = int(self._time_window_s * samples_per_sec)
-            x_min = max(0, self._tick - samples_in_window)
-            self._plot_widget.plotItem.setXRange(x_min, self._tick, padding=0.02)
+        # Apply time window in real seconds
+        x_min = max(0.0, now - self._time_window_s)
+        self._plot_widget.plotItem.setXRange(x_min, now, padding=0.02)
 
     def _on_time_window_changed(self, _value: object = None) -> None:
         """Recalculate time window from numeric spin + unit combo."""
