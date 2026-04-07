@@ -51,6 +51,7 @@ class AIWorker:
         self._prev_error: float = 0.0
         self._has_telemetry = False
         self._engine = self._create_engine()
+        self._enabled = True  # controlled via CMD.AI start/stop
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -93,6 +94,10 @@ class AIWorker:
     def is_alive(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
+    @property
+    def is_enabled(self) -> bool:
+        return self._enabled
+
     def _is_auto_mode(self) -> bool:
         """Return True if the last known controller mode allows AI tuning."""
         try:
@@ -108,17 +113,27 @@ class AIWorker:
         stats_sub = self._bus.create_subscriber(
             f"STATS.{self.controller_id}".encode()
         )
+        cmd_sub = self._bus.create_subscriber(
+            f"CMD.AI.{self.controller_id}".encode()
+        )
         pub = self._bus.create_publisher()
         time.sleep(0.02)
 
         while not self._stop_event.is_set():
             try:
+                # Drain commands (start/stop)
+                self._drain_commands(cmd_sub)
+
                 # Drain latest telemetry (non-blocking)
                 self._drain_telemetry(telem_sub)
 
                 # Wait for STATS trigger (blocking with timeout for stop check)
                 stats_msg = stats_sub.recv(timeout_ms=200)
                 if stats_msg is None:
+                    continue
+
+                # Skip if disabled via CMD.AI stop
+                if not self._enabled:
                     continue
 
                 # Only compute if we have telemetry AND mode is automatic
@@ -196,6 +211,25 @@ class AIWorker:
                 )
             except zmq.ZMQError:
                 break
+
+    def _drain_commands(self, sub) -> None:
+        """Drain CMD.AI messages and update enabled state."""
+        while True:
+            msg = sub.recv(timeout_ms=0)
+            if msg is None:
+                break
+            _topic, payload = msg
+            try:
+                data = msgpack.unpackb(payload)
+                action = data.get("action", "")
+                if action == "start":
+                    self._enabled = True
+                    logger.info("ai_worker_enabled cid=%d", self.controller_id)
+                elif action == "stop":
+                    self._enabled = False
+                    logger.info("ai_worker_disabled cid=%d", self.controller_id)
+            except Exception:
+                pass
 
     def _drain_telemetry(self, sub) -> None:
         while True:

@@ -41,6 +41,7 @@ async def get_ai_status(
         objective=worker._ai_config.objective,
         speed=worker._controller.process_speed,
         current_ki=worker._ki_current,
+        enabled=worker.is_enabled,
     )
 
 
