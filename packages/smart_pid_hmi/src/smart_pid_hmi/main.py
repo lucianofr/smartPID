@@ -469,11 +469,18 @@ class MainWindow(QMainWindow):
                 # Fetch alarm config and convert to flat format for dialog
                 try:
                     alarm_resp = self._api_client.get_alarm_config(controller_id)
+                    logger.debug(
+                        "Loaded alarm config for controller %d: %s",
+                        controller_id, alarm_resp,
+                    )
                     data["alarm_config"] = _alarm_thresholds_to_flat(
                         alarm_resp.get("thresholds", []),
                     )
                 except Exception:
-                    logger.debug("No alarm config for controller %d", controller_id)
+                    logger.debug(
+                        "No alarm config for controller %d",
+                        controller_id, exc_info=True,
+                    )
                 self._edit_dialog_signal.emit(controller_id, data)
             except Exception as e:
                 logger.error("Failed to fetch controller %d: %s", controller_id, e)
@@ -497,6 +504,10 @@ class MainWindow(QMainWindow):
                 self._api_client.update_controller(controller_id, updated)
                 if alarm_data is not None:
                     thresholds = _flat_alarm_to_thresholds(alarm_data)
+                    logger.debug(
+                        "Saving alarm config for controller %d: %s",
+                        controller_id, thresholds,
+                    )
                     self._api_client.update_alarm_config(
                         controller_id, {"thresholds": thresholds},
                     )

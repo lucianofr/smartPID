@@ -146,6 +146,63 @@ class TestUpdateAlarmConfig:
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
+    async def test_delay_on_off_round_trip(
+        self,
+        client: AsyncClient,
+        supervisor_headers: dict[str, str],
+        user_headers: dict[str, str],
+        api_deps: dict,
+    ) -> None:
+        """delay_on_s and delay_off_s must survive PUT → GET round-trip."""
+        cid = await _create_controller(api_deps)
+        body = {
+            "thresholds": [
+                {
+                    "alarm_type": "HI",
+                    "priority": "WARNING",
+                    "limit": 70.0,
+                    "enabled": True,
+                    "deadband": 2.0,
+                    "delay_on_s": 5.0,
+                    "delay_off_s": 3.0,
+                },
+                {
+                    "alarm_type": "LO",
+                    "priority": "CRITICAL",
+                    "limit": 20.0,
+                    "enabled": True,
+                    "deadband": 1.0,
+                    "delay_on_s": 10.0,
+                    "delay_off_s": 7.5,
+                },
+            ],
+        }
+        resp = await client.put(
+            f"/controllers/{cid}/alarm-config",
+            json=body,
+            headers=supervisor_headers,
+        )
+        assert resp.status_code == 200
+        # PUT response should echo delays
+        put_data = resp.json()
+        hi_put = next(t for t in put_data["thresholds"] if t["alarm_type"] == "HI")
+        assert hi_put["delay_on_s"] == 5.0
+        assert hi_put["delay_off_s"] == 3.0
+
+        # GET must return the saved delays
+        resp2 = await client.get(
+            f"/controllers/{cid}/alarm-config", headers=user_headers,
+        )
+        assert resp2.status_code == 200
+        data = resp2.json()
+        hi = next(t for t in data["thresholds"] if t["alarm_type"] == "HI")
+        lo = next(t for t in data["thresholds"] if t["alarm_type"] == "LO")
+        assert hi["delay_on_s"] == 5.0
+        assert hi["delay_off_s"] == 3.0
+        assert lo["delay_on_s"] == 10.0
+        assert lo["delay_off_s"] == 7.5
+
+    @pytest.mark.asyncio
     async def test_update_replaces_previous_config(
         self,
         client: AsyncClient,
