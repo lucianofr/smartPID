@@ -339,11 +339,15 @@ class MockAPIClient:
     def opcua_client_status(self) -> dict:
         return {"state": "OFFLINE", "endpoint": "opc.tcp://localhost:4840"}
 
-    def opcua_client_connect(self) -> dict:
-        return {"state": "ONLINE", "endpoint": "opc.tcp://localhost:4840"}
+    def opcua_client_connect(self, endpoint: str | None = None) -> dict:
+        ep = endpoint or "opc.tcp://localhost:4840"
+        return {"state": "ONLINE", "endpoint": ep}
 
     def opcua_client_disconnect(self) -> dict:
         return {"state": "OFFLINE", "endpoint": "opc.tcp://localhost:4840"}
+
+    def save_opcua_endpoint(self, url: str) -> dict:
+        return {"state": "OFFLINE", "endpoint": url}
 
     def set_base_url(self, url: str) -> None:
         pass
