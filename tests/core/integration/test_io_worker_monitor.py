@@ -130,4 +130,4 @@ class TestIOWorkerParamsPublish:
 
     def test_params_read_interval_class_attr(self) -> None:
         """Verify the 10s interval is set."""
-        assert IOWorker._PARAMS_READ_INTERVAL_S == 10.0
+        assert IOWorker._PARAMS_READ_INTERVAL_S == 1.0

@@ -26,7 +26,7 @@ class IOWorker:
     reach the PID workers, DB worker, or telemetry publisher.
     """
 
-    _PARAMS_READ_INTERVAL_S: float = 2.0
+    _PARAMS_READ_INTERVAL_S: float = 1.0
 
     def __init__(
         self,
