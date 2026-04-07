@@ -702,6 +702,12 @@ class SimulatorPage(QWidget):
         ti: float | None = None,
         td: float | None = None,
         mode: int | None = None,
+        pid_enabled: bool | None = None,
+        auto_sp_enabled: bool | None = None,
+        auto_sp_min: float | None = None,
+        auto_sp_max: float | None = None,
+        auto_dist_enabled: bool | None = None,
+        auto_dist_amp: float | None = None,
     ) -> None:
         """Bulk update all read-only live variables from simulation tick.
 
@@ -709,7 +715,17 @@ class SimulatorPage(QWidget):
         In MAN mode, CO is user-editable and must not be overwritten.
         SP is never overwritten — user controls it directly.
         Kp/Ti/Td updated only when field not focused (user may be editing).
+        Auto SP/Disturbance/PID-enable synced from backend (simulation is
+        authoritative — HMI is a view).
         """
+        # --- PID enable (sync from backend) ---
+        if pid_enabled is not None and self._pid_enable_cb.isChecked() != pid_enabled:
+            self._pid_enable_cb.blockSignals(True)
+            self._pid_enable_cb.setChecked(pid_enabled)
+            self._pid_enable_cb.blockSignals(False)
+            for ctrl in self._pid_controls:
+                ctrl.setEnabled(pid_enabled)
+
         self._pid_pv_edit.setText(f"{pv:.2f}")
         if kp is not None and not self._pid_kp_edit.hasFocus():
             self._pid_kp_edit.setText(f"{kp:.2f}")
@@ -730,6 +746,21 @@ class SimulatorPage(QWidget):
         self._proc_in_edit.setText(f"{process_in:.2f}")
         self._proc_out_edit.setText(f"{process_out:.2f}")
         self._dist_out_edit.setText(f"{disturbance_out:.2f}")
+
+        # --- Auto SP Variation (sync from backend) ---
+        if auto_sp_enabled is not None and self._auto_sp_enable.isChecked() != auto_sp_enabled:
+            self._auto_sp_enable.blockSignals(True)
+            self._auto_sp_enable.setChecked(auto_sp_enabled)
+            self._auto_sp_enable.blockSignals(False)
+        if auto_sp_min is not None and not self._auto_sp_min.hasFocus():
+            self._auto_sp_min.blockSignals(True)
+            self._auto_sp_min.setValue(auto_sp_min)
+            self._auto_sp_min.blockSignals(False)
+        if auto_sp_max is not None and not self._auto_sp_max.hasFocus():
+            self._auto_sp_max.blockSignals(True)
+            self._auto_sp_max.setValue(auto_sp_max)
+            self._auto_sp_max.blockSignals(False)
+
         if sp is not None:
             if self._auto_sp_enable.isChecked():
                 # Auto SP active: working SP comes from the auto-variation algorithm
@@ -739,6 +770,20 @@ class SimulatorPage(QWidget):
                 # Manual SP: working SP = user's SP input
                 self._pid_sp_wrk_edit.setText(self._pid_sp_edit.text())
                 self._auto_sp_edit.setText(f"{sp:.2f}")
+
+        # --- Auto Disturbance (sync from backend) ---
+        if (
+            auto_dist_enabled is not None
+            and self._auto_dist_enable.isChecked() != auto_dist_enabled
+        ):
+            self._auto_dist_enable.blockSignals(True)
+            self._auto_dist_enable.setChecked(auto_dist_enabled)
+            self._auto_dist_enable.blockSignals(False)
+        if auto_dist_amp is not None and not self._auto_dist_amp.hasFocus():
+            self._auto_dist_amp.blockSignals(True)
+            self._auto_dist_amp.setValue(auto_dist_amp)
+            self._auto_dist_amp.blockSignals(False)
+
         if abs(disturbance_out) > 1e-9:
             self._auto_dist_edit.setText(f"{disturbance_out:.2f}")
 

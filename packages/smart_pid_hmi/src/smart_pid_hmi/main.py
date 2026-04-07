@@ -97,7 +97,7 @@ class MainWindow(QMainWindow):
         self._kpi_timer = QTimer(self)
         self._kpi_timer.timeout.connect(self._refresh_kpis)
 
-        # Simulator live values polling timer (1s interval)
+        # Simulator live values polling timer (2s interval)
         self._sim_poll_timer = QTimer(self)
         self._sim_poll_timer.timeout.connect(self._poll_sim_status)
 
@@ -543,7 +543,7 @@ class MainWindow(QMainWindow):
                     QMetaObject.invokeMethod(
                         self._sim_poll_timer, "start",
                         Qt.ConnectionType.QueuedConnection,
-                        Q_ARG(int, 1000),
+                        Q_ARG(int, 2000),
                     )
                 opcua_status = self._api_client.get_opcua_status()
                 if opcua_status.get("running"):
@@ -661,7 +661,7 @@ class MainWindow(QMainWindow):
                 QMetaObject.invokeMethod(
                     self._sim_poll_timer, "start",
                     Qt.ConnectionType.QueuedConnection,
-                    Q_ARG(int, 1000),
+                    Q_ARG(int, 2000),
                 )
             except Exception as e:
                 self._api_error_signal.emit(str(e))
@@ -744,7 +744,7 @@ class MainWindow(QMainWindow):
                         cid, list(status.controllers.keys()),
                     )
                     return
-                self._sim_live_signal.emit({
+                data: dict = {
                     "pv": ctrl_status.pv,
                     "co": ctrl_status.co,
                     "error": ctrl_status.error,
@@ -757,7 +757,16 @@ class MainWindow(QMainWindow):
                     "ti": ctrl_status.pid_ti,
                     "td": ctrl_status.pid_td,
                     "mode": ctrl_status.pid_mode,
-                })
+                    "pid_enabled": ctrl_status.pid_enabled,
+                }
+                if ctrl_status.auto_sp is not None:
+                    data["auto_sp_enabled"] = ctrl_status.auto_sp.enabled
+                    data["auto_sp_min"] = ctrl_status.auto_sp.sp_min_pct
+                    data["auto_sp_max"] = ctrl_status.auto_sp.sp_max_pct
+                if ctrl_status.auto_disturbance is not None:
+                    data["auto_dist_enabled"] = ctrl_status.auto_disturbance.enabled
+                    data["auto_dist_amp"] = ctrl_status.auto_disturbance.max_amplitude_pct
+                self._sim_live_signal.emit(data)
             except Exception as e:
                 logger.debug("sim poll error: %s", e)
         threading.Thread(target=do_poll, daemon=True).start()
@@ -771,6 +780,12 @@ class MainWindow(QMainWindow):
             disturbance_out=vals["disturbance_out"], sp=vals["sp"],
             kp=vals.get("kp"), ti=vals.get("ti"), td=vals.get("td"),
             mode=vals.get("mode"),
+            pid_enabled=vals.get("pid_enabled"),
+            auto_sp_enabled=vals.get("auto_sp_enabled"),
+            auto_sp_min=vals.get("auto_sp_min"),
+            auto_sp_max=vals.get("auto_sp_max"),
+            auto_dist_enabled=vals.get("auto_dist_enabled"),
+            auto_dist_amp=vals.get("auto_dist_amp"),
         )
 
     def _on_refresh_rate_changed(self, ms: int) -> None:

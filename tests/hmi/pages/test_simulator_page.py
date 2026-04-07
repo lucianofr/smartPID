@@ -403,3 +403,87 @@ class TestSimulatorPageOPCUAControls:
     def test_opcua_stop_signal(self, pid_page: SimulatorPage, qtbot) -> None:
         with qtbot.waitSignal(pid_page.opcua_stop_requested, timeout=1000):
             pid_page._on_opcua_stop()
+
+
+# ---------------------------------------------------------------------------
+# Backend sync via update_live_values (polling sync tests)
+# ---------------------------------------------------------------------------
+
+
+class TestSimulatorPagePollingSync:
+    """Verify that update_live_values syncs PID enable, Auto SP, and Auto Disturbance."""
+
+    def test_sync_pid_enabled_true(self, pid_page: SimulatorPage) -> None:
+        assert not pid_page._pid_enable_cb.isChecked()
+        pid_page.update_live_values(
+            pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
+            process_in=0.0, process_out=50.0, disturbance_out=0.0,
+            pid_enabled=True,
+        )
+        assert pid_page._pid_enable_cb.isChecked()
+        # Controls should be enabled when PID is enabled
+        assert pid_page._pid_kp_edit.isEnabled()
+
+    def test_sync_pid_enabled_false(self, pid_page: SimulatorPage) -> None:
+        # First enable, then disable via sync
+        pid_page._pid_enable_cb.setChecked(True)
+        pid_page.update_live_values(
+            pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
+            process_in=0.0, process_out=50.0, disturbance_out=0.0,
+            pid_enabled=False,
+        )
+        assert not pid_page._pid_enable_cb.isChecked()
+
+    def test_sync_auto_sp_enabled(self, pid_page: SimulatorPage) -> None:
+        assert not pid_page._auto_sp_enable.isChecked()
+        pid_page.update_live_values(
+            pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
+            process_in=0.0, process_out=50.0, disturbance_out=0.0,
+            auto_sp_enabled=True, auto_sp_min=20.0, auto_sp_max=80.0,
+        )
+        assert pid_page._auto_sp_enable.isChecked()
+        assert pid_page._auto_sp_min.value() == pytest.approx(20.0)
+        assert pid_page._auto_sp_max.value() == pytest.approx(80.0)
+
+    def test_sync_auto_sp_disabled(self, pid_page: SimulatorPage) -> None:
+        pid_page._auto_sp_enable.setChecked(True)
+        pid_page.update_live_values(
+            pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
+            process_in=0.0, process_out=50.0, disturbance_out=0.0,
+            auto_sp_enabled=False,
+        )
+        assert not pid_page._auto_sp_enable.isChecked()
+
+    def test_sync_auto_disturbance_enabled(self, pid_page: SimulatorPage) -> None:
+        assert not pid_page._auto_dist_enable.isChecked()
+        pid_page.update_live_values(
+            pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
+            process_in=0.0, process_out=50.0, disturbance_out=0.0,
+            auto_dist_enabled=True, auto_dist_amp=15.0,
+        )
+        assert pid_page._auto_dist_enable.isChecked()
+        assert pid_page._auto_dist_amp.value() == pytest.approx(15.0)
+
+    def test_sync_auto_disturbance_disabled(self, pid_page: SimulatorPage) -> None:
+        pid_page._auto_dist_enable.setChecked(True)
+        pid_page.update_live_values(
+            pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
+            process_in=0.0, process_out=50.0, disturbance_out=0.0,
+            auto_dist_enabled=False,
+        )
+        assert not pid_page._auto_dist_enable.isChecked()
+
+    def test_sync_none_values_leave_widgets_unchanged(
+        self, pid_page: SimulatorPage
+    ) -> None:
+        """Passing None for optional fields should not change widget state."""
+        pid_page._auto_sp_enable.setChecked(True)
+        pid_page._auto_sp_min.setValue(25.0)
+        pid_page.update_live_values(
+            pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
+            process_in=0.0, process_out=50.0, disturbance_out=0.0,
+            # No auto_sp_enabled, auto_sp_min, etc. passed
+        )
+        # Should remain unchanged
+        assert pid_page._auto_sp_enable.isChecked()
+        assert pid_page._auto_sp_min.value() == pytest.approx(25.0)
