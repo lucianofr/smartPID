@@ -960,7 +960,10 @@ class MainWindow(QMainWindow):
         if not name:
             return
         for i, combo in enumerate(self._multi_trend_page._loop_combos):
-            if combo.currentText() == name:
+            selected = combo.currentText()
+            if selected == "\u2014":  # em-dash = no loop
+                continue
+            if selected == name:
                 # Append to internal buffer and update plot
                 if not hasattr(self, "_trend_buffers"):
                     self._trend_buffers: dict[int, dict] = {}
