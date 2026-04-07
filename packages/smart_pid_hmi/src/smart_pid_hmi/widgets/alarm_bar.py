@@ -1,14 +1,18 @@
-"""AlarmBarWidget — footer strip showing last 10 alarms."""
+"""AlarmBarWidget — QTableWidget grid showing active alarms (spec section 8.1)."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -16,8 +20,20 @@ from PySide6.QtWidgets import (
 if TYPE_CHECKING:
     from smart_pid_hmi.themes.base import ThemeBase
 
-_MAX_ALARMS = 5
-_BAR_HEIGHT = 110
+_BAR_HEIGHT = 150
+_COLUMNS = ["Priority", "Level", "Loop", "Description", "Date/Time", "ACK"]
+
+_PRIORITY_RANK = {"CRITICAL": 0, "WARNING": 1, "ADVISORY": 2}
+_PRIORITY_COLORS = {
+    "CRITICAL": "#D32F2F",
+    "WARNING": "#FBC02D",
+    "ADVISORY": "#1976D2",
+}
+_PRIORITY_TEXT = {
+    "CRITICAL": "#FFFFFF",
+    "WARNING": "#000000",
+    "ADVISORY": "#FFFFFF",
+}
 
 
 def _theme_attr(theme: ThemeBase, attr: str, fallback: str) -> str:
@@ -27,8 +43,9 @@ def _theme_attr(theme: ThemeBase, attr: str, fallback: str) -> str:
 
 
 class AlarmBarWidget(QFrame):
-    """Fixed-height footer showing recent alarms with semantic coloring."""
+    """Fixed-height footer grid showing active alarms with per-row ACK."""
 
+    ack_requested = Signal(int)       # alarm_id for single ACK
     ack_all_requested = Signal()
 
     def __init__(
@@ -36,165 +53,186 @@ class AlarmBarWidget(QFrame):
     ) -> None:
         super().__init__(parent)
         self._theme = theme
-        self._alarms: list[dict] = []
-        self._counts: dict[str, int] = {
-            "CRITICAL": 0, "WARNING": 0, "ADVISORY": 0,
-        }
+        self._active: dict[tuple[int, str], dict] = {}
 
         self.setFixedHeight(_BAR_HEIGHT)
-        self._apply_bar_style(theme)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(4)
-
-        # Left column: title + alarm entries (vertical)
-        left = QVBoxLayout()
-        left.setSpacing(2)
-
-        self._counter_label = QLabel("[ LOG ALARMES ]")
-        self._counter_label.setStyleSheet(
-            f"color: {theme.fg_primary}; background: transparent; "
-            f"font-size: {theme.font_size_label}px; "
-            f"font-weight: bold; padding: 0;"
-        )
-        left.addWidget(self._counter_label)
-
-        # Alarm entries container (vertical list)
-        self._container = QWidget()
-        self._container_layout = QVBoxLayout(self._container)
-        self._container_layout.setContentsMargins(0, 0, 0, 0)
-        self._container_layout.setSpacing(1)
-        self._container_layout.addStretch()
-        left.addWidget(self._container, stretch=1)
-
-        layout.addLayout(left, stretch=1)
-
-        # Right: ACK ALL button
-        self._ack_btn = QPushButton("ACK ALL")
-        self._ack_btn.setFixedHeight(28)
-        self._ack_btn.setFixedWidth(70)
-        self._ack_btn.clicked.connect(self.ack_all_requested.emit)
-        self._apply_ack_style(theme)
-        layout.addWidget(self._ack_btn, alignment=Qt.AlignmentFlag.AlignTop)
-
-    def _apply_bar_style(self, theme: ThemeBase) -> None:
         bg = _theme_attr(theme, "bg_toolbar", theme.bg_secondary)
         self.setStyleSheet(
             f"AlarmBarWidget {{ background-color: {bg}; "
             f"border-top: 1px solid {theme.border}; }}"
         )
 
-    def _apply_ack_style(self, theme: ThemeBase) -> None:
-        accent = _theme_attr(theme, "accent", theme.fg_secondary)
-        br = _theme_attr(theme, "border_radius", "0px")
-        self._ack_btn.setStyleSheet(
-            f"QPushButton {{ "
-            f"background-color: {theme.bg_secondary}; "
-            f"color: {accent}; "
-            f"border: 1px solid {accent}; "
-            f"border-radius: {br}; "
-            f"padding: 2px 12px; "
-            f"font-size: {theme.font_size_label}px; "
-            f"font-weight: bold; }} "
-            f"QPushButton:hover {{ "
-            f"background-color: {accent}; "
-            f"color: {theme.fg_primary}; }}"
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(8, 4, 8, 4)
+        main_layout.setSpacing(4)
+
+        left = QVBoxLayout()
+        left.setSpacing(2)
+
+        self._counter_label = QLabel("[ ACTIVE ALARMS ]")
+        self._counter_label.setStyleSheet(
+            f"color: {theme.fg_primary}; background: transparent; "
+            f"font-size: {theme.font_size_label}px; font-weight: bold; padding: 0;"
         )
+        left.addWidget(self._counter_label)
+
+        self._table = QTableWidget(0, len(_COLUMNS))
+        self._table.setHorizontalHeaderLabels(_COLUMNS)
+        self._table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeMode.Stretch,
+        )
+        self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._table.verticalHeader().setVisible(False)
+        left.addWidget(self._table, stretch=1)
+
+        main_layout.addLayout(left, stretch=1)
+
+        right = QVBoxLayout()
+        self._ack_btn = QPushButton("ACK\nALL")
+        self._ack_btn.setFixedWidth(60)
+        self._ack_btn.clicked.connect(self.ack_all_requested.emit)
+        right.addWidget(self._ack_btn)
+        right.addStretch()
+        main_layout.addLayout(right)
+
+        self._blink_timer = QTimer(self)
+        self._blink_timer.setInterval(500)
+        self._blink_timer.timeout.connect(self._on_blink)
+        self._blink_visible = True
+
+    @property
+    def alarm_count(self) -> int:
+        """Return number of active alarms."""
+        return len(self._active)
+
+    def on_alarm(self, alarm: dict) -> None:
+        """Handle alarm event — add on TRIGGERED, remove on CLEARED."""
+        cid = alarm.get("controller_id", 0)
+        atype = alarm.get("alarm_type", "")
+        priority = alarm.get("priority", "")
+        transition = alarm.get("transition", "")
+
+        if priority == "LOG":
+            return
+
+        key = (cid, atype)
+
+        if transition == "TRIGGERED":
+            self._active[key] = {**alarm, "acked": False}
+        elif transition == "CLEARED":
+            self._active.pop(key, None)
+
+        self._rebuild()
+
+    def on_alarm_acked(self, controller_id: int, alarm_type: str) -> None:
+        """Mark specific alarm as acknowledged."""
+        key = (controller_id, alarm_type)
+        if key in self._active:
+            self._active[key]["acked"] = True
+        self._rebuild()
+
+    def on_all_alarms_acked(self) -> None:
+        """Mark all active alarms as acknowledged."""
+        for info in self._active.values():
+            info["acked"] = True
+        self._rebuild()
+
+    def _rebuild(self) -> None:
+        """Sort alarms, rebuild table rows, update counters and blink timer."""
+        # Sort: group by priority (CRITICAL first), within each group newest first
+        groups: dict[str, list[dict]] = {}
+        for alarm in self._active.values():
+            pri = alarm.get("priority", "")
+            groups.setdefault(pri, []).append(alarm)
+        sorted_alarms: list[dict] = []
+        for pri in ["CRITICAL", "WARNING", "ADVISORY"]:
+            grp = groups.get(pri, [])
+            grp.sort(key=lambda a: a.get("timestamp", ""), reverse=True)
+            sorted_alarms.extend(grp)
+
+        self._table.setRowCount(0)
+        has_unacked = False
+
+        for alarm in sorted_alarms:
+            row = self._table.rowCount()
+            self._table.insertRow(row)
+            priority = alarm.get("priority", "")
+            acked = alarm.get("acked", False)
+            if not acked:
+                has_unacked = True
+
+            items = [
+                priority,
+                alarm.get("alarm_type", ""),
+                alarm.get("controller_name", "?"),
+                alarm.get("controller_description", ""),
+                alarm.get("timestamp", ""),
+                "\u2713" if acked else "ACK",
+            ]
+            color = _PRIORITY_COLORS.get(priority, "#757575")
+            text_color = _PRIORITY_TEXT.get(priority, "#FFFFFF")
+
+            for col, text in enumerate(items):
+                item = QTableWidgetItem(text)
+                item.setForeground(QColor(text_color))
+                if not acked:
+                    item.setBackground(QColor(color))
+                else:
+                    c = QColor(color)
+                    c.setAlpha(180)
+                    item.setBackground(c)
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self._table.setItem(row, col, item)
+
+        # Update counters
+        unacked_counts: dict[str, int] = {"CRITICAL": 0, "WARNING": 0, "ADVISORY": 0}
+        for alarm in self._active.values():
+            if not alarm.get("acked", False):
+                pri = alarm.get("priority", "")
+                if pri in unacked_counts:
+                    unacked_counts[pri] += 1
+
+        parts = [f"{k}: {v}" for k, v in unacked_counts.items() if v > 0]
+        if parts:
+            self._counter_label.setText(f"[ ACTIVE ALARMS ] {' | '.join(parts)}")
+        else:
+            self._counter_label.setText("[ ACTIVE ALARMS ]")
+
+        if has_unacked and not self._blink_timer.isActive():
+            self._blink_visible = True
+            self._blink_timer.start()
+        elif not has_unacked:
+            self._blink_timer.stop()
+
+    def _on_blink(self) -> None:
+        """Toggle background color for unacked alarm rows."""
+        self._blink_visible = not self._blink_visible
+        for row in range(self._table.rowCount()):
+            ack_item = self._table.item(row, 5)
+            if ack_item and ack_item.text() != "\u2713":
+                pri_item = self._table.item(row, 0)
+                if pri_item:
+                    priority = pri_item.text()
+                    color = _PRIORITY_COLORS.get(priority, "#757575")
+                    for col in range(self._table.columnCount()):
+                        item = self._table.item(row, col)
+                        if item:
+                            if self._blink_visible:
+                                item.setBackground(QColor(color))
+                            else:
+                                item.setBackground(QColor("transparent"))
 
     def apply_theme(self, theme: ThemeBase) -> None:
         """Update cached theme reference for dynamic theme switching."""
         self._theme = theme
-        self._apply_bar_style(theme)
-        self._apply_ack_style(theme)
+        bg = _theme_attr(theme, "bg_toolbar", theme.bg_secondary)
+        self.setStyleSheet(
+            f"AlarmBarWidget {{ background-color: {bg}; "
+            f"border-top: 1px solid {theme.border}; }}"
+        )
         self._counter_label.setStyleSheet(
             f"color: {theme.fg_primary}; background: transparent; "
-            f"font-size: {theme.font_size_label}px; "
-            f"font-weight: bold; padding: 0 4px;"
+            f"font-size: {theme.font_size_label}px; font-weight: bold; padding: 0;"
         )
         self._rebuild()
-
-    @property
-    def alarm_count(self) -> int:
-        return len(self._alarms)
-
-    def on_alarm(self, controller_id: int, alarm: dict) -> None:
-        priority = alarm.get("priority", "")
-        transition = alarm.get("transition", "")
-        if transition == "TRIGGERED" and priority in self._counts:
-            self._counts[priority] += 1
-        elif transition == "CLEARED" and priority in self._counts:
-            self._counts[priority] = max(
-                0, self._counts[priority] - 1
-            )
-        self._alarms.insert(0, alarm)
-        if len(self._alarms) > _MAX_ALARMS:
-            self._alarms = self._alarms[:_MAX_ALARMS]
-        self._rebuild()
-
-    def _rebuild(self) -> None:
-        theme = self._theme
-
-        # Update counter label with counts
-        total = sum(self._counts.values())
-        if total > 0:
-            parts = []
-            for name, count in self._counts.items():
-                if count > 0:
-                    parts.append(f"{name}: {count}")
-            counter_text = (
-                f"[ ALARMES ] {' | '.join(parts)}"
-            )
-        else:
-            counter_text = "[ LOG ALARMES ]"
-        self._counter_label.setText(counter_text)
-
-        # Clear existing labels
-        while self._container_layout.count() > 1:
-            item = self._container_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        br = _theme_attr(theme, "border_radius", "0px")
-
-        for alarm in self._alarms:
-            priority = alarm.get("priority", "")
-
-            # Choose pill background and icon
-            if priority == "CRITICAL":
-                bg = _theme_attr(
-                    theme, "alarm_critical_bg", theme.alarm_critical,
-                )
-                icon = "\u25cf"  # filled circle
-                text_color = theme.alarm_text
-            elif priority == "WARNING":
-                bg = _theme_attr(
-                    theme, "alarm_warning_bg", theme.alarm_warning,
-                )
-                icon = "\u25b2"  # triangle
-                text_color = theme.fg_primary
-            else:
-                bg = _theme_attr(
-                    theme, "bg_hover", theme.bg_widget,
-                )
-                icon = "\u25cb"  # empty circle
-                text_color = theme.fg_primary
-
-            tag = alarm.get("controller_name", "?")
-            atype = alarm.get("alarm_type", "?")
-            ts = alarm.get("timestamp", "")
-            # Show only HH:MM time part if ISO format
-            if "T" in str(ts):
-                ts = str(ts).split("T")[1][:5]
-
-            pill_text = f" {icon} {ts} {atype} {tag} "
-            label = QLabel(pill_text)
-            label.setStyleSheet(
-                f"background-color: {bg}; color: {text_color}; "
-                f"font-size: {theme.font_size_label}px; "
-                f"padding: 3px 8px; border: none; "
-                f"border-radius: {br}; font-weight: bold;"
-            )
-            self._container_layout.insertWidget(
-                self._container_layout.count() - 1, label,
-            )
