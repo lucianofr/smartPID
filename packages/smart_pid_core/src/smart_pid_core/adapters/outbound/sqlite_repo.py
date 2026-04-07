@@ -208,6 +208,17 @@ CREATE TABLE IF NOT EXISTS Projeto_Meta (
     valor TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS Log_System_Events (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp       TEXT    NOT NULL DEFAULT (datetime('now')),
+    source          TEXT    NOT NULL,
+    severity        TEXT    NOT NULL CHECK(severity IN ('CRITICAL','WARNING','INFO')),
+    message         TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sysevents_timestamp ON Log_System_Events(timestamp);
+CREATE INDEX IF NOT EXISTS idx_sysevents_severity ON Log_System_Events(severity);
+
 CREATE TABLE IF NOT EXISTS Configuracao_Simulador (
     controlador_id INTEGER PRIMARY KEY REFERENCES Controladores(id) ON DELETE CASCADE,
     preset         TEXT NOT NULL DEFAULT 'fopdt_default',
