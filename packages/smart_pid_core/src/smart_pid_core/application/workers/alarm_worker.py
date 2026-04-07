@@ -34,6 +34,8 @@ class AlarmWorker:
         self._alarm_repo = alarm_repo
         self._event_loop = event_loop
         self._engine = AlarmEngine()
+        self._controller_meta: dict[int, tuple[str, str]] = {}  # cid -> (name, description)
+        self._pv_ranges: dict[int, tuple[float, float]] = {}     # cid -> (pv_min, pv_max)
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -67,6 +69,25 @@ class AlarmWorker:
         asyncio.run_coroutine_threadsafe(
             self._persist_alarm(transition), self._event_loop,
         )
+
+    def update_controller_meta(
+        self, controller_id: int, name: str, description: str,
+    ) -> None:
+        """Update controller name/description for event enrichment."""
+        self._controller_meta[controller_id] = (name, description)
+
+    def update_pv_range(
+        self, controller_id: int, pv_min: float, pv_max: float,
+    ) -> None:
+        """Update PV instrument range for span-based deadband."""
+        self._pv_ranges[controller_id] = (pv_min, pv_max)
+
+    def remove_controller(self, controller_id: int) -> None:
+        """Clean up all state for a removed controller."""
+        self._alarm_configs.pop(controller_id, None)
+        self._controller_meta.pop(controller_id, None)
+        self._pv_ranges.pop(controller_id, None)
+        self._engine.remove_controller(controller_id)
 
     def update_config(self, controller_id: int, config: AlarmConfig) -> None:
         """Update alarm config for a controller (thread-safe via GIL)."""
@@ -114,17 +135,25 @@ class AlarmWorker:
                 sp = sp_raw["value"] if isinstance(sp_raw, dict) else float(sp_raw)
                 sp_ramping = data.get("sp_ramping", False)
 
+                pv_range = self._pv_ranges.get(cid)
+
                 transitions = self._engine.evaluate(
                     cid,
                     pv=pv,
                     sp=sp,
                     alarm_config=config,
                     sp_ramping=sp_ramping,
+                    pv_range=pv_range,
                 )
 
                 for t in transitions:
+                    name, desc = self._controller_meta.get(
+                        t.controller_id, ("?", ""),
+                    )
                     alarm_data = {
                         "controller_id": t.controller_id,
+                        "controller_name": name,
+                        "controller_description": desc,
                         "alarm_type": str(t.alarm_type),
                         "priority": str(t.priority),
                         "transition": t.transition,
@@ -137,5 +166,5 @@ class AlarmWorker:
                         msgpack.packb(alarm_data),
                     )
                     self._schedule_persist(t)
-            except (msgpack.UnpackException, KeyError, ValueError):
-                pass
+            except (msgpack.UnpackException, KeyError, ValueError) as exc:
+                logger.warning("AlarmWorker: failed to process frame: %s", exc)
