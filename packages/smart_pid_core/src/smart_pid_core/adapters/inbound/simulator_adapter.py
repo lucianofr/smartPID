@@ -152,6 +152,8 @@ class SimulatorAdapter:
                 ctrl.pid_structure = int(value)
             elif param == "pid_sp":
                 ctrl.sp = value
+            elif param == "mode":
+                ctrl.pid_mode = int(value)
 
     def write_output(self, controller_id: int, co: float) -> None:
         with self._lock:
