@@ -29,6 +29,7 @@ class DashboardPage(QWidget):
     setpoint_requested = Signal(int, float)
     mode_requested = Signal(int, str)
     output_requested = Signal(int, float)
+    gains_changed = Signal(int, dict)
     settings_requested = Signal(int)
 
     def __init__(
@@ -138,6 +139,7 @@ class DashboardPage(QWidget):
         # Wire faceplate command signals
         self._faceplate.setpoint_requested.connect(self.setpoint_requested)
         self._faceplate.mode_requested.connect(self.mode_requested)
+        self._faceplate.gains_changed.connect(self.gains_changed)
         self._faceplate.output_requested.connect(self.output_requested)
 
         # Wire bus bridge

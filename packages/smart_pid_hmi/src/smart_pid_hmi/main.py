@@ -277,6 +277,7 @@ class MainWindow(QMainWindow):
         self._connection_page.login_requested.connect(self._on_login)
         self._dashboard_page.setpoint_requested.connect(self._send_setpoint)
         self._dashboard_page.mode_requested.connect(self._send_mode)
+        self._dashboard_page.gains_changed.connect(self._send_tuning)
         self._dashboard_page.output_requested.connect(self._send_output)
         self._dashboard_page.settings_requested.connect(self._on_edit_controller)
         bus_bridge.connection_lost.connect(
@@ -500,6 +501,13 @@ class MainWindow(QMainWindow):
 
     def _send_ack_all(self) -> None:
         self._safe_api_call(self._api_client.ack_all_alarms)
+
+    def _send_tuning(self, controller_id: int, gains: dict) -> None:
+        self._safe_api_call(
+            self._api_client.write_tuning, controller_id,
+            gains.get("gain", 0.0), gains.get("reset", 0.0),
+            gains.get("rate", 0.0),
+        )
 
     def _send_optimizer_start(self, controller_id: int) -> None:
         self._safe_api_call(
