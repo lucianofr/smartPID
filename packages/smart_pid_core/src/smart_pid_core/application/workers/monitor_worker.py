@@ -131,5 +131,8 @@ class MonitorWorker:
             "integral_val": telem.get("integral_val", 0.0),
             "error": error,
             "saturated": saturated,
+            "kp": telem.get("kp"),
+            "ti": telem.get("ti"),
+            "td": telem.get("td"),
             "timestamp": telem.get("timestamp", time.time()),
         }
