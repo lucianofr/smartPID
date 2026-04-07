@@ -71,6 +71,7 @@ class BusBridge(QObject):
 
         # Emit batched telemetry (one per controller)
         for cid, frame in batch.items():
+            frame = self._normalize_frame(frame)
             self._latest[cid] = frame
             self.telemetry_received.emit(cid, frame)
 
@@ -78,6 +79,18 @@ class BusBridge(QObject):
         for cid, alarm in alarms:
             self.alarm_received.emit(cid, alarm)
 
+        self._check_heartbeat()
+
+    @staticmethod
+    def _normalize_frame(frame: dict) -> dict:
+        """Flatten FFSignal dicts to plain floats for widget consumption."""
+        for key in ("pv", "sp", "co", "bkcal_in", "bkcal_out"):
+            val = frame.get(key)
+            if isinstance(val, dict):
+                frame[key] = val.get("value", 0.0)
+        return frame
+
+    def _check_heartbeat(self) -> None:
         # Heartbeat check
         if self._last_frame_time > 0:
             elapsed = time.monotonic() - self._last_frame_time
