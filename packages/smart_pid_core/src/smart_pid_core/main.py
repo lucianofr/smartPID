@@ -156,6 +156,30 @@ async def _migrate_users_if_needed(spid_path: Path, users_db_path: Path) -> None
     )
 
 
+async def _retention_cleanup(repo_db, interval_hours: int = 24) -> None:  # noqa: ANN001
+    """Daily cleanup of old alarm logs and system events."""
+    _log = structlog.get_logger()
+    while True:
+        await asyncio.sleep(interval_hours * 3600)
+        try:
+            await repo_db.execute(
+                "DELETE FROM Log_Alarmes WHERE timestamp <= datetime('now', '-30 days')"
+            )
+            await repo_db.execute(
+                "DELETE FROM Log_System_Events WHERE timestamp <= datetime('now', '-30 days')"
+            )
+            await repo_db.execute(
+                "DELETE FROM Log_Sintonia_IA WHERE timestamp <= datetime('now', '-7 days')"
+            )
+            await repo_db.execute(
+                "DELETE FROM Log_Processo WHERE timestamp <= datetime('now', '-7 days')"
+            )
+            await repo_db.commit()
+            _log.info("retention_cleanup_complete")
+        except Exception:
+            _log.exception("retention_cleanup_error")
+
+
 async def run_daemon(settings: CoreSettings) -> None:
     """Bootstrap and run the backend daemon until interrupted."""
     logger.info(
@@ -421,6 +445,9 @@ async def run_daemon(settings: CoreSettings) -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, handle_signal)
 
+    # Data retention cleanup (daily)
+    cleanup_task = asyncio.create_task(_retention_cleanup(repo.db))
+
     # Run uvicorn and wait for shutdown signal concurrently
     server_task = asyncio.create_task(server.serve())
     logger.info("daemon_ready")
@@ -430,6 +457,9 @@ async def run_daemon(settings: CoreSettings) -> None:
     logger.info("shutting_down")
 
     # Graceful shutdown in correct order
+    cleanup_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await cleanup_task
     server.should_exit = True
     await server_task
     await telemetry_pub.stop()
