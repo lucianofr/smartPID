@@ -991,7 +991,6 @@ class ControllerDialog(QDialog):
                     mode_str: spin.value()
                     for mode_str, (_lbl, spin) in self._mode_map_widgets.items()
                     if self._permitted_mode_checks.get(mode_str, QCheckBox()).isChecked()
-                    and spin.value() > 0
                 },
             },
             # Alarms
