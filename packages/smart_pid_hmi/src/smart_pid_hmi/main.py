@@ -1038,6 +1038,7 @@ class MainWindow(QMainWindow):
         ts = action.get("timestamp", "")[:19]
         msg = f"[{ts}] {engine} \u03b3={gamma:+.4f} Ki={new_ki:.4f} \u2014 {reasoning}"
         self._alarm_panel.on_ai_event(controller_id, msg)
+        self._dashboard_page.on_ai_action(controller_id, action)
 
         # Write new Ki (Ti) to OPC-UA so the DCS uses the updated value
         self._safe_api_call(
