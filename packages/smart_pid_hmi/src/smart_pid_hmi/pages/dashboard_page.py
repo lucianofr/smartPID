@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from smart_pid_hmi.widgets.ai_log_widget import AILogWidget
 from smart_pid_hmi.widgets.alarm_bar import AlarmBarWidget
 from smart_pid_hmi.widgets.controller_card import ControllerCardWidget
 from smart_pid_hmi.widgets.faceplate import FaceplateWidget
@@ -92,9 +93,15 @@ class DashboardPage(QWidget):
         # Middle: (trend + AI log) | faceplate — splitter 70/30
         splitter = QSplitter()
 
-        # Left side: trend chart
+        # Left side: trend chart + AI log (vertical split)
+        left_splitter = QSplitter(Qt.Orientation.Vertical)
         self._trend = TrendChartWidget(theme=theme)
-        splitter.addWidget(self._trend)
+        left_splitter.addWidget(self._trend)
+        self._ai_log = AILogWidget(theme=theme)
+        left_splitter.addWidget(self._ai_log)
+        left_splitter.setStretchFactor(0, 4)
+        left_splitter.setStretchFactor(1, 1)
+        splitter.addWidget(left_splitter)
 
         # Right side: faceplate (stretches to alarm bar)
         self._faceplate = FaceplateWidget(theme=theme)
@@ -184,6 +191,7 @@ class DashboardPage(QWidget):
             controller_id,
             scan_rate_s=meta.get("scan_rate_s", 1.0),
         )
+        self._ai_log.on_controller_selected(controller_id)
 
     def update_single_controller(self, controller_id: int, ctrl: dict) -> None:
         """Update metadata for one controller without recreating cards or resetting the chart."""
@@ -231,6 +239,7 @@ class DashboardPage(QWidget):
             card.on_telemetry(controller_id, frame)
         self._faceplate.on_telemetry(controller_id, frame)
         self._trend.on_telemetry(controller_id, frame)
+        self._ai_log.on_telemetry(controller_id, frame)
 
     def _on_alarm(self, controller_id: int, alarm: dict) -> None:
         for card in self._cards:
@@ -257,3 +266,4 @@ class DashboardPage(QWidget):
             " font-weight: bold; text-transform: uppercase;"
             " background: transparent; padding: 2px 0px;"
         )
+        self._ai_log.apply_theme(theme)
