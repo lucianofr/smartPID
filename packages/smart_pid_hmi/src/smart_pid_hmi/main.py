@@ -47,6 +47,52 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Maps between dialog flat keys and AlarmType enum values
+_ALARM_KEY_TO_TYPE = {
+    "hihi": "HIHI",
+    "hi": "HI",
+    "lo": "LO",
+    "lolo": "LOLO",
+    "dv_hi": "DV_HI",
+    "dv_lo": "DV_LO",
+}
+_ALARM_TYPE_TO_KEY = {v: k for k, v in _ALARM_KEY_TO_TYPE.items()}
+
+
+def _flat_alarm_to_thresholds(flat: dict) -> list[dict]:
+    """Convert flat alarm dict from dialog to list of AlarmThreshold dicts."""
+    deadband = flat.get("deadband_percent", 1.0)
+    thresholds: list[dict] = []
+    for key, alarm_type in _ALARM_KEY_TO_TYPE.items():
+        thresholds.append({
+            "alarm_type": alarm_type,
+            "enabled": flat.get(f"{key}_enabled", False),
+            "limit": flat.get(f"{key}_value", 0.0),
+            "priority": flat.get(f"{key}_priority", "WARNING"),
+            "deadband": deadband,
+            "delay_on_s": flat.get(f"{key}_delay_on_s", 0.0),
+            "delay_off_s": flat.get(f"{key}_delay_off_s", 0.0),
+        })
+    return thresholds
+
+
+def _alarm_thresholds_to_flat(thresholds: list[dict]) -> dict:
+    """Convert list of AlarmThreshold dicts to flat alarm dict for dialog."""
+    flat: dict[str, object] = {}
+    deadband = 1.0
+    for t in thresholds:
+        key = _ALARM_TYPE_TO_KEY.get(t.get("alarm_type", ""), "")
+        if not key:
+            continue
+        flat[f"{key}_enabled"] = t.get("enabled", False)
+        flat[f"{key}_value"] = t.get("limit", 0.0)
+        flat[f"{key}_priority"] = t.get("priority", "WARNING")
+        flat[f"{key}_delay_on_s"] = t.get("delay_on_s", 0.0)
+        flat[f"{key}_delay_off_s"] = t.get("delay_off_s", 0.0)
+        deadband = t.get("deadband", deadband)
+    flat["deadband_percent"] = deadband
+    return flat
+
 
 class MainWindow(QMainWindow):
     """Top-level window with page stack and toolbar."""
@@ -420,6 +466,14 @@ class MainWindow(QMainWindow):
             try:
                 ctrl = self._api_client.get_controller(controller_id)
                 data = ctrl.model_dump()
+                # Fetch alarm config and convert to flat format for dialog
+                try:
+                    alarm_resp = self._api_client.get_alarm_config(controller_id)
+                    data["alarm_config"] = _alarm_thresholds_to_flat(
+                        alarm_resp.get("thresholds", []),
+                    )
+                except Exception:
+                    logger.debug("No alarm config for controller %d", controller_id)
                 self._edit_dialog_signal.emit(controller_id, data)
             except Exception as e:
                 logger.error("Failed to fetch controller %d: %s", controller_id, e)
@@ -436,10 +490,16 @@ class MainWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         updated = dialog.get_controller_data()
+        alarm_data = updated.pop("alarm_config", None)
 
         def do_update():
             try:
                 self._api_client.update_controller(controller_id, updated)
+                if alarm_data is not None:
+                    thresholds = _flat_alarm_to_thresholds(alarm_data)
+                    self._api_client.update_alarm_config(
+                        controller_id, {"thresholds": thresholds},
+                    )
                 self._load_dashboard()
             except Exception as e:
                 logger.error("Failed to update controller %d: %s", controller_id, e)

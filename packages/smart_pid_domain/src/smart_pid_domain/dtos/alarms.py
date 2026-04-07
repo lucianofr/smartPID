@@ -31,6 +31,8 @@ class AlarmThreshold(BaseModel):
     limit: float = 0.0
     enabled: bool = True
     deadband: float = 0.0
+    delay_on_s: float = 0.0
+    delay_off_s: float = 0.0
 
 
 class AlarmConfigResponse(BaseModel):

@@ -459,6 +459,8 @@ async def get_alarm_config(
             limit=r["limit"],
             enabled=bool(r["enabled"]),
             deadband=r["deadband"],
+            delay_on_s=r.get("delay_on_s", 0.0),
+            delay_off_s=r.get("delay_off_s", 0.0),
         )
         for r in rows
     ]
@@ -486,6 +488,8 @@ async def update_alarm_config(
             "limit": t.limit,
             "enabled": t.enabled,
             "deadband": t.deadband,
+            "delay_on_s": t.delay_on_s,
+            "delay_off_s": t.delay_off_s,
         }
         for t in body.thresholds
     ]

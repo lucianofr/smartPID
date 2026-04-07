@@ -84,6 +84,24 @@ class APIClient:
         resp.raise_for_status()
         return ControllerResponse.model_validate(resp.json())
 
+    def get_alarm_config(self, controller_id: int) -> dict:
+        """Fetch alarm threshold configuration for a controller."""
+        resp = self._http.get(
+            f"/controllers/{controller_id}/alarm-config", headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def update_alarm_config(self, controller_id: int, data: dict) -> dict:
+        """Update alarm threshold configuration for a controller."""
+        resp = self._http.put(
+            f"/controllers/{controller_id}/alarm-config",
+            json=data,
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def set_setpoint(self, controller_id: int, value: float) -> CommandResponse:
         resp = self._http.post(
             "/commands/setpoint",
