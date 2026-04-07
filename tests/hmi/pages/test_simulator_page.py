@@ -4,7 +4,6 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDoubleSpinBox,
     QGroupBox,
     QLabel,
@@ -127,11 +126,10 @@ class TestSimulatorPagePIDGroup:
         assert cb is not None
         assert cb.isChecked() is False
 
-    def test_pid_mode_combo(self, pid_page: SimulatorPage) -> None:
-        combo = pid_page.findChild(QComboBox, "pid_mode_combo")
-        assert combo is not None
-        assert combo.currentText() == "MAN"
-        assert combo.count() == 2
+    def test_pid_mode_buttons(self, pid_page: SimulatorPage) -> None:
+        assert pid_page._btn_pid_auto is not None
+        assert pid_page._btn_pid_man is not None
+        assert pid_page._pid_active_mode == "MAN"
 
     def test_pid_pv_readonly(self, pid_page: SimulatorPage) -> None:
         edit = pid_page.findChild(QLineEdit, "pid_pv_edit")
@@ -165,69 +163,63 @@ class TestSimulatorPagePIDGroup:
         assert edit.text() == "0.0"
 
     def test_controls_disabled_when_unchecked(self, pid_page: SimulatorPage) -> None:
-        combo = pid_page.findChild(QComboBox, "pid_mode_combo")
         kp = pid_page.findChild(QLineEdit, "pid_kp_edit")
         sp = pid_page.findChild(QLineEdit, "pid_sp_edit")
-        assert not combo.isEnabled()
+        assert not pid_page._btn_pid_auto.isEnabled()
+        assert not pid_page._btn_pid_man.isEnabled()
         assert not kp.isEnabled()
         assert not sp.isEnabled()
 
     def test_controls_enabled_when_checked(self, pid_page: SimulatorPage, qtbot) -> None:
         cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
         cb.setChecked(True)
-        combo = pid_page.findChild(QComboBox, "pid_mode_combo")
         kp = pid_page.findChild(QLineEdit, "pid_kp_edit")
         sp = pid_page.findChild(QLineEdit, "pid_sp_edit")
-        assert combo.isEnabled()
+        assert pid_page._btn_pid_auto.isEnabled()
+        assert pid_page._btn_pid_man.isEnabled()
         assert kp.isEnabled()
         assert sp.isEnabled()
 
 
 class TestSimulatorPagePIDSignals:
     def test_enable_signal(self, pid_page: SimulatorPage, qtbot) -> None:
-        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
-        cb.setChecked(True)
+        """pid_enabled_changed fires immediately on checkbox toggle."""
         with qtbot.waitSignal(pid_page.pid_enabled_changed, timeout=1000) as blocker:
-            pid_page._on_apply()
+            pid_page._pid_enable_cb.setChecked(True)
         assert blocker.args == [True]
 
     def test_params_signal(self, pid_page: SimulatorPage, qtbot) -> None:
-        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
-        cb.setChecked(True)
-        pid_page._on_apply()  # commit enable state
+        """pid_params_changed fires on editingFinished (immediate, no Apply)."""
+        pid_page._pid_enable_cb.setChecked(True)
         pid_page._pid_kp_edit.setText("2.5")
         with qtbot.waitSignal(pid_page.pid_params_changed, timeout=1000) as blocker:
-            pid_page._on_apply()
+            pid_page._pid_kp_edit.editingFinished.emit()
         kp, ti, td = blocker.args
         assert kp == 2.5
         assert ti == 10.0
         assert td == 0.0
 
     def test_mode_signal(self, pid_page: SimulatorPage, qtbot) -> None:
-        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
-        cb.setChecked(True)
-        pid_page._on_apply()  # commit enable state
-        pid_page._pid_mode_combo.setCurrentText("AUTO")
+        """pid_mode_changed fires on button click (immediate, no Apply)."""
+        pid_page._pid_enable_cb.setChecked(True)
         with qtbot.waitSignal(pid_page.pid_mode_changed, timeout=1000) as blocker:
-            pid_page._on_apply()
+            pid_page._on_pid_mode_click("AUTO")
         assert blocker.args == ["AUTO"]
 
     def test_sp_signal(self, pid_page: SimulatorPage, qtbot) -> None:
-        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
-        cb.setChecked(True)
-        pid_page._on_apply()  # commit enable state
+        """pid_sp_changed fires on editingFinished (immediate, no Apply)."""
+        pid_page._pid_enable_cb.setChecked(True)
         pid_page._pid_sp_edit.setText("65.0")
         with qtbot.waitSignal(pid_page.pid_sp_changed, timeout=1000) as blocker:
-            pid_page._on_apply()
+            pid_page._pid_sp_edit.editingFinished.emit()
         assert blocker.args == [65.0]
 
     def test_co_signal(self, pid_page: SimulatorPage, qtbot) -> None:
-        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
-        cb.setChecked(True)
-        pid_page._on_apply()  # commit enable state
+        """pid_co_changed fires on editingFinished (immediate, no Apply)."""
+        pid_page._pid_enable_cb.setChecked(True)
         pid_page._pid_co_edit.setText("42.0")
         with qtbot.waitSignal(pid_page.pid_co_changed, timeout=1000) as blocker:
-            pid_page._on_apply()
+            pid_page._pid_co_edit.editingFinished.emit()
         assert blocker.args == [42.0]
 
 
