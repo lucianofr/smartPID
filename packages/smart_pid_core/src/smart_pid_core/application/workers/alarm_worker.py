@@ -97,8 +97,10 @@ class AlarmWorker:
                 if config is None:
                     continue
 
-                pv = data.get("pv", 0.0)
-                sp = data.get("sp", 0.0)
+                pv_raw = data.get("pv", 0.0)
+                pv = pv_raw["value"] if isinstance(pv_raw, dict) else float(pv_raw)
+                sp_raw = data.get("sp", 0.0)
+                sp = sp_raw["value"] if isinstance(sp_raw, dict) else float(sp_raw)
                 sp_ramping = data.get("sp_ramping", False)
 
                 transitions = self._engine.evaluate(
