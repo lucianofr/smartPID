@@ -465,6 +465,7 @@ class PIDWorker:
                             )
 
                 if self._has_telemetry:
+                    params = self._controller.pid_params
                     telem_data = {
                         "controller_id": self.controller_id,
                         "pv": _serialize_ff_signal(self._last_pv),
@@ -476,6 +477,10 @@ class PIDWorker:
                         "bkcal_out": _serialize_ff_signal(
                             self._last_bkcal_out,
                         ),
+                        "mode": self._mode.value,
+                        "kp": params.gain,
+                        "ti": params.reset,
+                        "td": params.rate,
                         "integral_val": self._state.cv,
                         "timestamp": datetime.now(tz=UTC).isoformat(),
                     }

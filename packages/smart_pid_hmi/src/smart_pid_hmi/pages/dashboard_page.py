@@ -239,12 +239,15 @@ class DashboardPage(QWidget):
             card.on_telemetry(controller_id, frame)
         self._faceplate.on_telemetry(controller_id, frame)
         self._trend.on_telemetry(controller_id, frame)
-        self._ai_log.on_telemetry(controller_id, frame)
 
     def _on_alarm(self, controller_id: int, alarm: dict) -> None:
         for card in self._cards:
             card.on_alarm(controller_id, alarm)
         self._alarm_bar.on_alarm(controller_id, alarm)
+
+    def on_ai_action(self, controller_id: int, action: dict) -> None:
+        """Forward AI tuning decision to the AI log widget."""
+        self._ai_log.on_ai_action(controller_id, action)
 
     def on_alarm_ack(self, controller_id: int, alarm_type: str | None = None) -> None:
         """Propagate ACK to cards so they stop blinking."""

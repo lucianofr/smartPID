@@ -74,18 +74,16 @@ class AILogWidget(QWidget):
         self._entries.clear()
         self._log_label.setText("")
 
-    def on_telemetry(self, controller_id: int, frame: dict) -> None:
-        """Extract AI log entries from telemetry frames."""
+    def on_ai_action(self, controller_id: int, action: dict) -> None:
+        """Display an AI tuning decision from ACTION.AI.* events."""
         if controller_id != self._controller_id:
             return
-        ai_log = frame.get("ai_log")
-        if not ai_log:
-            return
-        if isinstance(ai_log, list):
-            for entry in ai_log:
-                self._append(str(entry))
-        else:
-            self._append(str(ai_log))
+        engine = action.get("engine", "?")
+        gamma = action.get("gamma", 0.0)
+        new_ki = action.get("new_ki", 0.0)
+        reasoning = action.get("reasoning", "")
+        ts = action.get("timestamp", "")[:19]
+        self._append(f"[{ts}] {engine} \u03b3={gamma:+.4f} Ki={new_ki:.4f} \u2014 {reasoning}")
 
     def _append(self, text: str) -> None:
         self._entries.append(text)
