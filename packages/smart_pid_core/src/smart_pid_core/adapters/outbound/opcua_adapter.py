@@ -370,6 +370,14 @@ class OPCUAAdapter:
         dv = ua.DataValue(ua.Variant(value, ua.VariantType.Float))
         await node.write_value(dv)
 
+    async def _async_write_int32(self, client, node_id: str, value: int) -> None:
+        """Write an Int32 value to an OPC-UA node."""
+        from asyncua import ua
+
+        node = client.get_node(node_id)
+        dv = ua.DataValue(ua.Variant(value, ua.VariantType.Int32))
+        await node.write_value(dv)
+
     # ---- Tuning Read/Write ----
 
     def read_pid_params(self, controller_id: int) -> PIDParamsRead | None:
@@ -508,7 +516,7 @@ class OPCUAAdapter:
             return False
 
         future = asyncio.run_coroutine_threadsafe(
-            self._async_write_value(client, target_id, int_val),
+            self._async_write_int32(client, target_id, int(int_val)),
             self._loop,
         )
         try:
