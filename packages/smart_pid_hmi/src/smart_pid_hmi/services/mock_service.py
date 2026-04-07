@@ -211,6 +211,12 @@ class MockAPIClient:
     ) -> list[dict]:
         return []
 
+    def get_system_events(
+        self, start: datetime, end: datetime,
+        source: str | None = None, severity: str | None = None,
+    ) -> list[dict]:
+        return []
+
     # Simulator
     def start_simulator(self) -> CommandResponse:
         return CommandResponse(ok=True, detail="mock start")
