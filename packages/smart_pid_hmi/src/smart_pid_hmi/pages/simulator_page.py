@@ -1,4 +1,4 @@
-"""SimulatorPage — preset selection, parameter sliders, disturbance injection."""
+"""SimulatorPage — preset selection, parameter fields, disturbance injection."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -8,7 +8,6 @@ from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -26,12 +25,12 @@ if TYPE_CHECKING:
     from smart_pid_domain.dtos.simulator import ControllerSimStatus
     from smart_pid_hmi.themes.base import ThemeBase
 
-# Slider range config: (min, max, default, decimals)
-_PARAM_RANGES = {
-    "gain": (0.1, 10.0, 1.2, 2),
-    "tau1": (0.5, 120.0, 3.0, 1),
-    "tau2": (0.0, 60.0, 15.0, 1),
-    "dead_time": (0.0, 30.0, 1.0, 1),
+# Parameter config: (default, decimals)
+_PARAM_DEFAULTS = {
+    "gain": (1.2, 2),
+    "tau1": (3.0, 1),
+    "tau2": (15.0, 1),
+    "dead_time": (1.0, 1),
 }
 
 
@@ -104,7 +103,6 @@ class SimulatorPage(QWidget):
         param_layout = QVBoxLayout(param_group)
         self._gain_slider = self._make_param_row(param_layout, "Gain (K):", "gain")
         self._tau1_slider = self._make_param_row(param_layout, "Tau1 (s):", "tau1")
-        self._tau1_slider.valueChanged.connect(self._update_period_label)
         self._tau2_slider = self._make_param_row(param_layout, "Tau2 (s):", "tau2")
         self._dead_time_slider = self._make_param_row(
             param_layout, "Dead Time (s):", "dead_time",
@@ -279,12 +277,9 @@ class SimulatorPage(QWidget):
         self._opcua_endpoint_label = QLabel("opc.tcp://0.0.0.0:")
         self._opcua_endpoint_label.setObjectName("opcua_endpoint_label")
         endpoint_row.addWidget(self._opcua_endpoint_label)
-        self._opcua_port_spin = QDoubleSpinBox()
-        self._opcua_port_spin.setObjectName("opcua_port_spin")
-        self._opcua_port_spin.setRange(1024, 65535)
-        self._opcua_port_spin.setValue(4849)
-        self._opcua_port_spin.setDecimals(0)
-        endpoint_row.addWidget(self._opcua_port_spin, stretch=1)
+        self._opcua_port_edit = QLineEdit("4849")
+        self._opcua_port_edit.setObjectName("opcua_port_edit")
+        endpoint_row.addWidget(self._opcua_port_edit, stretch=1)
         opcua_layout.addLayout(endpoint_row)
         opcua_apply = QPushButton("Apply")
         opcua_apply.setObjectName("opcua_apply_btn")
@@ -303,26 +298,16 @@ class SimulatorPage(QWidget):
         auto_sp_layout.addLayout(auto_sp_enable_row)
         sp_min_row = QHBoxLayout()
         sp_min_row.addWidget(QLabel("SP Min (%):"))
-        self._auto_sp_min = QDoubleSpinBox()
+        self._auto_sp_min = QLineEdit("30.0")
         self._auto_sp_min.setObjectName("auto_sp_min")
-        self._auto_sp_min.setRange(0.0, 100.0)
-        self._auto_sp_min.setValue(30.0)
-        self._auto_sp_min.setDecimals(1)
         sp_min_row.addWidget(self._auto_sp_min, stretch=1)
         auto_sp_layout.addLayout(sp_min_row)
         sp_max_row = QHBoxLayout()
         sp_max_row.addWidget(QLabel("SP Max (%):"))
-        self._auto_sp_max = QDoubleSpinBox()
+        self._auto_sp_max = QLineEdit("70.0")
         self._auto_sp_max.setObjectName("auto_sp_max")
-        self._auto_sp_max.setRange(0.0, 100.0)
-        self._auto_sp_max.setValue(70.0)
-        self._auto_sp_max.setDecimals(1)
         sp_max_row.addWidget(self._auto_sp_max, stretch=1)
         auto_sp_layout.addLayout(sp_max_row)
-        auto_sp_apply = QPushButton("Apply")
-        auto_sp_apply.setObjectName("auto_sp_apply")
-        auto_sp_apply.clicked.connect(self._on_auto_sp_apply)
-        auto_sp_layout.addWidget(auto_sp_apply)
         right_col.addWidget(auto_sp_group)
 
         # Auto Disturbance group
@@ -336,17 +321,10 @@ class SimulatorPage(QWidget):
         auto_dist_layout.addLayout(auto_dist_enable_row)
         amp_row = QHBoxLayout()
         amp_row.addWidget(QLabel("Max Amplitude (%):"))
-        self._auto_dist_amp = QDoubleSpinBox()
+        self._auto_dist_amp = QLineEdit("10.0")
         self._auto_dist_amp.setObjectName("auto_dist_amp")
-        self._auto_dist_amp.setRange(0.0, 100.0)
-        self._auto_dist_amp.setValue(10.0)
-        self._auto_dist_amp.setDecimals(1)
         amp_row.addWidget(self._auto_dist_amp, stretch=1)
         auto_dist_layout.addLayout(amp_row)
-        auto_dist_apply = QPushButton("Apply")
-        auto_dist_apply.setObjectName("auto_dist_apply")
-        auto_dist_apply.clicked.connect(self._on_auto_dist_apply)
-        auto_dist_layout.addWidget(auto_dist_apply)
         right_col.addWidget(auto_dist_group)
 
         # Disturbance group (immediate actions)
@@ -355,10 +333,8 @@ class SimulatorPage(QWidget):
 
         step_row = QHBoxLayout()
         step_row.addWidget(QLabel("Step:"))
-        self._step_amplitude = QDoubleSpinBox()
-        self._step_amplitude.setRange(-50.0, 50.0)
-        self._step_amplitude.setValue(5.0)
-        self._step_amplitude.setSuffix(" %")
+        self._step_amplitude = QLineEdit("5.0")
+        self._step_amplitude.setObjectName("step_amplitude")
         step_row.addWidget(self._step_amplitude)
         step_btn = QPushButton("Inject Step")
         step_btn.clicked.connect(self._on_step_inject)
@@ -367,10 +343,8 @@ class SimulatorPage(QWidget):
 
         noise_row = QHBoxLayout()
         noise_row.addWidget(QLabel("Noise:"))
-        self._noise_amplitude = QDoubleSpinBox()
-        self._noise_amplitude.setRange(0.0, 10.0)
-        self._noise_amplitude.setValue(0.5)
-        self._noise_amplitude.setSuffix(" %")
+        self._noise_amplitude = QLineEdit("0.5")
+        self._noise_amplitude.setObjectName("noise_amplitude")
         noise_row.addWidget(self._noise_amplitude)
         noise_btn = QPushButton("Inject Noise")
         noise_btn.clicked.connect(self._on_noise_inject)
@@ -422,18 +396,19 @@ class SimulatorPage(QWidget):
 
         # Store committed state (process model params only — PID controls are immediate)
         self._committed_preset_idx = self._preset_combo.currentIndex()
-        self._committed_gain = self._gain_slider.value()
-        self._committed_tau1 = self._tau1_slider.value()
-        self._committed_tau2 = self._tau2_slider.value()
-        self._committed_dead_time = self._dead_time_slider.value()
+        self._committed_gain = self._gain_slider.text()
+        self._committed_tau1 = self._tau1_slider.text()
+        self._committed_tau2 = self._tau2_slider.text()
+        self._committed_dead_time = self._dead_time_slider.text()
 
         # Connect change tracking for PROCESS MODEL params (Apply required)
         self._preset_combo.currentIndexChanged.connect(self._on_preset_selected)
         self._preset_combo.currentIndexChanged.connect(self._on_field_changed)
-        self._gain_slider.valueChanged.connect(self._on_field_changed)
-        self._tau1_slider.valueChanged.connect(self._on_field_changed)
-        self._tau2_slider.valueChanged.connect(self._on_field_changed)
-        self._dead_time_slider.valueChanged.connect(self._on_field_changed)
+        self._gain_slider.textChanged.connect(self._on_field_changed)
+        self._tau1_slider.textChanged.connect(self._on_field_changed)
+        self._tau1_slider.textChanged.connect(lambda _: self._update_period_label())
+        self._tau2_slider.textChanged.connect(self._on_field_changed)
+        self._dead_time_slider.textChanged.connect(self._on_field_changed)
 
         # PID controls act IMMEDIATELY (real-time, no Apply needed)
         self._pid_enable_cb.toggled.connect(self._on_pid_enable_toggled)
@@ -453,19 +428,23 @@ class SimulatorPage(QWidget):
         self._pid_ti_edit.editingFinished.connect(self._on_pid_params_edited)
         self._pid_td_edit.editingFinished.connect(self._on_pid_params_edited)
 
+        # Auto SP / Auto Disturbance act IMMEDIATELY (no Apply needed)
+        self._auto_sp_enable.toggled.connect(lambda _: self._emit_auto_sp())
+        self._auto_sp_min.editingFinished.connect(self._emit_auto_sp)
+        self._auto_sp_max.editingFinished.connect(self._emit_auto_sp)
+        self._auto_dist_enable.toggled.connect(lambda _: self._emit_auto_dist())
+        self._auto_dist_amp.editingFinished.connect(self._emit_auto_dist)
+
     def _make_param_row(
         self, layout: QVBoxLayout, label: str, key: str,
-    ) -> QDoubleSpinBox:
+    ) -> QLineEdit:
         row = QHBoxLayout()
         row.addWidget(QLabel(label))
-        mn, mx, default, decimals = _PARAM_RANGES[key]
-        spin = QDoubleSpinBox()
-        spin.setRange(mn, mx)
-        spin.setValue(default)
-        spin.setDecimals(decimals)
-        row.addWidget(spin, stretch=1)
+        default, decimals = _PARAM_DEFAULTS[key]
+        edit = QLineEdit(f"{default:.{decimals}f}")
+        row.addWidget(edit, stretch=1)
         layout.addLayout(row)
-        return spin
+        return edit
 
     # ------------------------------------------------------------------
     # Apply / Cancel
@@ -513,10 +492,10 @@ class SimulatorPage(QWidget):
         # Only process model params require Apply — PID controls act immediately
         return (
             self._preset_combo.currentIndex() != self._committed_preset_idx
-            or self._gain_slider.value() != self._committed_gain
-            or self._tau1_slider.value() != self._committed_tau1
-            or self._tau2_slider.value() != self._committed_tau2
-            or self._dead_time_slider.value() != self._committed_dead_time
+            or self._gain_slider.text() != self._committed_gain
+            or self._tau1_slider.text() != self._committed_tau1
+            or self._tau2_slider.text() != self._committed_tau2
+            or self._dead_time_slider.text() != self._committed_dead_time
         )
 
     @staticmethod
@@ -531,22 +510,24 @@ class SimulatorPage(QWidget):
         if self._preset_combo.currentIndex() != self._committed_preset_idx:
             self.preset_changed.emit(self._preset_combo.currentText())
         if (
-            self._gain_slider.value() != self._committed_gain
-            or self._tau1_slider.value() != self._committed_tau1
-            or self._tau2_slider.value() != self._committed_tau2
-            or self._dead_time_slider.value() != self._committed_dead_time
+            self._gain_slider.text() != self._committed_gain
+            or self._tau1_slider.text() != self._committed_tau1
+            or self._tau2_slider.text() != self._committed_tau2
+            or self._dead_time_slider.text() != self._committed_dead_time
         ):
-            tau2 = self._tau2_slider.value() if self._tau2_slider.isEnabled() else 0.0
+            tau2 = self._parse_float(self._tau2_slider.text(), 0.0)
             self.parameters_changed.emit(
-                self._gain_slider.value(), self._tau1_slider.value(),
-                tau2, self._dead_time_slider.value(),
+                self._parse_float(self._gain_slider.text(), 1.2),
+                self._parse_float(self._tau1_slider.text(), 3.0),
+                tau2,
+                self._parse_float(self._dead_time_slider.text(), 1.0),
             )
 
         self._committed_preset_idx = self._preset_combo.currentIndex()
-        self._committed_gain = self._gain_slider.value()
-        self._committed_tau1 = self._tau1_slider.value()
-        self._committed_tau2 = self._tau2_slider.value()
-        self._committed_dead_time = self._dead_time_slider.value()
+        self._committed_gain = self._gain_slider.text()
+        self._committed_tau1 = self._tau1_slider.text()
+        self._committed_tau2 = self._tau2_slider.text()
+        self._committed_dead_time = self._dead_time_slider.text()
         self._sim_apply_btn.setEnabled(False)
         self._sim_cancel_btn.setEnabled(False)
 
@@ -559,10 +540,10 @@ class SimulatorPage(QWidget):
         for w in widgets:
             w.blockSignals(True)
         self._preset_combo.setCurrentIndex(self._committed_preset_idx)
-        self._gain_slider.setValue(self._committed_gain)
-        self._tau1_slider.setValue(self._committed_tau1)
-        self._tau2_slider.setValue(self._committed_tau2)
-        self._dead_time_slider.setValue(self._committed_dead_time)
+        self._gain_slider.setText(self._committed_gain)
+        self._tau1_slider.setText(self._committed_tau1)
+        self._tau2_slider.setText(self._committed_tau2)
+        self._dead_time_slider.setText(self._committed_dead_time)
         for w in widgets:
             w.blockSignals(False)
         self._sim_apply_btn.setEnabled(False)
@@ -583,20 +564,21 @@ class SimulatorPage(QWidget):
             return
         if preset_enum != ProcessPresetName.CUSTOM and preset_enum in PRESETS:
             p = PRESETS[preset_enum]
-            self._gain_slider.setValue(p.gain)
-            self._tau1_slider.setValue(p.tau1)
-            self._tau2_slider.setValue(p.tau2 if p.tau2 is not None else 0.0)
-            self._dead_time_slider.setValue(p.dead_time)
+            self._gain_slider.setText(f"{p.gain:.2f}")
+            self._tau1_slider.setText(f"{p.tau1:.1f}")
+            tau2 = p.tau2 if p.tau2 is not None else 0.0
+            self._tau2_slider.setText(f"{tau2:.1f}")
+            self._dead_time_slider.setText(f"{p.dead_time:.1f}")
 
     # ------------------------------------------------------------------
     # Disturbance (immediate actions)
     # ------------------------------------------------------------------
 
     def _on_step_inject(self) -> None:
-        self.step_requested.emit(self._step_amplitude.value())
+        self.step_requested.emit(self._parse_float(self._step_amplitude.text(), 5.0))
 
     def _on_noise_inject(self) -> None:
-        self.noise_requested.emit(self._noise_amplitude.value())
+        self.noise_requested.emit(self._parse_float(self._noise_amplitude.text(), 0.5))
 
     def _on_clear_disturbance(self) -> None:
         self.clear_disturbance_requested.emit()
@@ -614,21 +596,21 @@ class SimulatorPage(QWidget):
     # ------------------------------------------------------------------
 
     def _update_period_label(self) -> None:
-        tau1 = self._tau1_slider.value()
+        tau1 = self._parse_float(self._tau1_slider.text(), 3.0)
         period = max(10.0 * tau1, 1.0)
         self._period_label.setText(f"Excitation Period (10 \u00d7 \u03c41): {period:.1f} s")
 
-    def _on_auto_sp_apply(self) -> None:
-        lo = self._auto_sp_min.value()
-        hi = self._auto_sp_max.value()
+    def _emit_auto_sp(self) -> None:
+        lo = self._parse_float(self._auto_sp_min.text(), 30.0)
+        hi = self._parse_float(self._auto_sp_max.text(), 70.0)
         if lo >= hi:
             return  # ignore invalid range
         self.auto_sp_changed.emit(self._auto_sp_enable.isChecked(), lo, hi)
 
-    def _on_auto_dist_apply(self) -> None:
+    def _emit_auto_dist(self) -> None:
         self.auto_disturbance_changed.emit(
             self._auto_dist_enable.isChecked(),
-            self._auto_dist_amp.value(),
+            self._parse_float(self._auto_dist_amp.text(), 10.0),
         )
 
     def _on_sim_start(self) -> None:
@@ -638,7 +620,9 @@ class SimulatorPage(QWidget):
         self.sim_stop_requested.emit()
 
     def _on_opcua_apply(self) -> None:
-        self.opcua_config_changed.emit(int(self._opcua_port_spin.value()))
+        self.opcua_config_changed.emit(
+            int(self._parse_float(self._opcua_port_edit.text(), 4849))
+        )
 
     def _on_opcua_start(self) -> None:
         self.opcua_start_requested.emit()
@@ -702,6 +686,12 @@ class SimulatorPage(QWidget):
         ti: float | None = None,
         td: float | None = None,
         mode: int | None = None,
+        pid_enabled: bool | None = None,
+        auto_sp_enabled: bool | None = None,
+        auto_sp_min: float | None = None,
+        auto_sp_max: float | None = None,
+        auto_dist_enabled: bool | None = None,
+        auto_dist_amp: float | None = None,
     ) -> None:
         """Bulk update all read-only live variables from simulation tick.
 
@@ -709,7 +699,17 @@ class SimulatorPage(QWidget):
         In MAN mode, CO is user-editable and must not be overwritten.
         SP is never overwritten — user controls it directly.
         Kp/Ti/Td updated only when field not focused (user may be editing).
+        Auto SP/Disturbance/PID-enable synced from backend (simulation is
+        authoritative — HMI is a view).
         """
+        # --- PID enable (sync from backend) ---
+        if pid_enabled is not None and self._pid_enable_cb.isChecked() != pid_enabled:
+            self._pid_enable_cb.blockSignals(True)
+            self._pid_enable_cb.setChecked(pid_enabled)
+            self._pid_enable_cb.blockSignals(False)
+            for ctrl in self._pid_controls:
+                ctrl.setEnabled(pid_enabled)
+
         self._pid_pv_edit.setText(f"{pv:.2f}")
         if kp is not None and not self._pid_kp_edit.hasFocus():
             self._pid_kp_edit.setText(f"{kp:.2f}")
@@ -730,6 +730,21 @@ class SimulatorPage(QWidget):
         self._proc_in_edit.setText(f"{process_in:.2f}")
         self._proc_out_edit.setText(f"{process_out:.2f}")
         self._dist_out_edit.setText(f"{disturbance_out:.2f}")
+
+        # --- Auto SP Variation (sync from backend) ---
+        if auto_sp_enabled is not None and self._auto_sp_enable.isChecked() != auto_sp_enabled:
+            self._auto_sp_enable.blockSignals(True)
+            self._auto_sp_enable.setChecked(auto_sp_enabled)
+            self._auto_sp_enable.blockSignals(False)
+        if auto_sp_min is not None and not self._auto_sp_min.hasFocus():
+            self._auto_sp_min.blockSignals(True)
+            self._auto_sp_min.setText(f"{auto_sp_min:.1f}")
+            self._auto_sp_min.blockSignals(False)
+        if auto_sp_max is not None and not self._auto_sp_max.hasFocus():
+            self._auto_sp_max.blockSignals(True)
+            self._auto_sp_max.setText(f"{auto_sp_max:.1f}")
+            self._auto_sp_max.blockSignals(False)
+
         if sp is not None:
             if self._auto_sp_enable.isChecked():
                 # Auto SP active: working SP comes from the auto-variation algorithm
@@ -739,6 +754,20 @@ class SimulatorPage(QWidget):
                 # Manual SP: working SP = user's SP input
                 self._pid_sp_wrk_edit.setText(self._pid_sp_edit.text())
                 self._auto_sp_edit.setText(f"{sp:.2f}")
+
+        # --- Auto Disturbance (sync from backend) ---
+        if (
+            auto_dist_enabled is not None
+            and self._auto_dist_enable.isChecked() != auto_dist_enabled
+        ):
+            self._auto_dist_enable.blockSignals(True)
+            self._auto_dist_enable.setChecked(auto_dist_enabled)
+            self._auto_dist_enable.blockSignals(False)
+        if auto_dist_amp is not None and not self._auto_dist_amp.hasFocus():
+            self._auto_dist_amp.blockSignals(True)
+            self._auto_dist_amp.setText(f"{auto_dist_amp:.1f}")
+            self._auto_dist_amp.blockSignals(False)
+
         if abs(disturbance_out) > 1e-9:
             self._auto_dist_edit.setText(f"{disturbance_out:.2f}")
 
@@ -753,11 +782,11 @@ class SimulatorPage(QWidget):
         self._apply_pid_mode_style()
         if status.auto_sp is not None:
             self._auto_sp_enable.setChecked(status.auto_sp.enabled)
-            self._auto_sp_min.setValue(status.auto_sp.sp_min_pct)
-            self._auto_sp_max.setValue(status.auto_sp.sp_max_pct)
+            self._auto_sp_min.setText(f"{status.auto_sp.sp_min_pct:.1f}")
+            self._auto_sp_max.setText(f"{status.auto_sp.sp_max_pct:.1f}")
         if status.auto_disturbance is not None:
             self._auto_dist_enable.setChecked(status.auto_disturbance.enabled)
-            self._auto_dist_amp.setValue(status.auto_disturbance.max_amplitude_pct)
+            self._auto_dist_amp.setText(f"{status.auto_disturbance.max_amplitude_pct:.1f}")
 
     @staticmethod
     def _build_block_diagram_svg(theme: ThemeBase) -> str:

@@ -1,11 +1,9 @@
-"""Tests for SimulatorPage — preset selector, parameter sliders, disturbance controls."""
+"""Tests for SimulatorPage — preset selector, parameter fields, disturbance controls."""
 from __future__ import annotations
 
 import pytest
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
-    QDoubleSpinBox,
     QGroupBox,
     QLabel,
     QLineEdit,
@@ -61,18 +59,18 @@ def test_tau2_editable_for_soptd(qtbot, theme):
 
 
 def test_tau2_min_allows_zero(qtbot, theme):
-    """Tau2 min range should allow 0.0 for FOPTD presets."""
+    """Tau2 field should accept 0.0 for FOPTD presets."""
     page = SimulatorPage(theme=theme)
     qtbot.addWidget(page)
-    page._tau2_slider.setValue(0.0)
-    assert page._tau2_slider.value() == 0.0
+    page._tau2_slider.setText("0.0")
+    assert page._tau2_slider.text() == "0.0"
 
 
 def test_step_disturbance_signal(qtbot, theme):
     page = SimulatorPage(theme=theme)
     qtbot.addWidget(page)
     with qtbot.waitSignal(page.step_requested, timeout=1000) as blocker:
-        page._step_amplitude.setValue(5.0)
+        page._step_amplitude.setText("5.0")
         page._on_step_inject()
     assert blocker.args == [5.0]
 
@@ -81,7 +79,7 @@ def test_noise_disturbance_signal(qtbot, theme):
     page = SimulatorPage(theme=theme)
     qtbot.addWidget(page)
     with qtbot.waitSignal(page.noise_requested, timeout=1000) as blocker:
-        page._noise_amplitude.setValue(0.5)
+        page._noise_amplitude.setText("0.5")
         page._on_noise_inject()
     assert blocker.args == [0.5]
 
@@ -127,11 +125,10 @@ class TestSimulatorPagePIDGroup:
         assert cb is not None
         assert cb.isChecked() is False
 
-    def test_pid_mode_combo(self, pid_page: SimulatorPage) -> None:
-        combo = pid_page.findChild(QComboBox, "pid_mode_combo")
-        assert combo is not None
-        assert combo.currentText() == "MAN"
-        assert combo.count() == 2
+    def test_pid_mode_buttons(self, pid_page: SimulatorPage) -> None:
+        assert pid_page._btn_pid_auto is not None
+        assert pid_page._btn_pid_man is not None
+        assert pid_page._pid_active_mode == "MAN"
 
     def test_pid_pv_readonly(self, pid_page: SimulatorPage) -> None:
         edit = pid_page.findChild(QLineEdit, "pid_pv_edit")
@@ -165,69 +162,63 @@ class TestSimulatorPagePIDGroup:
         assert edit.text() == "0.0"
 
     def test_controls_disabled_when_unchecked(self, pid_page: SimulatorPage) -> None:
-        combo = pid_page.findChild(QComboBox, "pid_mode_combo")
         kp = pid_page.findChild(QLineEdit, "pid_kp_edit")
         sp = pid_page.findChild(QLineEdit, "pid_sp_edit")
-        assert not combo.isEnabled()
+        assert not pid_page._btn_pid_auto.isEnabled()
+        assert not pid_page._btn_pid_man.isEnabled()
         assert not kp.isEnabled()
         assert not sp.isEnabled()
 
     def test_controls_enabled_when_checked(self, pid_page: SimulatorPage, qtbot) -> None:
         cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
         cb.setChecked(True)
-        combo = pid_page.findChild(QComboBox, "pid_mode_combo")
         kp = pid_page.findChild(QLineEdit, "pid_kp_edit")
         sp = pid_page.findChild(QLineEdit, "pid_sp_edit")
-        assert combo.isEnabled()
+        assert pid_page._btn_pid_auto.isEnabled()
+        assert pid_page._btn_pid_man.isEnabled()
         assert kp.isEnabled()
         assert sp.isEnabled()
 
 
 class TestSimulatorPagePIDSignals:
     def test_enable_signal(self, pid_page: SimulatorPage, qtbot) -> None:
-        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
-        cb.setChecked(True)
+        """pid_enabled_changed fires immediately on checkbox toggle."""
         with qtbot.waitSignal(pid_page.pid_enabled_changed, timeout=1000) as blocker:
-            pid_page._on_apply()
+            pid_page._pid_enable_cb.setChecked(True)
         assert blocker.args == [True]
 
     def test_params_signal(self, pid_page: SimulatorPage, qtbot) -> None:
-        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
-        cb.setChecked(True)
-        pid_page._on_apply()  # commit enable state
+        """pid_params_changed fires on editingFinished (immediate, no Apply)."""
+        pid_page._pid_enable_cb.setChecked(True)
         pid_page._pid_kp_edit.setText("2.5")
         with qtbot.waitSignal(pid_page.pid_params_changed, timeout=1000) as blocker:
-            pid_page._on_apply()
+            pid_page._pid_kp_edit.editingFinished.emit()
         kp, ti, td = blocker.args
         assert kp == 2.5
         assert ti == 10.0
         assert td == 0.0
 
     def test_mode_signal(self, pid_page: SimulatorPage, qtbot) -> None:
-        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
-        cb.setChecked(True)
-        pid_page._on_apply()  # commit enable state
-        pid_page._pid_mode_combo.setCurrentText("AUTO")
+        """pid_mode_changed fires on button click (immediate, no Apply)."""
+        pid_page._pid_enable_cb.setChecked(True)
         with qtbot.waitSignal(pid_page.pid_mode_changed, timeout=1000) as blocker:
-            pid_page._on_apply()
+            pid_page._on_pid_mode_click("AUTO")
         assert blocker.args == ["AUTO"]
 
     def test_sp_signal(self, pid_page: SimulatorPage, qtbot) -> None:
-        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
-        cb.setChecked(True)
-        pid_page._on_apply()  # commit enable state
+        """pid_sp_changed fires on editingFinished (immediate, no Apply)."""
+        pid_page._pid_enable_cb.setChecked(True)
         pid_page._pid_sp_edit.setText("65.0")
         with qtbot.waitSignal(pid_page.pid_sp_changed, timeout=1000) as blocker:
-            pid_page._on_apply()
+            pid_page._pid_sp_edit.editingFinished.emit()
         assert blocker.args == [65.0]
 
     def test_co_signal(self, pid_page: SimulatorPage, qtbot) -> None:
-        cb = pid_page.findChild(QCheckBox, "pid_enable_cb")
-        cb.setChecked(True)
-        pid_page._on_apply()  # commit enable state
+        """pid_co_changed fires on editingFinished (immediate, no Apply)."""
+        pid_page._pid_enable_cb.setChecked(True)
         pid_page._pid_co_edit.setText("42.0")
         with qtbot.waitSignal(pid_page.pid_co_changed, timeout=1000) as blocker:
-            pid_page._on_apply()
+            pid_page._pid_co_edit.editingFinished.emit()
         assert blocker.args == [42.0]
 
 
@@ -297,12 +288,12 @@ class TestSimulatorPageOPCUA:
         assert "OPC-UA Server" in names
 
     def test_opcua_port_default(self, pid_page: SimulatorPage) -> None:
-        spin = pid_page.findChild(QDoubleSpinBox, "opcua_port_spin")
-        assert spin is not None
-        assert spin.value() == 4849
+        edit = pid_page.findChild(QLineEdit, "opcua_port_edit")
+        assert edit is not None
+        assert edit.text() == "4849"
 
     def test_opcua_config_signal(self, pid_page: SimulatorPage, qtbot) -> None:
-        pid_page._opcua_port_spin.setValue(4842)
+        pid_page._opcua_port_edit.setText("4842")
         with qtbot.waitSignal(pid_page.opcua_config_changed, timeout=1000) as blocker:
             pid_page._on_opcua_apply()
         assert blocker.args == [4842]
@@ -403,3 +394,87 @@ class TestSimulatorPageOPCUAControls:
     def test_opcua_stop_signal(self, pid_page: SimulatorPage, qtbot) -> None:
         with qtbot.waitSignal(pid_page.opcua_stop_requested, timeout=1000):
             pid_page._on_opcua_stop()
+
+
+# ---------------------------------------------------------------------------
+# Backend sync via update_live_values (polling sync tests)
+# ---------------------------------------------------------------------------
+
+
+class TestSimulatorPagePollingSync:
+    """Verify that update_live_values syncs PID enable, Auto SP, and Auto Disturbance."""
+
+    def test_sync_pid_enabled_true(self, pid_page: SimulatorPage) -> None:
+        assert not pid_page._pid_enable_cb.isChecked()
+        pid_page.update_live_values(
+            pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
+            process_in=0.0, process_out=50.0, disturbance_out=0.0,
+            pid_enabled=True,
+        )
+        assert pid_page._pid_enable_cb.isChecked()
+        # Controls should be enabled when PID is enabled
+        assert pid_page._pid_kp_edit.isEnabled()
+
+    def test_sync_pid_enabled_false(self, pid_page: SimulatorPage) -> None:
+        # First enable, then disable via sync
+        pid_page._pid_enable_cb.setChecked(True)
+        pid_page.update_live_values(
+            pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
+            process_in=0.0, process_out=50.0, disturbance_out=0.0,
+            pid_enabled=False,
+        )
+        assert not pid_page._pid_enable_cb.isChecked()
+
+    def test_sync_auto_sp_enabled(self, pid_page: SimulatorPage) -> None:
+        assert not pid_page._auto_sp_enable.isChecked()
+        pid_page.update_live_values(
+            pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
+            process_in=0.0, process_out=50.0, disturbance_out=0.0,
+            auto_sp_enabled=True, auto_sp_min=20.0, auto_sp_max=80.0,
+        )
+        assert pid_page._auto_sp_enable.isChecked()
+        assert pid_page._auto_sp_min.text() == "20.0"
+        assert pid_page._auto_sp_max.text() == "80.0"
+
+    def test_sync_auto_sp_disabled(self, pid_page: SimulatorPage) -> None:
+        pid_page._auto_sp_enable.setChecked(True)
+        pid_page.update_live_values(
+            pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
+            process_in=0.0, process_out=50.0, disturbance_out=0.0,
+            auto_sp_enabled=False,
+        )
+        assert not pid_page._auto_sp_enable.isChecked()
+
+    def test_sync_auto_disturbance_enabled(self, pid_page: SimulatorPage) -> None:
+        assert not pid_page._auto_dist_enable.isChecked()
+        pid_page.update_live_values(
+            pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
+            process_in=0.0, process_out=50.0, disturbance_out=0.0,
+            auto_dist_enabled=True, auto_dist_amp=15.0,
+        )
+        assert pid_page._auto_dist_enable.isChecked()
+        assert pid_page._auto_dist_amp.text() == "15.0"
+
+    def test_sync_auto_disturbance_disabled(self, pid_page: SimulatorPage) -> None:
+        pid_page._auto_dist_enable.setChecked(True)
+        pid_page.update_live_values(
+            pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
+            process_in=0.0, process_out=50.0, disturbance_out=0.0,
+            auto_dist_enabled=False,
+        )
+        assert not pid_page._auto_dist_enable.isChecked()
+
+    def test_sync_none_values_leave_widgets_unchanged(
+        self, pid_page: SimulatorPage
+    ) -> None:
+        """Passing None for optional fields should not change widget state."""
+        pid_page._auto_sp_enable.setChecked(True)
+        pid_page._auto_sp_min.setText("25.0")
+        pid_page.update_live_values(
+            pv=50.0, co=0.0, error=0.0, pid_cv=0.0,
+            process_in=0.0, process_out=50.0, disturbance_out=0.0,
+            # No auto_sp_enabled, auto_sp_min, etc. passed
+        )
+        # Should remain unchanged
+        assert pid_page._auto_sp_enable.isChecked()
+        assert pid_page._auto_sp_min.text() == "25.0"
