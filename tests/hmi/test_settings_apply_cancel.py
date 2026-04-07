@@ -184,3 +184,31 @@ class TestConnectDisconnectImmediate:
 
         with qtbot.waitSignal(page.opcua_disconnect_requested, timeout=1000):
             page._opcua_disconnect_btn.click()
+
+
+class TestApplyEndpointSave:
+    """Apply with changed endpoint emits opcua_endpoint_save_requested, not opcua_connect_requested."""
+
+    def test_apply_emits_save_not_connect(self, qtbot, page):
+        connect_signals = []
+        save_signals = []
+        page.opcua_connect_requested.connect(connect_signals.append)
+        page.opcua_endpoint_save_requested.connect(save_signals.append)
+
+        page._opcua_endpoint.setText("opc.tcp://changed:4840")
+        page._apply_btn.click()
+
+        assert save_signals == ["opc.tcp://changed:4840"]
+        assert connect_signals == []  # Apply should NOT trigger connect
+
+    def test_cancel_reverts_endpoint_to_synced_value(self, qtbot, page):
+        """After sync, cancel reverts to the synced (server) value."""
+        page.set_opcua_endpoint_and_status("opc.tcp://server:4840", connected=True)
+
+        page._opcua_endpoint.setText("opc.tcp://different:4840")
+        assert page.has_unsaved_changes()
+
+        page._cancel_btn.click()
+
+        assert page._opcua_endpoint.text() == "opc.tcp://server:4840"
+        assert not page.has_unsaved_changes()
