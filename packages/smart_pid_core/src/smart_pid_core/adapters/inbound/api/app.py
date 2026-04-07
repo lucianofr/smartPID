@@ -22,6 +22,7 @@ from smart_pid_core.adapters.inbound.api.routers import (
     simulator,
     stats,
     system,
+    system_events,
     users,
 )
 
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.ai_repo import AIRepository
     from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
     from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
+    from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
     from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
     from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
@@ -66,6 +68,7 @@ def create_app(
     alarm_repo: AlarmRepository | None = None,
     alarm_worker: AlarmWorker | None = None,
     audit_repo: AuditRepository | None = None,
+    system_event_repo: SystemEventRepository | None = None,
     event_bus: EventBus | None = None,
 ) -> FastAPI:
     """Build and configure the FastAPI application."""
@@ -86,6 +89,7 @@ def create_app(
     app.state.alarm_repo = alarm_repo
     app.state.alarm_worker = alarm_worker
     app.state.audit_repo = audit_repo
+    app.state.system_event_repo = system_event_repo
     app.state.event_bus = event_bus
     app.state.execution_mode = settings.execution_mode
 
@@ -106,6 +110,7 @@ def create_app(
     app.include_router(alarms.router, prefix="/alarms", tags=["alarms"])
     app.include_router(users.router, prefix="/users", tags=["users"])
     app.include_router(audit.router, prefix="/audit", tags=["audit"])
+    app.include_router(system_events.router, prefix="/system-events", tags=["system-events"])
     app.include_router(export.router, prefix="/export", tags=["export"])
 
     register_error_handlers(app)

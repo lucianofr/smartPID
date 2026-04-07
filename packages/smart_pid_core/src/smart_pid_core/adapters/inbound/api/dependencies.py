@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from smart_pid_core.application.loop_manager import LoopManager
     from smart_pid_core.application.workers.alarm_worker import AlarmWorker
     from smart_pid_core.application.workers.stats_worker import StatsWorker
+    from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
     from smart_pid_core.config import CoreSettings
 
 
@@ -173,3 +174,7 @@ def get_alarm_worker(request: Request) -> AlarmWorker | None:
 
 def get_audit_repo(request: Request) -> AuditRepository:
     return request.app.state.audit_repo
+
+
+def get_system_event_repo(request: Request) -> SystemEventRepository:
+    return request.app.state.system_event_repo
