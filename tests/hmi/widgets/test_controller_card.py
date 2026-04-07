@@ -90,10 +90,52 @@ def test_mode_badge_update(qtbot, theme):
         min_val=0.0, max_val=100.0, theme=theme,
     )
     qtbot.addWidget(card)
-    assert "Mode:" in card._mode_label.text()
     frame = {"pv": 50.0, "sp": 50.0, "co": 50.0, "mode": "AUTO"}
     card.on_telemetry(1, frame)
-    assert "AUTO" in card._mode_label.text()
+    assert card._badge_mode.text() == "AUTO"
+
+
+def test_ai_engine_badge(qtbot, theme):
+    card = ControllerCardWidget(
+        controller_id=1, tag_name="FIC-101",
+        min_val=0.0, max_val=100.0, theme=theme,
+        ai_engine="FUZZY",
+    )
+    qtbot.addWidget(card)
+    assert card._badge_ai_engine.text() == "FUZZY"
+
+
+def test_ai_engine_badge_rl_label(qtbot, theme):
+    card = ControllerCardWidget(
+        controller_id=1, tag_name="FIC-101",
+        min_val=0.0, max_val=100.0, theme=theme,
+        ai_engine="RL",
+    )
+    qtbot.addWidget(card)
+    assert card._badge_ai_engine.text() == "AI RL"
+
+
+def test_optimizer_state_badge(qtbot, theme):
+    card = ControllerCardWidget(
+        controller_id=1, tag_name="FIC-101",
+        min_val=0.0, max_val=100.0, theme=theme,
+    )
+    qtbot.addWidget(card)
+    assert card._badge_opt_state.text() == "STOP"
+    card.on_ai_status(1, "FUZZY", "RUN")
+    assert card._badge_opt_state.text() == "RUN"
+    assert card._badge_ai_engine.text() == "FUZZY"
+
+
+def test_on_ai_status_ignores_other_controller(qtbot, theme):
+    card = ControllerCardWidget(
+        controller_id=1, tag_name="FIC-101",
+        min_val=0.0, max_val=100.0, theme=theme,
+    )
+    qtbot.addWidget(card)
+    card.on_ai_status(2, "RL", "RUN")
+    assert card._badge_opt_state.text() == "STOP"
+    assert card._badge_ai_engine.text() == "NONE"
 
 
 # --- Gear button ---
