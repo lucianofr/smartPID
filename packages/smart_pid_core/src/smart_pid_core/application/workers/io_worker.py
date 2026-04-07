@@ -90,6 +90,7 @@ class IOWorker:
         action_sub = None
         if not self._skip_bkcal_write:
             action_sub = self._bus.create_subscriber(b"ACTION.CTRL")
+        ai_sub = self._bus.create_subscriber(b"ACTION.AI")
         # Wait briefly for bus subscriptions to propagate
         time.sleep(0.05)
 
@@ -161,6 +162,9 @@ class IOWorker:
                 if action_sub is not None:
                     self._drain_and_write_bkcal(action_sub)
 
+                # Drain ACTION.AI.* and write tuning back to OPC-UA (SUPERVISORY only)
+                self._drain_and_write_ai_tuning(ai_sub)
+
             elapsed = time.monotonic() - tick_start
             sleep_time = self._scan_interval_s - elapsed
             if sleep_time > 0:
@@ -229,3 +233,33 @@ class IOWorker:
                 pass
             except Exception:
                 logger.exception("io_worker_bkcal_write_error")
+
+    def _drain_and_write_ai_tuning(self, sub) -> None:  # noqa: ANN001
+        """Drain ACTION.AI.* messages and write new Ti/Ki to OPC-UA.
+
+        Only writes for SUPERVISORY loops (PID runs in DCS).
+        DDC loops are handled internally by the PID worker.
+        """
+        while True:
+            msg = sub.recv(timeout_ms=0)
+            if msg is None:
+                break
+            _topic, payload = msg
+            try:
+                data = msgpack.unpackb(payload)
+                execution_mode = data.get("execution_mode", "")
+                if execution_mode != "SUPERVISORY":
+                    continue
+                new_ki = data.get("new_ki")
+                if new_ki is None:
+                    continue
+                cid = data["controller_id"]
+                self._opcua.write_pid_params(cid, kp=None, ti=float(new_ki), td=None)
+                logger.info(
+                    "io_worker_ai_tuning_write cid=%s ti=%f",
+                    cid, float(new_ki),
+                )
+            except (KeyError, ConnectionError):
+                pass
+            except Exception:
+                logger.exception("io_worker_ai_tuning_write_error")

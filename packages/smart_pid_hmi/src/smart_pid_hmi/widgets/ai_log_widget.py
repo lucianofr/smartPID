@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
 if TYPE_CHECKING:
     from smart_pid_hmi.themes.base import ThemeBase
 
-_MAX_ENTRIES = 200
+_MAX_ENTRIES = 100
 
 
 class AILogWidget(QWidget):
@@ -86,12 +86,12 @@ class AILogWidget(QWidget):
         self._append(f"[{ts}] {engine} \u03b3={gamma:+.4f} Ki={new_ki:.4f} \u2014 {reasoning}")
 
     def _append(self, text: str) -> None:
-        self._entries.append(text)
+        self._entries.appendleft(text)
         self._log_label.setText("\n".join(self._entries))
-        # Auto-scroll to bottom
+        # Keep scroll at top (newest entries first)
         vbar = self._scroll.verticalScrollBar()
         if vbar:
-            vbar.setValue(vbar.maximum())
+            vbar.setValue(0)
 
     def apply_theme(self, theme: ThemeBase) -> None:
         """Re-apply theme."""
