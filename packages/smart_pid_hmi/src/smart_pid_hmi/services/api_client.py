@@ -421,7 +421,18 @@ class APIClient:
         resp.raise_for_status()
         return resp.json()
 
-
+    def get_system_events(
+        self, start: datetime, end: datetime,
+        source: str | None = None, severity: str | None = None,
+    ) -> list[dict]:
+        params: dict = {"start": start.isoformat(), "end": end.isoformat()}
+        if source is not None:
+            params["source"] = source
+        if severity is not None:
+            params["severity"] = severity
+        resp = self._http.get("/system-events", params=params, headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
 
     def create_export(
         self, controller_id: int, start: str, end: str, fmt: str = "csv",

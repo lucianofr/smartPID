@@ -1,12 +1,13 @@
 """AlarmPanel — alarm & event management page with active alarms table and ACK."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QDateTime, Qt, Signal
+from PySide6.QtCore import QDateTime, Qt, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDateTimeEdit,
     QHBoxLayout,
     QHeaderView,
@@ -70,8 +71,8 @@ class AlarmPanel(QWidget):
     def __init__(
         self,
         theme: ThemeBase,
+        api_client: APIClientPort,
         parent: QWidget | None = None,
-        api_client: APIClientPort | None = None,
     ) -> None:
         super().__init__(parent)
         self._theme = theme
@@ -127,6 +128,15 @@ class AlarmPanel(QWidget):
         self._load_history_btn = QPushButton("Load History")
         self._load_history_btn.clicked.connect(self._load_history)
         filter_layout.addWidget(self._load_history_btn)
+
+        self._live_checkbox = QCheckBox("Live")
+        self._live_checkbox.toggled.connect(self._on_live_toggled)
+        filter_layout.addWidget(self._live_checkbox)
+
+        # Live timer (5s refresh)
+        self._live_timer = QTimer(self)
+        self._live_timer.setInterval(5000)
+        self._live_timer.timeout.connect(self._live_refresh)
 
         filter_layout.addStretch()
         layout.addLayout(filter_layout)
@@ -224,6 +234,20 @@ class AlarmPanel(QWidget):
             self._active_alarms[key]["status"] = "CLEARED_UNACK"
             self._active_alarms[key]["transition"] = "CLEARED"
 
+        self._rebuild_table()
+
+    def on_all_acked(self) -> None:
+        """Mark all active alarms as ACKNOWLEDGED (called after ACK All response)."""
+        for key in self._active_alarms:
+            self._active_alarms[key]["status"] = "ACKNOWLEDGED"
+        self._rebuild_table()
+
+    def on_alarm_acked(self, alarm_id: int) -> None:
+        """Mark a specific alarm as ACKNOWLEDGED (called after single ACK response)."""
+        for _key, alarm in self._active_alarms.items():
+            if alarm.get("id") == alarm_id:
+                alarm["status"] = "ACKNOWLEDGED"
+                break
         self._rebuild_table()
 
     # --- Filtering ---
@@ -333,7 +357,7 @@ class AlarmPanel(QWidget):
             ]
             priority = alarm.get("priority", "")
             color = colors.get(priority, self._theme.fg_muted or "#757575")
-            alarm_id = alarm.get("alarm_id")
+            alarm_id = alarm.get("id")
             for col, text in enumerate(items):
                 item = QTableWidgetItem(text)
                 item.setForeground(Qt.GlobalColor.white)
@@ -348,6 +372,58 @@ class AlarmPanel(QWidget):
                         Qt.ItemDataRole.UserRole, alarm_id,
                     )
                 self.active_table.setItem(row, col, item)
+
+    def _on_live_toggled(self, checked: bool) -> None:
+        """Toggle live mode."""
+        self._dt_from.setEnabled(not checked)
+        self._dt_to.setEnabled(not checked)
+        self._load_history_btn.setEnabled(not checked)
+        if checked:
+            self._live_refresh()
+            self._live_timer.start()
+        else:
+            self._live_timer.stop()
+
+    def _live_refresh(self) -> None:
+        """Fetch active alarms + recent system events for live view."""
+        if self._api_client is None:
+            return
+        try:
+            alarms = self._api_client.get_active_alarms()
+        except Exception:  # noqa: BLE001
+            alarms = []
+        self._active_alarms.clear()
+        for alarm in alarms:
+            key = (alarm.get("controller_id", 0), alarm.get("alarm_type", ""))
+            self._active_alarms[key] = {
+                **alarm,
+                "status": "ACKNOWLEDGED" if alarm.get("acknowledged") else "UNACKNOWLEDGED",
+            }
+        # Also fetch recent system events (last 5 min)
+        from datetime import timedelta
+
+        now = datetime.now(tz=UTC)
+        try:
+            sys_events = self._api_client.get_system_events(
+                start=now - timedelta(minutes=5),
+                end=now,
+            )
+            self._system_events = [
+                {
+                    "controller_id": "",
+                    "alarm_type": "SYSTEM",
+                    "priority": e.get("severity", "INFO"),
+                    "value": 0.0,
+                    "limit": 0.0,
+                    "timestamp": e.get("timestamp", ""),
+                    "status": e.get("message", ""),
+                    "transition": "INFO",
+                }
+                for e in sys_events
+            ]
+        except Exception:  # noqa: BLE001
+            pass
+        self._rebuild_table()
 
     def _on_ack_selected(self) -> None:
         selected = self.active_table.selectedItems()

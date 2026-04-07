@@ -1,8 +1,8 @@
 """Tests for MultiTrendPage."""
 import pyqtgraph as pg
-from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLabel, QLineEdit
+from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel, QLineEdit
 
-from smart_pid_hmi.pages.multi_trend_page import MultiTrendPage, _NONE_LABEL
+from smart_pid_hmi.pages.multi_trend_page import _NONE_LABEL, MultiTrendPage
 
 
 def test_creation(qtbot):

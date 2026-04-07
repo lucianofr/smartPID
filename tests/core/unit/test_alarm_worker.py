@@ -192,3 +192,43 @@ class TestAlarmWorkerIntegration:
         assert active[0]["cleared_at"] is not None
 
         await repo.db.close()
+
+
+class TestAlarmWorkerEnrichment:
+    """Tests for controller meta, pv_range, and remove_controller (Bug #6, #9)."""
+
+    def test_alarm_event_includes_controller_name(self, mock_bus):
+        """Alarm events must include controller_name and controller_description (Bug #6)."""
+        from smart_pid_domain.models.alarm_config import AlarmConfig
+
+        config = AlarmConfig(
+            hi_enabled=True, hi_value=80.0, hi_priority=AlarmPriority.WARNING,
+        )
+        worker = AlarmWorker(bus=mock_bus, alarm_configs={1: config})
+        worker.update_controller_meta(1, "TIC-101", "Temp Reactor A")
+
+        assert worker._controller_meta[1] == ("TIC-101", "Temp Reactor A")
+
+    def test_alarm_worker_update_pv_range(self, mock_bus):
+        """AlarmWorker must support pv_range updates for span-based deadband."""
+        worker = AlarmWorker(bus=mock_bus, alarm_configs={})
+        worker.update_pv_range(1, 0.0, 200.0)
+
+        assert worker._pv_ranges[1] == (0.0, 200.0)
+
+    def test_alarm_worker_remove_controller(self, mock_bus):
+        """AlarmWorker.remove_controller cleans up config, meta, and pv_range."""
+        from smart_pid_domain.models.alarm_config import AlarmConfig
+
+        config = AlarmConfig(
+            hi_enabled=True, hi_value=80.0, hi_priority=AlarmPriority.WARNING,
+        )
+        worker = AlarmWorker(bus=mock_bus, alarm_configs={1: config})
+        worker.update_controller_meta(1, "TIC-101", "Temp Reactor A")
+        worker.update_pv_range(1, 0.0, 200.0)
+
+        worker.remove_controller(1)
+
+        assert 1 not in worker._alarm_configs
+        assert 1 not in worker._controller_meta
+        assert 1 not in worker._pv_ranges

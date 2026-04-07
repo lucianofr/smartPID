@@ -52,8 +52,8 @@ async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
             "value": row["limite"],
             "priority": AlarmPriority(row["prioridade"]),
             "hysteresis": row["histerese"],
-            "delay_on_s": row["delay_on_s"] if "delay_on_s" in row.keys() else 0.0,
-            "delay_off_s": row["delay_off_s"] if "delay_off_s" in row.keys() else 0.0,
+            "delay_on_s": row.get("delay_on_s", 0.0),
+            "delay_off_s": row.get("delay_off_s", 0.0),
         }
 
     for cid, alarms in by_controller.items():
@@ -156,6 +156,30 @@ async def _migrate_users_if_needed(spid_path: Path, users_db_path: Path) -> None
     )
 
 
+async def _retention_cleanup(repo_db, interval_hours: int = 24) -> None:  # noqa: ANN001
+    """Daily cleanup of old alarm logs and system events."""
+    _log = structlog.get_logger()
+    while True:
+        await asyncio.sleep(interval_hours * 3600)
+        try:
+            await repo_db.execute(
+                "DELETE FROM Log_Alarmes WHERE timestamp <= datetime('now', '-30 days')"
+            )
+            await repo_db.execute(
+                "DELETE FROM Log_System_Events WHERE timestamp <= datetime('now', '-30 days')"
+            )
+            await repo_db.execute(
+                "DELETE FROM Log_Sintonia_IA WHERE timestamp <= datetime('now', '-7 days')"
+            )
+            await repo_db.execute(
+                "DELETE FROM Log_Processo WHERE timestamp <= datetime('now', '-7 days')"
+            )
+            await repo_db.commit()
+            _log.info("retention_cleanup_complete")
+        except Exception:
+            _log.exception("retention_cleanup_error")
+
+
 async def run_daemon(settings: CoreSettings) -> None:
     """Bootstrap and run the backend daemon until interrupted."""
     logger.info(
@@ -191,12 +215,9 @@ async def run_daemon(settings: CoreSettings) -> None:
     historian = SQLiteHistorian(repo)
     bus = EventBus()
     bus.start()
-    from smart_pid_core.domain.services.alarm_engine import AlarmEngine
-    _alarm_engine = AlarmEngine()
     loop_manager = LoopManager(
         bus=bus,
         execution_mode=settings.execution_mode,
-        alarm_engine=_alarm_engine,
     )
     logger.info("event_bus_started")
 
@@ -313,6 +334,18 @@ async def run_daemon(settings: CoreSettings) -> None:
     alarm_worker.start()
     logger.info("alarm_worker_started")
 
+    # System events infrastructure
+    from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
+    from smart_pid_core.application.workers.system_event_worker import SystemEventWorker
+
+    system_event_repo = SystemEventRepository(repo.db)
+    system_event_worker = SystemEventWorker(
+        bus=bus, system_event_repo=system_event_repo,
+        event_loop=asyncio.get_running_loop(),
+    )
+    system_event_worker.emit("BACKEND", "INFO", "Backend started")
+    logger.info("system_event_worker_started")
+
     # I-INT-1: DBWorker — persist telemetry to SQLite
     from smart_pid_core.application.workers.db_worker import DBWorker
 
@@ -341,6 +374,11 @@ async def run_daemon(settings: CoreSettings) -> None:
     for ctrl in all_controllers:
         loop_manager.start_loop(ctrl)
     logger.info("control_loops_started", count=len(all_controllers))
+
+    # Populate AlarmWorker controller metadata for event enrichment
+    for ctrl in all_controllers:
+        alarm_worker.update_controller_meta(ctrl.id, ctrl.name, ctrl.description)
+        alarm_worker.update_pv_range(ctrl.id, ctrl.pv_scale.eu_min, ctrl.pv_scale.eu_max)
 
     # C-INT-3: ExportWorker — CSV/JSON export jobs
     from smart_pid_core.application.export_worker import ExportWorker
@@ -376,6 +414,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         alarm_repo=alarm_repo,
         alarm_worker=alarm_worker,
         audit_repo=audit_repo,
+        system_event_repo=system_event_repo,
         project_service=project_service,
         event_bus=bus,
     )
@@ -406,14 +445,21 @@ async def run_daemon(settings: CoreSettings) -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, handle_signal)
 
+    # Data retention cleanup (daily)
+    cleanup_task = asyncio.create_task(_retention_cleanup(repo.db))
+
     # Run uvicorn and wait for shutdown signal concurrently
     server_task = asyncio.create_task(server.serve())
     logger.info("daemon_ready")
 
     await stop_event.wait()
+    system_event_worker.emit("BACKEND", "INFO", "Backend shutdown")
     logger.info("shutting_down")
 
     # Graceful shutdown in correct order
+    cleanup_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await cleanup_task
     server.should_exit = True
     await server_task
     await telemetry_pub.stop()

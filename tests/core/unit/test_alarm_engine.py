@@ -179,3 +179,79 @@ class TestNoRetrigger:
         )
         hihi_count = sum(1 for t in t2 if t.alarm_type == AlarmType.HIHI)
         assert hihi_count == 0
+
+
+class TestSpanBasedDeadband:
+    def test_deadband_uses_span_when_pv_range_provided(self):
+        """Deadband should be calculated as % of span, not % of limit (Bug #11)."""
+        engine = AlarmEngine()
+        config = AlarmConfig(
+            hi_enabled=True, hi_value=90.0, hi_priority=AlarmPriority.WARNING,
+            deadband_percent=2.0,  # 2% of span
+        )
+        # Span = 200 - 0 = 200, deadband = 200 * 2% = 4.0
+        # Clear threshold = 90.0 - 4.0 = 86.0
+
+        # Trigger at PV=91
+        t1 = engine.evaluate(1, pv=91.0, sp=50.0, alarm_config=config,
+                             sp_ramping=False, pv_range=(0.0, 200.0))
+        assert len(t1) == 1
+        assert t1[0].transition == "TRIGGERED"
+
+        # PV=87 — still above 86.0, should NOT clear
+        t2 = engine.evaluate(1, pv=87.0, sp=50.0, alarm_config=config,
+                             sp_ramping=False, pv_range=(0.0, 200.0))
+        assert len(t2) == 0
+
+        # PV=85 — below 86.0, should clear
+        t3 = engine.evaluate(1, pv=85.0, sp=50.0, alarm_config=config,
+                             sp_ramping=False, pv_range=(0.0, 200.0))
+        assert len(t3) == 1
+        assert t3[0].transition == "CLEARED"
+
+    def test_deadband_zero_limit_with_span(self):
+        """When limit=0.0, deadband must NOT be zero if pv_range is provided (Bug #11)."""
+        engine = AlarmEngine()
+        config = AlarmConfig(
+            lo_enabled=True, lo_value=0.0, lo_priority=AlarmPriority.WARNING,
+            deadband_percent=1.0,  # 1% of span
+        )
+        # Span = 100, deadband = 1.0. Clear threshold = 0.0 + 1.0 = 1.0
+
+        # Trigger at PV=0
+        t1 = engine.evaluate(1, pv=0.0, sp=50.0, alarm_config=config,
+                             sp_ramping=False, pv_range=(0.0, 100.0))
+        assert len(t1) == 1
+
+        # PV=0.5 — still below 1.0, should NOT clear
+        t2 = engine.evaluate(1, pv=0.5, sp=50.0, alarm_config=config,
+                             sp_ramping=False, pv_range=(0.0, 100.0))
+        assert len(t2) == 0
+
+        # PV=1.5 — above 1.0, should clear
+        t3 = engine.evaluate(1, pv=1.5, sp=50.0, alarm_config=config,
+                             sp_ramping=False, pv_range=(0.0, 100.0))
+        assert len(t3) == 1
+        assert t3[0].transition == "CLEARED"
+
+    def test_deadband_fallback_without_pv_range(self):
+        """Without pv_range, deadband falls back to abs(limit) * percent."""
+        engine = AlarmEngine()
+        config = AlarmConfig(
+            hi_enabled=True, hi_value=100.0, hi_priority=AlarmPriority.WARNING,
+            deadband_percent=2.0,
+        )
+        # Fallback: deadband = abs(100) * 2% = 2.0. Clear = 100 - 2 = 98.
+
+        t1 = engine.evaluate(1, pv=101.0, sp=50.0, alarm_config=config,
+                             sp_ramping=False)
+        assert len(t1) == 1
+
+        t2 = engine.evaluate(1, pv=98.5, sp=50.0, alarm_config=config,
+                             sp_ramping=False)
+        assert len(t2) == 0  # Still above 98
+
+        t3 = engine.evaluate(1, pv=97.0, sp=50.0, alarm_config=config,
+                             sp_ramping=False)
+        assert len(t3) == 1
+        assert t3[0].transition == "CLEARED"

@@ -109,6 +109,12 @@ class APIClientPort(Protocol):
         self, start: datetime, end: datetime, controller_id: int | None = ...,
     ) -> list[dict]: ...
 
+    # System Events
+    def get_system_events(
+        self, start: datetime, end: datetime,
+        source: str | None = ..., severity: str | None = ...,
+    ) -> list[dict]: ...
+
     # Export
     def create_export(
         self, controller_id: int, start: str, end: str, fmt: str = ...,

@@ -12,6 +12,7 @@ from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
@@ -37,6 +38,7 @@ async def api_deps(tmp_path):
     await user_repo.initialize()
     alarm_repo = AlarmRepository(repo)
     audit_repo = AuditRepository(repo)
+    system_event_repo = SystemEventRepository(repo.db)
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
     loop_manager = LoopManager(bus=bus)
@@ -62,6 +64,7 @@ async def api_deps(tmp_path):
         "user_repo": user_repo,
         "alarm_repo": alarm_repo,
         "audit_repo": audit_repo,
+        "system_event_repo": system_event_repo,
         "loop_manager": loop_manager,
         "project_service": project_service,
         "projects_dir": projects_dir,
@@ -86,6 +89,7 @@ async def app(api_deps):
         project_service=api_deps["project_service"],
         alarm_repo=api_deps["alarm_repo"],
         audit_repo=api_deps["audit_repo"],
+        system_event_repo=api_deps["system_event_repo"],
         event_bus=api_deps["bus"],
     )
 
@@ -116,6 +120,16 @@ def user_headers(api_deps) -> dict[str, str]:
         secret=api_deps["settings"].jwt_secret,
     )
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+async def system_event_repo(api_deps):
+    return api_deps["system_event_repo"]
+
+
+@pytest.fixture
+async def alarm_repo(api_deps):
+    return api_deps["alarm_repo"]
 
 
 @pytest.fixture

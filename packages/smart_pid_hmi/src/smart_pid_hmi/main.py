@@ -112,6 +112,8 @@ class MainWindow(QMainWindow):
     _sim_live_signal = Signal(dict)  # simulator live values from poll
     _ai_status_signal = Signal(int, str, bool)  # (controller_id, engine, running)
     _controller_updated_signal = Signal(int, object)  # (controller_id, controller_dict)
+    _ack_single_result = Signal(object)  # dict result from ack_alarm
+    _ack_all_result = Signal(object)     # dict result from ack_all_alarms
 
     def __init__(
         self,
@@ -137,6 +139,8 @@ class MainWindow(QMainWindow):
         self._kpi_data_signal.connect(self._on_kpi_data_received)
         self._edit_dialog_signal.connect(self._open_edit_dialog)
         self._controller_updated_signal.connect(self._on_controller_updated)
+        self._ack_single_result.connect(self._on_ack_single_result)
+        self._ack_all_result.connect(self._on_ack_all_result)
         self._project_info_signal.connect(self._on_project_info_received)
         self._opcua_status_signal.connect(self._on_opcua_status_received)
         # Cached controller list for KPI computation
@@ -294,7 +298,7 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._dashboard_page)
         self._simulator_page = SimulatorPage(theme=theme)
         self._stack.addWidget(self._simulator_page)
-        self._alarm_panel = AlarmPanel(theme=theme)
+        self._alarm_panel = AlarmPanel(theme=theme, api_client=self._api_client)
         self._stack.addWidget(self._alarm_panel)
         self._executive_page = ExecutiveDashboardPage(theme=theme)
         self._stack.addWidget(self._executive_page)
@@ -356,8 +360,11 @@ class MainWindow(QMainWindow):
         )
         bus_bridge.alarm_received.connect(self._alarm_panel.on_alarm)
         bus_bridge.ai_action_received.connect(self._on_ai_action)
+        bus_bridge.system_event_received.connect(self._on_system_event)
         self._alarm_panel.ack_all_requested.connect(self._send_ack_all)
         self._alarm_panel.ack_requested.connect(self._send_ack_single)
+        self._dashboard_page.alarm_ack_requested.connect(self._send_ack_single)
+        self._dashboard_page.alarm_ack_all_requested.connect(self._send_ack_all)
         self._simulator_page.preset_changed.connect(self._send_sim_preset)
         self._simulator_page.parameters_changed.connect(self._send_sim_parameters)
         self._simulator_page.step_requested.connect(self._send_sim_step)
@@ -601,14 +608,47 @@ class MainWindow(QMainWindow):
         self._safe_api_call(self._api_client.set_output, controller_id, value)
 
     def _send_ack_single(self, alarm_id: int) -> None:
-        """ACK a single alarm by id."""
-        self._safe_api_call(self._api_client.ack_alarm, alarm_id)
+        """ACK a single alarm and update all 3 widgets."""
+        def wrapper():
+            try:
+                result = self._api_client.ack_alarm(alarm_id)
+                if result is not None:
+                    self._ack_single_result.emit(result)
+            except Exception as e:
+                self._api_error_signal.emit(str(e))
+        threading.Thread(target=wrapper, daemon=True).start()
+
+    def _on_ack_single_result(self, result: dict) -> None:
+        """Handle ACK single result on main thread -- update all 3 widgets."""
+        controller_id = result.get("controller_id")
+        alarm_type = result.get("alarm_type")
+        alarm_id = result.get("id")
+        if alarm_id is not None:
+            self._alarm_panel.on_alarm_acked(alarm_id)
+        if controller_id is not None and alarm_type:
+            self._dashboard_page.on_alarm_ack(controller_id, alarm_type)
 
     def _send_ack_all(self) -> None:
-        self._safe_api_call(self._api_client.ack_all_alarms)
-        # Notify cards to stop blinking (ack all controllers)
-        for card in self._dashboard_page._cards:
-            card.on_alarm_ack(card.controller_id)
+        """ACK all alarms and update all 3 widgets."""
+        def wrapper():
+            try:
+                result = self._api_client.ack_all_alarms()
+                if result is not None:
+                    self._ack_all_result.emit(result)
+            except Exception as e:
+                self._api_error_signal.emit(str(e))
+        threading.Thread(target=wrapper, daemon=True).start()
+
+    def _on_ack_all_result(self, result: dict) -> None:
+        """Handle ACK All result on main thread -- update all 3 widgets."""
+        controller_ids = result.get("controller_ids", [])
+        # Update AlarmPanel
+        self._alarm_panel.on_all_acked()
+        # Update AlarmBar
+        self._dashboard_page.on_all_alarms_acked()
+        # Update cards
+        for cid in controller_ids:
+            self._dashboard_page.on_alarm_ack(cid, None)
 
     def _send_tuning(self, controller_id: int, gains: dict) -> None:
         self._safe_api_call(
@@ -1060,6 +1100,12 @@ class MainWindow(QMainWindow):
             params["reset"] = frame.get("ti", 0.0)
             params["rate"] = frame.get("td", 0.0)
         self._dashboard_page._faceplate.update_live_params(params)  # noqa: SLF001
+
+    def _on_system_event(self, event: dict) -> None:
+        """Forward system event to AlarmPanel."""
+        message = event.get("message", "")
+        severity = event.get("severity", "INFO")
+        self._alarm_panel.on_system_event(message, priority=severity)
 
     def _on_ai_action(self, controller_id: int, action: dict) -> None:
         """Handle AI optimizer action: log to alarm panel and write Ki to OPC-UA."""

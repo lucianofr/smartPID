@@ -14,6 +14,7 @@ class BusBridge(QObject):
     alarm_received = Signal(int, object)         # (controller_id, alarm_dict)
     ai_action_received = Signal(int, object)    # (controller_id, action_dict)
     system_state_changed = Signal(object)        # (state_dict)
+    system_event_received = Signal(object)        # (event_dict)
     connection_lost = Signal()
     connection_restored = Signal()
 
@@ -54,6 +55,7 @@ class BusBridge(QObject):
         batch: dict[int, dict] = {}
         alarms: list[tuple[int, dict]] = []
         ai_actions: list[tuple[int, dict]] = []
+        system_events: list[dict] = []
 
         # Drain all available messages
         while True:
@@ -74,6 +76,9 @@ class BusBridge(QObject):
                 cid = data.get("controller_id", 0)
                 alarms.append((cid, data))
                 self._last_frame_time = time.monotonic()
+            elif topic.startswith("EVENT.SYSTEM"):
+                system_events.append(data)
+                self._last_frame_time = time.monotonic()
 
         # Emit batched telemetry (one per controller)
         for cid, frame in batch.items():
@@ -88,6 +93,10 @@ class BusBridge(QObject):
         # Emit all alarms (never drop)
         for cid, alarm in alarms:
             self.alarm_received.emit(cid, alarm)
+
+        # Emit system events (never drop)
+        for event in system_events:
+            self.system_event_received.emit(event)
 
         self._check_heartbeat()
 

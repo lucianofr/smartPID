@@ -38,6 +38,18 @@ class AlarmEngine:
     def __init__(self) -> None:
         self._states: dict[tuple[int, AlarmType], _PointState] = {}
 
+    @staticmethod
+    def _calc_deadband(
+        limit: float,
+        deadband_percent: float,
+        pv_range: tuple[float, float] | None,
+    ) -> float:
+        """Calculate deadband: prefer span-based, fallback to limit-based."""
+        if pv_range is not None:
+            span = pv_range[1] - pv_range[0]
+            return span * deadband_percent / 100.0
+        return abs(limit) * deadband_percent / 100.0
+
     def evaluate(
         self,
         controller_id: int,
@@ -45,6 +57,7 @@ class AlarmEngine:
         sp: float,
         alarm_config: AlarmConfig,
         sp_ramping: bool,
+        pv_range: tuple[float, float] | None = None,
     ) -> list[AlarmTransition]:
         """Evaluate all alarm types for one controller. Returns transitions."""
         now = datetime.now(tz=UTC)
@@ -82,7 +95,7 @@ class AlarmEngine:
             if not enabled:
                 continue
             state = self._get_state(controller_id, atype)
-            deadband = abs(limit) * alarm_config.deadband_percent / 100.0
+            deadband = self._calc_deadband(limit, alarm_config.deadband_percent, pv_range)
             delay_on, delay_off = self._get_delays(atype, alarm_config)
 
             if atype in _HIGH_ALARMS:
@@ -122,7 +135,7 @@ class AlarmEngine:
                 if not enabled:
                     continue
                 state = self._get_state(controller_id, atype)
-                deadband = abs(limit) * alarm_config.deadband_percent / 100.0
+                deadband = self._calc_deadband(limit, alarm_config.deadband_percent, pv_range)
                 delay_on, delay_off = self._get_delays(atype, alarm_config)
                 triggered = deviation >= limit
                 cleared = deviation < (limit - deadband)

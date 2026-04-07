@@ -82,8 +82,8 @@ async def test_acknowledge_all(alarm_repo: AlarmRepository):
     now = datetime.now(tz=UTC)
     await alarm_repo.insert_alarm(1, AlarmType.HIHI, AlarmPriority.CRITICAL, 95.0, 90.0, now)
     await alarm_repo.insert_alarm(1, AlarmType.HI, AlarmPriority.WARNING, 85.0, 80.0, now)
-    count = await alarm_repo.acknowledge_all("admin", now)
-    assert count == 2
+    result = await alarm_repo.acknowledge_all("admin", now)
+    assert result["acknowledged_count"] == 2
 
 
 @pytest.mark.asyncio
@@ -97,6 +97,38 @@ async def test_get_history(alarm_repo: AlarmRepository):
         end=now + timedelta(hours=1),
     )
     assert len(history) == 1
+
+
+@pytest.mark.asyncio
+async def test_acknowledge_returns_alarm_details(alarm_repo: AlarmRepository):
+    """acknowledge() must return dict with controller_id, alarm_type, priority."""
+    aid = await alarm_repo.insert_alarm(
+        controller_id=1,
+        alarm_type=AlarmType.HI,
+        priority=AlarmPriority.WARNING,
+        value=85.0,
+        limit_value=80.0,
+        triggered_at=datetime.now(tz=UTC),
+    )
+    result = await alarm_repo.acknowledge(aid, "operator1", datetime.now(tz=UTC))
+    assert result["id"] == aid
+    assert result["controller_id"] == 1
+    assert result["alarm_type"] == "HI"
+    assert result["priority"] == "WARNING"
+    assert result["acknowledged"] is True
+
+
+@pytest.mark.asyncio
+async def test_acknowledge_all_returns_controller_ids(alarm_repo: AlarmRepository):
+    """acknowledge_all() must return count and affected controller_ids."""
+    now = datetime.now(tz=UTC)
+    await alarm_repo.insert_alarm(1, AlarmType.HI, AlarmPriority.WARNING, 85.0, 80.0, now)
+    await alarm_repo.insert_alarm(2, AlarmType.HIHI, AlarmPriority.CRITICAL, 95.0, 90.0, now)
+    await alarm_repo.insert_alarm(1, AlarmType.LO, AlarmPriority.WARNING, 10.0, 15.0, now)
+
+    result = await alarm_repo.acknowledge_all("operator1", now)
+    assert result["acknowledged_count"] == 3
+    assert set(result["controller_ids"]) == {1, 2}
 
 
 @pytest.mark.asyncio

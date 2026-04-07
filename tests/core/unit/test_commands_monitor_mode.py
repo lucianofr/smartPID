@@ -18,9 +18,9 @@ from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopContext, LoopManager
 from smart_pid_core.application.workers.pid_worker import PIDWorker
 from smart_pid_core.config import CoreSettings
-from smart_pid_domain.enums import ControllerMode
 from smart_pid_core.domain.services.pid_engine import PIDEngine
 from smart_pid_core.domain.services.pid_mode_manager import ModeManager
+from smart_pid_domain.enums import ControllerMode
 from smart_pid_domain.models.controller import Controller, PIDParams
 
 

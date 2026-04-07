@@ -15,7 +15,6 @@ from smart_pid_domain.exceptions import ControllerNotFoundError, DomainError
 
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import EventBus
-    from smart_pid_core.domain.services.alarm_engine import AlarmEngine
     from smart_pid_domain.models.controller import Controller
 
 
@@ -38,11 +37,9 @@ class LoopManager:
         self,
         bus: EventBus,
         execution_mode: str = "execute",
-        alarm_engine: AlarmEngine | None = None,
     ) -> None:
         self._bus = bus
         self._execution_mode = execution_mode
-        self._alarm_engine = alarm_engine
         self._loops: dict[int, LoopContext] = {}
 
     def start_loop(self, controller: Controller) -> None:
@@ -77,7 +74,6 @@ class LoopManager:
             pid_worker = PIDWorker(
                 bus=self._bus, controller=controller,
                 engine=engine, mode_manager=mode_manager,
-                alarm_engine=self._alarm_engine,
             )
             ctx = LoopContext(
                 controller=controller, pid_worker=pid_worker,
