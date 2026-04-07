@@ -485,8 +485,14 @@ class FaceplateWidget(QFrame):
             gain = float(self._kp_input.text())
             reset = float(self._ti_input.text())
             rate = float(self._td_input.text())
-        except ValueError:
+        except ValueError as e:
+            print(f"DIAG gains_changed: ValueError {e} "
+                  f"kp='{self._kp_input.text()}' "
+                  f"ti='{self._ti_input.text()}' "
+                  f"td='{self._td_input.text()}'")
             return
+        print(f"DIAG gains_changed: emitting cid={self._controller_id} "
+              f"kp={gain} ti={reset} td={rate}")
         self.gains_changed.emit(self._controller_id, {
             "gain": gain, "reset": reset, "rate": rate,
         })
