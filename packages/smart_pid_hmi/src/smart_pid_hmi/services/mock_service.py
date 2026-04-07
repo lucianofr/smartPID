@@ -285,6 +285,9 @@ class MockAPIClient:
         return {"ok": True, "controller_id": controller_id}
 
     # AI Optimizer
+    def get_ai_status(self, controller_id: int) -> dict:
+        return {"controller_id": controller_id, "engine": "NONE"}
+
     def start_optimizer(self, controller_id: int) -> dict:
         return {"ok": True, "controller_id": controller_id}
 

@@ -47,7 +47,6 @@ class FaceplateWidget(QFrame):
     mode_requested = Signal(int, str)          # (controller_id, mode)
     output_requested = Signal(int, float)      # (controller_id, value)
     optimizer_run_requested = Signal(int)      # (controller_id)
-    optimizer_pause_requested = Signal(int)    # (controller_id)
     optimizer_stop_requested = Signal(int)     # (controller_id)
     gains_changed = Signal(int, dict)          # (controller_id, {gain, reset, rate})
 
@@ -170,7 +169,7 @@ class FaceplateWidget(QFrame):
         self._separators.append(sep4)
         layout.addWidget(sep4)
 
-        # -- AI Optimizer buttons --
+        # -- AI Optimizer buttons (RUN / STOP) --
         opt_row = QHBoxLayout()
         opt_row.setSpacing(8)
         opt_lbl = QLabel("AI Optimizer:")
@@ -181,16 +180,14 @@ class FaceplateWidget(QFrame):
         opt_row.addWidget(opt_lbl)
         self._opt_label = opt_lbl
         self._btn_opt_run = QPushButton("RUN")
-        self._btn_opt_pause = QPushButton("PAUSE")
         self._btn_opt_stop = QPushButton("STOP")
-        for btn in (self._btn_opt_run, self._btn_opt_pause, self._btn_opt_stop):
+        self._ai_running = False
+        for btn in (self._btn_opt_run, self._btn_opt_stop):
             btn.setFixedHeight(28)
         self._btn_opt_run.clicked.connect(self._on_opt_run)
-        self._btn_opt_pause.clicked.connect(self._on_opt_pause)
         self._btn_opt_stop.clicked.connect(self._on_opt_stop)
         self._apply_optimizer_style(theme)
         opt_row.addWidget(self._btn_opt_run)
-        opt_row.addWidget(self._btn_opt_pause)
         opt_row.addWidget(self._btn_opt_stop)
         opt_row.addStretch()
         layout.addLayout(opt_row)
@@ -526,34 +523,43 @@ class FaceplateWidget(QFrame):
                 lbl.setText(f"{label_name}: \u2014")
 
     def _apply_optimizer_style(self, theme: ThemeBase) -> None:
-        """Style optimizer buttons as small flat controls."""
+        """Style optimizer buttons — highlight active state."""
         bg_dim = _theme_attr(theme, "bg_input", theme.bg_widget)
         br = _theme_attr(theme, "border_radius", "0px")
         accent = _theme_attr(theme, "accent", theme.fg_secondary)
-        base_css = (
-            f"background-color: {bg_dim}; "
+        base = (
             f"border: 1px solid {theme.border}; "
             f"border-radius: {br}; "
             f"padding: 2px 10px; "
             f"font-size: {theme.font_size_label}px;"
         )
-        self._btn_opt_run.setStyleSheet(
-            f"QPushButton {{ {base_css} color: {accent}; }}"
-        )
-        self._btn_opt_pause.setStyleSheet(
-            f"QPushButton {{ {base_css} color: {theme.fg_secondary}; }}"
-        )
-        self._btn_opt_stop.setStyleSheet(
-            f"QPushButton {{ {base_css} color: {theme.alarm_critical}; }}"
-        )
+        if self._ai_running:
+            self._btn_opt_run.setStyleSheet(
+                f"QPushButton {{ {base} background-color: {accent};"
+                f" color: {theme.bg_primary}; font-weight: bold; }}"
+            )
+            self._btn_opt_stop.setStyleSheet(
+                f"QPushButton {{ {base} background-color: {bg_dim};"
+                f" color: {theme.fg_secondary}; }}"
+            )
+        else:
+            self._btn_opt_run.setStyleSheet(
+                f"QPushButton {{ {base} background-color: {bg_dim};"
+                f" color: {theme.fg_secondary}; }}"
+            )
+            self._btn_opt_stop.setStyleSheet(
+                f"QPushButton {{ {base} background-color: {theme.alarm_critical};"
+                f" color: {theme.bg_primary}; font-weight: bold; }}"
+            )
+
+    def set_ai_running(self, running: bool) -> None:
+        """Update AI optimizer running state and restyle buttons."""
+        self._ai_running = running
+        self._apply_optimizer_style(self._theme)
 
     def _on_opt_run(self) -> None:
         if self._controller_id is not None:
             self.optimizer_run_requested.emit(self._controller_id)
-
-    def _on_opt_pause(self) -> None:
-        if self._controller_id is not None:
-            self.optimizer_pause_requested.emit(self._controller_id)
 
     def _on_opt_stop(self) -> None:
         if self._controller_id is not None:

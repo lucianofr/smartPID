@@ -63,6 +63,7 @@ class MainWindow(QMainWindow):
     _opcua_status_signal = Signal(bool)  # OPC-UA connection status from watchdog
     _stats_signal = Signal(int, dict)  # (controller_id, stats_dict)
     _sim_live_signal = Signal(dict)  # simulator live values from poll
+    _ai_status_signal = Signal(bool)  # AI optimizer running state
 
     def __init__(
         self,
@@ -110,6 +111,9 @@ class MainWindow(QMainWindow):
         self._stats_timer.timeout.connect(self._poll_stats)
         self._stats_signal.connect(self._on_stats_received)
         self._sim_live_signal.connect(self._on_sim_live_received)
+        self._ai_status_signal.connect(
+            lambda running: self._dashboard_page._faceplate.set_ai_running(running)  # noqa: SLF001
+        )
 
         self.setWindowTitle("Smart PID HMI")
         self.setMinimumSize(1024, 700)
@@ -332,9 +336,6 @@ class MainWindow(QMainWindow):
         # Optimizer signals from faceplate
         faceplate = self._dashboard_page._faceplate  # noqa: SLF001
         faceplate.optimizer_run_requested.connect(self._send_optimizer_start)
-        faceplate.optimizer_pause_requested.connect(
-            self._send_optimizer_pause,
-        )
         faceplate.optimizer_stop_requested.connect(
             self._send_optimizer_stop,
         )
@@ -514,11 +515,6 @@ class MainWindow(QMainWindow):
     def _send_optimizer_start(self, controller_id: int) -> None:
         self._safe_api_call(
             self._api_client.start_optimizer, controller_id,
-        )
-
-    def _send_optimizer_pause(self, controller_id: int) -> None:
-        self._safe_api_call(
-            self._api_client.pause_optimizer, controller_id,
         )
 
     def _send_optimizer_stop(self, controller_id: int) -> None:
@@ -837,7 +833,7 @@ class MainWindow(QMainWindow):
         threading.Thread(target=do_poll, daemon=True).start()
 
     def _poll_stats(self) -> None:
-        """Poll performance stats from backend and update faceplate."""
+        """Poll performance stats and AI optimizer status."""
         def do_poll():
             try:
                 stats_list = self._api_client.get_all_stats()
@@ -846,6 +842,15 @@ class MainWindow(QMainWindow):
                     self._stats_signal.emit(cid, stats)
             except Exception:
                 pass  # Stats are non-critical
+
+            # Poll AI optimizer status for selected controller
+            cid = self._dashboard_page._selected_id  # noqa: SLF001
+            if cid is not None:
+                try:
+                    self._api_client.get_ai_status(cid)
+                    self._ai_status_signal.emit(True)
+                except Exception:
+                    self._ai_status_signal.emit(False)
 
         threading.Thread(target=do_poll, daemon=True).start()
 
