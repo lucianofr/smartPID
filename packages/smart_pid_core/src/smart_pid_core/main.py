@@ -310,6 +310,18 @@ async def run_daemon(settings: CoreSettings) -> None:
     alarm_worker.start()
     logger.info("alarm_worker_started")
 
+    # System events infrastructure
+    from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
+    from smart_pid_core.application.workers.system_event_worker import SystemEventWorker
+
+    system_event_repo = SystemEventRepository(repo.db)
+    system_event_worker = SystemEventWorker(
+        bus=bus, system_event_repo=system_event_repo,
+        event_loop=asyncio.get_running_loop(),
+    )
+    system_event_worker.emit("BACKEND", "INFO", "Backend started")
+    logger.info("system_event_worker_started")
+
     # I-INT-1: DBWorker — persist telemetry to SQLite
     from smart_pid_core.application.workers.db_worker import DBWorker
 
@@ -338,6 +350,11 @@ async def run_daemon(settings: CoreSettings) -> None:
     for ctrl in all_controllers:
         loop_manager.start_loop(ctrl)
     logger.info("control_loops_started", count=len(all_controllers))
+
+    # Populate AlarmWorker controller metadata for event enrichment
+    for ctrl in all_controllers:
+        alarm_worker.update_controller_meta(ctrl.id, ctrl.name, ctrl.description)
+        alarm_worker.update_pv_range(ctrl.id, ctrl.pv_scale.eu_min, ctrl.pv_scale.eu_max)
 
     # C-INT-3: ExportWorker — CSV/JSON export jobs
     from smart_pid_core.application.export_worker import ExportWorker
@@ -373,6 +390,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         alarm_repo=alarm_repo,
         alarm_worker=alarm_worker,
         audit_repo=audit_repo,
+        system_event_repo=system_event_repo,
         project_service=project_service,
         event_bus=bus,
     )
@@ -408,6 +426,7 @@ async def run_daemon(settings: CoreSettings) -> None:
     logger.info("daemon_ready")
 
     await stop_event.wait()
+    system_event_worker.emit("BACKEND", "INFO", "Backend shutdown")
     logger.info("shutting_down")
 
     # Graceful shutdown in correct order
