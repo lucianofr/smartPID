@@ -43,12 +43,12 @@ class TestEndToEndAITuning:
     def test_fuzzy_adjusts_ki_over_time(self, bus, controller):
         """Verify that the fuzzy engine modifies Ki when there is a sustained error.
 
-        Flow: test publishes TELEMETRY (with mode=AUTO) -> StatsWorker computes
-        performance indices and publishes STATS -> AIWorker triggers fuzzy
-        computation and publishes ACTION.AI.
+        Flow: test publishes TELEMETRY (with mode=AUTO) -> AIWorker triggers fuzzy
+        computation on its timer and publishes ACTION.AI.
         """
         stats_worker = StatsWorker(bus=bus, controller=controller)
         ai_worker = AIWorker(bus=bus, controller=controller)
+        ai_worker._ai_period_s = 0.5  # Override for fast testing
 
         stats_worker.start()
         ai_worker.start()
@@ -59,9 +59,7 @@ class TestEndToEndAITuning:
             time.sleep(0.05)
 
             # Simulate steady-state error (PV below SP).
-            # With ULTRA_FAST (5s window) and scan_rate=100ms, publish_interval=10.
-            # Send enough samples to trigger at least one STATS publication.
-            for _ in range(25):
+            for _ in range(15):
                 telem = {"pv": 45.0, "sp": 50.0, "co": 50.0, "mode": "AUTO"}
                 pub.send(
                     f"TELEMETRY.{controller.id}".encode(),
@@ -69,7 +67,7 @@ class TestEndToEndAITuning:
                 )
                 time.sleep(0.12)
 
-            # Wait for AI cycle to process after STATS trigger
+            # Wait for AI timer cycle
             time.sleep(1.0)
 
             # Check that ACTION.AI was published

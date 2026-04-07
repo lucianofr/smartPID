@@ -1,7 +1,7 @@
-"""Tests for AIWorker mode guard and stats-driven cadence.
+"""Tests for AIWorker mode guard and timer-driven cadence.
 
 Rule 1: Fuzzy/RL must only execute when loop mode is AUTO, CAS, or RCAS.
-Rule 2: AI evaluation cadence must match stats publish cadence (trigger on STATS).
+Rule 2: AI evaluation runs on a fixed timer (ProcessSpeed.ai_period_s).
 """
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ from smart_pid_domain.models.controller import AIConfig, Controller, ScaleConfig
 NON_AUTO_MODES = ["MAN", "OOS", "LO", "IMAN", "ROUT"]
 # Modes where AI MUST run
 AUTO_MODES = ["AUTO", "CAS", "RCAS"]
+
+_TEST_AI_PERIOD = 0.3  # 300ms for fast testing
 
 
 @pytest.fixture
@@ -55,6 +57,7 @@ class TestAIWorkerModeGuard:
     def test_skips_non_auto_modes(self, bus, controller_fuzzy, mode):
         """When telemetry reports a non-auto mode, no ACTION.AI is published."""
         worker = AIWorker(bus=bus, controller=controller_fuzzy)
+        worker._ai_period_s = _TEST_AI_PERIOD
         worker.start()
         try:
             pub = bus.create_publisher()
@@ -70,17 +73,8 @@ class TestAIWorkerModeGuard:
                 )
                 time.sleep(0.05)
 
-            # Send a STATS message to trigger AI evaluation
-            stats = {
-                "controller_id": controller_fuzzy.id,
-                "iae": 1.0,
-                "itae": 0.5,
-            }
-            pub.send(
-                f"STATS.{controller_fuzzy.id}".encode(),
-                msgpack.packb(stats),
-            )
-            time.sleep(0.5)
+            # Wait for at least one AI cycle
+            time.sleep(_TEST_AI_PERIOD + 0.5)
 
             # AI should NOT have published any action
             msg = sub.recv(timeout_ms=500)
@@ -92,6 +86,7 @@ class TestAIWorkerModeGuard:
     def test_runs_in_auto_modes(self, bus, controller_fuzzy, mode):
         """When telemetry reports an auto mode, AI computes and publishes ACTION.AI."""
         worker = AIWorker(bus=bus, controller=controller_fuzzy)
+        worker._ai_period_s = _TEST_AI_PERIOD
         worker.start()
         try:
             pub = bus.create_publisher()
@@ -107,17 +102,7 @@ class TestAIWorkerModeGuard:
                 )
                 time.sleep(0.05)
 
-            # Send a STATS message to trigger AI evaluation
-            stats = {
-                "controller_id": controller_fuzzy.id,
-                "iae": 1.0,
-                "itae": 0.5,
-            }
-            pub.send(
-                f"STATS.{controller_fuzzy.id}".encode(),
-                msgpack.packb(stats),
-            )
-
+            # Wait for timer-based AI cycle
             msg = sub.recv(timeout_ms=2000)
             assert msg is not None, f"AI should run in mode={mode}"
             _topic, payload = msg
@@ -128,19 +113,20 @@ class TestAIWorkerModeGuard:
             worker.stop()
 
 
-class TestAIWorkerStatsDrivenCadence:
-    """AI must trigger on STATS publication, not on its own timer."""
+class TestAIWorkerTimerCadence:
+    """AI runs on its own timer, independent of STATS."""
 
-    def test_triggers_on_stats_message(self, bus, controller_fuzzy):
-        """AI computes only when a STATS message arrives."""
+    def test_fires_on_timer_without_stats(self, bus, controller_fuzzy):
+        """AI fires based on its timer, no STATS message needed."""
         worker = AIWorker(bus=bus, controller=controller_fuzzy)
+        worker._ai_period_s = _TEST_AI_PERIOD
         worker.start()
         try:
             pub = bus.create_publisher()
             sub = bus.create_subscriber(f"ACTION.AI.{controller_fuzzy.id}".encode())
             time.sleep(0.05)
 
-            # Send telemetry (with AUTO mode)
+            # Send telemetry (with AUTO mode) — no STATS needed
             for _ in range(3):
                 telem = {"pv": 55.0, "sp": 50.0, "co": 48.0, "mode": "AUTO"}
                 pub.send(
@@ -149,39 +135,23 @@ class TestAIWorkerStatsDrivenCadence:
                 )
                 time.sleep(0.05)
 
-            # Wait WITHOUT sending STATS — AI should not fire
-            time.sleep(0.5)
-            msg = sub.recv(timeout_ms=200)
-            assert msg is None, "AI should not fire without STATS trigger"
-
-            # Now send STATS — AI should fire
-            stats = {"controller_id": controller_fuzzy.id, "iae": 1.0}
-            pub.send(
-                f"STATS.{controller_fuzzy.id}".encode(),
-                msgpack.packb(stats),
-            )
-
+            # Wait for the timer to fire
             msg = sub.recv(timeout_ms=2000)
-            assert msg is not None, "AI should fire after STATS trigger"
+            assert msg is not None, "AI should fire on its timer without STATS"
         finally:
             worker.stop()
 
     def test_no_telemetry_no_action(self, bus, controller_fuzzy):
-        """Even with STATS, if no telemetry was received, no ACTION.AI."""
+        """Even after timer fires, if no telemetry was received, no ACTION.AI."""
         worker = AIWorker(bus=bus, controller=controller_fuzzy)
+        worker._ai_period_s = _TEST_AI_PERIOD
         worker.start()
         try:
-            pub = bus.create_publisher()
             sub = bus.create_subscriber(f"ACTION.AI.{controller_fuzzy.id}".encode())
             time.sleep(0.05)
 
-            # Send STATS without any prior telemetry
-            stats = {"controller_id": controller_fuzzy.id, "iae": 1.0}
-            pub.send(
-                f"STATS.{controller_fuzzy.id}".encode(),
-                msgpack.packb(stats),
-            )
-            time.sleep(0.5)
+            # Wait for at least one AI cycle — no telemetry sent
+            time.sleep(_TEST_AI_PERIOD + 0.5)
 
             msg = sub.recv(timeout_ms=500)
             assert msg is None, "AI should not fire without telemetry data"

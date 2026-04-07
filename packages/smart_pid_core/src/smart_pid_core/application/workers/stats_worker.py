@@ -32,7 +32,7 @@ class StatsWorker:
             controller.process_speed.stats_window_s * 1000
             // controller.scan_rate_ms
         )
-        self._publish_interval = max(1, window_size)
+        self._publish_interval = max(1, 5000 // controller.scan_rate_ms)
         self._calculator = StatsCalculator(
             window_size=window_size,
             span=controller.pv_scale.span,

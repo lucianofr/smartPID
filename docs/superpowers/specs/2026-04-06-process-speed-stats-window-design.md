@@ -20,15 +20,16 @@ Performance indicators (IAE, ITAE, ISE, MSE, std_dev, TV, variability) must be c
 
 Expand from 3 members (SLOW, MEDIUM, FAST) to 4 members with embedded metadata via properties:
 
-| Member | `stats_window_s` | `speed_factor` | UI Label |
-|---|---|---|---|
-| `ULTRA_FAST` | 5 | 0.02 | Ultra Fast — Motors / Converters |
-| `FAST` | 60 | 0.05 | Fast — Flow / Pressure |
-| `MEDIUM` | 1200 (20 min) | 0.15 | Medium — Level / Heat Exchangers |
-| `SLOW` | 7200 (2 h) | 0.30 | Slow — Furnaces / Distillation |
+| Member | `stats_window_s` | `ai_period_s` | `speed_factor` | UI Label |
+|---|---|---|---|---|
+| `ULTRA_FAST` | 5 | 30 | 0.02 | Ultra Fast — Motors / Converters |
+| `FAST` | 60 | 180 (3 min) | 0.05 | Fast — Flow / Pressure |
+| `MEDIUM` | 1200 (20 min) | 1800 (30 min) | 0.15 | Medium — Level / Heat Exchangers |
+| `SLOW` | 7200 (2 h) | 14400 (4 h) | 0.30 | Slow — Furnaces / Distillation |
 
 Properties on the enum:
-- `stats_window_s -> int` — default stats window in seconds
+- `stats_window_s -> int` — sliding window for performance statistics (seconds)
+- `ai_period_s -> int` — AI optimization cycle period (seconds)
 - `speed_factor -> float` — AI tuning aggressiveness factor
 - `label -> str` — human-readable description for UI
 
@@ -55,7 +56,7 @@ Examples:
 - MEDIUM loop, scan_rate=1000ms → window_size = 1200
 - SLOW loop, scan_rate=500ms → window_size = 14400
 
-The `publish_interval` equals the window size — stats are published once per window cycle. This triggers the AI Worker exactly once per window, ensuring optimization decisions are based on a full window of performance data. Rule: `publish_interval = max(1, window_size)`.
+Stats are published every 5 seconds (fixed interval), regardless of process speed: `publish_interval = max(1, 5000 // scan_rate_ms)`. The AI Worker runs independently on its own timer defined by `ProcessSpeed.ai_period_s`.
 
 ### 4. AI Engines — Fuzzy & RL (smart_pid_core/domain/services/)
 

@@ -30,7 +30,7 @@ def controller_fuzzy():
         ai_config=AIConfig(
             engine=AIEngine.FUZZY,
             objective=ControlObjective.SP_TRACKING,
-            dead_time_l=0.1,  # T_cycle = 0.3s for fast testing
+            dead_time_l=0.1,
             limit_min=0.1,
             limit_max=100.0,
         ),
@@ -40,6 +40,7 @@ def controller_fuzzy():
 class TestAIWorkerFuzzy:
     def test_publishes_ai_action(self, bus, controller_fuzzy):
         worker = AIWorker(bus=bus, controller=controller_fuzzy)
+        worker._ai_period_s = 0.3  # Override for fast testing
         worker.start()
         try:
             pub = bus.create_publisher()
@@ -55,13 +56,7 @@ class TestAIWorkerFuzzy:
                 )
                 time.sleep(0.05)
 
-            # Send STATS to trigger AI evaluation
-            stats = {"controller_id": controller_fuzzy.id, "iae": 1.0}
-            pub.send(
-                f"STATS.{controller_fuzzy.id}".encode(),
-                msgpack.packb(stats),
-            )
-
+            # Wait for timer-based AI cycle
             msg = sub.recv(timeout_ms=2000)
             assert msg is not None
             _topic, payload = msg
