@@ -62,6 +62,7 @@ class MainWindow(QMainWindow):
     _sim_controllers_signal = Signal(list)  # populate simulator combo from sim status
     _opcua_status_signal = Signal(bool)  # OPC-UA connection status from watchdog
     _stats_signal = Signal(int, dict)  # (controller_id, stats_dict)
+    _exec_cards_signal = Signal(list)  # enriched controller dicts for executive cards
     _sim_live_signal = Signal(dict)  # simulator live values from poll
     _ai_status_signal = Signal(int, str, bool)  # (controller_id, engine, running)
 
@@ -96,6 +97,11 @@ class MainWindow(QMainWindow):
         # KPI refresh timer (started after login)
         self._kpi_timer = QTimer(self)
         self._kpi_timer.timeout.connect(self._refresh_kpis)
+
+        # Executive cards polling timer (2s interval)
+        self._exec_cards_timer = QTimer(self)
+        self._exec_cards_timer.timeout.connect(self._refresh_exec_cards)
+        self._exec_cards_signal.connect(self._on_exec_cards_received)
 
         # Simulator live values polling timer (2s interval)
         self._sim_poll_timer = QTimer(self)
@@ -378,6 +384,7 @@ class MainWindow(QMainWindow):
         self._alarm_panel.load_active_alarms()
         self._kpi_timer.start(30_000)
         self._stats_timer.start(2000)
+        self._exec_cards_timer.start(2000)
 
         # Check if backend has a managed project active
         QTimer.singleShot(500, self._check_active_project)
@@ -989,9 +996,12 @@ class MainWindow(QMainWindow):
             try:
                 alarms = self._api_client.get_active_alarms()
                 stats = self._api_client.get_all_stats()
+                controllers = self._api_client.list_controllers()
+                controller_dicts = [c.model_dump() for c in controllers]
                 self._kpi_data_signal.emit({
                     "active_alarms": len(alarms),
                     "stats": stats,
+                    "controllers": controller_dicts,
                 })
             except Exception as e:
                 logger.debug("KPI refresh failed: %s", e)
@@ -1002,13 +1012,19 @@ class MainWindow(QMainWindow):
     def _on_kpi_data_received(self, data: dict) -> None:
         """Update executive dashboard with KPI data from background fetch."""
         active_alarms = data.get("active_alarms", 0)
+
+        # Refresh cached controllers from latest API data
+        controllers = data.get("controllers")
+        if controllers:
+            self._cached_controllers = controllers
+
         total = len(self._cached_controllers)
         in_auto = sum(
             1 for c in self._cached_controllers if c.get("mode") == "AUTO"
         )
         ai_active = sum(
             1 for c in self._cached_controllers
-            if c.get("ai_mode") and c.get("ai_mode") != "NONE"
+            if c.get("ai_config", {}).get("engine", "NONE") != "NONE"
         )
         self._executive_page.update_kpis(
             total=total,
@@ -1016,6 +1032,70 @@ class MainWindow(QMainWindow):
             active_alarms=active_alarms,
             ai_active=ai_active,
         )
+
+        # Merge stats into controller dicts and refresh executive cards
+        stats_list = data.get("stats", [])
+        stats_by_id: dict[int, dict] = {}
+        for s in stats_list:
+            cid = s.get("controller_id")
+            if cid is not None:
+                stats_by_id[cid] = s
+
+        enriched = []
+        for ctrl in self._cached_controllers:
+            merged = dict(ctrl)
+            st = stats_by_id.get(ctrl.get("id"))
+            if st:
+                merged.update(st)
+            enriched.append(merged)
+
+        self._executive_page.update_controller_cards(enriched)
+
+    def _refresh_exec_cards(self) -> None:
+        """Fetch controller + stats + AI status and emit enriched dicts."""
+        def do_fetch():
+            try:
+                controllers = self._api_client.list_controllers()
+                ctrl_dicts = [c.model_dump() for c in controllers]
+                stats = self._api_client.get_all_stats()
+
+                stats_by_id: dict[int, dict] = {}
+                for s in stats:
+                    cid = s.get("controller_id")
+                    if cid is not None:
+                        stats_by_id[cid] = s
+
+                enriched = []
+                for ctrl in ctrl_dicts:
+                    merged = dict(ctrl)
+                    cid = ctrl.get("id")
+                    # Merge performance stats
+                    st = stats_by_id.get(cid)
+                    if st:
+                        merged.update(st)
+                    # Fetch AI status for this controller
+                    try:
+                        ai = self._api_client.get_ai_status(cid)
+                        merged["ai_state"] = "RUN" if ai.get("enabled") else "STOP"
+                        merged["ai_gamma"] = ai.get("last_gamma")
+                        merged["ai_optimizer_state"] = (
+                            "RUN" if ai.get("enabled") else "STOP"
+                        )
+                    except Exception:
+                        pass
+                    enriched.append(merged)
+
+                self._exec_cards_signal.emit(enriched)
+            except Exception as e:
+                logger.debug("Executive cards refresh failed: %s", e)
+
+        threading.Thread(target=do_fetch, daemon=True).start()
+
+    @Slot(list)
+    def _on_exec_cards_received(self, enriched: list) -> None:
+        """Update executive dashboard cards with enriched data."""
+        self._cached_controllers = enriched
+        self._executive_page.update_controller_cards(enriched)
 
     @staticmethod
     def _nav_btn_style(theme, active: bool) -> str:
@@ -1333,6 +1413,7 @@ class MainWindow(QMainWindow):
         self._kpi_timer.stop()
         self._sim_poll_timer.stop()
         self._stats_timer.stop()
+        self._exec_cards_timer.stop()
         self._bus_bridge.stop()
         self._telemetry_source.stop()
         if hasattr(self._api_client, "close"):
