@@ -7,7 +7,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
-    QPlainTextEdit,
     QScrollArea,
     QSplitter,
     QVBoxLayout,
@@ -93,36 +92,9 @@ class DashboardPage(QWidget):
         # Middle: (trend + AI log) | faceplate — splitter 70/30
         splitter = QSplitter()
 
-        # Left side: trend chart + AI log stacked
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(4)
-
+        # Left side: trend chart
         self._trend = TrendChartWidget(theme=theme)
-        left_layout.addWidget(self._trend, stretch=1)
-
-        self._ai_log = QPlainTextEdit()
-        self._ai_log.setReadOnly(True)
-        self._ai_log.setMaximumHeight(80)
-        self._ai_log.setPlaceholderText("AI Log — reasoning and tuning actions")
-        self._ai_log.setStyleSheet(
-            "QPlainTextEdit {"
-            " background-color: #0A0A0A;"
-            " color: #33FF33;"
-            " border: 1px solid #333333;"
-            " font-size: 13px;"
-            " padding: 6px;"
-            " selection-background-color: #004400;"
-            "}"
-        )
-        from PySide6.QtGui import QFont
-        ai_font = QFont("Fira Code", 11)
-        ai_font.setStyleHint(QFont.StyleHint.Monospace)
-        self._ai_log.setFont(ai_font)
-        left_layout.addWidget(self._ai_log)
-
-        splitter.addWidget(left_panel)
+        splitter.addWidget(self._trend)
 
         # Right side: faceplate (stretches to alarm bar)
         self._faceplate = FaceplateWidget(theme=theme)
@@ -264,20 +236,6 @@ class DashboardPage(QWidget):
         for card in self._cards:
             card.on_alarm(controller_id, alarm)
         self._alarm_bar.on_alarm(controller_id, alarm)
-
-    def append_ai_log(self, message: str) -> None:
-        """Append a message to the AI log box (terminal-style)."""
-        self._ai_log.appendPlainText(message)
-        # Keep max 200 lines
-        doc = self._ai_log.document()
-        if doc.blockCount() > 200:
-            cursor = self._ai_log.textCursor()
-            cursor.movePosition(cursor.MoveOperation.Start)
-            cursor.movePosition(
-                cursor.MoveOperation.Down, cursor.MoveMode.KeepAnchor, doc.blockCount() - 200,
-            )
-            cursor.removeSelectedText()
-            cursor.deleteChar()  # remove trailing newline
 
     def apply_theme(self, theme: ThemeBase) -> None:
         """Re-apply theme colors to dynamic elements."""

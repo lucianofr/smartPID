@@ -1,43 +1,55 @@
-# Estado Atual — Fix Settings OPC-UA Connect/Disconnect
+# Estado Atual — Fix Alarm System
 
-**Data:** 2026-04-06
-**Branch:** `fix/settings-opcua-connect-disconnect`
+**Data:** 2026-04-07
+**Branch:** `fix/alarm-system-hotreload-persistence`
 
 ## O que foi feito
 
-### Settings Page — botões Connect/Disconnect
-- Substituído botão "Reconnect" por "Connect" e "Disconnect" separados
-- Estado inicial: Connect habilitado, Disconnect desabilitado
-- Ao conectar: mostra "Connecting..." (amarelo), depois "Connected" (verde) ou "Disconnected" (vermelho)
-- Botões se habilitam/desabilitam conforme estado da conexão
+### Bug 1: Alarm configs não recarregados após salvar via HMI (ROOT CAUSE)
+- `update_alarm_config` REST endpoint agora chama `alarm_worker.update_config()` após salvar no SQLite
+- `alarm_worker` adicionado ao `app.state` via `create_app` e dependency injection
+- Helper `_thresholds_to_alarm_config()` converte DTOs para AlarmConfig domain model
 
-### Backend — endpoint disconnect
-- Adicionado `POST /opcua/disconnect` no router OPC-UA
-- `POST /opcua/connect` agora retorna `OPCUAStatusResponse` com estado real (espera até 5s)
+### Bug 2: Alarm transitions não persistidas no DB
+- `AlarmWorker` recebe `event_loop` e usa `asyncio.run_coroutine_threadsafe` para chamar `_persist_alarm()` do thread síncrono
+- Cada transição (TRIGGERED/CLEARED) agora é persistida no `Log_Alarmes`
 
-### HMI — auto-reconnect watchdog
-- Timer QTimer de 5s (`_opcua_watchdog`) monitora conexão OPC-UA após primeiro connect
-- Se detecta queda: tenta reconectar automaticamente via `POST /opcua/connect`
-- Usa signal thread-safe `_opcua_status_signal` para atualizar UI
+### Bug 3: delay_on/delay_off não implementados no AlarmEngine
+- `_PointState` agora rastreia `pending_trigger_since` e `pending_clear_since`
+- `_check_transition()` implementa lógica de temporização: condição deve persistir por `delay_on_s` antes de disparar, e por `delay_off_s` antes de limpar
+- Delays resetam se a condição muda antes de expirar
 
-### API Client + Ports + Mock
-- Adicionados métodos: `opcua_client_status()`, `opcua_client_connect()`, `opcua_client_disconnect()`
-- Atualizados `APIClientPort` (ports.py) e `MockAPIClient` (mock_service.py)
+### UI: Remoção do AI Log e integração no painel de Alarmes
+- Removido `QPlainTextEdit` do AI Log do dashboard (dashboard_page.py)
+- Removido `QPlainTextEdit` do AI Log do alarm panel (era um widget separado no splitter)
+- AI actions agora aparecem como linhas na tabela de alarmes/eventos com categoria "AI Log"
 
-## Verificação: OPC-UA client thread
-O `OPCUAAdapter` (backend) já executa em thread independente (`daemon=True`, nome "opcua-client") com event loop asyncio dedicado. O watchdog interno lê `ServerStatus_State` a cada 5s e reconecta com backoff exponencial.
+### UI: Painel de Alarmes com filtros multi-select e categorias
+- Novo widget `CheckableComboBox` (multi-select com checkboxes)
+- 3 categorias: "Loop Alarm", "AI Log", "System Event"
+- Filtros de Categoria, Priority e Type agora são multi-select
+- AI Logs: tipo e prioridade mostrados como "—" (não aplicáveis)
+- System Events: tipo mostrado como "—" (não aplicável)
+- Filtros de priority/type não bloqueiam eventos de categorias que não usam esses campos
 
 ## Arquivos modificados
-- `packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/routers/opcua.py`
-- `packages/smart_pid_hmi/src/smart_pid_hmi/pages/settings_page.py`
-- `packages/smart_pid_hmi/src/smart_pid_hmi/main.py`
-- `packages/smart_pid_hmi/src/smart_pid_hmi/services/api_client.py`
-- `packages/smart_pid_hmi/src/smart_pid_hmi/services/ports.py`
-- `packages/smart_pid_hmi/src/smart_pid_hmi/services/mock_service.py`
-- `tests/hmi/pages/test_settings_page.py`
-- `tests/hmi/test_settings_apply_cancel.py`
 
-## Testes: 33 passed (settings + apply/cancel)
+### Backend (smart_pid_core)
+- `adapters/inbound/api/app.py` — aceita `alarm_worker` param
+- `adapters/inbound/api/dependencies.py` — `get_alarm_worker()`
+- `adapters/inbound/api/routers/controllers.py` — hot-reload + helper
+- `application/workers/alarm_worker.py` — event_loop + _schedule_persist
+- `domain/services/alarm_engine.py` — delay_on/off + _PointState timing
+- `main.py` — passa event_loop ao AlarmWorker
+
+### HMI (smart_pid_hmi)
+- `pages/dashboard_page.py` — removido AI log widget
+- `pages/alarm_panel.py` — reescrito com categorias e multi-select
+- `widgets/checkable_combo.py` — novo widget CheckableComboBox
+- `main.py` — AI actions vão para alarm_panel.on_ai_event()
+
+### Testes
+- `tests/hmi/pages/test_alarm_panel.py` — reescritos para nova API (26 tests pass)
 
 ## Próximos passos
-- Aguardar revisão/merge pelo usuário
+- Aguardando aprovação do usuário para merge

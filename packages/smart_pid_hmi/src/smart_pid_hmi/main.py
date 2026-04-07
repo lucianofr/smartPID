@@ -1027,14 +1027,14 @@ class MainWindow(QMainWindow):
             card.on_ai_status(controller_id, engine, opt_state)
 
     def _on_ai_action(self, controller_id: int, action: dict) -> None:
-        """Handle AI optimizer action: log to AI panel and write Ki to OPC-UA."""
+        """Handle AI optimizer action: log to alarm panel and write Ki to OPC-UA."""
         engine = action.get("engine", "?")
         gamma = action.get("gamma", 0.0)
         new_ki = action.get("new_ki", 0.0)
         reasoning = action.get("reasoning", "")
         ts = action.get("timestamp", "")[:19]
-        msg = f"[{ts}] {engine} γ={gamma:+.4f} Ki={new_ki:.4f} — {reasoning}"
-        self._dashboard_page.append_ai_log(msg)
+        msg = f"[{ts}] {engine} \u03b3={gamma:+.4f} Ki={new_ki:.4f} \u2014 {reasoning}"
+        self._alarm_panel.on_ai_event(controller_id, msg)
 
         # Write new Ki (Ti) to OPC-UA so the DCS uses the updated value
         self._safe_api_call(

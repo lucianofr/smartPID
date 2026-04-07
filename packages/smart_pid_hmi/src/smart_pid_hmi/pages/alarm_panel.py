@@ -1,38 +1,54 @@
-"""AlarmPanel — alarm management page with active alarms table and ACK."""
+"""AlarmPanel — alarm & event management page with active alarms table and ACK."""
 from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QDateTime, Qt, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QComboBox,
     QDateTimeEdit,
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QPlainTextEdit,
     QPushButton,
-    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from smart_pid_hmi.widgets.checkable_combo import CheckableComboBox
+
 if TYPE_CHECKING:
     from smart_pid_hmi.services.ports import APIClientPort
     from smart_pid_hmi.themes.base import ThemeBase
 
 _ACTIVE_COLUMNS = [
-    "Controller", "Type", "Priority", "Value",
+    "Controller", "Category", "Type", "Priority", "Value",
     "Limit", "Triggered", "Status",
 ]
-_PRIORITY_CHOICES = ["All", "CRITICAL", "HIGH", "MEDIUM", "LOW"]
-_TYPE_CHOICES = ["All", "HI_HI", "HI", "LO", "LO_LO", "RATE"]
 
-_AI_LOG_MAX_LINES = 500
+_PRIORITY_ITEMS = ["CRITICAL", "WARNING", "ADVISORY", "LOG"]
+_TYPE_ITEMS = ["HIHI", "HI", "LO", "LOLO", "DV_HI", "DV_LO", "AI_LOG", "SYSTEM"]
+
+# Categories
+CATEGORY_ALARM = "Loop Alarm"
+CATEGORY_AI = "AI Log"
+CATEGORY_SYSTEM = "System Event"
+_CATEGORY_ITEMS = [CATEGORY_ALARM, CATEGORY_AI, CATEGORY_SYSTEM]
+
+# Map alarm_type -> category
+_TYPE_TO_CATEGORY = {
+    "HIHI": CATEGORY_ALARM,
+    "HI": CATEGORY_ALARM,
+    "LO": CATEGORY_ALARM,
+    "LOLO": CATEGORY_ALARM,
+    "DV_HI": CATEGORY_ALARM,
+    "DV_LO": CATEGORY_ALARM,
+    "AI_LOG": CATEGORY_AI,
+    "SYSTEM": CATEGORY_SYSTEM,
+}
 
 
 def _priority_colors(theme: ThemeBase) -> dict[str, str]:
@@ -42,14 +58,11 @@ def _priority_colors(theme: ThemeBase) -> dict[str, str]:
         "WARNING": theme.alarm_warning,
         "ADVISORY": theme.accent or "#1976D2",
         "LOG": theme.fg_muted or "#757575",
-        "HIGH": theme.alarm_critical,
-        "MEDIUM": theme.alarm_warning,
-        "LOW": theme.accent or "#1976D2",
     }
 
 
 class AlarmPanel(QWidget):
-    """Page for alarm management: active alarms + ACK controls."""
+    """Page for alarm & event management: active alarms + AI logs + system events."""
 
     ack_requested = Signal(int)  # alarm_id
     ack_all_requested = Signal()
@@ -65,20 +78,31 @@ class AlarmPanel(QWidget):
         self._api_client = api_client
         # (controller_id, alarm_type) -> row data dict
         self._active_alarms: dict[tuple[int, str], dict] = {}
+        # AI log events and system events (kept separately)
+        self._ai_events: list[dict] = []
+        self._system_events: list[dict] = []
 
         layout = QVBoxLayout(self)
 
         # --- Filter toolbar ---
         filter_layout = QHBoxLayout()
 
+        filter_layout.addWidget(QLabel("Category:"))
+        self._category_filter = CheckableComboBox()
+        self._category_filter.add_items(_CATEGORY_ITEMS, check_all=True)
+        self._category_filter.setMinimumWidth(140)
+        filter_layout.addWidget(self._category_filter)
+
         filter_layout.addWidget(QLabel("Priority:"))
-        self._priority_filter = QComboBox()
-        self._priority_filter.addItems(_PRIORITY_CHOICES)
+        self._priority_filter = CheckableComboBox()
+        self._priority_filter.add_items(_PRIORITY_ITEMS, check_all=True)
+        self._priority_filter.setMinimumWidth(140)
         filter_layout.addWidget(self._priority_filter)
 
         filter_layout.addWidget(QLabel("Type:"))
-        self._type_filter = QComboBox()
-        self._type_filter.addItems(_TYPE_CHOICES)
+        self._type_filter = CheckableComboBox()
+        self._type_filter.add_items(_TYPE_ITEMS, check_all=True)
+        self._type_filter.setMinimumWidth(140)
         filter_layout.addWidget(self._type_filter)
 
         filter_layout.addWidget(QLabel("From:"))
@@ -119,10 +143,7 @@ class AlarmPanel(QWidget):
         self._ack_btn.clicked.connect(self._on_ack_selected)
         self._ack_all_btn.clicked.connect(self.ack_all_requested.emit)
 
-        # --- Splitter: table + AI log ---
-        splitter = QSplitter(Qt.Orientation.Vertical)
-
-        # Active alarms table
+        # Active alarms / events table (full height)
         self.active_table = QTableWidget(0, len(_ACTIVE_COLUMNS))
         self.active_table.setHorizontalHeaderLabels(_ACTIVE_COLUMNS)
         self.active_table.horizontalHeader().setSectionResizeMode(
@@ -131,47 +152,45 @@ class AlarmPanel(QWidget):
         self.active_table.setSelectionBehavior(
             QTableWidget.SelectionBehavior.SelectRows
         )
-        splitter.addWidget(self.active_table)
-
-        # AI Log Box (terminal-style)
-        self._ai_log = QPlainTextEdit()
-        self._ai_log.setReadOnly(True)
-        self._ai_log.setMaximumBlockCount(_AI_LOG_MAX_LINES)
-        ai_font = QFont("Fira Code", 11)
-        ai_font.setStyleHint(QFont.StyleHint.Monospace)
-        self._ai_log.setFont(ai_font)
-        self._apply_ai_log_style(theme)
-        self._ai_log.setPlaceholderText("AI tuning log...")
-        splitter.addWidget(self._ai_log)
-
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 1)
-        layout.addWidget(splitter)
-
-    def _apply_ai_log_style(self, theme: ThemeBase) -> None:
-        """Apply theme-aware style to the AI log box."""
-        bg = theme.bg_card or theme.bg_secondary
-        fg = theme.accent or theme.fg_primary
-        bdr = theme.border
-        self._ai_log.setStyleSheet(
-            "QPlainTextEdit {"
-            f"  background-color: {bg};"
-            f"  color: {fg};"
-            f"  border: 1px solid {bdr};"
-            "  padding: 4px;"
-            "}"
-        )
+        layout.addWidget(self.active_table)
 
     # --- Public API ---
 
-    def append_ai_log(self, message: str) -> None:
-        """Append a message to the AI log box with auto-scroll."""
-        self._ai_log.appendPlainText(message)
+    def on_ai_event(self, controller_id: int, message: str) -> None:
+        """Add an AI tuning action as event row (type/priority not applicable)."""
+        ts = datetime.now().isoformat()[:19]
+        event = {
+            "controller_id": controller_id,
+            "alarm_type": "AI_LOG",
+            "priority": "\u2014",
+            "value": 0.0,
+            "limit": 0.0,
+            "timestamp": ts,
+            "status": message,
+            "transition": "INFO",
+        }
+        self._ai_events.append(event)
+        if len(self._ai_events) > 500:
+            self._ai_events = self._ai_events[-500:]
+        self._rebuild_table()
 
-    @property
-    def ai_log_widget(self) -> QPlainTextEdit:
-        """Expose AI log widget for testing."""
-        return self._ai_log
+    def on_system_event(self, message: str, priority: str = "LOG") -> None:
+        """Add a system event (e.g. login, config change). Type not applicable."""
+        ts = datetime.now().isoformat()[:19]
+        event = {
+            "controller_id": "",
+            "alarm_type": "SYSTEM",
+            "priority": priority,
+            "value": 0.0,
+            "limit": 0.0,
+            "timestamp": ts,
+            "status": message,
+            "transition": "INFO",
+        }
+        self._system_events.append(event)
+        if len(self._system_events) > 500:
+            self._system_events = self._system_events[-500:]
+        self._rebuild_table()
 
     def load_active_alarms(self) -> None:
         """Fetch currently active alarms from backend and populate table."""
@@ -209,19 +228,48 @@ class AlarmPanel(QWidget):
 
     # --- Filtering ---
 
+    def _get_all_events(self) -> list[dict]:
+        """Merge active alarms, AI events, and system events into one list."""
+        return (
+            list(self._active_alarms.values())
+            + list(self._ai_events)
+            + list(self._system_events)
+        )
+
     def get_filtered_alarms(self) -> list[dict]:
-        """Return the active alarms filtered by current UI criteria."""
-        priority = self._priority_filter.currentText()
-        atype = self._type_filter.currentText()
+        """Return events filtered by current UI criteria."""
+        categories = (
+            set(_CATEGORY_ITEMS)
+            if self._category_filter.all_checked()
+            else set(self._category_filter.checked_items())
+        )
+        priority_all = self._priority_filter.all_checked()
+        priorities = set(self._priority_filter.checked_items())
+        type_all = self._type_filter.all_checked()
+        types = set(self._type_filter.checked_items())
         dt_from = self._dt_from.dateTime().toPython()
         dt_to = self._dt_to.dateTime().toPython()
 
         result: list[dict] = []
-        for alarm in self._active_alarms.values():
-            if priority != "All" and alarm.get("priority", "") != priority:
+        for alarm in self._get_all_events():
+            atype = alarm.get("alarm_type", "")
+            category = _TYPE_TO_CATEGORY.get(atype, CATEGORY_SYSTEM)
+            if category not in categories:
                 continue
-            if atype != "All" and alarm.get("alarm_type", "") != atype:
-                continue
+            # AI_LOG: priority/type not applicable — skip those filters
+            # SYSTEM: type not applicable — skip type filter
+            pri = alarm.get("priority", "")
+            if category == CATEGORY_ALARM:
+                if not priority_all and pri not in priorities:
+                    continue
+                if not type_all and atype not in types:
+                    continue
+            elif category == CATEGORY_SYSTEM:
+                if not priority_all and pri not in priorities:
+                    continue
+                # Type filter does not apply to system events
+            # AI Log: neither priority nor type filter applies
+
             ts_str = alarm.get("timestamp", "")
             if ts_str:
                 try:
@@ -258,7 +306,7 @@ class AlarmPanel(QWidget):
         self, alarms: list[dict] | None = None,
     ) -> None:
         if alarms is None:
-            alarms = list(self._active_alarms.values())
+            alarms = self._get_all_events()
 
         colors = _priority_colors(self._theme)
 
@@ -266,10 +314,18 @@ class AlarmPanel(QWidget):
         for alarm in alarms:
             row = self.active_table.rowCount()
             self.active_table.insertRow(row)
+            atype = alarm.get("alarm_type", "")
+            category = _TYPE_TO_CATEGORY.get(atype, CATEGORY_SYSTEM)
+            pri = alarm.get("priority", "")
+            # AI Log: type and priority shown as "—"
+            # System Event: type shown as "—"
+            display_type = "\u2014" if category in (CATEGORY_AI, CATEGORY_SYSTEM) else atype
+            display_pri = "\u2014" if category == CATEGORY_AI else pri
             items = [
                 str(alarm.get("controller_id", "")),
-                alarm.get("alarm_type", ""),
-                alarm.get("priority", ""),
+                category,
+                display_type,
+                display_pri,
                 f"{alarm.get('value', 0.0):.1f}",
                 f"{alarm.get('limit', 0.0):.1f}",
                 alarm.get("timestamp", ""),
@@ -282,7 +338,7 @@ class AlarmPanel(QWidget):
                 item = QTableWidgetItem(text)
                 item.setForeground(Qt.GlobalColor.white)
                 item.setBackground(Qt.GlobalColor.transparent)
-                if col == 2:  # Priority column
+                if col == 3:  # Priority column
                     item.setBackground(QColor(color))
                 item.setFlags(
                     item.flags() & ~Qt.ItemFlag.ItemIsEditable
@@ -306,5 +362,4 @@ class AlarmPanel(QWidget):
     def apply_theme(self, theme: ThemeBase) -> None:
         """Re-apply theme colors to dynamic elements."""
         self._theme = theme
-        self._apply_ai_log_style(theme)
         self._rebuild_table()

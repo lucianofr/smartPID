@@ -306,7 +306,10 @@ async def run_daemon(settings: CoreSettings) -> None:
 
     # Build alarm configs from Configuracao_Alarmes table
     alarm_configs = await _load_alarm_configs(repo.db)
-    alarm_worker = AlarmWorker(bus=bus, alarm_configs=alarm_configs, alarm_repo=alarm_repo)
+    alarm_worker = AlarmWorker(
+        bus=bus, alarm_configs=alarm_configs, alarm_repo=alarm_repo,
+        event_loop=asyncio.get_running_loop(),
+    )
     alarm_worker.start()
     logger.info("alarm_worker_started")
 
@@ -371,6 +374,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         ai_workers=loop_manager.get_ai_workers(),
         ai_repo=ai_repo,
         alarm_repo=alarm_repo,
+        alarm_worker=alarm_worker,
         audit_repo=audit_repo,
         project_service=project_service,
         event_bus=bus,
