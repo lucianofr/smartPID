@@ -44,8 +44,9 @@ class AIWorker:
         self._ai_config = controller.ai_config
         self._ai_period_s = controller.process_speed.ai_period_s
         self._integral_type = controller.integral_type.value  # "GAIN_KI" or "TIME_TI"
+        self._execution_mode = controller.execution_mode.value  # "SUPERVISORY" or "DDC"
         self._ki_current = controller.pid_params.reset  # initial from config
-        self._ki_initialized = False  # will read real value from first telemetry
+        self._ki_from_opcua: float | None = None  # latest Ti/Ki from OPC-UA telemetry
         self._last_pv: float = 0.0
         self._last_sp: float = 0.0
         self._last_co: float = 0.0
@@ -153,6 +154,10 @@ class AIWorker:
                     )
                     continue
 
+                # Sync ki_current from latest OPC-UA telemetry read
+                if self._ki_from_opcua is not None:
+                    self._ki_current = self._ki_from_opcua
+
                 error = self._last_sp - self._last_pv
                 delta_error = error - self._prev_error
 
@@ -195,6 +200,8 @@ class AIWorker:
                     "new_ki": decision.new_ki,
                     "engine": self._ai_config.engine.value,
                     "objective": self._ai_config.objective.value,
+                    "integral_type": self._integral_type,
+                    "execution_mode": self._execution_mode,
                     "reasoning": decision.reasoning,
                     "timestamp": datetime.now(tz=UTC).isoformat(),
                 }
@@ -257,23 +264,11 @@ class AIWorker:
                 self._last_mode = data.get("mode", "")
                 self._has_telemetry = True
 
-                # Initialize Ki/Ti from the first real OPC-UA read
-                if not self._ki_initialized:
-                    ti_val = data.get("ti")
-                    ki_val = data.get("kp")
-                    if self._integral_type == "GAIN_KI" and ki_val is not None:
-                        self._ki_current = float(ki_val)
-                        self._ki_initialized = True
-                        logger.info(
-                            "ai_worker_ki_init cid=%d Ki=%f",
-                            self.controller_id, self._ki_current,
-                        )
-                    elif ti_val is not None:
-                        self._ki_current = float(ti_val)
-                        self._ki_initialized = True
-                        logger.info(
-                            "ai_worker_ti_init cid=%d Ti=%f",
-                            self.controller_id, self._ki_current,
-                        )
+                # Always sync Ki/Ti from the latest OPC-UA read.
+                # The 'ti' field in telemetry maps to the OPC-UA node_id_ti,
+                # which holds Ti or Ki depending on the DCS configuration.
+                ti_val = data.get("ti")
+                if ti_val is not None:
+                    self._ki_from_opcua = float(ti_val)
             except (KeyError, ValueError, msgpack.UnpackException):
                 pass
