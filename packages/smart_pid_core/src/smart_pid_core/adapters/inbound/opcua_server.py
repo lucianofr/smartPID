@@ -12,12 +12,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 NAMESPACE_URI = "urn:smartpid:sim"
-_WRITABLE_PARAMS = ("co", "sp", "kp", "ti", "td", "pid_mode", "pid_sp")
+_WRITABLE_PARAMS = ("co", "sp", "kp", "ti", "td", "pid_structure", "pid_sp")
 
 # All node keys grouped by sub-folder for address space organization
 _PID_NODES = (
     "pv", "sp", "co", "mode", "status",
-    "kp", "ti", "td", "pid_mode", "pid_sp", "pid_enabled", "pid_cv", "error",
+    "kp", "ti", "td", "pid_structure", "pid_sp", "pid_enabled", "pid_cv", "error",
 )
 _PROCESS_NODES = ("process_input", "process_output")
 _DISTURBANCE_NODES = ("disturbance_output",)
@@ -180,7 +180,7 @@ class OPCUAServer:
         Address space layout per controller::
 
             CTRL_{id}/
-              PID/         — PV, SP, CO, Mode, Status, Kp, Ti, Td, PID_Mode, PID_SP,
+              PID/         — PV, SP, CO, Mode, Status, Kp, Ti, Td, PID_Structure, PID_SP,
                              PID_Enabled, PID_CV, Error
               Process/     — Input (CO fed to process model), Output (raw model output)
               Disturbance/ — Output (combined disturbance contribution)
@@ -218,8 +218,8 @@ class OPCUAServer:
         nodes["td"] = await pid_folder.add_variable(
             self._ns_idx, "Td", 0.0, ua.VariantType.Float,
         )
-        nodes["pid_mode"] = await pid_folder.add_variable(
-            self._ns_idx, "PID_Mode", 0, ua.VariantType.Int32,
+        nodes["pid_structure"] = await pid_folder.add_variable(
+            self._ns_idx, "PID_Structure", 0, ua.VariantType.Int32,
         )
         nodes["pid_sp"] = await pid_folder.add_variable(
             self._ns_idx, "PID_SP", 50.0, ua.VariantType.Float,
@@ -273,7 +273,7 @@ class OPCUAServer:
         "pv": "Float", "sp": "Float", "co": "Float",
         "mode": "Int32", "status": "Int32",
         "kp": "Float", "ti": "Float", "td": "Float",
-        "pid_mode": "Int32", "pid_sp": "Float",
+        "pid_structure": "Int32", "pid_sp": "Float",
         "pid_enabled": "Boolean", "pid_cv": "Float", "error": "Float",
         "process_input": "Float", "process_output": "Float",
         "disturbance_output": "Float",

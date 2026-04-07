@@ -104,6 +104,7 @@ class TestGetControllerData:
             "ff_enable", "ff_gain",
             "io_opts", "control_opts",
             "ai_config", "alarm_config", "tag_bindings",
+            "permitted_modes",
             "shed_opt", "shed_time_s",
             "tuning_write_mode", "max_tuning_change_pct",
         }
@@ -126,8 +127,8 @@ class TestGetControllerData:
         data = dialog.get_controller_data()
         assert set(data["tag_bindings"].keys()) == {
             "node_id_pv", "node_id_sp", "node_id_co",
-            "node_id_integral", "node_id_bkcal_in", "node_id_bkcal_out",
-            "node_id_kp", "node_id_ti", "node_id_td", "node_id_mode",
+            "node_id_kp", "node_id_ti", "node_id_td",
+            "node_id_mode_target", "node_id_mode_actual", "mode_int_map",
         }
 
     def test_io_opts_sub_keys(self, dialog):

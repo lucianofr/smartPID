@@ -1,6 +1,7 @@
 """SQLite-backed Controller repository adapter."""
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 
@@ -56,6 +57,11 @@ CREATE TABLE IF NOT EXISTS Controladores (
     node_id_sp          TEXT    NOT NULL DEFAULT '',
     node_id_co          TEXT    NOT NULL DEFAULT '',
     node_id_integral    TEXT    NOT NULL DEFAULT '',
+    node_id_bkcal_in    TEXT    NOT NULL DEFAULT '',
+    node_id_bkcal_out   TEXT    NOT NULL DEFAULT '',
+    node_id_kp          TEXT    NOT NULL DEFAULT '',
+    node_id_ti          TEXT    NOT NULL DEFAULT '',
+    node_id_td          TEXT    NOT NULL DEFAULT '',
     node_id_mode_target TEXT    NOT NULL DEFAULT '',
     node_id_mode_actual TEXT    NOT NULL DEFAULT '',
     mode_int_map        TEXT    NOT NULL DEFAULT '{}',
@@ -231,7 +237,23 @@ class SQLiteRepository:
         self.db.row_factory = aiosqlite.Row
         await self.db.execute("PRAGMA journal_mode=WAL")
         await self.db.executescript(_DDL)
+        await self._apply_migrations()
         await self.db.commit()
+
+    async def _apply_migrations(self) -> None:
+        """Add columns that may be missing from older databases."""
+        new_columns = [
+            ("node_id_bkcal_in", "TEXT NOT NULL DEFAULT ''"),
+            ("node_id_bkcal_out", "TEXT NOT NULL DEFAULT ''"),
+            ("node_id_kp", "TEXT NOT NULL DEFAULT ''"),
+            ("node_id_ti", "TEXT NOT NULL DEFAULT ''"),
+            ("node_id_td", "TEXT NOT NULL DEFAULT ''"),
+        ]
+        for col_name, col_def in new_columns:
+            with contextlib.suppress(Exception):
+                await self.db.execute(
+                    f"ALTER TABLE Controladores ADD COLUMN {col_name} {col_def}",
+                )
 
     # ------------------------------------------------------------------
     # CRUD
@@ -330,6 +352,11 @@ class SQLiteRepository:
             "node_id_sp": c.tag_bindings.node_id_sp,
             "node_id_co": c.tag_bindings.node_id_co,
             "node_id_integral": c.tag_bindings.node_id_integral,
+            "node_id_bkcal_in": c.tag_bindings.node_id_bkcal_in,
+            "node_id_bkcal_out": c.tag_bindings.node_id_bkcal_out,
+            "node_id_kp": c.tag_bindings.node_id_kp,
+            "node_id_ti": c.tag_bindings.node_id_ti,
+            "node_id_td": c.tag_bindings.node_id_td,
             "node_id_mode_target": c.tag_bindings.node_id_mode_target,
             "node_id_mode_actual": c.tag_bindings.node_id_mode_actual,
             "mode_int_map": json.dumps(c.tag_bindings.mode_int_map),
@@ -444,6 +471,11 @@ class SQLiteRepository:
                 node_id_sp=row["node_id_sp"],
                 node_id_co=row["node_id_co"],
                 node_id_integral=row["node_id_integral"],
+                node_id_bkcal_in=row["node_id_bkcal_in"],
+                node_id_bkcal_out=row["node_id_bkcal_out"],
+                node_id_kp=row["node_id_kp"],
+                node_id_ti=row["node_id_ti"],
+                node_id_td=row["node_id_td"],
                 node_id_mode_target=row["node_id_mode_target"],
                 node_id_mode_actual=row["node_id_mode_actual"],
                 mode_int_map=json.loads(row["mode_int_map"]),

@@ -234,9 +234,10 @@ class ControllerDialog(QDialog):
 
         self._integral_type = _enum_combo(IntegralType, IntegralType.TIME_TI.value)
         self._integral_type.setToolTip(
-            "How the integral parameter is expressed (DDC mode only).\n"
-            "TIME_TI: Integral time in seconds. Larger = slower.\n"
-            "GAIN_KI: Integral gain (Ki = 1/Ti). Larger = faster."
+            "How the integral parameter is expressed.\n"
+            "TIME_TI: Integral time in seconds (Ki = 1/Ti). Larger = slower.\n"
+            "GAIN_KI: Integral gain (Ki). Larger = faster.\n"
+            "Important for Fuzzy/RL tuning — they need to know which convention the DCS uses."
         )
         self._integral_type_label = QLabel("Integral Type:")
         form.addRow(self._integral_type_label, self._integral_type)
@@ -590,15 +591,12 @@ class ControllerDialog(QDialog):
 
         tag_fields = [
             ("PV", "ns=2;s=PV"), ("SP", "ns=2;s=SP"), ("CO", "ns=2;s=CO"),
-            ("Integral", ""), ("BkCal In", ""), ("BkCal Out", ""),
             ("Kp", ""), ("Ti", ""), ("Td", ""),
             ("Mode (Target)", ""), ("Mode (Actual)", ""),
         ]
         attr_map = {
             "PV": "_tag_pv", "SP": "_tag_sp", "CO": "_tag_co",
-            "Integral": "_tag_integral", "BkCal In": "_tag_bkcal_in",
-            "BkCal Out": "_tag_bkcal_out", "Kp": "_tag_kp",
-            "Ti": "_tag_ti", "Td": "_tag_td",
+            "Kp": "_tag_kp", "Ti": "_tag_ti", "Td": "_tag_td",
             "Mode (Target)": "_tag_mode_target", "Mode (Actual)": "_tag_mode_actual",
         }
 
@@ -606,9 +604,6 @@ class ControllerDialog(QDialog):
             "PV": "OPC-UA node ID for the Process Variable (measured value).",
             "SP": "OPC-UA node ID for the Setpoint (desired target value).",
             "CO": "OPC-UA node ID for the Controller Output.",
-            "Integral": "OPC-UA node ID for the integral accumulator.",
-            "BkCal In": "OPC-UA node ID for Back-Calculation input (cascade).",
-            "BkCal Out": "OPC-UA node ID for Back-Calculation output.",
             "Kp": "OPC-UA node ID for reading/writing proportional gain.",
             "Ti": "OPC-UA node ID for reading/writing integral time.",
             "Td": "OPC-UA node ID for reading/writing derivative time.",
@@ -625,8 +620,8 @@ class ControllerDialog(QDialog):
             setattr(self, attr_map[label], line_edit)
             grid.addWidget(line_edit, row_idx, 1)
 
-            browse_btn = QPushButton("Browse")
-            browse_btn.setFixedWidth(60)
+            browse_btn = QPushButton("...")
+            browse_btn.setFixedWidth(36)
             browse_btn.setToolTip(f"Browse OPC-UA for {label}")
             browse_btn.clicked.connect(
                 lambda _=False, le=line_edit: self._open_tag_browse(le),
@@ -745,8 +740,7 @@ class ControllerDialog(QDialog):
         # DDC-only fields in General tab
         self._pid_structure.setVisible(is_ddc)
         self._pid_structure_label.setVisible(is_ddc)
-        self._integral_type.setVisible(is_ddc)
-        self._integral_type_label.setVisible(is_ddc)
+        # integral_type is always visible — Fuzzy/RL need it in SUPERVISORY mode too
 
     # ------------------------------------------------------------ populate
 
@@ -861,9 +855,6 @@ class ControllerDialog(QDialog):
             "node_id_pv": self._tag_pv,
             "node_id_sp": self._tag_sp,
             "node_id_co": self._tag_co,
-            "node_id_integral": self._tag_integral,
-            "node_id_bkcal_in": self._tag_bkcal_in,
-            "node_id_bkcal_out": self._tag_bkcal_out,
             "node_id_kp": self._tag_kp,
             "node_id_ti": self._tag_ti,
             "node_id_td": self._tag_td,
@@ -991,9 +982,6 @@ class ControllerDialog(QDialog):
                 "node_id_pv": self._tag_pv.text().strip(),
                 "node_id_sp": self._tag_sp.text().strip(),
                 "node_id_co": self._tag_co.text().strip(),
-                "node_id_integral": self._tag_integral.text().strip(),
-                "node_id_bkcal_in": self._tag_bkcal_in.text().strip(),
-                "node_id_bkcal_out": self._tag_bkcal_out.text().strip(),
                 "node_id_kp": self._tag_kp.text().strip(),
                 "node_id_ti": self._tag_ti.text().strip(),
                 "node_id_td": self._tag_td.text().strip(),

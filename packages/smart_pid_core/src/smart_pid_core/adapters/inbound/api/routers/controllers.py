@@ -5,7 +5,7 @@ import json
 from dataclasses import replace
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_alarm_repo,
@@ -342,6 +342,7 @@ async def get_controller(
 async def update_controller(
     controller_id: int,
     body: ControllerUpdate,
+    request: Request,
     user: Annotated[UserClaims, Depends(require_supervisor)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
@@ -380,6 +381,10 @@ async def update_controller(
         controller = replace(controller, **updates)
         await repo.save(controller)
 
+    # Re-register OPC-UA tag mappings if tag_bindings were updated
+    if "tag_bindings" in updates:
+        _reregister_opcua(request, controller)
+
     audit_detail = json.dumps({
         "old": {k: str(v) for k, v in old_values.items()},
         "new": {k: str(v) for k, v in new_values.items()},
@@ -389,6 +394,31 @@ async def update_controller(
         f"controller:{controller_id}", audit_detail,
     )
     return _to_response(controller)
+
+
+def _reregister_opcua(request: Request, controller: Controller) -> None:
+    """Re-register controller tag mappings with the OPC-UA adapter (if active)."""
+    adapter = getattr(request.app.state, "opcua_adapter", None)
+    if adapter is None:
+        return
+    tb = controller.tag_bindings
+    if not tb.node_id_pv:
+        return
+    adapter.register_controller(
+        controller_id=controller.id,
+        node_id_pv=tb.node_id_pv,
+        node_id_sp=tb.node_id_sp,
+        node_id_co=tb.node_id_co,
+        node_id_integral=tb.node_id_integral,
+        node_id_bkcal_in=tb.node_id_bkcal_in,
+        node_id_bkcal_out=tb.node_id_bkcal_out,
+        node_id_kp=tb.node_id_kp,
+        node_id_ti=tb.node_id_ti,
+        node_id_td=tb.node_id_td,
+        node_id_mode_target=tb.node_id_mode_target,
+        node_id_mode_actual=tb.node_id_mode_actual,
+        mode_int_map=tb.mode_int_map,
+    )
 
 
 @router.delete("/{controller_id}", status_code=status.HTTP_204_NO_CONTENT)

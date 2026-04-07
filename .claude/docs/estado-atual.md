@@ -1,23 +1,43 @@
-# Estado Atual — Expor variáveis do simulador via OPC-UA
+# Estado Atual — Fix Settings OPC-UA Connect/Disconnect
 
 **Data:** 2026-04-06
-**Branch:** `fix/opcua-expose-simulator-variables`
+**Branch:** `fix/settings-opcua-connect-disconnect`
 
-## Implementado
-- Address space OPC-UA reorganizado com sub-pastas por controlador:
-  - `CTRL_{id}/PID/` — PV, SP, CO, Mode, Status, Kp, Ti, Td, PID_Mode, PID_SP, PID_Enabled, PID_CV, Error
-  - `CTRL_{id}/Process/` — Gain, Tau1, Tau2, DeadTime, Preset, PV_Min, PV_Max, Input, Output
-  - `CTRL_{id}/Disturbance/` — Step_Active, Step_Amplitude, Noise_Active, Noise_Amplitude, Auto_SP_Enabled/Min/Max, Auto_Dist_Enabled/Max
-- API `update_values()` simplificada para receber `values: dict` em vez de parâmetros individuais
-- Simulator `_tick()` agora publica todas as 31 variáveis a cada ciclo
-- 64 testes passando (unit + integration OPC-UA), lint limpo
+## O que foi feito
+
+### Settings Page — botões Connect/Disconnect
+- Substituído botão "Reconnect" por "Connect" e "Disconnect" separados
+- Estado inicial: Connect habilitado, Disconnect desabilitado
+- Ao conectar: mostra "Connecting..." (amarelo), depois "Connected" (verde) ou "Disconnected" (vermelho)
+- Botões se habilitam/desabilitam conforme estado da conexão
+
+### Backend — endpoint disconnect
+- Adicionado `POST /opcua/disconnect` no router OPC-UA
+- `POST /opcua/connect` agora retorna `OPCUAStatusResponse` com estado real (espera até 5s)
+
+### HMI — auto-reconnect watchdog
+- Timer QTimer de 5s (`_opcua_watchdog`) monitora conexão OPC-UA após primeiro connect
+- Se detecta queda: tenta reconectar automaticamente via `POST /opcua/connect`
+- Usa signal thread-safe `_opcua_status_signal` para atualizar UI
+
+### API Client + Ports + Mock
+- Adicionados métodos: `opcua_client_status()`, `opcua_client_connect()`, `opcua_client_disconnect()`
+- Atualizados `APIClientPort` (ports.py) e `MockAPIClient` (mock_service.py)
+
+## Verificação: OPC-UA client thread
+O `OPCUAAdapter` (backend) já executa em thread independente (`daemon=True`, nome "opcua-client") com event loop asyncio dedicado. O watchdog interno lê `ServerStatus_State` a cada 5s e reconecta com backoff exponencial.
 
 ## Arquivos modificados
-- `packages/smart_pid_core/src/smart_pid_core/adapters/inbound/opcua_server.py`
-- `packages/smart_pid_core/src/smart_pid_core/adapters/inbound/simulator_adapter.py`
-- `tests/core/unit/test_opcua_server.py`
-- `tests/core/unit/test_simulator_adapter.py`
-- `tests/core/integration/test_opcua_fullstack.py`
+- `packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/routers/opcua.py`
+- `packages/smart_pid_hmi/src/smart_pid_hmi/pages/settings_page.py`
+- `packages/smart_pid_hmi/src/smart_pid_hmi/main.py`
+- `packages/smart_pid_hmi/src/smart_pid_hmi/services/api_client.py`
+- `packages/smart_pid_hmi/src/smart_pid_hmi/services/ports.py`
+- `packages/smart_pid_hmi/src/smart_pid_hmi/services/mock_service.py`
+- `tests/hmi/pages/test_settings_page.py`
+- `tests/hmi/test_settings_apply_cancel.py`
+
+## Testes: 33 passed (settings + apply/cancel)
 
 ## Próximos passos
-- Aguardar aprovação do usuário para commit e merge
+- Aguardar revisão/merge pelo usuário

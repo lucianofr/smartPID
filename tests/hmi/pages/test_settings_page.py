@@ -101,15 +101,20 @@ def test_opcua_status_label_exists(qtbot):
     qtbot.addWidget(page)
     status = page.findChild(QLabel, "opcua_status")
     assert status is not None
-    assert status.text() == "Unknown"
+    assert status.text() == "Disconnected"
 
 
-def test_opcua_reconnect_button_exists(qtbot):
+def test_opcua_connect_disconnect_buttons_exist(qtbot):
     mgr = _make_manager()
     page = SettingsPage(theme_manager=mgr)
     qtbot.addWidget(page)
-    btn = page.findChild(QPushButton, "opcua_reconnect_btn")
-    assert btn is not None
+    connect_btn = page.findChild(QPushButton, "opcua_connect_btn")
+    disconnect_btn = page.findChild(QPushButton, "opcua_disconnect_btn")
+    assert connect_btn is not None
+    assert disconnect_btn is not None
+    # Initially: Connect enabled, Disconnect disabled
+    assert connect_btn.isEnabled()
+    assert not disconnect_btn.isEnabled()
 
 
 def test_set_opcua_status_connected(qtbot):
@@ -118,6 +123,8 @@ def test_set_opcua_status_connected(qtbot):
     qtbot.addWidget(page)
     page.set_opcua_status(True)
     assert page._opcua_status.text() == "Connected"
+    assert not page._opcua_connect_btn.isEnabled()
+    assert page._opcua_disconnect_btn.isEnabled()
 
 
 def test_set_opcua_status_disconnected(qtbot):
@@ -126,17 +133,40 @@ def test_set_opcua_status_disconnected(qtbot):
     qtbot.addWidget(page)
     page.set_opcua_status(False)
     assert page._opcua_status.text() == "Disconnected"
+    assert page._opcua_connect_btn.isEnabled()
+    assert not page._opcua_disconnect_btn.isEnabled()
 
 
-def test_opcua_reconnect_signal(qtbot):
+def test_opcua_connect_signal(qtbot):
     mgr = _make_manager()
     page = SettingsPage(theme_manager=mgr)
     qtbot.addWidget(page)
     received = []
-    page.opcua_reconnect_requested.connect(received.append)
+    page.opcua_connect_requested.connect(received.append)
     page._opcua_endpoint.setText("opc.tcp://myserver:4840")
-    page._opcua_reconnect_btn.click()
+    page._opcua_connect_btn.click()
     assert received == ["opc.tcp://myserver:4840"]
+
+
+def test_opcua_disconnect_signal(qtbot):
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+    page.set_opcua_status(True)  # Enable disconnect button
+    received = []
+    page.opcua_disconnect_requested.connect(lambda: received.append(True))
+    page._opcua_disconnect_btn.click()
+    assert received == [True]
+
+
+def test_set_opcua_connecting(qtbot):
+    mgr = _make_manager()
+    page = SettingsPage(theme_manager=mgr)
+    qtbot.addWidget(page)
+    page.set_opcua_connecting()
+    assert page._opcua_status.text() == "Connecting..."
+    assert not page._opcua_connect_btn.isEnabled()
+    assert not page._opcua_disconnect_btn.isEnabled()
 
 
 # --- Task 8: Download/Import buttons replace Save As ---
