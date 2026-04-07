@@ -31,6 +31,8 @@ class DashboardPage(QWidget):
     output_requested = Signal(int, float)
     gains_changed = Signal(int, dict)
     settings_requested = Signal(int)
+    alarm_ack_requested = Signal(int)    # alarm_id
+    alarm_ack_all_requested = Signal()
 
     def __init__(
         self,
@@ -113,6 +115,8 @@ class DashboardPage(QWidget):
 
         # Bottom: alarm bar
         self._alarm_bar = AlarmBarWidget(theme=theme)
+        self._alarm_bar.ack_requested.connect(self.alarm_ack_requested)
+        self._alarm_bar.ack_all_requested.connect(self.alarm_ack_all_requested)
         layout.addWidget(self._alarm_bar)
 
         # Wire faceplate command signals
@@ -243,16 +247,22 @@ class DashboardPage(QWidget):
     def _on_alarm(self, controller_id: int, alarm: dict) -> None:
         for card in self._cards:
             card.on_alarm(controller_id, alarm)
-        self._alarm_bar.on_alarm(controller_id, alarm)
+        self._alarm_bar.on_alarm(alarm)
 
     def on_ai_action(self, controller_id: int, action: dict) -> None:
         """Forward AI tuning decision to the AI log widget."""
         self._ai_log.on_ai_action(controller_id, action)
 
     def on_alarm_ack(self, controller_id: int, alarm_type: str | None = None) -> None:
-        """Propagate ACK to cards so they stop blinking."""
+        """Propagate ACK to cards and alarm bar."""
         for card in self._cards:
             card.on_alarm_ack(controller_id, alarm_type)
+        if alarm_type is not None:
+            self._alarm_bar.on_alarm_acked(controller_id, alarm_type)
+
+    def on_all_alarms_acked(self) -> None:
+        """Propagate ACK All to alarm bar."""
+        self._alarm_bar.on_all_alarms_acked()
 
     def apply_theme(self, theme: ThemeBase) -> None:
         """Re-apply theme colors to dynamic elements."""
