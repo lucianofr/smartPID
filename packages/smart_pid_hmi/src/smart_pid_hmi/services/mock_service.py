@@ -278,6 +278,16 @@ class MockAPIClient:
             for c in _MOCK_CONTROLLERS
         ]
 
+    # AI Optimizer
+    def start_optimizer(self, controller_id: int) -> dict:
+        return {"ok": True, "controller_id": controller_id}
+
+    def pause_optimizer(self, controller_id: int) -> dict:
+        return {"ok": True, "controller_id": controller_id}
+
+    def stop_optimizer(self, controller_id: int) -> dict:
+        return {"ok": True, "controller_id": controller_id}
+
     # Export (stubs)
     def create_export(
         self, controller_id: int, start: str, end: str, fmt: str = "csv",

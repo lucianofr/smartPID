@@ -14,7 +14,9 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QHBoxLayout,
+    QLabel,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -60,11 +62,21 @@ class TrendChartWidget(QWidget):
         # Control row: time window + auto-scale + manual fields + export
         ctrl_row = QHBoxLayout()
 
-        self._combo = QComboBox()
-        self._combo.addItems(list(_TIME_WINDOWS.keys()))
-        self._combo.setCurrentText("10min")
-        # Gap #32: connect combo signal
-        self._combo.currentTextChanged.connect(self.set_time_window)
+        # Time window: numeric input + unit selector
+        tw_label = QLabel("Window:")
+        self._tw_spin = QSpinBox()
+        self._tw_spin.setRange(1, 9999)
+        self._tw_spin.setValue(10)
+        self._tw_spin.setFixedWidth(70)
+
+        self._tw_unit = QComboBox()
+        self._tw_unit.addItems(["s", "min"])
+        self._tw_unit.setCurrentText("min")
+        self._tw_unit.setFixedWidth(55)
+
+        self._time_window_s = 600  # 10 min default
+        self._tw_spin.valueChanged.connect(self._on_time_window_changed)
+        self._tw_unit.currentTextChanged.connect(self._on_time_window_changed)
 
         # Gap #33: auto-scale checkbox
         self._auto_scale_cb = QCheckBox("Auto-scale")
@@ -114,7 +126,9 @@ class TrendChartWidget(QWidget):
         self._export_btn.clicked.connect(self._export_csv)
 
         ctrl_row.addStretch()
-        ctrl_row.addWidget(self._combo)
+        ctrl_row.addWidget(tw_label)
+        ctrl_row.addWidget(self._tw_spin)
+        ctrl_row.addWidget(self._tw_unit)
         ctrl_row.addWidget(self._auto_scale_cb)
         ctrl_row.addWidget(self._pv_min_spin)
         ctrl_row.addWidget(self._pv_max_spin)
@@ -213,8 +227,23 @@ class TrendChartWidget(QWidget):
         if self._co_curve:
             self._co_curve.setData(x, list(self._co_data))
 
+        # Apply time window: estimate samples/sec from recent data
+        if len(x) > 1:
+            samples_per_window = max(
+                int(self._time_window_s * 30), 60,
+            )  # ~30 samples/s at 33ms refresh
+            x_min = max(0, self._tick - samples_per_window)
+            self._plot_widget.plotItem.setXRange(x_min, self._tick, padding=0.02)
+
+    def _on_time_window_changed(self, _value: object = None) -> None:
+        """Recalculate time window from numeric spin + unit combo."""
+        val = self._tw_spin.value()
+        unit = self._tw_unit.currentText()
+        self._time_window_s = val * 60 if unit == "min" else val
+
     def set_time_window(self, window: str) -> None:
-        self._combo.setCurrentText(window)
+        """Legacy API — parse string like '10min' or '30s'."""
+        pass
 
     # -- Gap #33/#34 helpers -------------------------------------------------
 
