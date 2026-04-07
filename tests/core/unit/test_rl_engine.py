@@ -246,8 +246,8 @@ class TestRewardFunctions:
         reward = compute_reward_sp_tracking(
             error=0.0, delta_error=0.0, co=50.0, prev_co=50.0, step=0
         )
-        # Zero error, no CO change -> reward should be 0 (no penalty)
-        assert reward == pytest.approx(0.0)
+        # Zero error, no CO change -> highest reward (settle bonus)
+        assert reward > 0.0
 
     def test_sp_tracking_large_error_low_reward(self):
         from smart_pid_core.domain.services.rl_engine import compute_reward_sp_tracking
@@ -269,16 +269,18 @@ class TestRewardFunctions:
         # Same error but chattering should have lower reward
         assert reward_chattering < reward_stable
 
-    def test_sp_tracking_itae_increases_with_time(self):
-        from smart_pid_core.domain.services.rl_engine import compute_reward_sp_tracking
+    def test_dr_itae_increases_with_time(self):
+        from smart_pid_core.domain.services.rl_engine import (
+            compute_reward_disturbance_rejection,
+        )
 
-        reward_early = compute_reward_sp_tracking(
+        reward_early = compute_reward_disturbance_rejection(
             error=0.5, delta_error=0.0, co=50.0, prev_co=50.0, step=0
         )
-        reward_late = compute_reward_sp_tracking(
+        reward_late = compute_reward_disturbance_rejection(
             error=0.5, delta_error=0.0, co=50.0, prev_co=50.0, step=100
         )
-        # Same error later in time should be penalized more (ITAE)
+        # Same error later in time should be penalized more (ITAE in DR)
         assert reward_late < reward_early
 
     def test_sp_tracking_no_prev_co(self):
@@ -294,10 +296,10 @@ class TestRewardFunctions:
         from smart_pid_core.domain.services.rl_engine import compute_reward_surge_level
 
         reward_stable = compute_reward_surge_level(
-            error=0.0, delta_error=0.0, co=50.0, prev_co=50.0, span=100.0
+            error=0.0, delta_error=0.0, co=50.0, prev_co=50.0, step=0
         )
         reward_unstable = compute_reward_surge_level(
-            error=0.0, delta_error=0.0, co=80.0, prev_co=50.0, span=100.0
+            error=0.0, delta_error=0.0, co=80.0, prev_co=50.0, step=0
         )
         assert reward_stable > reward_unstable
 
@@ -305,10 +307,10 @@ class TestRewardFunctions:
         from smart_pid_core.domain.services.rl_engine import compute_reward_surge_level
 
         reward_zero = compute_reward_surge_level(
-            error=0.0, delta_error=0.0, co=50.0, prev_co=50.0, span=100.0
+            error=0.0, delta_error=0.0, co=50.0, prev_co=50.0, step=0
         )
         reward_small = compute_reward_surge_level(
-            error=0.01, delta_error=0.0, co=50.0, prev_co=50.0, span=100.0
+            error=0.01, delta_error=0.0, co=50.0, prev_co=50.0, step=0
         )
         # Small error within deadband should have same reward
         assert reward_zero == pytest.approx(reward_small)
@@ -317,10 +319,10 @@ class TestRewardFunctions:
         from smart_pid_core.domain.services.rl_engine import compute_reward_surge_level
 
         reward_in = compute_reward_surge_level(
-            error=0.01, delta_error=0.0, co=50.0, prev_co=50.0, span=100.0
+            error=0.01, delta_error=0.0, co=50.0, prev_co=50.0, step=0
         )
         reward_out = compute_reward_surge_level(
-            error=0.5, delta_error=0.0, co=50.0, prev_co=50.0, span=100.0
+            error=0.5, delta_error=0.0, co=50.0, prev_co=50.0, step=0
         )
         assert reward_out < reward_in
 
@@ -328,7 +330,7 @@ class TestRewardFunctions:
         from smart_pid_core.domain.services.rl_engine import compute_reward_surge_level
 
         reward = compute_reward_surge_level(
-            error=0.5, delta_error=0.0, co=50.0, prev_co=None, span=100.0
+            error=0.5, delta_error=0.0, co=50.0, prev_co=None, step=0
         )
         # No stability reward, only IAE penalty outside deadband
         assert reward < 0.0
