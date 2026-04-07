@@ -7,18 +7,22 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_opcua_adapter,
+    get_repo,
     require_admin,
     require_operator,
 )
 from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter  # noqa: TC001
+from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository  # noqa: TC001
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
-from smart_pid_domain.enums import ConnectionState
 from smart_pid_domain.dtos.opcua import (
     OPCUABrowseResponse,
+    OPCUAConnectRequest,
+    OPCUAEndpointRequest,
     OPCUANodeInfo,
     OPCUASearchResponse,
     OPCUAStatusResponse,
 )
+from smart_pid_domain.enums import ConnectionState
 
 router = APIRouter()
 
@@ -67,11 +71,31 @@ async def search_tags(
     )
 
 
+@router.put("/endpoint", response_model=OPCUAStatusResponse)
+async def save_endpoint(
+    body: OPCUAEndpointRequest,
+    _user: Annotated[UserClaims, Depends(require_admin)],
+    adapter: Annotated[OPCUAAdapter, Depends(get_opcua_adapter)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
+) -> OPCUAStatusResponse:
+    if not body.endpoint.startswith("opc.tcp://"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Endpoint must start with opc.tcp://",
+        )
+    await repo.set_meta("opcua_endpoint", body.endpoint)
+    adapter.set_endpoint(body.endpoint)
+    return OPCUAStatusResponse(state=adapter.state, endpoint=adapter.endpoint)
+
+
 @router.post("/connect")
 async def force_connect(
     _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[OPCUAAdapter, Depends(get_opcua_adapter)],
+    body: OPCUAConnectRequest | None = None,
 ) -> OPCUAStatusResponse:
+    if body and body.endpoint:
+        adapter.set_endpoint(body.endpoint)
     adapter.stop()
     adapter.start()
     connected = adapter.wait_connected(timeout_s=5.0)
