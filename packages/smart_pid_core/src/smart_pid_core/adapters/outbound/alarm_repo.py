@@ -68,17 +68,40 @@ class AlarmRepository:
         alarm_id: int,
         username: str,
         ack_at: datetime,
-    ) -> None:
-        """Acknowledge a specific alarm."""
+    ) -> dict:
+        """Acknowledge a specific alarm. Returns alarm details for HMI update."""
         await self._db.execute(
             """UPDATE Log_Alarmes SET reconhecido = 1, reconhecido_por = ?, reconhecido_em = ?
                WHERE id = ?""",
             (username, ack_at.isoformat(), alarm_id),
         )
         await self._db.commit()
+        async with self._db.execute(
+            """SELECT id, controlador_id as controller_id, tipo_alarme as alarm_type,
+                      prioridade as priority
+               FROM Log_Alarmes WHERE id = ?""",
+            (alarm_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return {"id": alarm_id, "acknowledged": True}
+        return {
+            "id": row["id"],
+            "controller_id": row["controller_id"],
+            "alarm_type": row["alarm_type"],
+            "priority": row["priority"],
+            "acknowledged": True,
+        }
 
-    async def acknowledge_all(self, username: str, ack_at: datetime) -> int:
-        """Acknowledge all unacknowledged alarms. Returns count."""
+    async def acknowledge_all(self, username: str, ack_at: datetime) -> dict:
+        """Acknowledge all unacknowledged alarms. Returns count and controller_ids."""
+        # First, get affected controller_ids before updating
+        async with self._db.execute(
+            "SELECT DISTINCT controlador_id FROM Log_Alarmes WHERE reconhecido = 0",
+        ) as cur:
+            rows = await cur.fetchall()
+        controller_ids = [row["controlador_id"] for row in rows]
+
         async with self._db.execute(
             """UPDATE Log_Alarmes SET reconhecido = 1, reconhecido_por = ?, reconhecido_em = ?
                WHERE reconhecido = 0""",
@@ -86,7 +109,7 @@ class AlarmRepository:
         ) as cur:
             count = cur.rowcount
         await self._db.commit()
-        return count
+        return {"acknowledged_count": count, "controller_ids": controller_ids}
 
     async def get_active(
         self,

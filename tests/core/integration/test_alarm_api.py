@@ -74,7 +74,11 @@ class TestAckAlarm:
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "acknowledged"
-        assert body["alarm_id"] == alarm_id
+        assert body["id"] == alarm_id
+        assert body["controller_id"] == 1
+        assert body["alarm_type"] == "HIHI"
+        assert body["priority"] == "CRITICAL"
+        assert body["acknowledged"] is True
 
     @pytest.mark.asyncio
     async def test_ack_all(
@@ -90,7 +94,8 @@ class TestAckAlarm:
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "acknowledged"
-        assert body["count"] == 2
+        assert body["acknowledged_count"] == 2
+        assert body["controller_ids"] == [1]
 
 
 class TestAlarmHistory:

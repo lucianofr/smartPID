@@ -60,7 +60,7 @@ async def ack_alarm(
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> dict:
     now = datetime.now(tz=UTC)
-    await alarm_repo.acknowledge(alarm_id, user.username, now)
+    result = await alarm_repo.acknowledge(alarm_id, user.username, now)
     await audit_repo.record(
         user.user_id,
         user.username,
@@ -68,7 +68,7 @@ async def ack_alarm(
         f"alarm:{alarm_id}",
         None,
     )
-    return {"status": "acknowledged", "alarm_id": alarm_id}
+    return {"status": "acknowledged", **result}
 
 
 @router.post("/ack-all")
@@ -78,12 +78,12 @@ async def ack_all_alarms(
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> dict:
     now = datetime.now(tz=UTC)
-    count = await alarm_repo.acknowledge_all(user.username, now)
+    result = await alarm_repo.acknowledge_all(user.username, now)
     await audit_repo.record(
         user.user_id,
         user.username,
         AuditAction.ACK_ALARM_ALL,
         None,
-        f'{{"count": {count}}}',
+        f'{{"count": {result["acknowledged_count"]}}}',
     )
-    return {"status": "acknowledged", "count": count}
+    return {"status": "acknowledged", **result}
