@@ -126,6 +126,10 @@ def get_opcua_adapter(request: Request) -> OPCUAAdapter:
     return adapter
 
 
+def get_opcua_adapter_optional(request: Request) -> OPCUAAdapter | None:
+    return getattr(request.app.state, "opcua_adapter", None)
+
+
 def get_stats_workers(request: Request) -> dict[int, StatsWorker]:
     return getattr(request.app.state, "stats_workers", {})
 

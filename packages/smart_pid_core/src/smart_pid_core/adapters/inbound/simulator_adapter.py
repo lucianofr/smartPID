@@ -51,6 +51,7 @@ class _ControllerSim:
     pid_params: PIDParams = field(default_factory=PIDParams)
     pid_state: PIDState = field(default_factory=PIDState)
     pid_mode: int = 0  # 0=MAN, 1=AUTO
+    pid_structure: int = 0  # 0=ISA, 1=PARALLEL, 2=SERIES
     # PV scale (used for auto-excitation span calculation)
     pv_min: float = 0.0
     pv_max: float = 100.0
@@ -107,6 +108,12 @@ class SimulatorAdapter:
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return
+        # Ensure at least one default controller for standalone simulation
+        with self._lock:
+            if not self._controllers:
+                self._controllers[0] = _ControllerSim(controller_id=0)
+                self._opcua_server.register_controller(0)
+                logger.info("Simulator: created default controller (id=0)")
         self._stop_event.clear()
         # OPC-UA server is managed independently via start_opcua()/stop_opcua()
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name="simulator")
@@ -141,8 +148,8 @@ class SimulatorAdapter:
                 ctrl.pid_params.reset = value
             elif param == "td":
                 ctrl.pid_params.rate = value
-            elif param == "pid_mode":
-                ctrl.pid_mode = int(value)
+            elif param == "pid_structure":
+                ctrl.pid_structure = int(value)
             elif param == "pid_sp":
                 ctrl.sp = value
 
@@ -423,12 +430,12 @@ class SimulatorAdapter:
                         "pv": pv,
                         "sp": ctrl.sp,
                         "co": ctrl.last_co,
-                        "mode": 0,
-                        "status": 0,
+                        "mode": ctrl.pid_mode,
+                        "status": 1 if ctrl.pid_enabled else 0,
                         "kp": ctrl.pid_params.gain,
                         "ti": ctrl.pid_params.reset,
                         "td": ctrl.pid_params.rate,
-                        "pid_mode": ctrl.pid_mode,
+                        "pid_structure": ctrl.pid_structure,
                         "pid_sp": ctrl.sp,
                         "pid_enabled": ctrl.pid_enabled,
                         "pid_cv": ctrl.pid_state.cv,

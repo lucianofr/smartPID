@@ -35,7 +35,8 @@ class SettingsPage(QWidget):
 
     theme_changed = Signal(str)
     refresh_rate_changed = Signal(int)
-    opcua_reconnect_requested = Signal(str)  # (endpoint_url)
+    opcua_connect_requested = Signal(str)  # (endpoint_url)
+    opcua_disconnect_requested = Signal()
 
     # Project signals (immediate — not affected by Apply/Cancel)
     project_changed = Signal(str, str)  # (name, path)
@@ -164,17 +165,23 @@ class SettingsPage(QWidget):
         opcua_form.addRow("Endpoint URL:", self._opcua_endpoint)
 
         status_row = QHBoxLayout()
-        self._opcua_status = QLabel("Unknown")
+        self._opcua_status = QLabel("Disconnected")
         self._opcua_status.setObjectName("opcua_status")
         self._opcua_status.setStyleSheet(
-            "color: #888; font-weight: bold; padding: 2px 8px;"
+            "color: #F44336; font-weight: bold; padding: 2px 8px;"
         )
         status_row.addWidget(self._opcua_status)
 
-        self._opcua_reconnect_btn = QPushButton("Reconnect")
-        self._opcua_reconnect_btn.setObjectName("opcua_reconnect_btn")
-        self._opcua_reconnect_btn.clicked.connect(self._on_opcua_reconnect)
-        status_row.addWidget(self._opcua_reconnect_btn)
+        self._opcua_connect_btn = QPushButton("Connect")
+        self._opcua_connect_btn.setObjectName("opcua_connect_btn")
+        self._opcua_connect_btn.clicked.connect(self._on_opcua_connect)
+        status_row.addWidget(self._opcua_connect_btn)
+
+        self._opcua_disconnect_btn = QPushButton("Disconnect")
+        self._opcua_disconnect_btn.setObjectName("opcua_disconnect_btn")
+        self._opcua_disconnect_btn.setEnabled(False)
+        self._opcua_disconnect_btn.clicked.connect(self._on_opcua_disconnect)
+        status_row.addWidget(self._opcua_disconnect_btn)
         status_row.addStretch()
 
         opcua_form.addRow("Status:", status_row)
@@ -214,17 +221,30 @@ class SettingsPage(QWidget):
         self._opcua_endpoint.setText(url)
 
     def set_opcua_status(self, connected: bool) -> None:
-        """Update the OPC-UA connection status indicator."""
+        """Update the OPC-UA connection status indicator and button states."""
         if connected:
             self._opcua_status.setText("Connected")
             self._opcua_status.setStyleSheet(
                 "color: #4CAF50; font-weight: bold; padding: 2px 8px;"
             )
+            self._opcua_connect_btn.setEnabled(False)
+            self._opcua_disconnect_btn.setEnabled(True)
         else:
             self._opcua_status.setText("Disconnected")
             self._opcua_status.setStyleSheet(
                 "color: #F44336; font-weight: bold; padding: 2px 8px;"
             )
+            self._opcua_connect_btn.setEnabled(True)
+            self._opcua_disconnect_btn.setEnabled(False)
+
+    def set_opcua_connecting(self) -> None:
+        """Show connecting state while waiting for backend response."""
+        self._opcua_status.setText("Connecting...")
+        self._opcua_status.setStyleSheet(
+            "color: #FFC107; font-weight: bold; padding: 2px 8px;"
+        )
+        self._opcua_connect_btn.setEnabled(False)
+        self._opcua_disconnect_btn.setEnabled(False)
 
     # --- Apply / Cancel logic ---------------------------------------------------
 
@@ -250,7 +270,7 @@ class SettingsPage(QWidget):
         if self._refresh_spin.value() != self._committed_refresh:
             self.refresh_rate_changed.emit(self._refresh_spin.value())
         if self._opcua_endpoint.text() != self._committed_opcua_url:
-            self.opcua_reconnect_requested.emit(self._opcua_endpoint.text())
+            self.opcua_connect_requested.emit(self._opcua_endpoint.text())
 
         # Update committed state
         self._committed_theme_idx = self._theme_combo.currentIndex()
@@ -280,10 +300,14 @@ class SettingsPage(QWidget):
 
     # --- Immediate actions -----------------------------------------------------
 
-    def _on_opcua_reconnect(self) -> None:
+    def _on_opcua_connect(self) -> None:
         url = self._opcua_endpoint.text().strip()
         if url:
-            self.opcua_reconnect_requested.emit(url)
+            self.set_opcua_connecting()
+            self.opcua_connect_requested.emit(url)
+
+    def _on_opcua_disconnect(self) -> None:
+        self.opcua_disconnect_requested.emit()
 
     # --- Project actions (immediate — not buffered) ----------------------------
 

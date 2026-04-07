@@ -6,10 +6,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
+    get_repo,
     get_simulator_adapter,
     require_supervisor,
 )
 from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter  # noqa: TC001
+from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository  # noqa: TC001
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
 from smart_pid_domain.dtos.commands import CommandResponse
 from smart_pid_domain.dtos.simulator import (
@@ -35,7 +37,17 @@ router = APIRouter()
 async def start_simulator(
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
+    # Sync project controllers (if any) so they are available in simulator
+    controllers = await repo.list_all()
+    for ctrl in controllers:
+        adapter.register_controller(
+            ctrl.id,
+            pv_min=ctrl.pv_scale.eu_min,
+            pv_max=ctrl.pv_scale.eu_max,
+        )
+    # start() creates a default controller (id=0) if none registered
     adapter.start()
     return CommandResponse(ok=True, detail="Simulator started")
 
@@ -178,6 +190,20 @@ async def set_pid_sp(
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID SP={body.sp}")
+
+
+@router.post("/{controller_id}/co", response_model=CommandResponse)
+async def set_co(
+    controller_id: int,
+    body: SimulatorPIDSPRequest,  # reuse — same shape (float 0-100)
+    _user: Annotated[UserClaims, Depends(require_supervisor)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> CommandResponse:
+    try:
+        adapter.write_output(controller_id, body.sp)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
+    return CommandResponse(ok=True, controller_id=controller_id, detail=f"CO={body.sp}")
 
 
 @router.post("/{controller_id}/pid/mode", response_model=CommandResponse)

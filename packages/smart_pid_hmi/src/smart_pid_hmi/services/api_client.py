@@ -137,6 +137,21 @@ class APIClient:
         resp.raise_for_status()
         return resp.json().get("results", [])
 
+    def opcua_client_status(self) -> dict:
+        resp = self._http.get("/opcua/status", headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
+
+    def opcua_client_connect(self) -> dict:
+        resp = self._http.post("/opcua/connect", headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
+
+    def opcua_client_disconnect(self) -> dict:
+        resp = self._http.post("/opcua/disconnect", headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
+
     def start_simulator(self) -> CommandResponse:
         resp = self._http.post("/simulator/start", headers=self._headers())
         resp.raise_for_status()
@@ -249,6 +264,17 @@ class APIClient:
         resp = self._http.post(
             f"/simulator/{controller_id}/pid/sp",
             json={"controller_id": controller_id, "sp": sp},
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return CommandResponse.model_validate(resp.json())
+
+    def set_simulator_co(
+        self, controller_id: int, co: float,
+    ) -> CommandResponse:
+        resp = self._http.post(
+            f"/simulator/{controller_id}/co",
+            json={"controller_id": controller_id, "sp": co},
             headers=self._headers(),
         )
         resp.raise_for_status()

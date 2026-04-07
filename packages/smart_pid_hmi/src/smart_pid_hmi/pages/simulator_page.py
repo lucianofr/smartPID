@@ -140,9 +140,16 @@ class SimulatorPage(QWidget):
         self._pid_pv_edit.setReadOnly(True)
         pid_form.addRow("PV:", self._pid_pv_edit)
 
+        sp_row = QHBoxLayout()
         self._pid_sp_edit = QLineEdit("50.0")
         self._pid_sp_edit.setObjectName("pid_sp_edit")
-        pid_form.addRow("SP:", self._pid_sp_edit)
+        sp_row.addWidget(self._pid_sp_edit, stretch=1)
+        sp_row.addWidget(QLabel("SP_WRK:"))
+        self._pid_sp_wrk_edit = QLineEdit("50.0")
+        self._pid_sp_wrk_edit.setObjectName("pid_sp_wrk_edit")
+        self._pid_sp_wrk_edit.setReadOnly(True)
+        sp_row.addWidget(self._pid_sp_wrk_edit, stretch=1)
+        pid_form.addRow("SP:", sp_row)
 
         self._pid_co_edit = QLineEdit("0.0")
         self._pid_co_edit.setObjectName("pid_co_edit")
@@ -405,35 +412,40 @@ class SimulatorPage(QWidget):
         # Apply initial preset without triggering change tracking
         self._on_preset_changed(self._preset_combo.currentText())
 
-        # Store committed state
+        # Store committed state (process model params only — PID controls are immediate)
         self._committed_preset_idx = self._preset_combo.currentIndex()
         self._committed_gain = self._gain_slider.value()
         self._committed_tau1 = self._tau1_slider.value()
         self._committed_tau2 = self._tau2_slider.value()
         self._committed_dead_time = self._dead_time_slider.value()
-        self._committed_pid_enable = self._pid_enable_cb.isChecked()
-        self._committed_pid_mode_idx = self._pid_mode_combo.currentIndex()
-        self._committed_pid_sp = self._pid_sp_edit.text()
-        self._committed_pid_co = self._pid_co_edit.text()
-        self._committed_kp = self._pid_kp_edit.text()
-        self._committed_ti = self._pid_ti_edit.text()
-        self._committed_td = self._pid_td_edit.text()
 
-        # Connect change tracking after storing committed state
+        # Connect change tracking for PROCESS MODEL params (Apply required)
         self._preset_combo.currentIndexChanged.connect(self._on_preset_selected)
         self._preset_combo.currentIndexChanged.connect(self._on_field_changed)
         self._gain_slider.valueChanged.connect(self._on_field_changed)
         self._tau1_slider.valueChanged.connect(self._on_field_changed)
         self._tau2_slider.valueChanged.connect(self._on_field_changed)
         self._dead_time_slider.valueChanged.connect(self._on_field_changed)
+
+        # PID controls act IMMEDIATELY (real-time, no Apply needed)
         self._pid_enable_cb.toggled.connect(self._on_pid_enable_toggled)
-        self._pid_enable_cb.toggled.connect(self._on_field_changed)
-        self._pid_mode_combo.currentIndexChanged.connect(self._on_field_changed)
-        self._pid_sp_edit.textChanged.connect(self._on_field_changed)
-        self._pid_co_edit.textChanged.connect(self._on_field_changed)
-        self._pid_kp_edit.textChanged.connect(self._on_field_changed)
-        self._pid_ti_edit.textChanged.connect(self._on_field_changed)
-        self._pid_td_edit.textChanged.connect(self._on_field_changed)
+        self._pid_enable_cb.toggled.connect(lambda v: self.pid_enabled_changed.emit(v))
+        self._pid_mode_combo.currentIndexChanged.connect(
+            lambda _: self.pid_mode_changed.emit(self._pid_mode_combo.currentText())
+        )
+        self._pid_sp_edit.editingFinished.connect(
+            lambda: self.pid_sp_changed.emit(
+                self._parse_float(self._pid_sp_edit.text(), 50.0)
+            )
+        )
+        self._pid_co_edit.editingFinished.connect(
+            lambda: self.pid_co_changed.emit(
+                self._parse_float(self._pid_co_edit.text(), 0.0)
+            )
+        )
+        self._pid_kp_edit.editingFinished.connect(self._on_pid_params_edited)
+        self._pid_ti_edit.editingFinished.connect(self._on_pid_params_edited)
+        self._pid_td_edit.editingFinished.connect(self._on_pid_params_edited)
 
     def _make_param_row(
         self, layout: QVBoxLayout, label: str, key: str,
@@ -458,20 +470,22 @@ class SimulatorPage(QWidget):
         self._sim_apply_btn.setEnabled(changed)
         self._sim_cancel_btn.setEnabled(changed)
 
+    def _on_pid_params_edited(self) -> None:
+        """Send PID Kp/Ti/Td immediately on Enter or focus loss."""
+        self.pid_params_changed.emit(
+            self._parse_float(self._pid_kp_edit.text(), 1.0),
+            self._parse_float(self._pid_ti_edit.text(), 10.0),
+            self._parse_float(self._pid_td_edit.text(), 0.0),
+        )
+
     def has_unsaved_changes(self) -> bool:
+        # Only process model params require Apply — PID controls act immediately
         return (
             self._preset_combo.currentIndex() != self._committed_preset_idx
             or self._gain_slider.value() != self._committed_gain
             or self._tau1_slider.value() != self._committed_tau1
             or self._tau2_slider.value() != self._committed_tau2
             or self._dead_time_slider.value() != self._committed_dead_time
-            or self._pid_enable_cb.isChecked() != self._committed_pid_enable
-            or self._pid_mode_combo.currentIndex() != self._committed_pid_mode_idx
-            or self._pid_sp_edit.text() != self._committed_pid_sp
-            or self._pid_co_edit.text() != self._committed_pid_co
-            or self._pid_kp_edit.text() != self._committed_kp
-            or self._pid_ti_edit.text() != self._committed_ti
-            or self._pid_td_edit.text() != self._committed_td
         )
 
     @staticmethod
@@ -482,6 +496,7 @@ class SimulatorPage(QWidget):
             return fallback
 
     def _on_apply(self) -> None:
+        # Apply only process model changes — PID controls act immediately
         if self._preset_combo.currentIndex() != self._committed_preset_idx:
             self.preset_changed.emit(self._preset_combo.currentText())
         if (
@@ -495,46 +510,20 @@ class SimulatorPage(QWidget):
                 self._gain_slider.value(), self._tau1_slider.value(),
                 tau2, self._dead_time_slider.value(),
             )
-        if self._pid_enable_cb.isChecked() != self._committed_pid_enable:
-            self.pid_enabled_changed.emit(self._pid_enable_cb.isChecked())
-        if self._pid_mode_combo.currentIndex() != self._committed_pid_mode_idx:
-            self.pid_mode_changed.emit(self._pid_mode_combo.currentText())
-        if self._pid_sp_edit.text() != self._committed_pid_sp:
-            self.pid_sp_changed.emit(self._parse_float(self._pid_sp_edit.text(), 50.0))
-        if self._pid_co_edit.text() != self._committed_pid_co:
-            self.pid_co_changed.emit(self._parse_float(self._pid_co_edit.text(), 0.0))
-        if (
-            self._pid_kp_edit.text() != self._committed_kp
-            or self._pid_ti_edit.text() != self._committed_ti
-            or self._pid_td_edit.text() != self._committed_td
-        ):
-            self.pid_params_changed.emit(
-                self._parse_float(self._pid_kp_edit.text(), 1.0),
-                self._parse_float(self._pid_ti_edit.text(), 10.0),
-                self._parse_float(self._pid_td_edit.text(), 0.0),
-            )
 
         self._committed_preset_idx = self._preset_combo.currentIndex()
         self._committed_gain = self._gain_slider.value()
         self._committed_tau1 = self._tau1_slider.value()
         self._committed_tau2 = self._tau2_slider.value()
         self._committed_dead_time = self._dead_time_slider.value()
-        self._committed_pid_enable = self._pid_enable_cb.isChecked()
-        self._committed_pid_mode_idx = self._pid_mode_combo.currentIndex()
-        self._committed_pid_sp = self._pid_sp_edit.text()
-        self._committed_pid_co = self._pid_co_edit.text()
-        self._committed_kp = self._pid_kp_edit.text()
-        self._committed_ti = self._pid_ti_edit.text()
-        self._committed_td = self._pid_td_edit.text()
         self._sim_apply_btn.setEnabled(False)
         self._sim_cancel_btn.setEnabled(False)
 
     def _on_cancel(self) -> None:
+        # Cancel only reverts process model params — PID controls are immediate
         widgets = [
             self._preset_combo, self._gain_slider, self._tau1_slider,
-            self._tau2_slider, self._dead_time_slider, self._pid_enable_cb,
-            self._pid_mode_combo, self._pid_sp_edit, self._pid_co_edit,
-            self._pid_kp_edit, self._pid_ti_edit, self._pid_td_edit,
+            self._tau2_slider, self._dead_time_slider,
         ]
         for w in widgets:
             w.blockSignals(True)
@@ -543,13 +532,6 @@ class SimulatorPage(QWidget):
         self._tau1_slider.setValue(self._committed_tau1)
         self._tau2_slider.setValue(self._committed_tau2)
         self._dead_time_slider.setValue(self._committed_dead_time)
-        self._pid_enable_cb.setChecked(self._committed_pid_enable)
-        self._pid_mode_combo.setCurrentIndex(self._committed_pid_mode_idx)
-        self._pid_sp_edit.setText(self._committed_pid_sp)
-        self._pid_co_edit.setText(self._committed_pid_co)
-        self._pid_kp_edit.setText(self._committed_kp)
-        self._pid_ti_edit.setText(self._committed_ti)
-        self._pid_td_edit.setText(self._committed_td)
         for w in widgets:
             w.blockSignals(False)
         self._sim_apply_btn.setEnabled(False)
@@ -656,6 +638,7 @@ class SimulatorPage(QWidget):
         self._sim_stop_btn.setEnabled(running)
         self._status_label.setText(f"Status: {'Running' if running else 'Stopped'}")
 
+    @Slot(str)
     def set_status_text(self, text: str) -> None:
         self._status_label.setText(f"Status: {text}")
 
@@ -685,14 +668,30 @@ class SimulatorPage(QWidget):
         disturbance_out: float,
         sp: float | None = None,
     ) -> None:
-        """Bulk update all read-only live variables from simulation tick."""
+        """Bulk update all read-only live variables from simulation tick.
+
+        CO is only updated when PID is enabled+AUTO (computed by PID).
+        In MAN mode, CO is user-editable and must not be overwritten.
+        SP is never overwritten — user controls it directly.
+        """
         self._pid_pv_edit.setText(f"{pv:.2f}")
-        self._pid_co_edit.setText(f"{co:.2f}")
+        # Only overwrite CO when PID is computing it (enabled + AUTO)
+        if self._pid_enable_cb.isChecked() and self._pid_mode_combo.currentText() == "AUTO":
+            self._pid_co_edit.blockSignals(True)
+            self._pid_co_edit.setText(f"{co:.2f}")
+            self._pid_co_edit.blockSignals(False)
         self._proc_in_edit.setText(f"{process_in:.2f}")
         self._proc_out_edit.setText(f"{process_out:.2f}")
         self._dist_out_edit.setText(f"{disturbance_out:.2f}")
         if sp is not None:
-            self._auto_sp_edit.setText(f"{sp:.2f}")
+            if self._auto_sp_enable.isChecked():
+                # Auto SP active: working SP comes from the auto-variation algorithm
+                self._pid_sp_wrk_edit.setText(f"{sp:.2f}")
+                self._auto_sp_edit.setText(f"{sp:.2f}")
+            else:
+                # Manual SP: working SP = user's SP input
+                self._pid_sp_wrk_edit.setText(self._pid_sp_edit.text())
+                self._auto_sp_edit.setText(f"{sp:.2f}")
         if abs(disturbance_out) > 1e-9:
             self._auto_dist_edit.setText(f"{disturbance_out:.2f}")
 

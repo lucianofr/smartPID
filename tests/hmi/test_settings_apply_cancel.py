@@ -169,11 +169,18 @@ class TestApply:
         assert page.has_unsaved_changes() is True
 
 
-class TestReconnectStillImmediate:
-    """Reconnect button remains an immediate action, not buffered."""
+class TestConnectDisconnectImmediate:
+    """Connect/Disconnect buttons remain immediate actions, not buffered."""
 
-    def test_reconnect_emits_immediately(self, qtbot, page):
+    def test_connect_emits_immediately(self, qtbot, page):
         page._opcua_endpoint.setText("opc.tcp://test:4840")
 
-        with qtbot.waitSignal(page.opcua_reconnect_requested, timeout=1000):
-            page._opcua_reconnect_btn.click()
+        with qtbot.waitSignal(page.opcua_connect_requested, timeout=1000):
+            page._opcua_connect_btn.click()
+
+    def test_disconnect_emits_immediately(self, qtbot, page):
+        # Enable disconnect button first (simulating connected state)
+        page.set_opcua_status(True)
+
+        with qtbot.waitSignal(page.opcua_disconnect_requested, timeout=1000):
+            page._opcua_disconnect_btn.click()

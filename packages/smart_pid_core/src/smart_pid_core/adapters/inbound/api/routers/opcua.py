@@ -12,6 +12,7 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
 )
 from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter  # noqa: TC001
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
+from smart_pid_domain.enums import ConnectionState
 from smart_pid_domain.dtos.opcua import (
     OPCUABrowseResponse,
     OPCUANodeInfo,
@@ -67,10 +68,23 @@ async def search_tags(
 
 
 @router.post("/connect")
-async def force_reconnect(
+async def force_connect(
     _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[OPCUAAdapter, Depends(get_opcua_adapter)],
-) -> dict[str, str]:
+) -> OPCUAStatusResponse:
     adapter.stop()
     adapter.start()
-    return {"detail": "Reconnection initiated"}
+    connected = adapter.wait_connected(timeout_s=5.0)
+    return OPCUAStatusResponse(
+        state=ConnectionState.ONLINE if connected else adapter.state,
+        endpoint=adapter.endpoint,
+    )
+
+
+@router.post("/disconnect")
+async def force_disconnect(
+    _user: Annotated[UserClaims, Depends(require_admin)],
+    adapter: Annotated[OPCUAAdapter, Depends(get_opcua_adapter)],
+) -> OPCUAStatusResponse:
+    adapter.stop()
+    return OPCUAStatusResponse(state=adapter.state, endpoint=adapter.endpoint)

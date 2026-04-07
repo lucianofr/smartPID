@@ -59,6 +59,8 @@ class MainWindow(QMainWindow):
     _kpi_data_signal = Signal(dict)  # KPI + performance data from background
     _edit_dialog_signal = Signal(int, object)
     _project_info_signal = Signal(str, str, int)  # (name, path, controller_count)
+    _sim_controllers_signal = Signal(list)  # populate simulator combo from sim status
+    _opcua_status_signal = Signal(bool)  # OPC-UA connection status from watchdog
 
     def __init__(
         self,
@@ -84,7 +86,7 @@ class MainWindow(QMainWindow):
         self._kpi_data_signal.connect(self._on_kpi_data_received)
         self._edit_dialog_signal.connect(self._open_edit_dialog)
         self._project_info_signal.connect(self._on_project_info_received)
-
+        self._opcua_status_signal.connect(self._on_opcua_status_received)
         # Cached controller list for KPI computation
         self._cached_controllers: list[dict] = []
 
@@ -95,6 +97,11 @@ class MainWindow(QMainWindow):
         # Simulator live values polling timer (1s interval)
         self._sim_poll_timer = QTimer(self)
         self._sim_poll_timer.timeout.connect(self._poll_sim_status)
+
+        # OPC-UA connection watchdog (5s interval, started after first connect)
+        self._opcua_watchdog = QTimer(self)
+        self._opcua_watchdog.timeout.connect(self._poll_opcua_status)
+        self._opcua_connected = False
 
         self.setWindowTitle("Smart PID HMI")
         self.setMinimumSize(1024, 700)
@@ -296,8 +303,12 @@ class MainWindow(QMainWindow):
         self._simulator_page.opcua_start_requested.connect(self._send_opcua_start)
         self._simulator_page.opcua_stop_requested.connect(self._send_opcua_stop)
         self._simulator_page.pid_sp_changed.connect(self._send_sim_pid_sp)
+        self._simulator_page.pid_co_changed.connect(self._send_sim_pid_co)
+        self._sim_controllers_signal.connect(self._simulator_page.populate_controllers)
         self._settings_page.theme_changed.connect(self._on_theme_switch)
         self._settings_page.refresh_rate_changed.connect(self._on_refresh_rate_changed)
+        self._settings_page.opcua_connect_requested.connect(self._on_opcua_connect)
+        self._settings_page.opcua_disconnect_requested.connect(self._on_opcua_disconnect)
         self._settings_page.project_new_requested.connect(self._show_project_dialog)
         self._settings_page.project_open_requested.connect(self._show_project_dialog)
         self._settings_page.project_download_requested.connect(self._on_project_download)
@@ -421,7 +432,7 @@ class MainWindow(QMainWindow):
         """Handle controllers loaded via thread-safe signal."""
         self._cached_controllers = controllers
         self._dashboard_page.populate_controllers(controllers)
-        self._simulator_page.populate_controllers(controllers)
+        # Simulator combo populated separately from simulator status
 
         # Feed multi-trend page with available loop names
         loop_names = [c.get("name", f"Loop-{c.get('id', '?')}") for c in controllers]
@@ -513,6 +524,7 @@ class MainWindow(QMainWindow):
                         Qt.ConnectionType.QueuedConnection,
                         Q_ARG(bool, True),
                     )
+                    self._refresh_sim_controllers()
                     QMetaObject.invokeMethod(
                         self._sim_poll_timer, "start",
                         Qt.ConnectionType.QueuedConnection,
@@ -529,6 +541,18 @@ class MainWindow(QMainWindow):
                 pass  # Not available — button stays disabled
 
         threading.Thread(target=do_check, daemon=True).start()
+
+    def _refresh_sim_controllers(self) -> None:
+        """Fetch simulator status and populate the simulator combo box."""
+        try:
+            status = self._api_client.get_simulator_status()
+            sim_ctrls = [
+                {"name": f"Sim Loop {cid}", "id": cid}
+                for cid in status.controllers
+            ]
+            self._sim_controllers_signal.emit(sim_ctrls)
+        except Exception:
+            pass
 
     @Slot()
     def _enable_simulator(self) -> None:
@@ -616,6 +640,8 @@ class MainWindow(QMainWindow):
                     Qt.ConnectionType.QueuedConnection,
                     Q_ARG(bool, True),
                 )
+                # Populate simulator combo from actual simulator controllers
+                self._refresh_sim_controllers()
                 # Start polling live values
                 QMetaObject.invokeMethod(
                     self._sim_poll_timer, "start",
@@ -675,6 +701,12 @@ class MainWindow(QMainWindow):
             return
         self._safe_api_call(self._api_client.set_simulator_pid_sp, cid, sp)
 
+    def _send_sim_pid_co(self, co: float) -> None:
+        cid = self._simulator_page.current_controller_id
+        if cid is None:
+            return
+        self._safe_api_call(self._api_client.set_simulator_co, cid, co)
+
     def _poll_sim_status(self) -> None:
         """Poll simulator status and update live values on the simulator page."""
         cid = self._simulator_page.current_controller_id
@@ -728,6 +760,65 @@ class MainWindow(QMainWindow):
     def _on_refresh_rate_changed(self, ms: int) -> None:
         """Update BusBridge refresh interval when user changes setting."""
         self._bus_bridge.set_refresh_ms(ms)
+
+    def _on_opcua_connect(self, endpoint_url: str) -> None:
+        """Connect to OPC-UA server via backend."""
+        def do_connect():
+            try:
+                result = self._api_client.opcua_client_connect()
+                state = result.get("state", "")
+                connected = state.upper() == "ONLINE"
+                self._opcua_status_signal.emit(connected)
+            except Exception as e:
+                logger.error("OPC-UA connect failed: %s", e)
+                self._opcua_status_signal.emit(False)
+
+        threading.Thread(target=do_connect, daemon=True).start()
+
+    def _on_opcua_disconnect(self) -> None:
+        """Disconnect from OPC-UA server via backend."""
+        self._opcua_watchdog.stop()
+
+        def do_disconnect():
+            try:
+                self._api_client.opcua_client_disconnect()
+            except Exception as e:
+                logger.error("OPC-UA disconnect failed: %s", e)
+            self._opcua_status_signal.emit(False)
+
+        threading.Thread(target=do_disconnect, daemon=True).start()
+
+    @Slot(bool)
+    def _on_opcua_status_received(self, connected: bool) -> None:
+        """Handle OPC-UA status update on the main thread."""
+        self._opcua_connected = connected
+        self._settings_page.set_opcua_status(connected)
+        if connected:
+            # Start watchdog to monitor connection every 5s
+            if not self._opcua_watchdog.isActive():
+                self._opcua_watchdog.start(5000)
+        else:
+            # If watchdog is running, it will attempt auto-reconnect on next tick
+            pass
+
+    def _poll_opcua_status(self) -> None:
+        """Periodically check OPC-UA connection; auto-reconnect if dropped."""
+        def do_poll():
+            try:
+                result = self._api_client.opcua_client_status()
+                state = result.get("state", "")
+                connected = state.upper() == "ONLINE"
+                if not connected:
+                    logger.info("OPC-UA connection lost, attempting reconnect...")
+                    result = self._api_client.opcua_client_connect()
+                    state = result.get("state", "")
+                    connected = state.upper() == "ONLINE"
+                self._opcua_status_signal.emit(connected)
+            except Exception as e:
+                logger.error("OPC-UA status poll failed: %s", e)
+                self._opcua_status_signal.emit(False)
+
+        threading.Thread(target=do_poll, daemon=True).start()
 
     def _on_telemetry_for_trends(self, controller_id: int, frame: object) -> None:
         """Forward telemetry to multi-trend page for matching plots."""

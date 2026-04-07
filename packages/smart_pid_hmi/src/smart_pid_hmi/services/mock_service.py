@@ -260,6 +260,11 @@ class MockAPIClient:
     ) -> CommandResponse:
         return CommandResponse(ok=True, controller_id=controller_id, detail="mock")
 
+    def set_simulator_co(
+        self, controller_id: int, co: float,
+    ) -> CommandResponse:
+        return CommandResponse(ok=True, controller_id=controller_id, detail="mock")
+
     def get_simulator_pid_status(self, controller_id: int) -> dict:
         return {"enabled": False, "kp": 1.0, "ti": 10.0, "td": 0.0, "mode": 0, "cv": 0.0}
 
@@ -310,6 +315,15 @@ class MockAPIClient:
 
     def delete_project(self, name: str) -> None:
         pass  # No-op in mock mode
+
+    def opcua_client_status(self) -> dict:
+        return {"state": "OFFLINE", "endpoint": "opc.tcp://localhost:4840"}
+
+    def opcua_client_connect(self) -> dict:
+        return {"state": "ONLINE", "endpoint": "opc.tcp://localhost:4840"}
+
+    def opcua_client_disconnect(self) -> dict:
+        return {"state": "OFFLINE", "endpoint": "opc.tcp://localhost:4840"}
 
     def set_base_url(self, url: str) -> None:
         pass
