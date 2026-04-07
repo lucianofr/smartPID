@@ -194,7 +194,7 @@ class TestComputeGamma:
         assert decision.reasoning != ""
         assert decision.membership_values is not None
 
-    def test_speed_factor_slow(self):
+    def test_speed_factor_slow_ki(self):
         from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
 
         engine = FuzzyEngine()
@@ -203,10 +203,26 @@ class TestComputeGamma:
             objective=ControlObjective.SP_TRACKING,
             speed=ProcessSpeed.SLOW,
             limit_min=0.1, limit_max=100.0,
+            integral_type="GAIN_KI",
         )
-        # Sv=0.30 for SLOW, Ki_new = Ki * (1 + gamma * 0.30)
+        # GAIN_KI: Sv=0.30, Ki_new = Ki * (1 + gamma * 0.30)
         expected_ki = 1.0 * (1.0 + decision.gamma * 0.30)
         assert decision.new_ki == pytest.approx(max(0.1, min(100.0, expected_ki)))
+
+    def test_speed_factor_slow_ti(self):
+        from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
+
+        engine = FuzzyEngine()
+        decision = engine.compute_gamma(
+            error=50.0, delta_error=0.0, ki_current=10.0, span=100.0,
+            objective=ControlObjective.SP_TRACKING,
+            speed=ProcessSpeed.SLOW,
+            limit_min=0.1, limit_max=100.0,
+            integral_type="TIME_TI",
+        )
+        # TIME_TI: gamma inverted. Positive gamma → decrease Ti (faster)
+        expected_ti = 10.0 * (1.0 + (-decision.gamma) * 0.30)
+        assert decision.new_ki == pytest.approx(max(0.1, min(100.0, expected_ti)))
 
     def test_ki_clamped_to_limits(self):
         from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine

@@ -188,21 +188,24 @@ class FuzzyEngine:
         speed: ProcessSpeed,
         limit_min: float,
         limit_max: float,
+        integral_type: str = "TIME_TI",
     ) -> AIDecision:
-        """Full fuzzy pipeline: normalize -> fuzzify -> infer -> update Ki.
+        """Full fuzzy pipeline: normalize -> fuzzify -> infer -> update Ki/Ti.
 
         Args:
             error: Raw error in engineering units.
             delta_error: Raw delta_error in engineering units.
-            ki_current: Current Ki value.
+            ki_current: Current integral param value (Ki or Ti).
             span: Process span (eu_max - eu_min) for normalization.
             objective: Control objective selecting the rule matrix.
             speed: Process speed selecting the speed factor.
-            limit_min: Minimum allowed Ki.
-            limit_max: Maximum allowed Ki.
+            limit_min: Minimum allowed value.
+            limit_max: Maximum allowed value.
+            integral_type: "GAIN_KI" or "TIME_TI". For Ti, gamma is
+                inverted because increasing Ti SLOWS the response.
 
         Returns:
-            AIDecision with gamma, new Ki, reasoning, and debug info.
+            AIDecision with gamma, new value, reasoning, and debug info.
         """
         # Normalize to [-100, +100]
         if span > 0:
@@ -219,21 +222,26 @@ class FuzzyEngine:
         # Infer gamma
         gamma = self.infer(error_norm, delta_error_norm, objective)
 
-        # Update Ki
+        # Apply gamma direction: Ki and Ti have OPPOSITE effects
+        # Positive gamma means "more aggressive integral action"
+        # For Ki: more aggressive = increase Ki  → use +gamma
+        # For Ti: more aggressive = decrease Ti  → use -gamma
         sv = speed.speed_factor
-        new_ki = ki_current * (1.0 + gamma * sv)
-        new_ki = max(limit_min, min(limit_max, new_ki))
+        effective_gamma = gamma if integral_type == "GAIN_KI" else -gamma
+        new_val = ki_current * (1.0 + effective_gamma * sv)
+        new_val = max(limit_min, min(limit_max, new_val))
 
+        param_label = "Ki" if integral_type == "GAIN_KI" else "Ti"
         reasoning = (
             f"Fuzzy({objective.value}): "
             f"e_norm={error_norm:.1f}%, de_norm={delta_error_norm:.1f}%, "
             f"gamma={gamma:.4f}, Sv={sv}, "
-            f"Ki: {ki_current:.4f} -> {new_ki:.4f}"
+            f"{param_label}: {ki_current:.4f} -> {new_val:.4f}"
         )
 
         return AIDecision(
             gamma=gamma,
-            new_ki=new_ki,
+            new_ki=new_val,
             reasoning=reasoning,
             membership_values={"error": error_mf, "delta_error": delta_error_mf},
         )

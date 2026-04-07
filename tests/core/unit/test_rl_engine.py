@@ -95,6 +95,7 @@ class TestComputeGammaFallback:
             speed=ProcessSpeed.MEDIUM,
             limit_min=0.1,
             limit_max=100.0,
+            integral_type='GAIN_KI',
         )
         # Positive error -> fallback should increase Ki (positive gamma)
         assert decision.gamma > 0.0
@@ -117,6 +118,7 @@ class TestComputeGammaFallback:
             speed=ProcessSpeed.MEDIUM,
             limit_min=0.1,
             limit_max=100.0,
+            integral_type='GAIN_KI',
         )
         # Negative error -> fallback should decrease Ki (negative gamma)
         assert decision.gamma < 0.0
@@ -137,6 +139,7 @@ class TestComputeGammaFallback:
             speed=ProcessSpeed.MEDIUM,
             limit_min=0.1,
             limit_max=100.0,
+            integral_type='GAIN_KI',
         )
         assert decision.gamma == pytest.approx(0.0, abs=0.01)
         assert decision.new_ki == pytest.approx(1.0, abs=0.01)
@@ -157,6 +160,7 @@ class TestComputeGammaFallback:
             speed=ProcessSpeed.SLOW,
             limit_min=0.1,
             limit_max=100.0,
+            integral_type='GAIN_KI',
         )
         assert decision.new_ki <= 100.0
 
@@ -175,6 +179,7 @@ class TestComputeGammaFallback:
             speed=ProcessSpeed.MEDIUM,
             limit_min=0.1,
             limit_max=100.0,
+            integral_type='GAIN_KI',
         )
         # Zero span -> normalized error is 0 -> gamma near 0
         assert decision.gamma == pytest.approx(0.0, abs=0.01)
@@ -191,6 +196,7 @@ class TestComputeGammaFallback:
             objective=ControlObjective.SP_TRACKING,
             speed=ProcessSpeed.MEDIUM,
             limit_min=0.1, limit_max=100.0,
+            integral_type='GAIN_KI',
         )
         assert engine.step_count == 1
 
@@ -200,6 +206,7 @@ class TestComputeGammaFallback:
             objective=ControlObjective.SP_TRACKING,
             speed=ProcessSpeed.MEDIUM,
             limit_min=0.1, limit_max=100.0,
+            integral_type='GAIN_KI',
         )
         assert engine.step_count == 2
 
@@ -222,6 +229,7 @@ class TestComputeGammaSpeedFactors:
             speed=speed,
             limit_min=0.1,
             limit_max=100.0,
+            integral_type='GAIN_KI',
         )
         return decision.new_ki
 
@@ -402,6 +410,7 @@ class TestUpdate:
             objective=ControlObjective.SP_TRACKING,
             speed=ProcessSpeed.MEDIUM,
             limit_min=0.1, limit_max=100.0,
+            integral_type='GAIN_KI',
         )
         # Now update with reward
         engine.update(reward=0.5, observation=[0.1, 0.0, 0.0, 0.0])
@@ -421,6 +430,7 @@ class TestReset:
             objective=ControlObjective.SP_TRACKING,
             speed=ProcessSpeed.MEDIUM,
             limit_min=0.1, limit_max=100.0,
+            integral_type='GAIN_KI',
         )
         assert engine.step_count == 1
 
@@ -485,6 +495,7 @@ class TestReplayBuffer:
             objective=ControlObjective.SP_TRACKING,
             speed=ProcessSpeed.MEDIUM,
             limit_min=0.1, limit_max=100.0,
+            integral_type='GAIN_KI',
         )
         assert len(engine._replay_buffer) == 0
 
@@ -495,6 +506,7 @@ class TestReplayBuffer:
             objective=ControlObjective.SP_TRACKING,
             speed=ProcessSpeed.MEDIUM,
             limit_min=0.1, limit_max=100.0,
+            integral_type='GAIN_KI',
         )
         assert len(engine._replay_buffer) == 1
 
@@ -512,6 +524,7 @@ class TestReplayBuffer:
                 objective=ControlObjective.SP_TRACKING,
                 speed=ProcessSpeed.MEDIUM,
                 limit_min=0.1, limit_max=100.0,
+                integral_type='GAIN_KI',
             )
         # Buffer should be capped at maxlen=5
         assert len(engine._replay_buffer) == 5
@@ -536,6 +549,7 @@ class TestAllObjectives:
             speed=ProcessSpeed.MEDIUM,
             limit_min=0.1,
             limit_max=100.0,
+            integral_type='GAIN_KI',
         )
         assert -1.0 <= decision.gamma <= 1.0
         assert 0.1 <= decision.new_ki <= 100.0

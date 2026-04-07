@@ -318,6 +318,7 @@ class RLEngine:
         speed: ProcessSpeed,
         limit_min: float,
         limit_max: float,
+        integral_type: str = "TIME_TI",
     ) -> AIDecision:
         """Compute gamma from RL model or fallback policy.
 
@@ -392,16 +393,20 @@ class RLEngine:
         ):
             self._try_online_train()
 
-        # Update Ki
+        # Update Ki/Ti — invert gamma for Ti (increasing Ti slows response)
         sv = speed.speed_factor
-        new_ki = ki_current * (1.0 + gamma * sv)
-        new_ki = max(limit_min, min(limit_max, new_ki))
+        effective_gamma = gamma if integral_type == "GAIN_KI" else -gamma
+        new_val = ki_current * (1.0 + effective_gamma * sv)
+        new_val = max(limit_min, min(limit_max, new_val))
 
-        reasoning += f", Sv={sv}, Ki: {ki_current:.4f} -> {new_ki:.4f}"
+        param_label = "Ki" if integral_type == "GAIN_KI" else "Ti"
+        reasoning += (
+            f", Sv={sv}, {param_label}: {ki_current:.4f} -> {new_val:.4f}"
+        )
 
         return AIDecision(
             gamma=gamma,
-            new_ki=new_ki,
+            new_ki=new_val,
             reasoning=reasoning,
             membership_values=None,
         )

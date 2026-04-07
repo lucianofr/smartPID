@@ -43,7 +43,9 @@ class AIWorker:
         self._controller = controller
         self._ai_config = controller.ai_config
         self._ai_period_s = controller.process_speed.ai_period_s
-        self._ki_current = controller.pid_params.reset  # Ti (integral time)
+        self._integral_type = controller.integral_type.value  # "GAIN_KI" or "TIME_TI"
+        self._ki_current = controller.pid_params.reset  # initial from config
+        self._ki_initialized = False  # will read real value from first telemetry
         self._last_pv: float = 0.0
         self._last_sp: float = 0.0
         self._last_co: float = 0.0
@@ -164,6 +166,7 @@ class AIWorker:
                         speed=self._controller.process_speed,
                         limit_min=self._ai_config.limit_min,
                         limit_max=self._ai_config.limit_max,
+                        integral_type=self._integral_type,
                     )
                 else:
                     # RL engine
@@ -178,6 +181,7 @@ class AIWorker:
                         speed=self._controller.process_speed,
                         limit_min=self._ai_config.limit_min,
                         limit_max=self._ai_config.limit_max,
+                        integral_type=self._integral_type,
                     )
 
                 old_ki = self._ki_current
@@ -252,5 +256,24 @@ class AIWorker:
                 self._last_integral = float(data.get("integral_val", 0.0))
                 self._last_mode = data.get("mode", "")
                 self._has_telemetry = True
+
+                # Initialize Ki/Ti from the first real OPC-UA read
+                if not self._ki_initialized:
+                    ti_val = data.get("ti")
+                    ki_val = data.get("kp")
+                    if self._integral_type == "GAIN_KI" and ki_val is not None:
+                        self._ki_current = float(ki_val)
+                        self._ki_initialized = True
+                        logger.info(
+                            "ai_worker_ki_init cid=%d Ki=%f",
+                            self.controller_id, self._ki_current,
+                        )
+                    elif ti_val is not None:
+                        self._ki_current = float(ti_val)
+                        self._ki_initialized = True
+                        logger.info(
+                            "ai_worker_ti_init cid=%d Ti=%f",
+                            self.controller_id, self._ki_current,
+                        )
             except (KeyError, ValueError, msgpack.UnpackException):
                 pass
