@@ -134,8 +134,10 @@ class StatsWorker:
             _topic, payload = msg
             try:
                 data = msgpack.unpackb(payload)
-                self._last_pv = data["pv"]
-                self._last_sp = data["sp"]
+                pv_raw = data["pv"]
+                sp_raw = data["sp"]
+                self._last_pv = pv_raw["value"] if isinstance(pv_raw, dict) else float(pv_raw)
+                self._last_sp = sp_raw["value"] if isinstance(sp_raw, dict) else float(sp_raw)
                 self._has_telemetry = True
             except (KeyError, ValueError, msgpack.UnpackException):
                 pass
@@ -148,6 +150,7 @@ class StatsWorker:
             _topic, payload = msg
             try:
                 data = msgpack.unpackb(payload)
-                self._last_co = data["co"]
+                co_raw = data["co"]
+                self._last_co = co_raw["value"] if isinstance(co_raw, dict) else float(co_raw)
             except (KeyError, ValueError, msgpack.UnpackException):
                 pass

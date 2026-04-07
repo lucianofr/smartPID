@@ -141,7 +141,6 @@ class IOWorker:
                         })
                         pub.send(topic, payload)
                     except (KeyError, ConnectionError):
-                        # Controller not registered or OPC-UA disconnected
                         pass
                     except Exception:
                         logger.exception(
