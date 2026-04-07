@@ -102,3 +102,29 @@ def test_latest_property(bridge, qtbot):
     latest = bridge.latest(1)
     assert latest is not None
     assert latest["pv"] == 45.0
+
+
+def test_bus_bridge_has_system_event_signal():
+    """BusBridge must have a system_event_received signal."""
+    q = SimpleQueue()
+    b = BusBridge(q)
+    assert hasattr(b, "system_event_received")
+
+
+def test_bus_bridge_routes_system_events(qtbot):
+    """EVENT.SYSTEM messages should emit system_event_received."""
+    q = SimpleQueue()
+    b = BusBridge(q, refresh_ms=10)
+
+    received = []
+    b.system_event_received.connect(lambda data: received.append(data))
+
+    q.put(("EVENT.SYSTEM", {
+        "source": "BACKEND", "severity": "INFO",
+        "message": "Started", "timestamp": "2026-04-07T12:00:00",
+    }))
+
+    b._drain()
+
+    assert len(received) == 1
+    assert received[0]["source"] == "BACKEND"
