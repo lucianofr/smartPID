@@ -52,8 +52,8 @@ async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
             "value": row["limite"],
             "priority": AlarmPriority(row["prioridade"]),
             "hysteresis": row["histerese"],
-            "delay_on_s": row.get("delay_on_s", 0.0) or 0.0,
-            "delay_off_s": row.get("delay_off_s", 0.0) or 0.0,
+            "delay_on_s": row["delay_on_s"] if "delay_on_s" in row.keys() else 0.0,
+            "delay_off_s": row["delay_off_s"] if "delay_off_s" in row.keys() else 0.0,
         }
 
     for cid, alarms in by_controller.items():
