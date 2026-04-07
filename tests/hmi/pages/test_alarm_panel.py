@@ -369,3 +369,34 @@ def test_alarm_panel_on_alarm_acked():
     panel.on_alarm_acked(42)
     alarm = panel._active_alarms[(1, "HI")]
     assert alarm["status"] == "ACKNOWLEDGED"
+
+
+# --- Live mode tests ---
+
+
+def test_alarm_panel_has_live_checkbox():
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+    assert hasattr(panel, "_live_checkbox")
+
+
+def test_alarm_panel_live_disables_history_controls():
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+    panel._live_checkbox.setChecked(True)
+    assert not panel._dt_from.isEnabled()
+    assert not panel._dt_to.isEnabled()
+    assert not panel._load_history_btn.isEnabled()
+
+
+def test_alarm_panel_live_enables_history_on_uncheck():
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+    panel._live_checkbox.setChecked(True)
+    panel._live_checkbox.setChecked(False)
+    assert panel._dt_from.isEnabled()
+    assert panel._dt_to.isEnabled()
+    assert panel._load_history_btn.isEnabled()
