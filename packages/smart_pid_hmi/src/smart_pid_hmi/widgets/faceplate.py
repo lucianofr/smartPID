@@ -410,7 +410,7 @@ class FaceplateWidget(QFrame):
         self._bar_sp.set_value(frame.get("sp", 0.0))
         self._bar_co.set_value(frame.get("co", 0.0))
         mode = frame.get("mode")
-        if mode and str(mode).upper() != "UNKNOWN":
+        if mode and str(mode).upper() not in ("UNKNOWN", ""):
             mode_str = str(mode).upper()
             self._mode_label.setText(mode_str)
             if mode_str != self._active_mode:

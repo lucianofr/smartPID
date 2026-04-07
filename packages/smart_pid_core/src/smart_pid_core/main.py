@@ -228,9 +228,12 @@ async def run_daemon(settings: CoreSettings) -> None:
     if opcua_adapter is not None:
         if simulator_adapter is not None:
             # Simulator mode: use the simulator's actual node IDs (auto-assigned)
-            # instead of database tag_bindings which may be stale
+            # but keep mode_int_map from database (user-configured mapping)
             sim_node_ids = simulator_adapter._opcua_server.controller_node_ids
+            db_controllers = {c.id: c for c in await repo.list_all()}
             for ctrl_id, nodes in sim_node_ids.items():
+                db_ctrl = db_controllers.get(ctrl_id)
+                mode_map = db_ctrl.tag_bindings.mode_int_map if db_ctrl else {}
                 opcua_adapter.register_controller(
                     controller_id=ctrl_id,
                     node_id_pv=nodes.get("pv", ""),
@@ -240,6 +243,7 @@ async def run_daemon(settings: CoreSettings) -> None:
                     node_id_ti=nodes.get("ti", ""),
                     node_id_td=nodes.get("td", ""),
                     node_id_mode_actual=nodes.get("mode", ""),
+                    mode_int_map=mode_map,
                 )
             logger.info(
                 "opcua_adapter_registered_from_simulator",
