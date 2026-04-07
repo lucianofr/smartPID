@@ -67,6 +67,28 @@ def test_connection_lost_after_timeout(qtbot):
     b.stop()
 
 
+def test_normalizes_ff_signal_dicts_to_floats(bridge, qtbot):
+    """FFSignal dicts from backend must be flattened to plain floats."""
+    frame = {
+        "controller_id": 1,
+        "pv": {"value": 58.23, "severity": "GOOD", "limit_bits": "NONE", "sub_status": "NONE"},
+        "sp": {"value": 60.0, "severity": "GOOD", "limit_bits": "NONE", "sub_status": "NONE"},
+        "co": {"value": 48.88, "severity": "GOOD", "limit_bits": "NONE", "sub_status": "NONE"},
+        "integral_val": 0.5,
+        "timestamp": "2026-04-03T10:00:00",
+    }
+    bridge._queue.put(("STATUS.1", frame))
+    bridge.start()
+
+    with qtbot.waitSignal(bridge.telemetry_received, timeout=500) as sig:
+        pass
+    assert sig.args[0] == 1
+    assert sig.args[1]["pv"] == 58.23
+    assert sig.args[1]["sp"] == 60.0
+    assert sig.args[1]["co"] == 48.88
+    assert isinstance(sig.args[1]["pv"], float)
+
+
 def test_latest_property(bridge, qtbot):
     frame = {
         "controller_id": 1, "pv": 45.0, "sp": 50.0,
