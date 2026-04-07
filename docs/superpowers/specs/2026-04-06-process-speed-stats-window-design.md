@@ -55,7 +55,7 @@ Examples:
 - MEDIUM loop, scan_rate=1000ms → window_size = 1200
 - SLOW loop, scan_rate=500ms → window_size = 14400
 
-The `publish_interval` parameter must also scale proportionally. Rule: `publish_interval = max(1, window_size // 5)` — publish stats ~5 times per window cycle.
+The `publish_interval` equals the window size — stats are published once per window cycle. This triggers the AI Worker exactly once per window, ensuring optimization decisions are based on a full window of performance data. Rule: `publish_interval = max(1, window_size)`.
 
 ### 4. AI Engines — Fuzzy & RL (smart_pid_core/domain/services/)
 
