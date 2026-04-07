@@ -189,3 +189,81 @@ def test_set_ai_engine(qtbot, theme):
     assert fp._ai_engine_badge.text() == "FUZZY"
     fp.set_ai_engine("NONE")
     assert fp._ai_engine_badge.text() == "NONE"
+
+
+def test_telemetry_updates_sp_co_fields(qtbot, theme):
+    """Telemetry updates SP/CO input fields when not focused."""
+    fp = FaceplateWidget(theme=theme)
+    qtbot.addWidget(fp)
+    fp.on_controller_selected(1, "FIC-101", 0.0, 100.0)
+    frame = {
+        "controller_id": 1, "pv": 45.0, "sp": 50.5,
+        "co": 62.3, "mode": "AUTO",
+    }
+    fp.on_telemetry(1, frame)
+    assert fp._sp_input.text() == "50.5"
+    assert fp._co_input.text() == "62.3"
+
+
+def test_sp_write_suppresses_telemetry_update(qtbot, theme):
+    """After pressing Enter on SP, telemetry should not overwrite for 3s."""
+    fp = FaceplateWidget(theme=theme)
+    qtbot.addWidget(fp)
+    fp.on_controller_selected(1, "FIC-101", 0.0, 100.0)
+
+    fp._sp_input.setText("55.0")
+    qtbot.keyPress(fp._sp_input, Qt.Key.Key_Return)
+
+    # Telemetry arrives with different SP
+    frame = {"controller_id": 1, "pv": 45.0, "sp": 50.0, "co": 62.0, "mode": "AUTO"}
+    fp.on_telemetry(1, frame)
+    # Should still show user's value (suppressed)
+    assert fp._sp_input.text() == "55.0"
+
+
+def test_co_write_suppresses_telemetry_update(qtbot, theme):
+    """After pressing Enter on CO, telemetry should not overwrite for 3s."""
+    fp = FaceplateWidget(theme=theme)
+    qtbot.addWidget(fp)
+    fp.on_controller_selected(1, "FIC-101", 0.0, 100.0)
+
+    fp._co_input.setText("30.0")
+    qtbot.keyPress(fp._co_input, Qt.Key.Key_Return)
+
+    frame = {"controller_id": 1, "pv": 45.0, "sp": 50.0, "co": 62.0, "mode": "AUTO"}
+    fp.on_telemetry(1, frame)
+    assert fp._co_input.text() == "30.0"
+
+
+def test_update_live_params(qtbot, theme):
+    """update_live_params updates SP/CO/gains and labels."""
+    fp = FaceplateWidget(theme=theme)
+    qtbot.addWidget(fp)
+    fp.on_controller_selected(1, "FIC-101", 0.0, 100.0)
+
+    fp.update_live_params({
+        "sp": 48.0, "co": 55.0,
+        "gain": 2.5, "reset": 30.0, "rate": 1.0,
+        "integral_type": "GAIN_KI",
+    })
+    assert fp._sp_input.text() == "48.0"
+    assert fp._co_input.text() == "55.0"
+    assert fp._kp_input.text() == "2.500"
+    assert fp._ti_input.text() == "30.000"
+    assert fp._td_input.text() == "1.000"
+    assert fp._ti_lbl.text() == "Ki:"
+    assert fp._td_lbl.text() == "Kd:"
+
+
+def test_integral_type_labels_time_ti(qtbot, theme):
+    """Labels show Ti/Td when integral_type is TIME_TI."""
+    fp = FaceplateWidget(theme=theme)
+    qtbot.addWidget(fp)
+    fp.on_controller_selected(1, "FIC-101", 0.0, 100.0)
+
+    fp.update_live_params({
+        "gain": 1.0, "reset": 10.0, "rate": 0.0,
+        "integral_type": "TIME_TI",
+    })
+    assert fp._ti_lbl.text() == "Ti:"
+    assert fp._td_lbl.text() == "Td:"

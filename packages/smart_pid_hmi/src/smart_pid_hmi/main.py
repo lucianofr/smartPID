@@ -167,6 +167,10 @@ class MainWindow(QMainWindow):
         self._sim_live_signal.connect(self._on_sim_live_received)
         self._ai_status_signal.connect(self._on_ai_status_received)
 
+        # Faceplate params polling timer (1s interval, started after login)
+        self._faceplate_poll_timer = QTimer(self)
+        self._faceplate_poll_timer.timeout.connect(self._poll_faceplate_params)
+
         self.setWindowTitle("Smart PID HMI")
         self.setMinimumSize(1024, 700)
 
@@ -433,6 +437,7 @@ class MainWindow(QMainWindow):
         self._kpi_timer.start(30_000)
         self._stats_timer.start(2000)
         self._exec_cards_timer.start(2000)
+        self._faceplate_poll_timer.start(1000)
 
         # Check if backend has a managed project active
         QTimer.singleShot(500, self._check_active_project)
@@ -1028,6 +1033,33 @@ class MainWindow(QMainWindow):
         opt_state = "RUN" if running else "STOP"
         for card in self._dashboard_page._cards:  # noqa: SLF001
             card.on_ai_status(controller_id, engine, opt_state)
+
+    def _poll_faceplate_params(self) -> None:
+        """Poll selected controller's live params every 1 second.
+
+        Uses BusBridge cached telemetry for SP/CO/gains and
+        dashboard metadata for integral_type (Ti/Td vs Ki/Kd labels).
+        """
+        cid = self._dashboard_page._selected_id  # noqa: SLF001
+        if cid is None:
+            return
+        frame = self._bus_bridge.latest(cid)
+        if frame is None:
+            return
+        meta = self._dashboard_page._controller_meta.get(cid, {})  # noqa: SLF001
+        pid_gains = meta.get("pid_gains", {})
+        integral_type = pid_gains.get("integral_type", "TIME_TI")
+        params: dict = {
+            "sp": frame.get("sp"),
+            "co": frame.get("co"),
+            "integral_type": integral_type,
+        }
+        kp = frame.get("kp")
+        if kp is not None:
+            params["gain"] = kp
+            params["reset"] = frame.get("ti", 0.0)
+            params["rate"] = frame.get("td", 0.0)
+        self._dashboard_page._faceplate.update_live_params(params)  # noqa: SLF001
 
     def _on_ai_action(self, controller_id: int, action: dict) -> None:
         """Handle AI optimizer action: log to alarm panel and write Ki to OPC-UA."""

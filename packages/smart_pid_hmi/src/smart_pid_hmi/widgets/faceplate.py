@@ -205,6 +205,8 @@ class FaceplateWidget(QFrame):
         # -- PID Gains (editable) --
         self._integral_type = "TIME_TI"  # updated on controller select
         self._gains_write_time: float = 0.0  # suppress updates after user write
+        self._sp_write_time: float = 0.0  # suppress SP updates after user write
+        self._co_write_time: float = 0.0  # suppress CO updates after user write
 
         gains_row1 = QHBoxLayout()
         gains_row1.setSpacing(6)
@@ -436,6 +438,15 @@ class FaceplateWidget(QFrame):
                 self._active_mode = mode_str
                 self._apply_toggle_style(self._theme)
 
+        # Update SP/CO input fields (skip if user is editing or just wrote)
+        now = time.monotonic()
+        sp = frame.get("sp")
+        if sp is not None and not self._sp_input.hasFocus() and now - self._sp_write_time >= 3.0:
+            self._sp_input.setText(f"{sp:.1f}")
+        co = frame.get("co")
+        if co is not None and not self._co_input.hasFocus() and now - self._co_write_time >= 3.0:
+            self._co_input.setText(f"{co:.1f}")
+
         # Update gains from live OPC-UA reads (if present in frame)
         kp = frame.get("kp")
         if kp is not None:
@@ -450,6 +461,7 @@ class FaceplateWidget(QFrame):
             return
         try:
             val = float(self._sp_input.text())
+            self._sp_write_time = time.monotonic()
             self.setpoint_requested.emit(self._controller_id, val)
         except ValueError:
             pass
@@ -459,6 +471,7 @@ class FaceplateWidget(QFrame):
             return
         try:
             val = float(self._co_input.text())
+            self._co_write_time = time.monotonic()
             self.output_requested.emit(self._controller_id, val)
         except ValueError:
             pass
@@ -498,6 +511,29 @@ class FaceplateWidget(QFrame):
             self._ti_input.setText(f"{gains.get('reset', 0.0):.3f}")
         if not self._td_input.hasFocus():
             self._td_input.setText(f"{gains.get('rate', 0.0):.3f}")
+
+    def update_live_params(self, params: dict) -> None:
+        """Update faceplate fields from 1-second REST polling.
+
+        Args:
+            params: dict with keys 'sp', 'co', 'gain', 'reset', 'rate',
+                    and optionally 'integral_type'.
+        """
+        now = time.monotonic()
+        sp = params.get("sp")
+        if sp is not None and not self._sp_input.hasFocus() and now - self._sp_write_time >= 3.0:
+            self._sp_input.setText(f"{sp:.1f}")
+        co = params.get("co")
+        if co is not None and not self._co_input.hasFocus() and now - self._co_write_time >= 3.0:
+            self._co_input.setText(f"{co:.1f}")
+        # Update gains with integral_type for label switching
+        if params.get("gain") is not None:
+            self.update_gains({
+                "gain": params["gain"],
+                "reset": params.get("reset", 0.0),
+                "rate": params.get("rate", 0.0),
+                "integral_type": params.get("integral_type", self._integral_type),
+            })
 
     def _on_gains_changed(self) -> None:
         """User pressed Enter on a gains field — emit new values."""
