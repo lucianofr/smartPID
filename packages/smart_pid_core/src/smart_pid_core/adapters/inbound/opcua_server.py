@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 NAMESPACE_URI = "urn:smartpid:sim"
-_WRITABLE_PARAMS = ("co", "sp", "kp", "ti", "td", "pid_structure", "pid_sp")
+_WRITABLE_PARAMS = ("co", "sp", "kp", "ti", "td", "pid_structure", "pid_sp", "mode")
 
 # All node keys grouped by sub-folder for address space organization
 _PID_NODES = (
