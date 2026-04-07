@@ -24,7 +24,6 @@ from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
 
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import EventBus
-    from smart_pid_core.domain.services.alarm_engine import AlarmEngine
     from smart_pid_core.domain.services.pid_engine import PIDEngine
     from smart_pid_core.domain.services.pid_mode_manager import ModeManager
     from smart_pid_domain.models.controller import Controller
@@ -103,13 +102,11 @@ class PIDWorker:
         controller: Controller,
         engine: PIDEngine,
         mode_manager: ModeManager,
-        alarm_engine: AlarmEngine | None = None,
     ) -> None:
         self._bus = bus
         self._controller = controller
         self._engine = engine
         self._mode_manager = mode_manager
-        self._alarm_engine = alarm_engine
         self._state = PIDState()
         self._mode = ControllerMode.MAN
         self._block_status = BlockStatus()
@@ -435,34 +432,6 @@ class PIDWorker:
                         f"ACTION.CTRL.{self.controller_id}".encode()
                     )
                     pub.send(topic, msgpack.packb(action_data))
-
-                    # Alarm detection
-                    if (
-                        self._alarm_engine is not None
-                        and self._controller.alarm_config is not None
-                    ):
-                        transitions = self._alarm_engine.evaluate(
-                            controller_id=self.controller_id,
-                            pv=effective_pv.value,
-                            sp=effective_sp.value,
-                            alarm_config=self._controller.alarm_config,
-                            sp_ramping=False,
-                        )
-                        for t in transitions:
-                            alarm_data = {
-                                "controller_id": t.controller_id,
-                                "alarm_type": t.alarm_type.value,
-                                "priority": t.priority.value,
-                                "transition": t.transition,
-                                "value": t.value,
-                                "limit": t.limit,
-                                "timestamp": t.timestamp.isoformat(),
-                            }
-                            pub.send(
-                                f"EVENT.ALARM.{self.controller_id}"
-                                .encode(),
-                                msgpack.packb(alarm_data),
-                            )
 
                 if self._has_telemetry:
                     params = self._controller.pid_params
