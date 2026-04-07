@@ -109,6 +109,7 @@ class IOWorker:
                 for cid in self._controller_ids:
                     try:
                         frame = self._opcua.read_telemetry(cid)
+                        mode = self._opcua.read_actual_mode(cid)
                         topic = f"TELEMETRY.{cid}".encode()
                         payload = msgpack.packb({
                             "controller_id": frame.controller_id,
@@ -136,6 +137,7 @@ class IOWorker:
                                 "limit_bits": frame.bkcal_in.status.limit_bits.value,
                                 "sub_status": frame.bkcal_in.status.sub_status.value,
                             },
+                            "mode": mode.value if mode else "UNKNOWN",
                             "integral_val": frame.integral_val,
                             "timestamp": frame.timestamp.isoformat(),
                         })

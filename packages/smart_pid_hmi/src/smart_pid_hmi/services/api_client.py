@@ -111,6 +111,27 @@ class APIClient:
         resp.raise_for_status()
         return CommandResponse.model_validate(resp.json())
 
+    def start_optimizer(self, controller_id: int) -> dict:
+        resp = self._http.post(
+            f"/controllers/{controller_id}/ai/start", headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def pause_optimizer(self, controller_id: int) -> dict:
+        resp = self._http.post(
+            f"/controllers/{controller_id}/ai/pause", headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def stop_optimizer(self, controller_id: int) -> dict:
+        resp = self._http.post(
+            f"/controllers/{controller_id}/ai/stop", headers=self._headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def get_history(
         self, controller_id: int, start: datetime, end: datetime
     ) -> HistoryResponse:

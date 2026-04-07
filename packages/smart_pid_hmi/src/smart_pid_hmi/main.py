@@ -61,6 +61,7 @@ class MainWindow(QMainWindow):
     _project_info_signal = Signal(str, str, int)  # (name, path, controller_count)
     _sim_controllers_signal = Signal(list)  # populate simulator combo from sim status
     _opcua_status_signal = Signal(bool)  # OPC-UA connection status from watchdog
+    _stats_signal = Signal(int, dict)  # (controller_id, stats_dict)
 
     def __init__(
         self,
@@ -102,6 +103,11 @@ class MainWindow(QMainWindow):
         self._opcua_watchdog = QTimer(self)
         self._opcua_watchdog.timeout.connect(self._poll_opcua_status)
         self._opcua_connected = False
+
+        # Performance stats polling timer (2s interval, started after login)
+        self._stats_timer = QTimer(self)
+        self._stats_timer.timeout.connect(self._poll_stats)
+        self._stats_signal.connect(self._on_stats_received)
 
         self.setWindowTitle("Smart PID HMI")
         self.setMinimumSize(1024, 700)
@@ -365,6 +371,7 @@ class MainWindow(QMainWindow):
         self._show_admin_controls()
         self._alarm_panel.load_active_alarms()
         self._kpi_timer.start(30_000)
+        self._stats_timer.start(2000)
 
         # Check if backend has a managed project active
         QTimer.singleShot(500, self._check_active_project)
@@ -820,6 +827,24 @@ class MainWindow(QMainWindow):
 
         threading.Thread(target=do_poll, daemon=True).start()
 
+    def _poll_stats(self) -> None:
+        """Poll performance stats from backend and update faceplate."""
+        def do_poll():
+            try:
+                stats_list = self._api_client.get_all_stats()
+                for stats in stats_list:
+                    cid = stats.get("controller_id", 0)
+                    self._stats_signal.emit(cid, stats)
+            except Exception:
+                pass  # Stats are non-critical
+
+        threading.Thread(target=do_poll, daemon=True).start()
+
+    @Slot(int, dict)
+    def _on_stats_received(self, controller_id: int, stats: dict) -> None:
+        """Update faceplate with performance stats."""
+        self._dashboard_page._faceplate.update_stats(stats)  # noqa: SLF001
+
     def _on_telemetry_for_trends(self, controller_id: int, frame: object) -> None:
         """Forward telemetry to multi-trend page for matching plots."""
         if not isinstance(frame, dict):
@@ -1200,6 +1225,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # noqa: N802
         self._kpi_timer.stop()
         self._sim_poll_timer.stop()
+        self._stats_timer.stop()
         self._bus_bridge.stop()
         self._telemetry_source.stop()
         if hasattr(self._api_client, "close"):

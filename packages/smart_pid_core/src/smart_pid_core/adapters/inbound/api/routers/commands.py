@@ -34,14 +34,19 @@ _MONITOR_DETAIL = "Not available in monitor mode. PID is controlled by external 
 @router.post("/setpoint", response_model=CommandResponse)
 async def set_setpoint(
     body: SetpointCommand,
+    request: Request,
     user: Annotated[UserClaims, Depends(require_operator)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     execution_mode: Annotated[str, Depends(get_execution_mode)],
 ) -> CommandResponse:
     if execution_mode == "monitor":
-        raise HTTPException(status_code=409, detail=_MONITOR_DETAIL)
-    lm.set_setpoint(body.controller_id, body.value)
+        opcua = getattr(request.app.state, "opcua_adapter", None)
+        if opcua is None or not opcua.is_connected:
+            raise HTTPException(status_code=409, detail=_MONITOR_DETAIL)
+        opcua.write_parameter(body.controller_id, "sp", body.value)
+    else:
+        lm.set_setpoint(body.controller_id, body.value)
     await audit_repo.record(
         user.user_id, user.username, AuditAction.SP_CHANGE,
         f"controller:{body.controller_id}", json.dumps({"value": body.value}),
@@ -56,14 +61,23 @@ async def set_setpoint(
 @router.post("/mode", response_model=CommandResponse)
 async def set_mode(
     body: ModeCommand,
+    request: Request,
     user: Annotated[UserClaims, Depends(require_operator)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     execution_mode: Annotated[str, Depends(get_execution_mode)],
 ) -> CommandResponse:
     if execution_mode == "monitor":
-        raise HTTPException(status_code=409, detail=_MONITOR_DETAIL)
-    lm.set_mode(body.controller_id, body.mode)
+        opcua = getattr(request.app.state, "opcua_adapter", None)
+        if opcua is None or not opcua.is_connected:
+            raise HTTPException(status_code=409, detail=_MONITOR_DETAIL)
+        success = opcua.write_target_mode(body.controller_id, ControllerMode(body.mode))
+        if not success:
+            raise HTTPException(
+                status_code=502, detail="Failed to write mode to DCS",
+            )
+    else:
+        lm.set_mode(body.controller_id, body.mode)
     await audit_repo.record(
         user.user_id, user.username, AuditAction.MODE_CHANGE,
         f"controller:{body.controller_id}", json.dumps({"mode": body.mode}),
@@ -78,14 +92,19 @@ async def set_mode(
 @router.post("/output", response_model=CommandResponse)
 async def set_output(
     body: OutputCommand,
+    request: Request,
     user: Annotated[UserClaims, Depends(require_operator)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     execution_mode: Annotated[str, Depends(get_execution_mode)],
 ) -> CommandResponse:
     if execution_mode == "monitor":
-        raise HTTPException(status_code=409, detail=_MONITOR_DETAIL)
-    lm.set_output(body.controller_id, body.value)
+        opcua = getattr(request.app.state, "opcua_adapter", None)
+        if opcua is None or not opcua.is_connected:
+            raise HTTPException(status_code=409, detail=_MONITOR_DETAIL)
+        opcua.write_parameter(body.controller_id, "co", body.value)
+    else:
+        lm.set_output(body.controller_id, body.value)
     await audit_repo.record(
         user.user_id, user.username, AuditAction.OUTPUT_CHANGE,
         f"controller:{body.controller_id}", json.dumps({"value": body.value}),
