@@ -1,7 +1,7 @@
 """AlarmPanel — alarm & event management page with active alarms table and ACK."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QDateTime, Qt, QTimer, Signal
@@ -244,7 +244,7 @@ class AlarmPanel(QWidget):
 
     def on_alarm_acked(self, alarm_id: int) -> None:
         """Mark a specific alarm as ACKNOWLEDGED (called after single ACK response)."""
-        for key, alarm in self._active_alarms.items():
+        for _key, alarm in self._active_alarms.items():
             if alarm.get("id") == alarm_id:
                 alarm["status"] = "ACKNOWLEDGED"
                 break
@@ -400,9 +400,9 @@ class AlarmPanel(QWidget):
                 "status": "ACKNOWLEDGED" if alarm.get("acknowledged") else "UNACKNOWLEDGED",
             }
         # Also fetch recent system events (last 5 min)
-        from datetime import timedelta, timezone
+        from datetime import timedelta
 
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         try:
             sys_events = self._api_client.get_system_events(
                 start=now - timedelta(minutes=5),

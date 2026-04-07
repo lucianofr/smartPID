@@ -1,9 +1,7 @@
 """Tests for SystemEventWorker."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock, AsyncMock
-
-import pytest
+from unittest.mock import MagicMock
 
 from smart_pid_core.application.workers.system_event_worker import SystemEventWorker
 

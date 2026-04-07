@@ -16,12 +16,12 @@ if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
     from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+    from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
     from smart_pid_core.adapters.outbound.user_repo import UserRepository
     from smart_pid_core.application.event_bus import EventBus
     from smart_pid_core.application.loop_manager import LoopManager
     from smart_pid_core.application.workers.alarm_worker import AlarmWorker
     from smart_pid_core.application.workers.stats_worker import StatsWorker
-    from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
     from smart_pid_core.config import CoreSettings
 
 

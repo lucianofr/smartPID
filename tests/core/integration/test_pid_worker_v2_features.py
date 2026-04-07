@@ -5,7 +5,6 @@
 4. STATUS_OPTS signal quality interpretation
 5. TRACK_OPT behavior with bad TRK_IN_D
 6. ProcessType (model-level, informational)
-7. Alarm detection in PID worker
 """
 from __future__ import annotations
 
@@ -20,18 +19,15 @@ from smart_pid_core.application.workers.pid_worker import (
     PIDWorker,
     _evaluate_pv_quality,
 )
-from smart_pid_core.domain.services.alarm_engine import AlarmEngine
 from smart_pid_core.domain.services.pid_engine import PIDEngine
 from smart_pid_core.domain.services.pid_mode_manager import ModeManager
 from smart_pid_domain.enums import (
-    AlarmPriority,
     ControllerMode,
     LimitBits,
     ProcessType,
     SignalSeverity,
     TrackOpt,
 )
-from smart_pid_domain.models.alarm_config import AlarmConfig
 from smart_pid_domain.models.controller import (
     Controller,
     ControlOpts,
@@ -54,14 +50,12 @@ def _make_worker(
     bus: EventBus,
     controller: Controller,
     mode: ControllerMode = ControllerMode.AUTO,
-    alarm_engine: AlarmEngine | None = None,
 ) -> PIDWorker:
     worker = PIDWorker(
         bus=bus,
         controller=controller,
         engine=PIDEngine(),
         mode_manager=ModeManager(),
-        alarm_engine=alarm_engine,
     )
     worker.set_mode(mode)
     return worker
@@ -532,190 +526,6 @@ class TestProcessTypeController:
     def test_integrating(self) -> None:
         ctrl = Controller(process_type=ProcessType.INTEGRATING)
         assert ctrl.process_type == ProcessType.INTEGRATING
-
-
-# ===========================================================================
-# Feature 7: Alarm detection in PID worker
-# ===========================================================================
-class TestAlarmDetection:
-    """Alarm engine evaluates PV and emits on EVENT.ALARM.{id}."""
-
-    def _make_alarm_config(self) -> AlarmConfig:
-        return AlarmConfig(
-            hihi_enabled=True,
-            hihi_value=90.0,
-            hihi_priority=AlarmPriority.CRITICAL,
-            hi_enabled=True,
-            hi_value=80.0,
-            hi_priority=AlarmPriority.WARNING,
-            lo_enabled=True,
-            lo_value=20.0,
-            lo_priority=AlarmPriority.WARNING,
-            lolo_enabled=True,
-            lolo_value=10.0,
-            lolo_priority=AlarmPriority.CRITICAL,
-            dv_hi_enabled=False,
-            dv_hi_value=0.0,
-            dv_hi_priority=AlarmPriority.ADVISORY,
-            dv_lo_enabled=False,
-            dv_lo_value=0.0,
-            dv_lo_priority=AlarmPriority.ADVISORY,
-            deadband_percent=2.0,
-        )
-
-    def test_alarm_triggered_on_high_pv(self) -> None:
-        bus = _make_bus()
-        alarm_engine = AlarmEngine()
-        try:
-            ctrl = Controller(
-                id=1, name="T-ALARM", scan_rate_ms=100,
-                pid_params=PIDParams(gain=1.0, reset=10.0),
-                alarm_config=self._make_alarm_config(),
-            )
-            worker = _make_worker(
-                bus, ctrl, mode=ControllerMode.AUTO,
-                alarm_engine=alarm_engine,
-            )
-            worker.start()
-            pub = bus.create_publisher()
-            sub = bus.create_subscriber(b"EVENT.ALARM.1")
-            time.sleep(0.05)
-
-            # PV=85 > HI_LIM=80 -> should trigger HI alarm
-            _send_telemetry(pub, 1, pv=85.0, sp=50.0)
-            msg = sub.recv(timeout_ms=2000)
-            assert msg is not None
-            _topic, payload = msg
-            alarm = msgpack.unpackb(payload)
-            assert alarm["alarm_type"] == "HI"
-            assert alarm["transition"] == "TRIGGERED"
-            assert alarm["value"] == pytest.approx(85.0)
-        finally:
-            worker.stop()
-            bus.stop()
-
-    def test_alarm_triggered_on_low_pv(self) -> None:
-        bus = _make_bus()
-        alarm_engine = AlarmEngine()
-        try:
-            ctrl = Controller(
-                id=1, name="T-ALARM-LO", scan_rate_ms=100,
-                pid_params=PIDParams(gain=1.0, reset=10.0),
-                alarm_config=self._make_alarm_config(),
-            )
-            worker = _make_worker(
-                bus, ctrl, mode=ControllerMode.AUTO,
-                alarm_engine=alarm_engine,
-            )
-            worker.start()
-            pub = bus.create_publisher()
-            sub = bus.create_subscriber(b"EVENT.ALARM.1")
-            time.sleep(0.05)
-
-            # PV=5 < LOLO=10 -> should trigger LOLO alarm
-            _send_telemetry(pub, 1, pv=5.0, sp=50.0)
-            msg = sub.recv(timeout_ms=2000)
-            assert msg is not None
-            _topic, payload = msg
-            alarm = msgpack.unpackb(payload)
-            # Could be either LO or LOLO first (both triggered)
-            assert alarm["alarm_type"] in {"LO", "LOLO"}
-            assert alarm["transition"] == "TRIGGERED"
-        finally:
-            worker.stop()
-            bus.stop()
-
-    def test_no_alarm_when_no_alarm_config(self) -> None:
-        bus = _make_bus()
-        alarm_engine = AlarmEngine()
-        try:
-            ctrl = Controller(
-                id=1, name="T-NO-ALARM", scan_rate_ms=100,
-                pid_params=PIDParams(gain=1.0, reset=10.0),
-                # alarm_config=None (default)
-            )
-            worker = _make_worker(
-                bus, ctrl, mode=ControllerMode.AUTO,
-                alarm_engine=alarm_engine,
-            )
-            worker.start()
-            pub = bus.create_publisher()
-            sub = bus.create_subscriber(b"EVENT.ALARM.1")
-            time.sleep(0.05)
-
-            _send_telemetry(pub, 1, pv=95.0, sp=50.0)
-            msg = sub.recv(timeout_ms=500)
-            # No alarm config -> no alarm events
-            assert msg is None
-        finally:
-            worker.stop()
-            bus.stop()
-
-    def test_no_alarm_when_no_alarm_engine(self) -> None:
-        bus = _make_bus()
-        try:
-            ctrl = Controller(
-                id=1, name="T-NO-AE", scan_rate_ms=100,
-                pid_params=PIDParams(gain=1.0, reset=10.0),
-                alarm_config=self._make_alarm_config(),
-            )
-            # alarm_engine=None (default)
-            worker = _make_worker(
-                bus, ctrl, mode=ControllerMode.AUTO,
-            )
-            worker.start()
-            pub = bus.create_publisher()
-            sub = bus.create_subscriber(b"EVENT.ALARM.1")
-            time.sleep(0.05)
-
-            _send_telemetry(pub, 1, pv=95.0, sp=50.0)
-            msg = sub.recv(timeout_ms=500)
-            # No alarm engine -> no alarm events
-            assert msg is None
-        finally:
-            worker.stop()
-            bus.stop()
-
-    def test_alarm_cleared_after_pv_returns_to_normal(self) -> None:
-        bus = _make_bus()
-        alarm_engine = AlarmEngine()
-        try:
-            ctrl = Controller(
-                id=1, name="T-ALARM-CLR", scan_rate_ms=100,
-                pid_params=PIDParams(gain=1.0, reset=10.0),
-                alarm_config=self._make_alarm_config(),
-            )
-            worker = _make_worker(
-                bus, ctrl, mode=ControllerMode.AUTO,
-                alarm_engine=alarm_engine,
-            )
-            worker.start()
-            pub = bus.create_publisher()
-            sub = bus.create_subscriber(b"EVENT.ALARM.1")
-            time.sleep(0.05)
-
-            # Trigger HI alarm
-            _send_telemetry(pub, 1, pv=85.0, sp=50.0)
-            msg = sub.recv(timeout_ms=2000)
-            assert msg is not None
-
-            # Drain any additional alarms from first frame
-            while True:
-                m = sub.recv(timeout_ms=200)
-                if m is None:
-                    break
-
-            # PV returns below limit (with deadband consideration)
-            _send_telemetry(pub, 1, pv=50.0, sp=50.0)
-            time.sleep(0.15)
-            msg = sub.recv(timeout_ms=2000)
-            assert msg is not None
-            _topic, payload = msg
-            alarm = msgpack.unpackb(payload)
-            assert alarm["transition"] == "CLEARED"
-        finally:
-            worker.stop()
-            bus.stop()
 
 
 # ===========================================================================

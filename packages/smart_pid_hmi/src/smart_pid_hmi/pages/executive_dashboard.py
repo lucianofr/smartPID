@@ -400,10 +400,7 @@ class _ControllerCard(QFrame):
         # Performance metrics
         for label, key, is_pct in _PERF_METRICS:
             raw = data.get(key)
-            if raw is not None:
-                txt = f"{raw:.1f}%" if is_pct else f"{raw:.1f}"
-            else:
-                txt = _PLACEHOLDER
+            txt = (f"{raw:.1f}%" if is_pct else f"{raw:.1f}") if raw is not None else _PLACEHOLDER
             self._perf_values[label].setText(txt)
 
         # Badge styling

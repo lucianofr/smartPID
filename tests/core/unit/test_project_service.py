@@ -1,8 +1,7 @@
 """Tests for ProjectService with projects_dir."""
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import aiosqlite
 import pytest

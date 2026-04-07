@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
-    QStyle,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -866,7 +865,7 @@ class ControllerDialog(QDialog):
 
         # Mode integer mapping
         int_map = tags.get("mode_int_map", {})
-        for mode_str, (lbl, spin) in self._mode_map_widgets.items():
+        for mode_str, (_lbl, spin) in self._mode_map_widgets.items():
             spin.setValue(int_map.get(mode_str, 0))
 
         # Alarms

@@ -149,16 +149,19 @@ class TestExecutiveDashboardWiring:
 
 class TestAlarmAckWiring:
     def test_ack_single_connected(self, main_window, api_client):
-        """ack_requested signal should call ack_alarm API."""
-        with patch.object(main_window, "_safe_api_call") as mock_call:
+        """ack_requested signal should trigger _send_ack_single."""
+        with patch.object(main_window, "_send_ack_single") as mock_call:
             main_window._alarm_panel.ack_requested.emit(42)
-            mock_call.assert_called_once_with(api_client.ack_alarm, 42)
+            mock_call.assert_called_once_with(42)
 
     def test_send_ack_single(self, main_window, api_client):
-        """_send_ack_single calls API with alarm_id."""
-        with patch.object(main_window, "_safe_api_call") as mock_call:
-            main_window._send_ack_single(99)
-            mock_call.assert_called_once_with(api_client.ack_alarm, 99)
+        """_send_ack_single calls ack_alarm API in a thread."""
+        import time
+
+        api_client.ack_alarm.return_value = {"id": 99, "acknowledged": True}
+        main_window._send_ack_single(99)
+        time.sleep(0.1)  # Allow thread to execute
+        api_client.ack_alarm.assert_called_once_with(99)
 
 
 # --- SettingsPage refresh_rate_changed wiring ---

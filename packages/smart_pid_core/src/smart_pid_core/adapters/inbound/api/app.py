@@ -33,10 +33,10 @@ if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.ai_repo import AIRepository
     from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
     from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
-    from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
     from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
     from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+    from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
     from smart_pid_core.adapters.outbound.user_repo import UserRepository
     from smart_pid_core.application.event_bus import EventBus
     from smart_pid_core.application.loop_manager import LoopManager

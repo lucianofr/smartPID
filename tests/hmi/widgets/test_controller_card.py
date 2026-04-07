@@ -224,7 +224,7 @@ def test_alarm_cleared_removes_visual(qtbot, theme):
         "transition": "CLEARED", "value": 65.0, "limit": 70.0,
     })
     assert card._alarm_priority is None
-    assert not not card._alarm_icon.isHidden()
+    assert card._alarm_icon.isHidden()
 
 
 def test_alarm_unacknowledged_blinks(qtbot, theme):

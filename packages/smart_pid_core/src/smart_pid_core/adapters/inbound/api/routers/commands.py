@@ -196,7 +196,8 @@ async def apply_tuning(
         if ext_mode is not None and ext_mode != ControllerMode.AUTO:
             raise HTTPException(
                 status_code=409,
-                detail=f"External PID is in {ext_mode.value} mode — tuning write-back requires Auto",
+                detail=f"External PID is in {ext_mode.value} mode"
+                " — tuning write-back requires Auto",
             )
 
     # Apply guardrails
