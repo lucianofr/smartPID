@@ -152,6 +152,12 @@ class TrendChartWidget(QWidget):
             self._plot_widget.getAxis("left").setPen(theme.fg_primary)
             self._plot_widget.showGrid(x=True, y=True, alpha=0.3)
 
+            # Legend (top-left)
+            self._legend = self._plot_widget.addLegend(offset=(10, 10))
+            self._legend.setBrush(pg.mkBrush(theme.chart_bg + "CC"))
+            self._legend.setPen(pg.mkPen(theme.fg_secondary, width=0.5))
+            self._legend.setLabelTextColor(theme.fg_primary)
+
             self._pv_curve = self._plot_widget.plot(
                 pen=pg.mkPen(
                     color=theme.chart_pv, width=2,
@@ -176,14 +182,17 @@ class TrendChartWidget(QWidget):
 
             self._co_curve = pg.PlotCurveItem(
                 pen=pg.mkPen(color=theme.chart_co, width=1),
+                name="CO",
             )
             self._y2.addItem(self._co_curve)
+            self._legend.addItem(self._co_curve, "CO")
 
             # Sync Y2 viewbox geometry on resize
             self._plot_widget.plotItem.vb.sigResized.connect(
                 self._sync_y2_geometry
             )
         else:
+            self._legend = self._plot_widget.addLegend(offset=(10, 10))
             self._pv_curve = self._plot_widget.plot(pen="w", name="PV")
             self._sp_curve = self._plot_widget.plot(pen="y", name="SP")
             self._y2 = None
@@ -328,6 +337,10 @@ class TrendChartWidget(QWidget):
         self._plot_widget.setBackground(theme.chart_bg)
         self._plot_widget.getAxis("bottom").setPen(theme.fg_primary)
         self._plot_widget.getAxis("left").setPen(theme.fg_primary)
+        if hasattr(self, "_legend"):
+            self._legend.setBrush(pg.mkBrush(theme.chart_bg + "CC"))
+            self._legend.setPen(pg.mkPen(theme.fg_secondary, width=0.5))
+            self._legend.setLabelTextColor(theme.fg_primary)
         self._pv_curve.setPen(pg.mkPen(
             color=theme.chart_pv, width=2,
             style=Qt.PenStyle.SolidLine,
