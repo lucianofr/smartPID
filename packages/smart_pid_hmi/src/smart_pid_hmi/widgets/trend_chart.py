@@ -53,7 +53,7 @@ class TrendChartWidget(QWidget):
         self._time_data: deque[float] = deque(maxlen=buffer_size)
         self._tick = 0
         self._auto_scale = True
-        self._scan_rate_s = 0.1  # default 100ms, updated on controller select
+        self._scan_rate_s = 1.0  # default 1s, updated on controller select
         self._ai_markers: list[pg.InfiniteLine] = []
         self._ai_marker_color = "#FF9800"  # orange default
 
@@ -197,10 +197,10 @@ class TrendChartWidget(QWidget):
             )
 
     def on_controller_selected(
-        self, controller_id: int, scan_rate_ms: int = 100,
+        self, controller_id: int, scan_rate_s: float = 1.0,
     ) -> None:
         self._controller_id = controller_id
-        self._scan_rate_s = scan_rate_ms / 1000.0
+        self._scan_rate_s = scan_rate_s
         self._pv_data.clear()
         self._sp_data.clear()
         self._co_data.clear()
