@@ -31,6 +31,7 @@ class AIStatusResponse(BaseModel):
     speed: ProcessSpeed
     current_ki: float
     last_gamma: float | None = None
+    enabled: bool = True
 
 
 class AIConfigUpdateRequest(BaseModel):

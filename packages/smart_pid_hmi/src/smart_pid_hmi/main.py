@@ -849,8 +849,8 @@ class MainWindow(QMainWindow):
             cid = self._dashboard_page._selected_id  # noqa: SLF001
             if cid is not None:
                 try:
-                    self._api_client.get_ai_status(cid)
-                    self._ai_status_signal.emit(True)
+                    ai = self._api_client.get_ai_status(cid)
+                    self._ai_status_signal.emit(ai.get("enabled", False))
                 except Exception:
                     self._ai_status_signal.emit(False)
 
