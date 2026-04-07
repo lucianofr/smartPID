@@ -2,14 +2,15 @@
 
 Settings are loaded in this priority (highest wins):
   1. Environment variables  (SPID_HMI_SERVER_HOST, …)
-  2. Config file            (~/.smart-pid/hmi.env)
+  2. Config file            (hmi.env next to this module)
   3. Built-in defaults      (below)
 
 On first run the config file is created automatically with the defaults
 so the user can tweak server/port without touching env vars.
 
-The base directory ``~/.smart-pid/`` is shared with the backend
-(projects_dir, users.db) and works on Linux, macOS and Windows.
+The config file lives alongside the application code so it works
+identically on Linux, macOS and Windows without relying on a
+platform-specific home directory.
 """
 from __future__ import annotations
 
@@ -18,7 +19,8 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_DIR = Path.home() / ".smart-pid"
-CONFIG_FILE = APP_DIR / "hmi.env"
+_PKG_DIR = Path(__file__).resolve().parent
+CONFIG_FILE = _PKG_DIR / "hmi.env"
 
 _DEFAULT_CONFIG_CONTENT = """\
 # Smart PID HMI — connection settings
@@ -36,7 +38,6 @@ SPID_HMI_REFRESH_MS=33
 
 def ensure_config_file() -> Path:
     """Create the default config file if it does not exist yet."""
-    APP_DIR.mkdir(parents=True, exist_ok=True)
     if not CONFIG_FILE.exists():
         CONFIG_FILE.write_text(_DEFAULT_CONFIG_CONTENT)
     return CONFIG_FILE

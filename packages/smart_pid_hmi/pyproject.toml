@@ -30,3 +30,6 @@ smart-pid-hmi = "smart_pid_hmi.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/smart_pid_hmi"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/smart_pid_hmi/hmi.env" = "smart_pid_hmi/hmi.env"
