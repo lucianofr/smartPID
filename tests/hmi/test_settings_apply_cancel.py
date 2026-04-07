@@ -187,7 +187,7 @@ class TestConnectDisconnectImmediate:
 
 
 class TestApplyEndpointSave:
-    """Apply with changed endpoint emits opcua_endpoint_save_requested, not opcua_connect_requested."""
+    """Apply with changed endpoint emits save signal, not connect."""
 
     def test_apply_emits_save_not_connect(self, qtbot, page):
         connect_signals = []
