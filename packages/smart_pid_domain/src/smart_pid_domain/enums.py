@@ -58,6 +58,11 @@ class ProcessSpeed(StrEnum):
         return _SPEED_FACTORS[self]
 
     @property
+    def ai_period_s(self) -> int:
+        """AI optimization cycle period in seconds."""
+        return _AI_PERIODS[self]
+
+    @property
     def label(self) -> str:
         """Human-readable label with process examples for UI."""
         return _LABELS[self]
@@ -75,6 +80,13 @@ _SPEED_FACTORS: dict[ProcessSpeed, float] = {
     ProcessSpeed.FAST: 0.05,
     ProcessSpeed.MEDIUM: 0.15,
     ProcessSpeed.SLOW: 0.30,
+}
+
+_AI_PERIODS: dict[ProcessSpeed, int] = {
+    ProcessSpeed.ULTRA_FAST: 30,
+    ProcessSpeed.FAST: 180,
+    ProcessSpeed.MEDIUM: 1800,
+    ProcessSpeed.SLOW: 14400,
 }
 
 _LABELS: dict[ProcessSpeed, str] = {

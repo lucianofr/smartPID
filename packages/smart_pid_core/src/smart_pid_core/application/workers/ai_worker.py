@@ -1,8 +1,8 @@
-"""AI Worker — Ki optimization via Fuzzy or RL, triggered by STATS publication.
+"""AI Worker — Ki optimization via Fuzzy or RL on a fixed timer.
 
 Only runs when the loop is in an automatic mode (AUTO, CAS, RCAS).
-Cadence is driven by STATS.{id} messages from StatsWorker, ensuring
-performance indices are computed first, then AI optimizes based on them.
+Cadence is determined by ProcessSpeed.ai_period_s — independent of
+STATS publication rate.
 """
 from __future__ import annotations
 
@@ -32,17 +32,17 @@ _AUTO_MODES = frozenset({
 
 
 class AIWorker:
-    """Subscribes to TELEMETRY + STATS, runs AI engine, publishes ACTION.AI + LOG.AI.
+    """Subscribes to TELEMETRY, runs AI engine on a timer, publishes ACTION.AI + LOG.AI.
 
-    AI computation is triggered by STATS.{id} messages (same cadence as
-    performance statistics) and only executes when the loop is in an
-    automatic mode (AUTO, CAS, RCAS).
+    AI computation runs every ProcessSpeed.ai_period_s seconds and only
+    executes when the loop is in an automatic mode (AUTO, CAS, RCAS).
     """
 
     def __init__(self, bus: EventBus, controller: Controller) -> None:
         self._bus = bus
         self._controller = controller
         self._ai_config = controller.ai_config
+        self._ai_period_s = controller.process_speed.ai_period_s
         self._ki_current = controller.pid_params.reset  # Ti (integral time)
         self._last_pv: float = 0.0
         self._last_sp: float = 0.0
@@ -111,14 +111,13 @@ class AIWorker:
         telem_sub = self._bus.create_subscriber(
             f"TELEMETRY.{self.controller_id}".encode()
         )
-        stats_sub = self._bus.create_subscriber(
-            f"STATS.{self.controller_id}".encode()
-        )
         cmd_sub = self._bus.create_subscriber(
             f"CMD.AI.{self.controller_id}".encode()
         )
         pub = self._bus.create_publisher()
         time.sleep(0.02)
+
+        next_run = time.monotonic() + self._ai_period_s
 
         while not self._stop_event.is_set():
             try:
@@ -128,10 +127,14 @@ class AIWorker:
                 # Drain latest telemetry (non-blocking)
                 self._drain_telemetry(telem_sub)
 
-                # Wait for STATS trigger (blocking with timeout for stop check)
-                stats_msg = stats_sub.recv(timeout_ms=200)
-                if stats_msg is None:
+                # Check if it's time to run AI
+                now = time.monotonic()
+                if now < next_run:
+                    wait = min(next_run - now, 0.5)
+                    self._stop_event.wait(timeout=wait)
                     continue
+
+                next_run = now + self._ai_period_s
 
                 # Skip if disabled via CMD.AI stop
                 if not self._enabled:
