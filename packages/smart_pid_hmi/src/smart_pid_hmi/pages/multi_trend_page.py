@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPen
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -47,20 +46,20 @@ class MultiTrendPage(QWidget):
         # --- Header: legend showing PV / SP / CO colors ---
         header_row = QHBoxLayout()
         header_row.addStretch()
-        for label_text, color, style in [
-            ("PV", pv_color, Qt.PenStyle.SolidLine),
-            ("SP", sp_color, Qt.PenStyle.DashLine),
-            ("CO", co_color, Qt.PenStyle.DashDotLine),
+        for label_text, color, line_css in [
+            ("PV", pv_color, "solid"),
+            ("SP", sp_color, "dashed"),
+            ("CO", co_color, "solid"),
         ]:
             swatch = QLabel()
             swatch.setFixedSize(24, 3)
-            pen_style = "solid" if style == Qt.PenStyle.SolidLine else (
-                "dashed" if style == Qt.PenStyle.DashLine else "dashdot"
-            )
-            swatch.setStyleSheet(
-                f"background: {color}; border: none;"
-                f" border-top: 3px {pen_style} {color};"
-            )
+            if line_css == "solid":
+                swatch.setStyleSheet(f"background: {color}; border: none;")
+            else:
+                swatch.setStyleSheet(
+                    f"background: transparent; border: none;"
+                    f" border-top: 3px dashed {color};"
+                )
             lbl = QLabel(label_text)
             lbl.setStyleSheet("font-weight: bold; padding-left: 2px; padding-right: 10px;")
             header_row.addWidget(swatch)
@@ -182,11 +181,9 @@ class MultiTrendPage(QWidget):
             # Primary curves: PV (solid) and SP (dashed)
             pv_curve = pw.plot(
                 pen=pg.mkPen(pv_color, width=2, style=Qt.PenStyle.SolidLine),
-                name="PV",
             )
             sp_curve = pw.plot(
                 pen=pg.mkPen(sp_color, width=2, style=Qt.PenStyle.DashLine),
-                name="SP",
             )
 
             # Secondary Y axis for CO
@@ -197,11 +194,17 @@ class MultiTrendPage(QWidget):
             pw.showAxis("right")
             pw.setLabel("right", "CO")
 
-            co_pen = QPen(
-                pg.mkColor(co_color), 2, Qt.PenStyle.DashDotLine,
+            co_curve = pg.PlotDataItem(
+                pen=pg.mkPen(co_color, width=2, style=Qt.PenStyle.SolidLine),
             )
-            co_curve = pg.PlotDataItem(pen=pg.mkPen(co_pen))
             co_viewbox.addItem(co_curve)
+
+            # Sync CO viewbox geometry with the main plot on resize
+            def _sync_co_views(vb: pg.ViewBox, cvb: pg.ViewBox = co_viewbox,
+                               plot: pg.PlotWidget = pw) -> None:
+                cvb.setGeometry(plot.plotItem.vb.sceneBoundingRect())
+
+            pw.plotItem.vb.sigResized.connect(_sync_co_views)
 
             container.addWidget(pw)
 
@@ -355,7 +358,6 @@ class MultiTrendPage(QWidget):
                 pg.mkPen(sp_color, width=2, style=Qt.PenStyle.DashLine),
             )
 
-            co_pen = QPen(
-                pg.mkColor(co_color), 2, Qt.PenStyle.DashDotLine,
+            self._co_curves[i].setPen(
+                pg.mkPen(co_color, width=2, style=Qt.PenStyle.SolidLine),
             )
-            self._co_curves[i].setPen(pg.mkPen(co_pen))
