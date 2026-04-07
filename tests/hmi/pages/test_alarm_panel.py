@@ -37,26 +37,26 @@ def _make_alarm(
         "timestamp": timestamp,
     }
     if alarm_id is not None:
-        d["alarm_id"] = alarm_id
+        d["id"] = alarm_id
     return d
 
 
 def test_alarm_panel_creation():
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     assert panel is not None
 
 
 def test_alarm_panel_add_active_alarm():
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel.on_alarm(1, _make_alarm(alarm_type="HIHI"))
     assert panel.active_table.rowCount() == 1
 
 
 def test_alarm_panel_clear_removes_from_active():
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel.on_alarm(1, _make_alarm(alarm_type="HIHI"))
     panel.on_alarm(1, _make_alarm(
         alarm_type="HIHI", value=85.0, transition="CLEARED",
@@ -72,7 +72,7 @@ def test_alarm_panel_clear_removes_from_active():
 def test_alarm_has_category_column():
     """Table should include a Category column."""
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel.on_alarm(1, _make_alarm(alarm_type="HI"))
     # Category is column 1
     item = panel.active_table.item(0, 1)
@@ -82,7 +82,7 @@ def test_alarm_has_category_column():
 
 def test_ai_event_has_category():
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel.on_ai_event(1, "Ki adjusted +5%")
     item = panel.active_table.item(0, 1)
     assert item is not None
@@ -106,7 +106,7 @@ def _set_checked(combo, items_to_check):
 
 def test_filter_by_priority_multi_select():
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel._dt_from.setDateTime(QDateTime(2026, 1, 1, 0, 0, 0))
     panel._dt_to.setDateTime(QDateTime(2026, 12, 31, 23, 59, 0))
 
@@ -124,7 +124,7 @@ def test_filter_by_priority_multi_select():
 
 def test_filter_by_type_multi_select():
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel._dt_from.setDateTime(QDateTime(2026, 1, 1, 0, 0, 0))
     panel._dt_to.setDateTime(QDateTime(2026, 12, 31, 23, 59, 0))
 
@@ -142,7 +142,7 @@ def test_filter_by_type_multi_select():
 
 def test_filter_by_category():
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel._dt_from.setDateTime(QDateTime(2026, 1, 1, 0, 0, 0))
     panel._dt_to.setDateTime(QDateTime(2026, 12, 31, 23, 59, 0))
 
@@ -159,7 +159,7 @@ def test_filter_by_category():
 def test_ai_log_bypasses_priority_type_filters():
     """AI Log events should appear even when priority/type filters are restrictive."""
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel._dt_from.setDateTime(QDateTime(2026, 1, 1, 0, 0, 0))
     panel._dt_to.setDateTime(QDateTime(2026, 12, 31, 23, 59, 0))
 
@@ -173,7 +173,7 @@ def test_ai_log_bypasses_priority_type_filters():
 
 def test_filter_by_date_range():
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel._dt_from.setDateTime(QDateTime(2026, 1, 1, 0, 0, 0))
     panel._dt_to.setDateTime(QDateTime(2026, 12, 31, 23, 59, 0))
 
@@ -192,7 +192,7 @@ def test_filter_by_date_range():
 
 def test_filter_all_checked_returns_everything():
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel._dt_from.setDateTime(QDateTime(2026, 1, 1, 0, 0, 0))
     panel._dt_to.setDateTime(QDateTime(2026, 12, 31, 23, 59, 0))
 
@@ -209,7 +209,7 @@ def test_filter_all_checked_returns_everything():
 
 def test_apply_filters_rebuilds_table():
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel._dt_from.setDateTime(QDateTime(2026, 1, 1, 0, 0, 0))
     panel._dt_to.setDateTime(QDateTime(2026, 12, 31, 23, 59, 0))
 
@@ -230,7 +230,7 @@ def test_apply_filters_rebuilds_table():
 
 def test_ai_event_appears_in_table():
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel.on_ai_event(1, "Ki adjusted +5% via fuzzy")
     assert panel.active_table.rowCount() == 1
     # Category column (col 1) should be AI Log
@@ -243,7 +243,7 @@ def test_ai_event_appears_in_table():
 
 def test_ai_events_max_limit():
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     for i in range(550):
         panel.on_ai_event(1, f"action {i}")
     # Internal list trimmed to 500
@@ -252,7 +252,7 @@ def test_ai_events_max_limit():
 
 def test_system_event_appears_in_table():
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme)
+    panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel.on_system_event("User admin logged in")
     assert panel.active_table.rowCount() == 1
     assert panel.active_table.item(0, 1).text() == CATEGORY_SYSTEM
@@ -300,3 +300,72 @@ def test_load_history_api_error_handled():
     panel = AlarmPanel(theme=theme, api_client=mock_api)
     panel._load_history()  # should not raise
     assert panel.active_table.rowCount() == 0
+
+
+# --- Bug #3 / #4 fixes ---
+
+
+def test_alarm_panel_requires_api_client():
+    """AlarmPanel must raise TypeError if api_client is not provided."""
+    import inspect
+
+    sig = inspect.signature(AlarmPanel.__init__)
+    param = sig.parameters.get("api_client")
+    assert param is not None
+    assert param.default is inspect.Parameter.empty, \
+        "api_client must be a required parameter (no None default)"
+
+
+def test_alarm_panel_ack_uses_id_field():
+    """ACK should use 'id' field from alarm data, not 'alarm_id' (Bug #4)."""
+    from PySide6.QtCore import Qt
+
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+
+    panel.on_alarm(1, {
+        "alarm_type": "HI",
+        "priority": "WARNING",
+        "transition": "TRIGGERED",
+        "value": 85.0,
+        "limit": 80.0,
+        "timestamp": "2026-04-07T12:00:00",
+        "id": 42,
+    })
+
+    item = panel.active_table.item(0, 0)
+    assert item is not None
+    stored_id = item.data(Qt.ItemDataRole.UserRole)
+    assert stored_id == 42
+
+
+def test_alarm_panel_on_all_acked():
+    """on_all_acked() should mark all alarms as ACKNOWLEDGED."""
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+    panel.on_alarm(1, {
+        "alarm_type": "HI", "priority": "WARNING",
+        "transition": "TRIGGERED", "value": 85.0, "limit": 80.0,
+        "timestamp": "2026-04-07T12:00:00",
+    })
+    panel.on_all_acked()
+    for _key, alarm in panel._active_alarms.items():
+        assert alarm["status"] == "ACKNOWLEDGED"
+
+
+def test_alarm_panel_on_alarm_acked():
+    """on_alarm_acked() should mark specific alarm as ACKNOWLEDGED."""
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+    panel.on_alarm(1, {
+        "alarm_type": "HI", "priority": "WARNING",
+        "transition": "TRIGGERED", "value": 85.0, "limit": 80.0,
+        "timestamp": "2026-04-07T12:00:00",
+        "id": 42,
+    })
+    panel.on_alarm_acked(42)
+    alarm = panel._active_alarms[(1, "HI")]
+    assert alarm["status"] == "ACKNOWLEDGED"

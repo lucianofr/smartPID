@@ -294,7 +294,7 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._dashboard_page)
         self._simulator_page = SimulatorPage(theme=theme)
         self._stack.addWidget(self._simulator_page)
-        self._alarm_panel = AlarmPanel(theme=theme)
+        self._alarm_panel = AlarmPanel(theme=theme, api_client=self._api_client)
         self._stack.addWidget(self._alarm_panel)
         self._executive_page = ExecutiveDashboardPage(theme=theme)
         self._stack.addWidget(self._executive_page)

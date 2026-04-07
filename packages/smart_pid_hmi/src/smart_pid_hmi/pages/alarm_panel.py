@@ -70,8 +70,8 @@ class AlarmPanel(QWidget):
     def __init__(
         self,
         theme: ThemeBase,
+        api_client: APIClientPort,
         parent: QWidget | None = None,
-        api_client: APIClientPort | None = None,
     ) -> None:
         super().__init__(parent)
         self._theme = theme
@@ -226,6 +226,20 @@ class AlarmPanel(QWidget):
 
         self._rebuild_table()
 
+    def on_all_acked(self) -> None:
+        """Mark all active alarms as ACKNOWLEDGED (called after ACK All response)."""
+        for key in self._active_alarms:
+            self._active_alarms[key]["status"] = "ACKNOWLEDGED"
+        self._rebuild_table()
+
+    def on_alarm_acked(self, alarm_id: int) -> None:
+        """Mark a specific alarm as ACKNOWLEDGED (called after single ACK response)."""
+        for key, alarm in self._active_alarms.items():
+            if alarm.get("id") == alarm_id:
+                alarm["status"] = "ACKNOWLEDGED"
+                break
+        self._rebuild_table()
+
     # --- Filtering ---
 
     def _get_all_events(self) -> list[dict]:
@@ -333,7 +347,7 @@ class AlarmPanel(QWidget):
             ]
             priority = alarm.get("priority", "")
             color = colors.get(priority, self._theme.fg_muted or "#757575")
-            alarm_id = alarm.get("alarm_id")
+            alarm_id = alarm.get("id")
             for col, text in enumerate(items):
                 item = QTableWidgetItem(text)
                 item.setForeground(Qt.GlobalColor.white)
