@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import EventBus
     from smart_pid_core.application.loop_manager import LoopManager
     from smart_pid_core.application.project_service import ProjectService
+    from smart_pid_core.application.workers.alarm_worker import AlarmWorker
     from smart_pid_core.application.workers.stats_worker import StatsWorker
     from smart_pid_core.config import CoreSettings
 
@@ -63,6 +64,7 @@ def create_app(
     ai_repo: AIRepository | None = None,
     project_service: ProjectService | None = None,
     alarm_repo: AlarmRepository | None = None,
+    alarm_worker: AlarmWorker | None = None,
     audit_repo: AuditRepository | None = None,
     event_bus: EventBus | None = None,
 ) -> FastAPI:
@@ -82,6 +84,7 @@ def create_app(
     app.state.ai_workers = ai_workers or {}
     app.state.ai_repo = ai_repo
     app.state.alarm_repo = alarm_repo
+    app.state.alarm_worker = alarm_worker
     app.state.audit_repo = audit_repo
     app.state.event_bus = event_bus
     app.state.execution_mode = settings.execution_mode

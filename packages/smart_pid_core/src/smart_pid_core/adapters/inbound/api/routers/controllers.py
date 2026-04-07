@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Request, Response, status
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_alarm_repo,
+    get_alarm_worker,
     get_audit_repo,
     get_repo,
     require_admin,
@@ -18,6 +19,7 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
 from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository  # noqa: TC001
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+from smart_pid_core.application.workers.alarm_worker import AlarmWorker  # noqa: TC001
 from smart_pid_domain.dtos.alarms import (
     AlarmConfigResponse,
     AlarmConfigUpdate,
@@ -37,6 +39,7 @@ from smart_pid_domain.dtos.controllers import (
 )
 from smart_pid_domain.enums import (
     AIEngine,
+    AlarmPriority,
     AuditAction,
     ControllerMode,
     ControlObjective,
@@ -47,6 +50,7 @@ from smart_pid_domain.enums import (
     TuningWriteMode,
 )
 from smart_pid_domain.exceptions import ControllerNotFoundError
+from smart_pid_domain.models.alarm_config import AlarmConfig
 from smart_pid_domain.models.controller import (
     AIConfig,
     Controller,
@@ -58,6 +62,40 @@ from smart_pid_domain.models.controller import (
 )
 
 router = APIRouter()
+
+
+def _thresholds_to_alarm_config(thresholds: list[AlarmThreshold]) -> AlarmConfig:
+    """Build an AlarmConfig from a list of AlarmThreshold DTOs."""
+    by_type = {str(t.alarm_type): t for t in thresholds}
+    deadband = max((t.deadband for t in thresholds), default=1.0)
+
+    def _g(name: str) -> tuple[bool, float, AlarmPriority, float, float]:
+        t = by_type.get(name)
+        if t is None:
+            return False, 0.0, AlarmPriority.WARNING, 0.0, 0.0
+        return t.enabled, t.limit, AlarmPriority(t.priority), t.delay_on_s, t.delay_off_s
+
+    hihi = _g("HIHI")
+    hi = _g("HI")
+    lo = _g("LO")
+    lolo = _g("LOLO")
+    dv_hi = _g("DV_HI")
+    dv_lo = _g("DV_LO")
+    return AlarmConfig(
+        hihi_enabled=hihi[0], hihi_value=hihi[1], hihi_priority=hihi[2],
+        hihi_delay_on_s=hihi[3], hihi_delay_off_s=hihi[4],
+        hi_enabled=hi[0], hi_value=hi[1], hi_priority=hi[2],
+        hi_delay_on_s=hi[3], hi_delay_off_s=hi[4],
+        lo_enabled=lo[0], lo_value=lo[1], lo_priority=lo[2],
+        lo_delay_on_s=lo[3], lo_delay_off_s=lo[4],
+        lolo_enabled=lolo[0], lolo_value=lolo[1], lolo_priority=lolo[2],
+        lolo_delay_on_s=lolo[3], lolo_delay_off_s=lolo[4],
+        dv_hi_enabled=dv_hi[0], dv_hi_value=dv_hi[1], dv_hi_priority=dv_hi[2],
+        dv_hi_delay_on_s=dv_hi[3], dv_hi_delay_off_s=dv_hi[4],
+        dv_lo_enabled=dv_lo[0], dv_lo_value=dv_lo[1], dv_lo_priority=dv_lo[2],
+        dv_lo_delay_on_s=dv_lo[3], dv_lo_delay_off_s=dv_lo[4],
+        deadband_percent=deadband,
+    )
 
 
 def _to_response(c: Controller) -> ControllerResponse:
@@ -474,6 +512,7 @@ async def update_alarm_config(
     user: Annotated[UserClaims, Depends(require_supervisor)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
     alarm_repo: Annotated[AlarmRepository, Depends(get_alarm_repo)],
+    alarm_wkr: Annotated[AlarmWorker | None, Depends(get_alarm_worker)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> AlarmConfigResponse:
     """Update alarm thresholds for a controller (requires supervisor)."""
@@ -494,6 +533,9 @@ async def update_alarm_config(
         for t in body.thresholds
     ]
     await alarm_repo.save_alarm_config(controller_id, threshold_dicts)
+    # Hot-reload alarm config in the running AlarmWorker
+    if alarm_wkr is not None:
+        alarm_wkr.update_config(controller_id, _thresholds_to_alarm_config(body.thresholds))
     await audit_repo.record(
         user.user_id, user.username, AuditAction.CONFIG_ALARM,
         f"controller:{controller_id}",

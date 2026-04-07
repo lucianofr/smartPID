@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.user_repo import UserRepository
     from smart_pid_core.application.event_bus import EventBus
     from smart_pid_core.application.loop_manager import LoopManager
+    from smart_pid_core.application.workers.alarm_worker import AlarmWorker
     from smart_pid_core.application.workers.stats_worker import StatsWorker
     from smart_pid_core.config import CoreSettings
 
@@ -164,6 +165,10 @@ def get_event_bus(request: Request) -> EventBus:
 
 def get_alarm_repo(request: Request) -> AlarmRepository:
     return request.app.state.alarm_repo
+
+
+def get_alarm_worker(request: Request) -> AlarmWorker | None:
+    return getattr(request.app.state, "alarm_worker", None)
 
 
 def get_audit_repo(request: Request) -> AuditRepository:

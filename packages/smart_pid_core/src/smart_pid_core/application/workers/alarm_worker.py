@@ -1,6 +1,7 @@
 """AlarmWorker — daemon thread evaluating alarms from telemetry bus."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
 import time
@@ -26,10 +27,12 @@ class AlarmWorker:
         bus: EventBus,
         alarm_configs: dict[int, AlarmConfig],
         alarm_repo: Any = None,
+        event_loop: asyncio.AbstractEventLoop | None = None,
     ) -> None:
         self._bus = bus
         self._alarm_configs = alarm_configs
         self._alarm_repo = alarm_repo
+        self._event_loop = event_loop
         self._engine = AlarmEngine()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -56,6 +59,14 @@ class AlarmWorker:
                 )
         except Exception:
             logger.exception("alarm_persist_error")
+
+    def _schedule_persist(self, transition: AlarmTransition) -> None:
+        """Schedule async persistence from the sync worker thread."""
+        if self._alarm_repo is None or self._event_loop is None:
+            return
+        asyncio.run_coroutine_threadsafe(
+            self._persist_alarm(transition), self._event_loop,
+        )
 
     def update_config(self, controller_id: int, config: AlarmConfig) -> None:
         """Update alarm config for a controller (thread-safe via GIL)."""
@@ -125,5 +136,6 @@ class AlarmWorker:
                         f"EVENT.ALARM.{t.controller_id}".encode(),
                         msgpack.packb(alarm_data),
                     )
+                    self._schedule_persist(t)
             except (msgpack.UnpackException, KeyError, ValueError):
                 pass
