@@ -319,10 +319,6 @@ class SimulatorPage(QWidget):
         self._auto_sp_max.setDecimals(1)
         sp_max_row.addWidget(self._auto_sp_max, stretch=1)
         auto_sp_layout.addLayout(sp_max_row)
-        auto_sp_apply = QPushButton("Apply")
-        auto_sp_apply.setObjectName("auto_sp_apply")
-        auto_sp_apply.clicked.connect(self._on_auto_sp_apply)
-        auto_sp_layout.addWidget(auto_sp_apply)
         right_col.addWidget(auto_sp_group)
 
         # Auto Disturbance group
@@ -343,10 +339,6 @@ class SimulatorPage(QWidget):
         self._auto_dist_amp.setDecimals(1)
         amp_row.addWidget(self._auto_dist_amp, stretch=1)
         auto_dist_layout.addLayout(amp_row)
-        auto_dist_apply = QPushButton("Apply")
-        auto_dist_apply.setObjectName("auto_dist_apply")
-        auto_dist_apply.clicked.connect(self._on_auto_dist_apply)
-        auto_dist_layout.addWidget(auto_dist_apply)
         right_col.addWidget(auto_dist_group)
 
         # Disturbance group (immediate actions)
@@ -452,6 +444,13 @@ class SimulatorPage(QWidget):
         self._pid_kp_edit.editingFinished.connect(self._on_pid_params_edited)
         self._pid_ti_edit.editingFinished.connect(self._on_pid_params_edited)
         self._pid_td_edit.editingFinished.connect(self._on_pid_params_edited)
+
+        # Auto SP / Auto Disturbance act IMMEDIATELY (no Apply needed)
+        self._auto_sp_enable.toggled.connect(lambda _: self._emit_auto_sp())
+        self._auto_sp_min.valueChanged.connect(lambda _: self._emit_auto_sp())
+        self._auto_sp_max.valueChanged.connect(lambda _: self._emit_auto_sp())
+        self._auto_dist_enable.toggled.connect(lambda _: self._emit_auto_dist())
+        self._auto_dist_amp.valueChanged.connect(lambda _: self._emit_auto_dist())
 
     def _make_param_row(
         self, layout: QVBoxLayout, label: str, key: str,
@@ -618,14 +617,14 @@ class SimulatorPage(QWidget):
         period = max(10.0 * tau1, 1.0)
         self._period_label.setText(f"Excitation Period (10 \u00d7 \u03c41): {period:.1f} s")
 
-    def _on_auto_sp_apply(self) -> None:
+    def _emit_auto_sp(self) -> None:
         lo = self._auto_sp_min.value()
         hi = self._auto_sp_max.value()
         if lo >= hi:
             return  # ignore invalid range
         self.auto_sp_changed.emit(self._auto_sp_enable.isChecked(), lo, hi)
 
-    def _on_auto_dist_apply(self) -> None:
+    def _emit_auto_dist(self) -> None:
         self.auto_disturbance_changed.emit(
             self._auto_dist_enable.isChecked(),
             self._auto_dist_amp.value(),
