@@ -372,6 +372,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         alarm_repo=alarm_repo,
         audit_repo=audit_repo,
         project_service=project_service,
+        event_bus=bus,
     )
 
     # Set export_worker on app.state so the export router can use it
