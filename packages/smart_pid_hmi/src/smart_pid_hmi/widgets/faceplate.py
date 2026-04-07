@@ -1,6 +1,7 @@
 """FaceplateWidget — detailed operation panel for selected controller."""
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal
@@ -206,6 +207,7 @@ class FaceplateWidget(QFrame):
 
         # -- PID Gains (editable) --
         self._integral_type = "TIME_TI"  # updated on controller select
+        self._gains_write_time: float = 0.0  # suppress updates after user write
 
         gains_row1 = QHBoxLayout()
         gains_row1.setSpacing(6)
@@ -469,7 +471,10 @@ class FaceplateWidget(QFrame):
             self._ti_lbl.setText("Ti:")
             self._td_lbl.setText("Td:")
 
-        # Set values in inputs (don't overwrite if user is editing)
+        # Set values in inputs (don't overwrite if user is editing or just wrote)
+        now = time.monotonic()
+        if now - self._gains_write_time < 3.0:
+            return  # Suppress updates for 3s after user write
         if not self._kp_input.hasFocus():
             self._kp_input.setText(f"{gains.get('gain', 0.0):.3f}")
         if not self._ti_input.hasFocus():
@@ -485,14 +490,9 @@ class FaceplateWidget(QFrame):
             gain = float(self._kp_input.text())
             reset = float(self._ti_input.text())
             rate = float(self._td_input.text())
-        except ValueError as e:
-            print(f"DIAG gains_changed: ValueError {e} "
-                  f"kp='{self._kp_input.text()}' "
-                  f"ti='{self._ti_input.text()}' "
-                  f"td='{self._td_input.text()}'")
+        except ValueError:
             return
-        print(f"DIAG gains_changed: emitting cid={self._controller_id} "
-              f"kp={gain} ti={reset} td={rate}")
+        self._gains_write_time = time.monotonic()
         self.gains_changed.emit(self._controller_id, {
             "gain": gain, "reset": reset, "rate": rate,
         })
