@@ -53,6 +53,7 @@ class TrendChartWidget(QWidget):
         self._time_data: deque[float] = deque(maxlen=buffer_size)
         self._tick = 0
         self._auto_scale = True
+        self._scan_rate_s = 0.1  # default 100ms, updated on controller select
         self._ai_markers: list[pg.InfiniteLine] = []
         self._ai_marker_color = "#FF9800"  # orange default
 
@@ -195,8 +196,11 @@ class TrendChartWidget(QWidget):
                 self._plot_widget.plotItem.vb.sceneBoundingRect()
             )
 
-    def on_controller_selected(self, controller_id: int) -> None:
+    def on_controller_selected(
+        self, controller_id: int, scan_rate_ms: int = 100,
+    ) -> None:
         self._controller_id = controller_id
+        self._scan_rate_s = scan_rate_ms / 1000.0
         self._pv_data.clear()
         self._sp_data.clear()
         self._co_data.clear()
@@ -227,12 +231,11 @@ class TrendChartWidget(QWidget):
         if self._co_curve:
             self._co_curve.setData(x, list(self._co_data))
 
-        # Apply time window: estimate samples/sec from recent data
-        if len(x) > 1:
-            samples_per_window = max(
-                int(self._time_window_s * 30), 60,
-            )  # ~30 samples/s at 33ms refresh
-            x_min = max(0, self._tick - samples_per_window)
+        # Apply time window using scan_rate to calculate samples per window
+        if len(x) > 1 and self._scan_rate_s > 0:
+            samples_per_sec = 1.0 / self._scan_rate_s
+            samples_in_window = int(self._time_window_s * samples_per_sec)
+            x_min = max(0, self._tick - samples_in_window)
             self._plot_widget.plotItem.setXRange(x_min, self._tick, padding=0.02)
 
     def _on_time_window_changed(self, _value: object = None) -> None:
