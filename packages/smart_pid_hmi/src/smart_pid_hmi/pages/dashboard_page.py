@@ -163,7 +163,7 @@ class DashboardPage(QWidget):
             self._controller_meta[cid] = {
                 "name": name, "lo": lo, "hi": hi,
                 "description": desc,
-                "scan_rate_ms": ctrl.get("scan_rate_ms", 100),
+                "scan_rate_s": ctrl.get("scan_rate_ms", 1000) / 1000.0,
                 "pid_gains": {
                     "gain": pid_params.get("gain", 1.0),
                     "reset": pid_params.get("reset", 10.0),
@@ -203,7 +203,7 @@ class DashboardPage(QWidget):
         )
         self._trend.on_controller_selected(
             controller_id,
-            scan_rate_ms=meta.get("scan_rate_ms", 100),
+            scan_rate_s=meta.get("scan_rate_s", 1.0),
         )
 
     def _on_card_selected(self, controller_id: int) -> None:
