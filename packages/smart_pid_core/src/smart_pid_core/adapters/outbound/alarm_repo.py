@@ -117,21 +117,25 @@ class AlarmRepository:
         priority: str | None = None,
     ) -> list[dict]:
         """Return alarms that are still visible (not cleared+acked)."""
-        sql = """SELECT id, controlador_id as controller_id, tipo_alarme as alarm_type,
-                        prioridade as priority, valor as value, limite as limit_value,
-                        timestamp as triggered_at, cleared_at,
-                        reconhecido as acknowledged,
-                        reconhecido_por as ack_by_user, reconhecido_em as ack_at
-                 FROM Log_Alarmes
-                 WHERE NOT (cleared_at IS NOT NULL AND reconhecido = 1)"""
+        sql = """SELECT a.id, a.controlador_id as controller_id,
+                        c.nome as controller_name,
+                        a.tipo_alarme as alarm_type,
+                        a.prioridade as priority, a.valor as value,
+                        a.limite as "limit",
+                        a.timestamp, a.cleared_at,
+                        a.reconhecido as acknowledged,
+                        a.reconhecido_por as ack_by_user, a.reconhecido_em as ack_at
+                 FROM Log_Alarmes a
+                 LEFT JOIN Controladores c ON c.id = a.controlador_id
+                 WHERE NOT (a.cleared_at IS NOT NULL AND a.reconhecido = 1)"""
         params: list = []
         if controller_id is not None:
-            sql += " AND controlador_id = ?"
+            sql += " AND a.controlador_id = ?"
             params.append(controller_id)
         if priority is not None:
-            sql += " AND prioridade = ?"
+            sql += " AND a.prioridade = ?"
             params.append(priority)
-        sql += " ORDER BY timestamp DESC"
+        sql += " ORDER BY a.timestamp DESC"
 
         async with self._db.execute(sql, params) as cur:
             rows = await cur.fetchall()
@@ -188,18 +192,22 @@ class AlarmRepository:
         offset: int = 0,
     ) -> list[dict]:
         """Return alarm history in a time range."""
-        sql = """SELECT id, controlador_id as controller_id, tipo_alarme as alarm_type,
-                        prioridade as priority, valor as value, limite as limit_value,
-                        timestamp as triggered_at, cleared_at,
-                        reconhecido as acknowledged,
-                        reconhecido_por as ack_by_user, reconhecido_em as ack_at
-                 FROM Log_Alarmes
-                 WHERE timestamp BETWEEN ? AND ?"""
+        sql = """SELECT a.id, a.controlador_id as controller_id,
+                        c.nome as controller_name,
+                        a.tipo_alarme as alarm_type,
+                        a.prioridade as priority, a.valor as value,
+                        a.limite as "limit",
+                        a.timestamp, a.cleared_at,
+                        a.reconhecido as acknowledged,
+                        a.reconhecido_por as ack_by_user, a.reconhecido_em as ack_at
+                 FROM Log_Alarmes a
+                 LEFT JOIN Controladores c ON c.id = a.controlador_id
+                 WHERE a.timestamp BETWEEN ? AND ?"""
         params: list = [start.isoformat(), end.isoformat()]
         if controller_id is not None:
-            sql += " AND controlador_id = ?"
+            sql += " AND a.controlador_id = ?"
             params.append(controller_id)
-        sql += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        sql += " ORDER BY a.timestamp DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
 
         async with self._db.execute(sql, params) as cur:

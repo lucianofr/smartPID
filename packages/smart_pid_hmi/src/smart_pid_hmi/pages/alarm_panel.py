@@ -347,8 +347,9 @@ class AlarmPanel(QWidget):
             # System Event: level shown as "—"
             display_level = "\u2014" if category in (CATEGORY_AI, CATEGORY_SYSTEM) else atype
             display_pri = "\u2014" if category == CATEGORY_AI else pri
+            ctrl_display = alarm.get("controller_name") or str(alarm.get("controller_id", ""))
             items = [
-                str(alarm.get("controller_id", "")),
+                ctrl_display,
                 category,
                 display_level,
                 display_pri,
