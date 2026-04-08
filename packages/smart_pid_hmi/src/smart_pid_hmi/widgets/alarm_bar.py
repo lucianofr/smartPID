@@ -176,12 +176,7 @@ class AlarmBarWidget(QFrame):
             for col, text in enumerate(items):
                 item = QTableWidgetItem(text)
                 item.setForeground(QColor(text_color))
-                if not acked:
-                    item.setBackground(QColor(color))
-                else:
-                    c = QColor(color)
-                    c.setAlpha(180)
-                    item.setBackground(c)
+                item.setBackground(QColor(color))
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self._table.setItem(row, col, item)
 
