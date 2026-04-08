@@ -78,9 +78,9 @@ class AlarmBarWidget(QFrame):
 
         self._table = QTableWidget(0, len(_COLUMNS))
         self._table.setHorizontalHeaderLabels(_COLUMNS)
-        self._table.horizontalHeader().setSectionResizeMode(
-            3, QHeaderView.ResizeMode.Stretch,
-        )
+        hdr = self._table.horizontalHeader()
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        hdr.resizeSection(4, 150)  # Date/Time — enough for "YYYY-MM-DD HH:MM:SS"
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.verticalHeader().setVisible(False)
@@ -167,7 +167,7 @@ class AlarmBarWidget(QFrame):
                 alarm.get("alarm_type", ""),
                 alarm.get("controller_name", "?"),
                 alarm.get("controller_description", ""),
-                alarm.get("timestamp", ""),
+                (alarm.get("timestamp", "")[:19].replace("T", " ")),
                 "\u2713" if acked else "ACK",
             ]
             color = _PRIORITY_COLORS.get(priority, "#757575")
