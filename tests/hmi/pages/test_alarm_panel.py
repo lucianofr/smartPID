@@ -384,6 +384,7 @@ def test_alarm_panel_has_live_checkbox():
 def test_alarm_panel_live_disables_history_controls():
     theme = ISA101Theme()
     mock_api = MagicMock()
+    mock_api.get_active_alarms.return_value = []
     panel = AlarmPanel(theme=theme, api_client=mock_api)
     panel._live_checkbox.setChecked(True)
     assert not panel._dt_from.isEnabled()
@@ -394,9 +395,29 @@ def test_alarm_panel_live_disables_history_controls():
 def test_alarm_panel_live_enables_history_on_uncheck():
     theme = ISA101Theme()
     mock_api = MagicMock()
+    mock_api.get_active_alarms.return_value = []
     panel = AlarmPanel(theme=theme, api_client=mock_api)
     panel._live_checkbox.setChecked(True)
     panel._live_checkbox.setChecked(False)
     assert panel._dt_from.isEnabled()
     assert panel._dt_to.isEnabled()
     assert panel._load_history_btn.isEnabled()
+
+
+def test_alarm_panel_live_skips_date_filter():
+    """In Live mode, events show regardless of date range."""
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    mock_api.get_active_alarms.return_value = []
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+    # Set a very narrow date range that would exclude everything
+    panel._dt_from.setDateTime(QDateTime(2020, 1, 1, 0, 0, 0))
+    panel._dt_to.setDateTime(QDateTime(2020, 1, 1, 0, 1, 0))
+    # Enable Live first, then add alarm (simulating real-time event arrival)
+    panel._live_checkbox.setChecked(True)
+    panel.on_alarm(1, _make_alarm(alarm_type="HI"))
+    # In Live mode, date filter is skipped — alarm should be visible
+    assert panel.active_table.rowCount() == 1
+    # Without Live, date filter excludes it
+    panel._live_checkbox.setChecked(False)
+    assert len(panel.get_filtered_alarms()) == 0
