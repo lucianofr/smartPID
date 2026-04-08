@@ -440,7 +440,8 @@ class MainWindow(QMainWindow):
         self._load_dashboard()
         self._check_simulator_available()
         self._show_admin_controls()
-        self._load_initial_alarm_state()
+        # _load_initial_alarm_state is called in _on_controllers_received
+        # after cards are created (async via _load_dashboard thread)
         self._kpi_timer.start(30_000)
         self._stats_timer.start(2000)
         self._exec_cards_timer.start(2000)
@@ -548,6 +549,9 @@ class MainWindow(QMainWindow):
 
         # Feed executive dashboard controller cards
         self._executive_page.update_controller_cards(controllers)
+
+        # Now that cards exist, load initial alarm state from backend
+        self._load_initial_alarm_state()
 
         # Also compute initial KPIs from controller data
         total = len(controllers)
