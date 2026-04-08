@@ -360,12 +360,14 @@ class AlarmPanel(QWidget):
             priority = alarm.get("priority", "")
             color = colors.get(priority, self._theme.fg_muted or "#757575")
             alarm_id = alarm.get("id")
+            text_color = QColor(self._theme.fg_primary or "#1A1A1A")
             for col, text in enumerate(items):
                 item = QTableWidgetItem(text)
-                item.setForeground(Qt.GlobalColor.white)
+                item.setForeground(text_color)
                 item.setBackground(Qt.GlobalColor.transparent)
                 if col == 3:  # Priority column
                     item.setBackground(QColor(color))
+                    item.setForeground(QColor("#FFFFFF"))
                 item.setFlags(
                     item.flags() & ~Qt.ItemFlag.ItemIsEditable
                 )
