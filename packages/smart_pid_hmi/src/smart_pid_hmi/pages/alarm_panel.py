@@ -1,10 +1,10 @@
 """AlarmPanel — alarm & event management page with active alarms table and ACK."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QDateTime, Qt, QTimer, Signal
+from PySide6.QtCore import QDateTime, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -131,11 +131,6 @@ class AlarmPanel(QWidget):
         self._live_checkbox.toggled.connect(self._on_live_toggled)
         filter_layout.addWidget(self._live_checkbox)
 
-        # Live timer (5s refresh)
-        self._live_timer = QTimer(self)
-        self._live_timer.setInterval(5000)
-        self._live_timer.timeout.connect(self._live_refresh)
-
         filter_layout.addStretch()
         layout.addLayout(filter_layout)
 
@@ -260,7 +255,7 @@ class AlarmPanel(QWidget):
             + list(self._system_events)
         )
 
-    def get_filtered_alarms(self) -> list[dict]:
+    def get_filtered_alarms(self, *, skip_date: bool = False) -> list[dict]:
         """Return events filtered by current UI criteria."""
         categories = (
             set(_CATEGORY_ITEMS)
@@ -294,14 +289,15 @@ class AlarmPanel(QWidget):
                 # Level filter does not apply to system events
             # AI Log: neither priority nor level filter applies
 
-            ts_str = alarm.get("timestamp", "")
-            if ts_str:
-                try:
-                    ts = datetime.fromisoformat(ts_str)
-                    if ts < dt_from or ts > dt_to:
-                        continue
-                except (ValueError, TypeError):
-                    pass
+            if not skip_date:
+                ts_str = alarm.get("timestamp", "")
+                if ts_str:
+                    try:
+                        ts = datetime.fromisoformat(ts_str)
+                        if ts < dt_from or ts > dt_to:
+                            continue
+                    except (ValueError, TypeError):
+                        pass
             result.append(alarm)
         return result
 
@@ -330,7 +326,12 @@ class AlarmPanel(QWidget):
         self, alarms: list[dict] | None = None,
     ) -> None:
         if alarms is None:
-            alarms = self._get_all_events()
+            # In Live mode, apply category/priority/level filters but skip date filter
+            # In normal mode, show all events (filters applied explicitly via _apply_filters)
+            if self.is_live:
+                alarms = self.get_filtered_alarms(skip_date=True)
+            else:
+                alarms = self._get_all_events()
 
         colors = _priority_colors(self._theme)
 
@@ -380,57 +381,20 @@ class AlarmPanel(QWidget):
                     )
                 self.active_table.setItem(row, col, item)
 
+    @property
+    def is_live(self) -> bool:
+        """True when Live mode is active (no date filtering)."""
+        return self._live_checkbox.isChecked()
+
     def _on_live_toggled(self, checked: bool) -> None:
-        """Toggle live mode."""
+        """Toggle live mode — event-driven, no polling."""
         self._dt_from.setEnabled(not checked)
         self._dt_to.setEnabled(not checked)
         self._load_history_btn.setEnabled(not checked)
+        self._apply_btn.setEnabled(not checked)
         if checked:
-            self._live_refresh()
-            self._live_timer.start()
-        else:
-            self._live_timer.stop()
-
-    def _live_refresh(self) -> None:
-        """Fetch active alarms + recent system events for live view."""
-        if self._api_client is None:
-            return
-        try:
-            alarms = self._api_client.get_active_alarms()
-        except Exception:  # noqa: BLE001
-            alarms = []
-        self._active_alarms.clear()
-        for alarm in alarms:
-            key = (alarm.get("controller_id", 0), alarm.get("alarm_type", ""))
-            self._active_alarms[key] = {
-                **alarm,
-                "status": "ACKNOWLEDGED" if alarm.get("acknowledged") else "UNACKNOWLEDGED",
-            }
-        # Also fetch recent system events (last 5 min)
-        from datetime import timedelta
-
-        now = datetime.now(tz=UTC)
-        try:
-            sys_events = self._api_client.get_system_events(
-                start=now - timedelta(minutes=5),
-                end=now,
-            )
-            self._system_events = [
-                {
-                    "controller_id": "",
-                    "alarm_type": "",
-                    "_category": CATEGORY_SYSTEM,
-                    "priority": e.get("severity", "INFO"),
-                    "value": 0.0,
-                    "limit": 0.0,
-                    "timestamp": e.get("timestamp", ""),
-                    "status": e.get("message", ""),
-                    "transition": "INFO",
-                }
-                for e in sys_events
-            ]
-        except Exception:  # noqa: BLE001
-            pass
+            # Seed with current active alarms from DB
+            self.load_active_alarms()
         self._rebuild_table()
 
     def _on_ack_selected(self) -> None:
