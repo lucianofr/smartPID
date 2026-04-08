@@ -134,7 +134,7 @@ def test_filter_by_type_multi_select():
         timestamp="2026-04-03T12:05:00",
     ))
 
-    _set_checked(panel._type_filter, ["LO"])
+    _set_checked(panel._level_filter, ["LO"])
     filtered = panel.get_filtered_alarms()
     assert len(filtered) == 1
     assert filtered[0]["alarm_type"] == "LO"
@@ -153,11 +153,11 @@ def test_filter_by_category():
     _set_checked(panel._category_filter, [CATEGORY_AI])
     filtered = panel.get_filtered_alarms()
     assert len(filtered) == 1
-    assert filtered[0]["alarm_type"] == "AI_LOG"
+    assert filtered[0]["_category"] == CATEGORY_AI
 
 
-def test_ai_log_bypasses_priority_type_filters():
-    """AI Log events should appear even when priority/type filters are restrictive."""
+def test_ai_log_bypasses_priority_level_filters():
+    """AI Log events should appear even when priority/level filters are restrictive."""
     theme = ISA101Theme()
     panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel._dt_from.setDateTime(QDateTime(2026, 1, 1, 0, 0, 0))
@@ -166,7 +166,7 @@ def test_ai_log_bypasses_priority_type_filters():
     panel.on_ai_event(1, "Ki adjusted")
     # Set priority filter to CRITICAL only — AI logs should still appear
     _set_checked(panel._priority_filter, ["CRITICAL"])
-    _set_checked(panel._type_filter, ["HI"])
+    _set_checked(panel._level_filter, ["HI"])
     filtered = panel.get_filtered_alarms()
     assert len(filtered) == 1
 
