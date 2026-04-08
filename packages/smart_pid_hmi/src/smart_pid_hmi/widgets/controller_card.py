@@ -152,7 +152,7 @@ class ControllerCardWidget(QFrame):
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 6)
-        root.setSpacing(2)
+        root.setSpacing(0)
 
         # ── Alarm banner (colored band at top of card with priority icon) ──
         self._alarm_banner = QFrame()
@@ -182,7 +182,7 @@ class ControllerCardWidget(QFrame):
 
         # ── Content area with padding ──
         content = QVBoxLayout()
-        content.setContentsMargins(10, 2, 10, 0)
+        content.setContentsMargins(10, 4, 10, 0)
         content.setSpacing(4)
 
         # ── Header row: tag(description) + config button ──
@@ -259,12 +259,9 @@ class ControllerCardWidget(QFrame):
     ) -> None:
         bg = _theme_attr(theme, "bg_card", theme.bg_widget)
         br = _theme_attr(theme, "border_radius", "6px")
-        if alarm == "CRITICAL":
-            border_css = f"border: 2px solid {theme.alarm_critical};"
-        elif alarm == "WARNING":
-            border_css = f"border: 2px solid {theme.alarm_warning};"
-        else:
-            border_css = f"border: 1px solid {theme.border};"
+        # No colored border — the alarm banner at top is the visual indicator
+        border_css = f"border: 1px solid {theme.border};"
+        _ = alarm  # reserved for future use
         self.setStyleSheet(
             f"ControllerCardWidget {{"
             f" background-color: {bg}; {border_css}"
