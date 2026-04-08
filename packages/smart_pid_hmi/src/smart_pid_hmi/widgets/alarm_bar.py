@@ -106,6 +106,20 @@ class AlarmBarWidget(QFrame):
         """Return number of active alarms."""
         return len(self._active)
 
+    def load_active_alarms(self, alarms: list[dict]) -> None:
+        """Seed the bar with active alarms from backend REST API."""
+        self._active.clear()
+        for alarm in alarms:
+            cid = alarm.get("controller_id", 0)
+            atype = alarm.get("alarm_type", "")
+            priority = alarm.get("priority", "")
+            if priority == "LOG" or not atype:
+                continue
+            key = (cid, atype)
+            acked = bool(alarm.get("acknowledged", False))
+            self._active[key] = {**alarm, "acked": acked, "transition": "TRIGGERED"}
+        self._rebuild()
+
     def on_alarm(self, alarm: dict) -> None:
         """Handle alarm event — add on TRIGGERED, remove on CLEARED."""
         cid = alarm.get("controller_id", 0)
