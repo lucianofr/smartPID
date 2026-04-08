@@ -440,7 +440,7 @@ class MainWindow(QMainWindow):
         self._load_dashboard()
         self._check_simulator_available()
         self._show_admin_controls()
-        self._alarm_panel.load_active_alarms()
+        self._load_initial_alarm_state()
         self._kpi_timer.start(30_000)
         self._stats_timer.start(2000)
         self._exec_cards_timer.start(2000)
@@ -1100,6 +1100,20 @@ class MainWindow(QMainWindow):
             params["reset"] = frame.get("ti", 0.0)
             params["rate"] = frame.get("td", 0.0)
         self._dashboard_page._faceplate.update_live_params(params)  # noqa: SLF001
+
+    def _load_initial_alarm_state(self) -> None:
+        """Fetch active alarms from backend and propagate to all 3 widgets."""
+        try:
+            alarms = self._api_client.get_active_alarms()
+        except Exception:  # noqa: BLE001
+            alarms = []
+        # AlarmPanel — uses its own API call internally
+        self._alarm_panel.load_active_alarms()
+        # AlarmBar (dashboard footer)
+        self._dashboard_page._alarm_bar.load_active_alarms(alarms)  # noqa: SLF001
+        # ControllerCards
+        for card in self._dashboard_page._cards:  # noqa: SLF001
+            card.load_active_alarms(alarms)
 
     def _on_system_event(self, event: dict) -> None:
         """Forward system event to AlarmPanel."""

@@ -355,6 +355,20 @@ class ControllerCardWidget(QFrame):
         self._update_ai_engine_badge()
         self._update_opt_state_badge()
 
+    def load_active_alarms(self, alarms: list[dict]) -> None:
+        """Seed the card with active alarms from backend REST API."""
+        self._active_alarms.clear()
+        for alarm in alarms:
+            cid = alarm.get("controller_id", 0)
+            if cid != self._controller_id:
+                continue
+            atype = alarm.get("alarm_type", "")
+            priority = alarm.get("priority", "")
+            if atype:
+                acked = bool(alarm.get("acknowledged", False))
+                self._active_alarms[atype] = {"priority": priority, "acked": acked}
+        self._resolve_top_alarm()
+
     def on_alarm(self, controller_id: int, alarm: dict) -> None:
         """Handle alarm transition: TRIGGERED adds, CLEARED removes."""
         if controller_id != self._controller_id:
