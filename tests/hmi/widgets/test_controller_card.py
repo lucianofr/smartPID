@@ -189,7 +189,7 @@ def test_alarm_triggered_shows_strip_and_icon(qtbot, theme):
         "transition": "TRIGGERED", "value": 75.0, "limit": 70.0,
     })
     assert card._alarm_priority == "WARNING"
-    assert not card._alarm_icon.isHidden()
+    assert not card._alarm_banner.isHidden()
     assert card._alarm_icon.text() == "\u26a0"
 
 
@@ -224,7 +224,7 @@ def test_alarm_cleared_removes_visual(qtbot, theme):
         "transition": "CLEARED", "value": 65.0, "limit": 70.0,
     })
     assert card._alarm_priority is None
-    assert card._alarm_icon.isHidden()
+    assert card._alarm_banner.isHidden()
 
 
 def test_alarm_unacknowledged_blinks(qtbot, theme):
@@ -256,9 +256,9 @@ def test_alarm_ack_stops_blink(qtbot, theme):
 
     card.on_alarm_ack(1, "HI")
     assert not card._blink_timer.isActive()
-    # Strip should still be visible (solid color)
+    # Banner should still be visible (solid color)
     assert card._alarm_priority == "WARNING"
-    assert not card._alarm_icon.isHidden()
+    assert not card._alarm_banner.isHidden()
 
 
 def test_alarm_ack_all_stops_blink(qtbot, theme):
@@ -359,25 +359,25 @@ def test_blink_tick_toggles_strip(qtbot, theme):
     # Simulate tick
     card._on_blink_tick()
     assert card._blink_visible is False
-    assert "transparent" in card._alarm_strip.styleSheet()
+    assert "transparent" in card._alarm_banner.styleSheet()
 
     # Tick again — visible
     card._on_blink_tick()
     assert card._blink_visible is True
-    assert "transparent" not in card._alarm_strip.styleSheet()
+    assert "transparent" not in card._alarm_banner.styleSheet()
 
 
-def test_alarm_icon_on_right_side(qtbot, theme):
-    """Alarm icon should be positioned after the tag label (right side)."""
+def test_alarm_icon_inside_banner(qtbot, theme):
+    """Alarm icon should be inside the alarm banner, not in header."""
     card = ControllerCardWidget(
         controller_id=1, tag_name="FIC-101",
         min_val=0.0, max_val=100.0, theme=theme,
     )
     qtbot.addWidget(card)
-    # The icon should be in the header layout after the tag label
-    # Find the header layout — it's the first layout in the content area
-    header = card.layout().itemAt(1).layout().itemAt(0).layout()
-    # header items: tag_label(0), alarm_icon(1), settings_btn(2)
-    assert header.itemAt(0).widget() is card._tag_label
-    assert header.itemAt(1).widget() is card._alarm_icon
-    assert header.itemAt(2).widget() is card._settings_btn
+    # Banner is the first widget in root layout
+    banner = card.layout().itemAt(0).widget()
+    assert banner is card._alarm_banner
+    # Icon is inside the banner layout
+    banner_layout = banner.layout()
+    assert banner_layout.itemAt(0).widget() is card._alarm_banner_label
+    assert banner_layout.itemAt(1).widget() is card._alarm_icon

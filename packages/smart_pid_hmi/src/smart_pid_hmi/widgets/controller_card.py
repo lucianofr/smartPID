@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 _CARD_WIDTH = 280
 _CARD_MIN_HEIGHT = 200
-_ALARM_STRIP_HEIGHT = 5
+_ALARM_BANNER_HEIGHT = 24
 _BLINK_INTERVAL_MS = 500
 
 # Priority ordering: lower index = higher priority
@@ -154,18 +154,38 @@ class ControllerCardWidget(QFrame):
         root.setContentsMargins(0, 0, 0, 6)
         root.setSpacing(2)
 
-        # ── Alarm strip (colored bar at very top of card) ──
-        self._alarm_strip = QFrame()
-        self._alarm_strip.setFixedHeight(_ALARM_STRIP_HEIGHT)
-        self._alarm_strip.setStyleSheet("background: transparent;")
-        root.addWidget(self._alarm_strip)
+        # ── Alarm banner (colored band at top of card with priority icon) ──
+        self._alarm_banner = QFrame()
+        self._alarm_banner.setFixedHeight(_ALARM_BANNER_HEIGHT)
+        banner_layout = QHBoxLayout(self._alarm_banner)
+        banner_layout.setContentsMargins(8, 0, 8, 0)
+        banner_layout.setSpacing(0)
+
+        self._alarm_banner_label = QLabel("")
+        self._alarm_banner_label.setStyleSheet(
+            "color: #FFFFFF; font-size: 11px; font-weight: bold;"
+            " background: transparent;"
+        )
+        banner_layout.addWidget(self._alarm_banner_label, stretch=1)
+
+        self._alarm_icon = QLabel("")
+        self._alarm_icon.setFixedWidth(22)
+        self._alarm_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._alarm_icon.setStyleSheet(
+            "color: #FFFFFF; background: transparent; font-size: 16px;"
+        )
+        banner_layout.addWidget(self._alarm_icon)
+
+        self._alarm_banner.setStyleSheet("background: transparent;")
+        self._alarm_banner.setVisible(False)
+        root.addWidget(self._alarm_banner)
 
         # ── Content area with padding ──
         content = QVBoxLayout()
         content.setContentsMargins(10, 2, 10, 0)
         content.setSpacing(4)
 
-        # ── Header row: tag(description) + alarm icon + config button ──
+        # ── Header row: tag(description) + config button ──
         header = QHBoxLayout()
         header.setSpacing(4)
 
@@ -180,16 +200,6 @@ class ControllerCardWidget(QFrame):
         )
         self._tag_label.setWordWrap(True)
         header.addWidget(self._tag_label, stretch=1)
-
-        # Alarm icon (hidden by default, shown on alarm) — right side
-        self._alarm_icon = QLabel("")
-        self._alarm_icon.setFixedWidth(20)
-        self._alarm_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._alarm_icon.setStyleSheet(
-            "background: transparent; font-size: 16px;"
-        )
-        self._alarm_icon.hide()
-        header.addWidget(self._alarm_icon)
 
         # Settings button — gear icon with symbol font
         self._settings_btn = QPushButton("\u2699")
@@ -395,14 +405,13 @@ class ControllerCardWidget(QFrame):
         self._set_alarm_visual(top["priority"], acked=top["acked"])
 
     def _set_alarm_visual(self, priority: str | None, *, acked: bool) -> None:
-        """Update strip, icon, border, and blink state for alarm."""
+        """Update banner, icon, border, and blink state for alarm."""
         self._alarm_priority = priority
         self._blink_timer.stop()
 
         if priority is None:
             # Normal — clear everything
-            self._alarm_strip.setStyleSheet("background: transparent;")
-            self._alarm_icon.hide()
+            self._alarm_banner.setVisible(False)
             self._apply_card_style(self._theme)
             self._bar_pv.set_alarm_state(None)
             return
@@ -413,10 +422,10 @@ class ControllerCardWidget(QFrame):
             # UNACKNOWLEDGED → start blinking
             self._blink_visible = True
             self._blink_timer.start()
-        # else: solid strip, no blink — already rendered by _refresh_alarm_visual
+        # else: solid banner, no blink — already rendered by _refresh_alarm_visual
 
     def _refresh_alarm_visual(self) -> None:
-        """Render strip, icon, and border for the current alarm priority."""
+        """Render banner, icon, and border for the current alarm priority."""
         priority = self._alarm_priority
         if priority is None:
             return
@@ -424,17 +433,15 @@ class ControllerCardWidget(QFrame):
         color = _alarm_color(t, priority)
         icon_char = _PRIORITY_ICON.get(priority, "")
 
-        self._alarm_strip.setStyleSheet(f"background: {color};")
-
-        if icon_char:
-            self._alarm_icon.setText(icon_char)
-            self._alarm_icon.setStyleSheet(
-                f"color: {color};"
-                " background: transparent; font-size: 16px;"
-            )
-            self._alarm_icon.show()
-        else:
-            self._alarm_icon.hide()
+        br = _theme_attr(t, "border_radius", "6px")
+        self._alarm_banner.setStyleSheet(
+            f"background: {color};"
+            f" border-top-left-radius: {br};"
+            f" border-top-right-radius: {br};"
+        )
+        self._alarm_banner_label.setText(priority)
+        self._alarm_icon.setText(icon_char)
+        self._alarm_banner.setVisible(True)
 
         if priority in ("CRITICAL", "WARNING"):
             self._apply_card_style(t, priority)
@@ -444,7 +451,7 @@ class ControllerCardWidget(QFrame):
             self._bar_pv.set_alarm_state(None)
 
     def _on_blink_tick(self) -> None:
-        """Toggle strip visibility for unacknowledged alarm blink."""
+        """Toggle banner visibility for unacknowledged alarm blink."""
         self._blink_visible = not self._blink_visible
         if self._alarm_priority is None:
             self._blink_timer.stop()
@@ -452,9 +459,14 @@ class ControllerCardWidget(QFrame):
 
         if self._blink_visible:
             color = _alarm_color(self._theme, self._alarm_priority)
-            self._alarm_strip.setStyleSheet(f"background: {color};")
+            br = _theme_attr(self._theme, "border_radius", "6px")
+            self._alarm_banner.setStyleSheet(
+                f"background: {color};"
+                f" border-top-left-radius: {br};"
+                f" border-top-right-radius: {br};"
+            )
         else:
-            self._alarm_strip.setStyleSheet("background: transparent;")
+            self._alarm_banner.setStyleSheet("background: transparent;")
 
     # ── Interaction ──────────────────────────────────────────────
 
