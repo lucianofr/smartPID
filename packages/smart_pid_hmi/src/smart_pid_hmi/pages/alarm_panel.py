@@ -26,12 +26,12 @@ if TYPE_CHECKING:
     from smart_pid_hmi.themes.base import ThemeBase
 
 _ACTIVE_COLUMNS = [
-    "Controller", "Category", "Type", "Priority", "Value",
+    "Controller", "Category", "Level", "Priority", "Value",
     "Limit", "Triggered", "Status",
 ]
 
 _PRIORITY_ITEMS = ["CRITICAL", "WARNING", "ADVISORY", "LOG"]
-_TYPE_ITEMS = ["HIHI", "HI", "LO", "LOLO", "DV_HI", "DV_LO", "AI_LOG", "SYSTEM"]
+_LEVEL_ITEMS = ["HIHI", "HI", "LO", "LOLO", "DV_HI", "DV_LO"]
 
 # Categories
 CATEGORY_ALARM = "Loop Alarm"
@@ -47,8 +47,6 @@ _TYPE_TO_CATEGORY = {
     "LOLO": CATEGORY_ALARM,
     "DV_HI": CATEGORY_ALARM,
     "DV_LO": CATEGORY_ALARM,
-    "AI_LOG": CATEGORY_AI,
-    "SYSTEM": CATEGORY_SYSTEM,
 }
 
 
@@ -100,11 +98,11 @@ class AlarmPanel(QWidget):
         self._priority_filter.setMinimumWidth(140)
         filter_layout.addWidget(self._priority_filter)
 
-        filter_layout.addWidget(QLabel("Type:"))
-        self._type_filter = CheckableComboBox()
-        self._type_filter.add_items(_TYPE_ITEMS, check_all=True)
-        self._type_filter.setMinimumWidth(140)
-        filter_layout.addWidget(self._type_filter)
+        filter_layout.addWidget(QLabel("Level:"))
+        self._level_filter = CheckableComboBox()
+        self._level_filter.add_items(_LEVEL_ITEMS, check_all=True)
+        self._level_filter.setMinimumWidth(140)
+        filter_layout.addWidget(self._level_filter)
 
         filter_layout.addWidget(QLabel("From:"))
         self._dt_from = QDateTimeEdit()
@@ -167,11 +165,12 @@ class AlarmPanel(QWidget):
     # --- Public API ---
 
     def on_ai_event(self, controller_id: int, message: str) -> None:
-        """Add an AI tuning action as event row (type/priority not applicable)."""
+        """Add an AI tuning action as event row (level/priority not applicable)."""
         ts = datetime.now().isoformat()[:19]
         event = {
             "controller_id": controller_id,
-            "alarm_type": "AI_LOG",
+            "alarm_type": "",
+            "_category": CATEGORY_AI,
             "priority": "\u2014",
             "value": 0.0,
             "limit": 0.0,
@@ -185,11 +184,12 @@ class AlarmPanel(QWidget):
         self._rebuild_table()
 
     def on_system_event(self, message: str, priority: str = "LOG") -> None:
-        """Add a system event (e.g. login, config change). Type not applicable."""
+        """Add a system event (e.g. login, config change). Level not applicable."""
         ts = datetime.now().isoformat()[:19]
         event = {
             "controller_id": "",
-            "alarm_type": "SYSTEM",
+            "alarm_type": "",
+            "_category": CATEGORY_SYSTEM,
             "priority": priority,
             "value": 0.0,
             "limit": 0.0,
@@ -269,30 +269,30 @@ class AlarmPanel(QWidget):
         )
         priority_all = self._priority_filter.all_checked()
         priorities = set(self._priority_filter.checked_items())
-        type_all = self._type_filter.all_checked()
-        types = set(self._type_filter.checked_items())
+        level_all = self._level_filter.all_checked()
+        levels = set(self._level_filter.checked_items())
         dt_from = self._dt_from.dateTime().toPython()
         dt_to = self._dt_to.dateTime().toPython()
 
         result: list[dict] = []
         for alarm in self._get_all_events():
             atype = alarm.get("alarm_type", "")
-            category = _TYPE_TO_CATEGORY.get(atype, CATEGORY_SYSTEM)
+            category = alarm.get("_category") or _TYPE_TO_CATEGORY.get(
+                atype, CATEGORY_ALARM
+            )
             if category not in categories:
                 continue
-            # AI_LOG: priority/type not applicable — skip those filters
-            # SYSTEM: type not applicable — skip type filter
             pri = alarm.get("priority", "")
             if category == CATEGORY_ALARM:
                 if not priority_all and pri not in priorities:
                     continue
-                if not type_all and atype not in types:
+                if not level_all and atype not in levels:
                     continue
             elif category == CATEGORY_SYSTEM:
                 if not priority_all and pri not in priorities:
                     continue
-                # Type filter does not apply to system events
-            # AI Log: neither priority nor type filter applies
+                # Level filter does not apply to system events
+            # AI Log: neither priority nor level filter applies
 
             ts_str = alarm.get("timestamp", "")
             if ts_str:
@@ -339,16 +339,18 @@ class AlarmPanel(QWidget):
             row = self.active_table.rowCount()
             self.active_table.insertRow(row)
             atype = alarm.get("alarm_type", "")
-            category = _TYPE_TO_CATEGORY.get(atype, CATEGORY_SYSTEM)
+            category = alarm.get("_category") or _TYPE_TO_CATEGORY.get(
+                atype, CATEGORY_ALARM
+            )
             pri = alarm.get("priority", "")
-            # AI Log: type and priority shown as "—"
-            # System Event: type shown as "—"
-            display_type = "\u2014" if category in (CATEGORY_AI, CATEGORY_SYSTEM) else atype
+            # AI Log: level and priority shown as "—"
+            # System Event: level shown as "—"
+            display_level = "\u2014" if category in (CATEGORY_AI, CATEGORY_SYSTEM) else atype
             display_pri = "\u2014" if category == CATEGORY_AI else pri
             items = [
                 str(alarm.get("controller_id", "")),
                 category,
-                display_type,
+                display_level,
                 display_pri,
                 f"{alarm.get('value', 0.0):.1f}",
                 f"{alarm.get('limit', 0.0):.1f}",
@@ -411,7 +413,8 @@ class AlarmPanel(QWidget):
             self._system_events = [
                 {
                     "controller_id": "",
-                    "alarm_type": "SYSTEM",
+                    "alarm_type": "",
+                    "_category": CATEGORY_SYSTEM,
                     "priority": e.get("severity", "INFO"),
                     "value": 0.0,
                     "limit": 0.0,
