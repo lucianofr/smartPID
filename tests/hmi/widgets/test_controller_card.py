@@ -368,16 +368,15 @@ def test_blink_tick_toggles_strip(qtbot, theme):
 
 
 def test_alarm_icon_inside_banner(qtbot, theme):
-    """Alarm icon should be inside the alarm banner, not in header."""
+    """Alarm icon should be inside the alarm banner (overlay, not in layout)."""
     card = ControllerCardWidget(
         controller_id=1, tag_name="FIC-101",
         min_val=0.0, max_val=100.0, theme=theme,
     )
     qtbot.addWidget(card)
-    # Banner is the first widget in root layout
-    banner = card.layout().itemAt(0).widget()
-    assert banner is card._alarm_banner
+    # Banner is a direct child of the card (overlay), not in the layout
+    assert card._alarm_banner.parent() is card
     # Icon is inside the banner layout
-    banner_layout = banner.layout()
+    banner_layout = card._alarm_banner.layout()
     assert banner_layout.itemAt(0).widget() is card._alarm_banner_label
     assert banner_layout.itemAt(1).widget() is card._alarm_icon

@@ -197,8 +197,22 @@ class AlarmBarWidget(QFrame):
         if has_unacked and not self._blink_timer.isActive():
             self._blink_visible = True
             self._blink_timer.start()
-        elif not has_unacked:
+        elif not has_unacked and self._blink_timer.isActive():
             self._blink_timer.stop()
+            # Restore solid colors on all rows after blink stops
+            self._restore_solid_colors()
+
+    def _restore_solid_colors(self) -> None:
+        """Ensure all rows show their solid priority color (after blink stops)."""
+        for row in range(self._table.rowCount()):
+            pri_item = self._table.item(row, 0)
+            if pri_item:
+                priority = pri_item.text()
+                color = _PRIORITY_COLORS.get(priority, "#757575")
+                for col in range(self._table.columnCount()):
+                    item = self._table.item(row, col)
+                    if item:
+                        item.setBackground(QColor(color))
 
     def _on_blink(self) -> None:
         """Toggle background color for unacked alarm rows."""

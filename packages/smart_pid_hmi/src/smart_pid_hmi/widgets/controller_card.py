@@ -151,11 +151,11 @@ class ControllerCardWidget(QFrame):
         self._apply_card_style(theme)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 6)
+        root.setContentsMargins(0, 4, 0, 6)
         root.setSpacing(0)
 
-        # ── Alarm banner (colored band at top of card with priority icon) ──
-        self._alarm_banner = QFrame()
+        # ── Alarm banner (overlay at card top, outside layout) ──
+        self._alarm_banner = QFrame(self)
         self._alarm_banner.setFixedHeight(_ALARM_BANNER_HEIGHT)
         banner_layout = QHBoxLayout(self._alarm_banner)
         banner_layout.setContentsMargins(8, 0, 8, 0)
@@ -178,7 +178,6 @@ class ControllerCardWidget(QFrame):
 
         self._alarm_banner.setStyleSheet("background: transparent;")
         self._alarm_banner.setVisible(False)
-        root.addWidget(self._alarm_banner)
 
         # ── Content area with padding ──
         content = QVBoxLayout()
@@ -261,13 +260,7 @@ class ControllerCardWidget(QFrame):
         br = _theme_attr(theme, "border_radius", "6px")
         if alarm is not None:
             color = _alarm_color(theme, alarm)
-            # Banner covers top — remove top border so banner sits flush
-            border_css = (
-                f"border-left: 1px solid {color};"
-                f" border-right: 1px solid {color};"
-                f" border-bottom: 1px solid {color};"
-                " border-top: none;"
-            )
+            border_css = f"border: 2px solid {color};"
         else:
             border_css = f"border: 1px solid {theme.border};"
         self.setStyleSheet(
@@ -417,10 +410,12 @@ class ControllerCardWidget(QFrame):
         if priority is None:
             # Normal — clear everything
             self._alarm_banner.setVisible(False)
+            self.layout().setContentsMargins(0, 4, 0, 6)
             self._apply_card_style(self._theme)
             self._bar_pv.set_alarm_state(None)
             return
 
+        self.layout().setContentsMargins(0, _ALARM_BANNER_HEIGHT, 0, 6)
         self._refresh_alarm_visual()
 
         if not acked:
@@ -472,6 +467,13 @@ class ControllerCardWidget(QFrame):
             )
         else:
             self._alarm_banner.setStyleSheet("background: transparent;")
+
+    # ── Geometry ─────────────────────────────────────────────────
+
+    def resizeEvent(self, event) -> None:  # noqa: N802, ANN001
+        """Position the alarm banner as overlay at card top."""
+        super().resizeEvent(event)
+        self._alarm_banner.setGeometry(0, 0, self.width(), _ALARM_BANNER_HEIGHT)
 
     # ── Interaction ──────────────────────────────────────────────
 
