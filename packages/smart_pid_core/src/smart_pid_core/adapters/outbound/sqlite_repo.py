@@ -220,17 +220,22 @@ CREATE INDEX IF NOT EXISTS idx_sysevents_timestamp ON Log_System_Events(timestam
 CREATE INDEX IF NOT EXISTS idx_sysevents_severity ON Log_System_Events(severity);
 
 CREATE TABLE IF NOT EXISTS Configuracao_Simulador (
-    controlador_id INTEGER PRIMARY KEY REFERENCES Controladores(id) ON DELETE CASCADE,
-    preset         TEXT NOT NULL DEFAULT 'fopdt_default',
-    gain           REAL NOT NULL,
-    tau1           REAL NOT NULL,
-    tau2           REAL NOT NULL,
-    dead_time      REAL NOT NULL,
-    pid_enabled    INTEGER NOT NULL DEFAULT 0,
-    pid_kp         REAL NOT NULL DEFAULT 1.0,
-    pid_ti         REAL NOT NULL DEFAULT 10.0,
-    pid_td         REAL NOT NULL DEFAULT 0.0,
-    pid_mode       INTEGER NOT NULL DEFAULT 0
+    controlador_id    INTEGER PRIMARY KEY REFERENCES Controladores(id) ON DELETE CASCADE,
+    preset            TEXT NOT NULL DEFAULT 'fopdt_default',
+    gain              REAL NOT NULL,
+    tau1              REAL NOT NULL,
+    tau2              REAL NOT NULL,
+    dead_time         REAL NOT NULL,
+    pid_enabled       INTEGER NOT NULL DEFAULT 0,
+    pid_kp            REAL NOT NULL DEFAULT 1.0,
+    pid_ti            REAL NOT NULL DEFAULT 10.0,
+    pid_td            REAL NOT NULL DEFAULT 0.0,
+    pid_mode          INTEGER NOT NULL DEFAULT 0,
+    auto_sp_enabled   INTEGER NOT NULL DEFAULT 0,
+    auto_sp_min_pct   REAL NOT NULL DEFAULT 30.0,
+    auto_sp_max_pct   REAL NOT NULL DEFAULT 70.0,
+    auto_dist_enabled INTEGER NOT NULL DEFAULT 0,
+    auto_dist_max_pct REAL NOT NULL DEFAULT 10.0
 );
 """
 
@@ -264,6 +269,19 @@ class SQLiteRepository:
             with contextlib.suppress(Exception):
                 await self.db.execute(
                     f"ALTER TABLE Controladores ADD COLUMN {col_name} {col_def}",
+                )
+        # Configuracao_Simulador: auto SP / auto disturbance columns
+        sim_new_columns = [
+            ("auto_sp_enabled", "INTEGER NOT NULL DEFAULT 0"),
+            ("auto_sp_min_pct", "REAL NOT NULL DEFAULT 30.0"),
+            ("auto_sp_max_pct", "REAL NOT NULL DEFAULT 70.0"),
+            ("auto_dist_enabled", "INTEGER NOT NULL DEFAULT 0"),
+            ("auto_dist_max_pct", "REAL NOT NULL DEFAULT 10.0"),
+        ]
+        for col_name, col_def in sim_new_columns:
+            with contextlib.suppress(Exception):
+                await self.db.execute(
+                    f"ALTER TABLE Configuracao_Simulador ADD COLUMN {col_name} {col_def}",
                 )
 
     # ------------------------------------------------------------------
@@ -594,16 +612,25 @@ class SQLiteRepository:
         pid_ti: float = 10.0,
         pid_td: float = 0.0,
         pid_mode: int = 0,
+        auto_sp_enabled: bool = False,
+        auto_sp_min_pct: float = 30.0,
+        auto_sp_max_pct: float = 70.0,
+        auto_dist_enabled: bool = False,
+        auto_dist_max_pct: float = 10.0,
     ) -> None:
         """Insert or replace a simulator configuration for *controller_id*."""
         await self.db.execute(
             "INSERT OR REPLACE INTO Configuracao_Simulador"
             " (controlador_id, preset, gain, tau1, tau2, dead_time,"
-            "  pid_enabled, pid_kp, pid_ti, pid_td, pid_mode)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "  pid_enabled, pid_kp, pid_ti, pid_td, pid_mode,"
+            "  auto_sp_enabled, auto_sp_min_pct, auto_sp_max_pct,"
+            "  auto_dist_enabled, auto_dist_max_pct)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 controller_id, preset, gain, tau1, tau2, dead_time,
                 int(pid_enabled), pid_kp, pid_ti, pid_td, pid_mode,
+                int(auto_sp_enabled), auto_sp_min_pct, auto_sp_max_pct,
+                int(auto_dist_enabled), auto_dist_max_pct,
             ),
         )
         await self.db.commit()
@@ -641,6 +668,11 @@ class SQLiteRepository:
             "pid_ti": row["pid_ti"],
             "pid_td": row["pid_td"],
             "pid_mode": row["pid_mode"],
+            "auto_sp_enabled": bool(row["auto_sp_enabled"]),
+            "auto_sp_min_pct": row["auto_sp_min_pct"],
+            "auto_sp_max_pct": row["auto_sp_max_pct"],
+            "auto_dist_enabled": bool(row["auto_dist_enabled"]),
+            "auto_dist_max_pct": row["auto_dist_max_pct"],
         }
 
     # ------------------------------------------------------------------

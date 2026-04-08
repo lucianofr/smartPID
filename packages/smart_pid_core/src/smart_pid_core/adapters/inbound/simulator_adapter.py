@@ -307,6 +307,12 @@ class SimulatorAdapter:
             ctrl.pid_params.reset = cfg.get("pid_ti", 10.0)
             ctrl.pid_params.rate = cfg.get("pid_td", 0.0)
             ctrl.pid_mode = cfg.get("pid_mode", 0)
+            # Auto SP / Auto Disturbance
+            ctrl.auto_sp_enabled = cfg.get("auto_sp_enabled", False)
+            ctrl.auto_sp_min_pct = cfg.get("auto_sp_min_pct", 30.0)
+            ctrl.auto_sp_max_pct = cfg.get("auto_sp_max_pct", 70.0)
+            ctrl.auto_dist_enabled = cfg.get("auto_dist_enabled", False)
+            ctrl.auto_dist_max_pct = cfg.get("auto_dist_max_pct", 10.0)
 
     def _build_status(self, ctrl: _ControllerSim) -> ControllerSimStatus:
         """Build a ControllerSimStatus from a _ControllerSim instance."""
@@ -343,6 +349,29 @@ class SimulatorAdapter:
             process_output=ctrl.live_process_output,
             disturbance_output=ctrl.live_disturbance_output,
         )
+
+    def get_config_dict(self, controller_id: int) -> dict:
+        """Return the current sim config as a dict suitable for save_sim_config()."""
+        with self._lock:
+            ctrl = self._controllers[controller_id]
+            return {
+                "controller_id": ctrl.controller_id,
+                "preset": ctrl.preset_name,
+                "gain": ctrl.gain,
+                "tau1": ctrl.tau1,
+                "tau2": ctrl.tau2 if ctrl.tau2 is not None else 0.0,
+                "dead_time": ctrl.dead_time,
+                "pid_enabled": ctrl.pid_enabled,
+                "pid_kp": ctrl.pid_params.gain,
+                "pid_ti": ctrl.pid_params.reset,
+                "pid_td": ctrl.pid_params.rate,
+                "pid_mode": ctrl.pid_mode,
+                "auto_sp_enabled": ctrl.auto_sp_enabled,
+                "auto_sp_min_pct": ctrl.auto_sp_min_pct,
+                "auto_sp_max_pct": ctrl.auto_sp_max_pct,
+                "auto_dist_enabled": ctrl.auto_dist_enabled,
+                "auto_dist_max_pct": ctrl.auto_dist_max_pct,
+            }
 
     def get_controller_status(self, controller_id: int) -> ControllerSimStatus:
         with self._lock:

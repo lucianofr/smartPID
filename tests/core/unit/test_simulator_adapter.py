@@ -213,6 +213,106 @@ class TestSimulatorAdapterOPCUA:
         mock_adapter._on_opcua_write(999, "co", 50.0)  # Should not raise
 
 
+class TestSimulatorAdapterConfigPersistence:
+    """Tests for get_config_dict and load_sim_config round-trip."""
+
+    def test_get_config_dict_defaults(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        cfg = adapter.get_config_dict(1)
+        assert cfg["controller_id"] == 1
+        assert cfg["preset"] == "FLOW"
+        assert cfg["gain"] == 1.2
+        assert cfg["tau1"] == 3.0
+        assert cfg["tau2"] == 0.0  # None -> 0.0 for DB
+        assert cfg["dead_time"] == 1.0
+        assert cfg["pid_enabled"] is False
+        assert cfg["pid_kp"] == 1.0
+        assert cfg["pid_ti"] == 10.0
+        assert cfg["pid_td"] == 0.0
+        assert cfg["pid_mode"] == 0
+        assert cfg["auto_sp_enabled"] is False
+        assert cfg["auto_sp_min_pct"] == 30.0
+        assert cfg["auto_sp_max_pct"] == 70.0
+        assert cfg["auto_dist_enabled"] is False
+        assert cfg["auto_dist_max_pct"] == 10.0
+
+    def test_get_config_dict_after_mutations(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter.set_preset(1, ProcessPresetName.TEMPERATURE)
+        adapter.enable_pid(1, True)
+        adapter.set_pid_params(1, kp=2.5, ti=8.0, td=0.5)
+        adapter.set_pid_mode(1, 1)
+        from smart_pid_domain.dtos.simulator import AutoSPRequest, AutoDisturbanceRequest
+        adapter.set_auto_sp(1, AutoSPRequest(enabled=True, sp_min_pct=20.0, sp_max_pct=90.0))
+        adapter.set_auto_disturbance(
+            1, AutoDisturbanceRequest(enabled=True, max_amplitude_pct=15.0),
+        )
+        cfg = adapter.get_config_dict(1)
+        assert cfg["preset"] == "TEMPERATURE"
+        assert cfg["pid_enabled"] is True
+        assert cfg["pid_kp"] == 2.5
+        assert cfg["pid_ti"] == 8.0
+        assert cfg["pid_td"] == 0.5
+        assert cfg["pid_mode"] == 1
+        assert cfg["auto_sp_enabled"] is True
+        assert cfg["auto_sp_min_pct"] == 20.0
+        assert cfg["auto_sp_max_pct"] == 90.0
+        assert cfg["auto_dist_enabled"] is True
+        assert cfg["auto_dist_max_pct"] == 15.0
+
+    def test_load_sim_config_round_trip(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        # Simulate a saved config dict (as from DB)
+        saved_cfg = {
+            "controlador_id": 1,
+            "preset": "PRESSURE",
+            "gain": 0.5,
+            "tau1": 30.0,
+            "tau2": 10.0,
+            "dead_time": 5.0,
+            "pid_enabled": True,
+            "pid_kp": 3.0,
+            "pid_ti": 15.0,
+            "pid_td": 1.0,
+            "pid_mode": 1,
+            "auto_sp_enabled": True,
+            "auto_sp_min_pct": 10.0,
+            "auto_sp_max_pct": 95.0,
+            "auto_dist_enabled": True,
+            "auto_dist_max_pct": 20.0,
+        }
+        adapter.load_sim_config(saved_cfg)
+        # Verify via get_config_dict
+        cfg = adapter.get_config_dict(1)
+        assert cfg["preset"] == "PRESSURE"
+        assert cfg["gain"] == 0.5
+        assert cfg["tau1"] == 30.0
+        assert cfg["tau2"] == 10.0
+        assert cfg["dead_time"] == 5.0
+        assert cfg["pid_enabled"] is True
+        assert cfg["pid_kp"] == 3.0
+        assert cfg["pid_ti"] == 15.0
+        assert cfg["pid_td"] == 1.0
+        assert cfg["pid_mode"] == 1
+        assert cfg["auto_sp_enabled"] is True
+        assert cfg["auto_sp_min_pct"] == 10.0
+        assert cfg["auto_sp_max_pct"] == 95.0
+        assert cfg["auto_dist_enabled"] is True
+        assert cfg["auto_dist_max_pct"] == 20.0
+
+    def test_get_config_dict_unknown_controller_raises(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        with pytest.raises(KeyError):
+            adapter.get_config_dict(999)
+
+    def test_load_sim_config_unknown_controller_ignored(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        adapter.load_sim_config({"controlador_id": 999, "preset": "X", "gain": 1.0,
+                                  "tau1": 1.0, "tau2": 0.0, "dead_time": 1.0})
+
+
 class TestSimulatorPIDInternal:
     """Tests for internal PID controller in simulator."""
 

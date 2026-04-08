@@ -113,6 +113,34 @@ class TestConfiguracaoSimulador:
         configs = await repo.list_sim_configs()
         assert configs == []
 
+    async def test_save_and_get_auto_sp_disturbance(self, repo: SQLiteRepository) -> None:
+        await repo.save_sim_config(
+            controller_id=1, preset="FLOW",
+            gain=1.2, tau1=3.0, tau2=0.0, dead_time=1.0,
+            auto_sp_enabled=True, auto_sp_min_pct=20.0, auto_sp_max_pct=80.0,
+            auto_dist_enabled=True, auto_dist_max_pct=15.0,
+        )
+        cfg = await repo.get_sim_config(1)
+        assert cfg is not None
+        assert cfg["auto_sp_enabled"] is True
+        assert cfg["auto_sp_min_pct"] == 20.0
+        assert cfg["auto_sp_max_pct"] == 80.0
+        assert cfg["auto_dist_enabled"] is True
+        assert cfg["auto_dist_max_pct"] == 15.0
+
+    async def test_auto_sp_disturbance_defaults(self, repo: SQLiteRepository) -> None:
+        await repo.save_sim_config(
+            controller_id=1, preset="FLOW",
+            gain=1.2, tau1=3.0, tau2=0.0, dead_time=1.0,
+        )
+        cfg = await repo.get_sim_config(1)
+        assert cfg is not None
+        assert cfg["auto_sp_enabled"] is False
+        assert cfg["auto_sp_min_pct"] == 30.0
+        assert cfg["auto_sp_max_pct"] == 70.0
+        assert cfg["auto_dist_enabled"] is False
+        assert cfg["auto_dist_max_pct"] == 10.0
+
 
 # ── reopen ────────────────────────────────────────────────────────────
 

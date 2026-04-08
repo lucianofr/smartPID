@@ -110,6 +110,7 @@ class MainWindow(QMainWindow):
     _stats_signal = Signal(int, dict)  # (controller_id, stats_dict)
     _exec_cards_signal = Signal(list)  # enriched controller dicts for executive cards
     _sim_live_signal = Signal(dict)  # simulator live values from poll
+    _sim_initial_status_signal = Signal(object)  # ControllerSimStatus for initial populate
     _ai_status_signal = Signal(int, str, bool)  # (controller_id, engine, running)
     _controller_updated_signal = Signal(int, object)  # (controller_id, controller_dict)
     _ack_single_result = Signal(object)  # dict result from ack_alarm
@@ -169,6 +170,7 @@ class MainWindow(QMainWindow):
         self._stats_timer.timeout.connect(self._poll_stats)
         self._stats_signal.connect(self._on_stats_received)
         self._sim_live_signal.connect(self._on_sim_live_received)
+        self._sim_initial_status_signal.connect(self._on_sim_initial_status)
         self._ai_status_signal.connect(self._on_ai_status_received)
 
         # Faceplate params polling timer (1s interval, started after login)
@@ -705,7 +707,11 @@ class MainWindow(QMainWindow):
         threading.Thread(target=do_check, daemon=True).start()
 
     def _refresh_sim_controllers(self) -> None:
-        """Fetch simulator status and populate the simulator combo box."""
+        """Fetch simulator status and populate the simulator combo box.
+
+        Also emits initial status for the first controller so that the
+        SimulatorPage is populated with persisted process model + PID params.
+        """
         try:
             status = self._api_client.get_simulator_status()
             sim_ctrls = [
@@ -713,6 +719,10 @@ class MainWindow(QMainWindow):
                 for cid in status.controllers
             ]
             self._sim_controllers_signal.emit(sim_ctrls)
+            # Emit initial status for the first controller (loads persisted config)
+            if status.controllers:
+                first_cid = next(iter(status.controllers))
+                self._sim_initial_status_signal.emit(status.controllers[first_cid])
         except Exception:
             pass
 
@@ -934,6 +944,11 @@ class MainWindow(QMainWindow):
             auto_dist_enabled=vals.get("auto_dist_enabled"),
             auto_dist_amp=vals.get("auto_dist_amp"),
         )
+
+    @Slot(object)
+    def _on_sim_initial_status(self, status: object) -> None:
+        """Populate simulator page with persisted config on sim start."""
+        self._simulator_page.populate_from_status(status)
 
     def _on_refresh_rate_changed(self, ms: int) -> None:
         """Update BusBridge refresh interval when user changes setting."""

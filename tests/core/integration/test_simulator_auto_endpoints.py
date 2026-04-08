@@ -1,7 +1,7 @@
 """Integration tests for auto-excitation endpoints."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -35,8 +35,10 @@ def client():
         adapter = SimulatorAdapter(settings=settings)
         adapter.register_controller(1)
 
+        mock_repo = MagicMock()
+        mock_repo.save_sim_config = AsyncMock()
         app = create_app(
-            repo=MagicMock(),
+            repo=mock_repo,
             historian=MagicMock(),
             user_repo=MagicMock(),
             loop_manager=MagicMock(),
