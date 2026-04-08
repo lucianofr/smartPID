@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 _ACTIVE_COLUMNS = [
     "Controller", "Category", "Level", "Priority", "Value",
-    "Limit", "Triggered", "Status",
+    "Limit", "Timestamp", "Status",
 ]
 
 _PRIORITY_ITEMS = ["CRITICAL", "WARNING", "ADVISORY", "LOG"]
@@ -348,6 +348,8 @@ class AlarmPanel(QWidget):
             display_level = "\u2014" if category in (CATEGORY_AI, CATEGORY_SYSTEM) else atype
             display_pri = "\u2014" if category == CATEGORY_AI else pri
             ctrl_display = alarm.get("controller_name") or str(alarm.get("controller_id", ""))
+            raw_ts = alarm.get("timestamp", "")
+            display_ts = raw_ts[:19].replace("T", " ") if raw_ts else ""
             items = [
                 ctrl_display,
                 category,
@@ -355,7 +357,7 @@ class AlarmPanel(QWidget):
                 display_pri,
                 f"{alarm.get('value', 0.0):.1f}",
                 f"{alarm.get('limit', 0.0):.1f}",
-                alarm.get("timestamp", ""),
+                display_ts,
                 alarm.get("status", ""),
             ]
             priority = alarm.get("priority", "")
