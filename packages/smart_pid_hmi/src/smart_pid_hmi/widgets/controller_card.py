@@ -259,9 +259,17 @@ class ControllerCardWidget(QFrame):
     ) -> None:
         bg = _theme_attr(theme, "bg_card", theme.bg_widget)
         br = _theme_attr(theme, "border_radius", "6px")
-        # No colored border — the alarm banner at top is the visual indicator
-        border_css = f"border: 1px solid {theme.border};"
-        _ = alarm  # reserved for future use
+        if alarm is not None:
+            color = _alarm_color(theme, alarm)
+            # Banner covers top — remove top border so banner sits flush
+            border_css = (
+                f"border-left: 1px solid {color};"
+                f" border-right: 1px solid {color};"
+                f" border-bottom: 1px solid {color};"
+                " border-top: none;"
+            )
+        else:
+            border_css = f"border: 1px solid {theme.border};"
         self.setStyleSheet(
             f"ControllerCardWidget {{"
             f" background-color: {bg}; {border_css}"
