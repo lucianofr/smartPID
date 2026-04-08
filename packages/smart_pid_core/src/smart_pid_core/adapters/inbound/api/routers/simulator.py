@@ -1,6 +1,7 @@
 """Simulator control router."""
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -30,7 +31,36 @@ from smart_pid_domain.dtos.simulator import (
     SimulatorStatusResponse,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+async def _persist_sim_config(
+    adapter: SimulatorAdapter, repo: SQLiteRepository, controller_id: int,
+) -> None:
+    """Read current sim state from adapter and persist to the project DB."""
+    try:
+        cfg = adapter.get_config_dict(controller_id)
+    except KeyError:
+        return
+    await repo.save_sim_config(
+        controller_id=cfg["controller_id"],
+        preset=cfg["preset"],
+        gain=cfg["gain"],
+        tau1=cfg["tau1"],
+        tau2=cfg["tau2"],
+        dead_time=cfg["dead_time"],
+        pid_enabled=cfg["pid_enabled"],
+        pid_kp=cfg["pid_kp"],
+        pid_ti=cfg["pid_ti"],
+        pid_td=cfg["pid_td"],
+        pid_mode=cfg["pid_mode"],
+        auto_sp_enabled=cfg["auto_sp_enabled"],
+        auto_sp_min_pct=cfg["auto_sp_min_pct"],
+        auto_sp_max_pct=cfg["auto_sp_max_pct"],
+        auto_dist_enabled=cfg["auto_dist_enabled"],
+        auto_dist_max_pct=cfg["auto_dist_max_pct"],
+    )
 
 
 @router.post("/start", response_model=CommandResponse)
@@ -106,8 +136,10 @@ async def set_preset(
     body: SimulatorPresetRequest,
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
     adapter.set_preset(body.controller_id, body.preset)
+    await _persist_sim_config(adapter, repo, body.controller_id)
     return CommandResponse(ok=True, controller_id=body.controller_id, detail="Preset applied")
 
 
@@ -116,8 +148,10 @@ async def set_parameters(
     body: SimulatorParametersRequest,
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
     adapter.set_parameters(body.controller_id, body.gain, body.tau1, body.tau2, body.dead_time)
+    await _persist_sim_config(adapter, repo, body.controller_id)
     return CommandResponse(ok=True, controller_id=body.controller_id, detail="Parameters updated")
 
 
@@ -155,11 +189,13 @@ async def enable_pid(
     body: SimulatorPIDEnableRequest,
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
     try:
         adapter.enable_pid(controller_id, body.enabled)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
+    await _persist_sim_config(adapter, repo, controller_id)
     state = "enabled" if body.enabled else "disabled"
     return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID {state}")
 
@@ -170,11 +206,13 @@ async def set_pid_params(
     body: SimulatorPIDParamsRequest,
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
     try:
         adapter.set_pid_params(controller_id, body.kp, body.ti, body.td)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
+    await _persist_sim_config(adapter, repo, controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail="PID params updated")
 
 
@@ -212,12 +250,14 @@ async def set_pid_mode(
     body: SimulatorPIDModeRequest,
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
     try:
         mode_int = 1 if body.mode == "AUTO" else 0
         adapter.set_pid_mode(controller_id, mode_int)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
+    await _persist_sim_config(adapter, repo, controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID mode={body.mode}")
 
 
@@ -240,9 +280,11 @@ async def set_auto_sp(
     body: AutoSPRequest,
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> ControllerSimStatus:
     try:
         adapter.set_auto_sp(controller_id, body)
+        await _persist_sim_config(adapter, repo, controller_id)
         return adapter.get_controller_status(controller_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
@@ -254,9 +296,11 @@ async def set_auto_disturbance(
     body: AutoDisturbanceRequest,
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> ControllerSimStatus:
     try:
         adapter.set_auto_disturbance(controller_id, body)
+        await _persist_sim_config(adapter, repo, controller_id)
         return adapter.get_controller_status(controller_id)
     except KeyError as exc:
         raise HTTPException(

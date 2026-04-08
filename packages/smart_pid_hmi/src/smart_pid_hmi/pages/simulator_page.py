@@ -773,6 +773,41 @@ class SimulatorPage(QWidget):
 
     def populate_from_status(self, status: ControllerSimStatus) -> None:
         """Populate widgets from a ControllerSimStatus DTO."""
+        # --- Process model params ---
+        # Block signals to avoid triggering change tracking / Apply button
+        widgets = [
+            self._preset_combo, self._gain_slider, self._tau1_slider,
+            self._tau2_slider, self._dead_time_slider,
+        ]
+        for w in widgets:
+            w.blockSignals(True)
+        # Set preset combo
+        preset_name = status.preset or "CUSTOM"
+        idx = self._preset_combo.findText(preset_name)
+        if idx >= 0:
+            self._preset_combo.setCurrentIndex(idx)
+        else:
+            # Unknown preset — switch to CUSTOM
+            custom_idx = self._preset_combo.findText("CUSTOM")
+            if custom_idx >= 0:
+                self._preset_combo.setCurrentIndex(custom_idx)
+        self._gain_slider.setText(f"{status.gain:.2f}")
+        self._tau1_slider.setText(f"{status.tau1:.1f}")
+        tau2 = status.tau2 if status.tau2 is not None else 0.0
+        self._tau2_slider.setText(f"{tau2:.1f}")
+        self._dead_time_slider.setText(f"{status.dead_time:.1f}")
+        for w in widgets:
+            w.blockSignals(False)
+        # Update committed state so Apply/Cancel work correctly
+        self._committed_preset_idx = self._preset_combo.currentIndex()
+        self._committed_gain = self._gain_slider.text()
+        self._committed_tau1 = self._tau1_slider.text()
+        self._committed_tau2 = self._tau2_slider.text()
+        self._committed_dead_time = self._dead_time_slider.text()
+        self._sim_apply_btn.setEnabled(False)
+        self._sim_cancel_btn.setEnabled(False)
+        self._update_period_label()
+        # --- PID params ---
         self._pid_sp_edit.setText(f"{getattr(status, 'pid_sp', 50.0):.1f}")
         self._pid_kp_edit.setText(f"{status.pid_kp:.2f}")
         self._pid_ti_edit.setText(f"{status.pid_ti:.1f}")
@@ -780,12 +815,23 @@ class SimulatorPage(QWidget):
         self._pid_co_edit.setText(f"{status.pid_cv:.2f}")
         self._pid_active_mode = "AUTO" if status.pid_mode == 1 else "MAN"
         self._apply_pid_mode_style()
+        # --- PID enable state ---
+        self._pid_enable_cb.blockSignals(True)
+        self._pid_enable_cb.setChecked(status.pid_enabled)
+        self._pid_enable_cb.blockSignals(False)
+        for ctrl in self._pid_controls:
+            ctrl.setEnabled(status.pid_enabled)
+        # --- Auto SP / Auto Disturbance ---
         if status.auto_sp is not None:
+            self._auto_sp_enable.blockSignals(True)
             self._auto_sp_enable.setChecked(status.auto_sp.enabled)
+            self._auto_sp_enable.blockSignals(False)
             self._auto_sp_min.setText(f"{status.auto_sp.sp_min_pct:.1f}")
             self._auto_sp_max.setText(f"{status.auto_sp.sp_max_pct:.1f}")
         if status.auto_disturbance is not None:
+            self._auto_dist_enable.blockSignals(True)
             self._auto_dist_enable.setChecked(status.auto_disturbance.enabled)
+            self._auto_dist_enable.blockSignals(False)
             self._auto_dist_amp.setText(f"{status.auto_disturbance.max_amplitude_pct:.1f}")
 
     @staticmethod
