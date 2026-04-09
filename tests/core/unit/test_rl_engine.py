@@ -233,16 +233,17 @@ class TestComputeGammaSpeedFactors:
         )
         return decision.new_ki
 
-    def test_slow_speed_changes_ki_most(self):
+    def test_ultra_fast_changes_ki_most(self):
+        ki_ultra = self._get_new_ki(ProcessSpeed.ULTRA_FAST)
         ki_slow = self._get_new_ki(ProcessSpeed.SLOW)
-        ki_fast = self._get_new_ki(ProcessSpeed.FAST)
-        # Slow has larger Sv so same gamma produces larger Ki change
-        assert abs(ki_slow - 10.0) > abs(ki_fast - 10.0)
+        # ULTRA_FAST has the largest Sv → largest Ki change per gamma
+        assert abs(ki_ultra - 10.0) > abs(ki_slow - 10.0)
 
-    def test_fast_speed_changes_ki_least(self):
-        ki_medium = self._get_new_ki(ProcessSpeed.MEDIUM)
+    def test_fast_changes_more_than_medium(self):
         ki_fast = self._get_new_ki(ProcessSpeed.FAST)
-        assert abs(ki_medium - 10.0) > abs(ki_fast - 10.0)
+        ki_medium = self._get_new_ki(ProcessSpeed.MEDIUM)
+        # FAST has larger Sv than MEDIUM
+        assert abs(ki_fast - 10.0) > abs(ki_medium - 10.0)
 
 
 class TestRewardFunctions:

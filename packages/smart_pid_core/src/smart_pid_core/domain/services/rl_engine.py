@@ -53,31 +53,42 @@ def compute_reward_sp_tracking(
 
     Goal: reach new setpoint fast with ZERO overshoot.
     Strategy:
-      - IAE: penalize distance from target (drives fast response)
+      - IAE with time escalation: persistent error gets worse over time
       - Overshoot detector: extra penalty when error flips sign
-        (PV crossed SP → overshoot happening)
-      - Moderate TV: some valve movement is OK for speed, but
-        excessive chattering wastes the actuator
+      - Moderate TV: some valve movement is OK for speed
+      - Strong bonus for convergence to drive exploration toward zero error
     KPIs: IAE, rise time, overshoot %
     """
-    # IAE — primary driver for fast convergence
-    iae = -1.0 * abs(error)
+    # IAE with time escalation — persistent errors become increasingly costly
+    time_weight = min(1.0 + step * 0.02, 3.0)
+    iae = -1.5 * abs(error) * time_weight
 
-    # Overshoot penalty: if error and delta_error have opposite signs,
-    # PV is moving AWAY from SP after having crossed it
+    # Overshoot penalty
     overshoot = 0.0
     if error * delta_error < 0 and abs(error) < 0.1:
         overshoot = -2.0 * abs(delta_error)
 
-    # TV — moderate penalty (allow valve movement for speed)
+    # TV — moderate penalty
     tv = 0.0
     if prev_co is not None:
         tv = -0.3 * abs(co - prev_co) / 100.0
 
-    # Small bonus for being very close to setpoint
-    settle_bonus = 0.5 if abs(error) < 0.005 else 0.0
+    # Progressive bonus: the closer to setpoint, the higher the reward
+    if abs(error) < 0.005:
+        settle_bonus = 1.0
+    elif abs(error) < 0.02:
+        settle_bonus = 0.5
+    elif abs(error) < 0.05:
+        settle_bonus = 0.2
+    else:
+        settle_bonus = 0.0
 
-    return iae + overshoot + tv + settle_bonus
+    # Improvement bonus: reward when error is shrinking
+    improving = 0.0
+    if abs(error) > 0.01 and error * delta_error < 0:
+        improving = 0.4 * abs(delta_error)
+
+    return iae + overshoot + tv + settle_bonus + improving
 
 
 def compute_reward_disturbance_rejection(
@@ -91,30 +102,32 @@ def compute_reward_disturbance_rejection(
 
     Goal: SP is fixed. Kill offset FAST when disturbances hit.
     Strategy:
-      - ISE: squared error penalizes ANY residual offset heavily
-        (small persistent errors are worse than brief large ones)
-      - ITAE: time-weighted — the longer offset persists, the worse
-      - Very low TV: allow aggressive valve action to fight disturbances
-      - Bonus for error recovery speed (delta_error toward zero)
+      - ISE with steep scaling: squared error penalizes any offset
+      - ITAE with faster escalation: lingering offsets escalate quickly
+      - Strong recovery bonus to reward aggressive correction
+      - Very low TV: allow valve action to fight disturbances
     KPIs: ISE, ITAE, time to recover to ±0.5% of span
     """
-    # ISE — squared error makes the agent extremely aggressive near zero
-    ise = -2.0 * error * error
+    # ISE — squared error, scaled up for stronger signal
+    ise = -3.0 * error * error
 
-    # ITAE — time-weighted penalty for lingering offset
-    itae = -0.8 * abs(error) * min((step + 1) * 0.01, 5.0)
+    # ITAE — faster escalation for persistent offsets
+    itae = -1.2 * abs(error) * min((step + 1) * 0.03, 5.0)
 
-    # Recovery bonus: reward when error is shrinking (delta_error opposing error)
+    # Recovery bonus: strong reward when error is shrinking
     recovery = 0.0
     if abs(error) > 0.01 and error * delta_error < 0:
-        recovery = 0.3 * abs(delta_error)
+        recovery = 0.6 * abs(delta_error)
+
+    # Convergence bonus
+    settle = 0.8 if abs(error) < 0.005 else 0.0
 
     # Minimal TV — let the valve fight the disturbance freely
     tv = 0.0
     if prev_co is not None:
         tv = -0.05 * abs(co - prev_co) / 100.0
 
-    return ise + itae + recovery + tv
+    return ise + itae + recovery + settle + tv
 
 
 def compute_reward_surge_level(
@@ -161,27 +174,51 @@ def compute_reward_surge_level(
 
 
 class _FallbackPolicy:
-    """Simple proportional policy used when sb3 is not available.
+    """Proportional-derivative policy used when sb3 is not available.
 
-    Maps observation to gamma using a proportional-derivative strategy:
-    gamma = -Kp * error - Kd * delta_error
+    Maps observation to gamma using a nonlinear P+D strategy with
+    integral memory for persistent offset correction:
 
-    This provides a reasonable baseline that increases Ki when error is
-    positive (process below setpoint) and decreases Ki when error is
-    negative.
+      gamma_pd = Kp × error + Kd × delta_error
+      gamma_i  += Ki_acc × error          (accumulated offset driver)
+      gamma    = gamma_pd + gamma_i
+
+    The nonlinear gain (sqrt scaling) makes the policy more aggressive
+    for larger errors while remaining smooth near zero.
     """
 
-    def __init__(self, kp: float = 0.5, kd: float = 0.2) -> None:
+    def __init__(self, kp: float = 1.2, kd: float = 0.3) -> None:
         self._kp = kp
         self._kd = kd
+        self._ki_acc = 0.15  # integral accumulation rate
+        self._integral = 0.0  # accumulated offset correction
+        self._integral_limit = 0.6  # anti-windup clamp
 
     def predict(self, observation: list[float]) -> float:
         """Return gamma in [-1, 1] based on error and delta_error."""
         error = observation[0]  # Normalized error
         delta_error = observation[1]  # Normalized delta error
 
-        gamma = self._kp * error + self._kd * delta_error
+        # Nonlinear gain: sqrt scaling for stronger response to large errors
+        sign = 1.0 if error >= 0 else -1.0
+        error_nl = sign * math.sqrt(abs(error))
+
+        gamma_pd = self._kp * error_nl + self._kd * delta_error
+
+        # Integral term: drives offset to zero over time
+        self._integral += self._ki_acc * error
+        self._integral = max(-self._integral_limit,
+                             min(self._integral_limit, self._integral))
+        # Decay integral when error is very small (prevent overshoot)
+        if abs(error) < 0.01:
+            self._integral *= 0.9
+
+        gamma = gamma_pd + self._integral
         return max(-1.0, min(1.0, gamma))
+
+    def reset(self) -> None:
+        """Reset integral accumulator."""
+        self._integral = 0.0
 
 
 class RLEngine:
@@ -610,6 +647,7 @@ class RLEngine:
         self._last_action = None
         self._prev_co = None
         self._step_count = 0
+        self._fallback.reset()
 
 
 def _fmt_obs(obs: list[float]) -> str:
