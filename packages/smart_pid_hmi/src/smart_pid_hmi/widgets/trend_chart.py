@@ -33,7 +33,7 @@ _TIME_WINDOWS = {
     "1h": 3600,
 }
 
-_DEFAULT_BUFFER = 600  # 10min at 1s scan
+_DEFAULT_BUFFER = 36_000  # 1h at 100ms scan (worst case)
 
 
 class TrendChartWidget(QWidget):
