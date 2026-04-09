@@ -138,6 +138,12 @@ class StatsWorker:
                 sp_raw = data["sp"]
                 self._last_pv = pv_raw["value"] if isinstance(pv_raw, dict) else float(pv_raw)
                 self._last_sp = sp_raw["value"] if isinstance(sp_raw, dict) else float(sp_raw)
+                # CO is included in TELEMETRY from IOWorker
+                co_raw = data.get("co")
+                if co_raw is not None:
+                    self._last_co = (
+                        co_raw["value"] if isinstance(co_raw, dict) else float(co_raw)
+                    )
                 self._has_telemetry = True
             except (KeyError, ValueError, msgpack.UnpackException):
                 pass
