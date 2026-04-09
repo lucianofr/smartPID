@@ -144,7 +144,8 @@ class SettingsPage(QWidget):
         self._rl_fallback_kd.valueChanged.connect(self._on_field_changed)
         self._rl_learning_rate.valueChanged.connect(self._on_field_changed)
         self._rl_train_interval.valueChanged.connect(self._on_field_changed)
-        self._ai_period.valueChanged.connect(self._on_field_changed)
+        for spin in self._ai_period_spins.values():
+            spin.valueChanged.connect(self._on_field_changed)
 
     # ── Left column group builders ─────────────────────────────────────
 
@@ -397,23 +398,25 @@ class SettingsPage(QWidget):
         layout.addWidget(group)
 
     def _build_ai_worker_group(self, layout: QVBoxLayout) -> None:
-        group = QGroupBox("AI Worker")
+        from smart_pid_domain.enums import ProcessSpeed
+
+        group = QGroupBox("AI Worker — Period per Process Speed")
         form = QFormLayout(group)
 
-        self._ai_period = QSpinBox()
-        self._ai_period.setObjectName("ai_period")
-        self._ai_period.setRange(1, 86400)
-        self._ai_period.setSingleStep(10)
-        self._ai_period.setValue(1800)  # MEDIUM default
-        self._ai_period.setSuffix(" s")
-        self._ai_period.setToolTip(
-            "AI optimization cycle period in seconds.\n"
-            "The AI engine evaluates and adjusts Ki/Ti at this interval.\n"
-            "Derived from Process Speed:\n"
-            "  Ultra Fast: 30s | Fast: 180s | Medium: 1800s | Slow: 14400s\n"
-            "Can be overridden manually per controller."
-        )
-        form.addRow("Period:", self._ai_period)
+        self._ai_period_spins: dict[str, QSpinBox] = {}
+        for speed in ProcessSpeed:
+            spin = QSpinBox()
+            spin.setObjectName(f"ai_period_{speed.value.lower()}")
+            spin.setRange(1, 86400)
+            spin.setSingleStep(10)
+            spin.setValue(speed.ai_period_s)  # default from enum
+            spin.setSuffix(" s")
+            spin.setToolTip(
+                f"AI optimization cycle period for {speed.label}.\n"
+                f"Default: {speed.ai_period_s} s"
+            )
+            form.addRow(f"{speed.label}:", spin)
+            self._ai_period_spins[speed.value] = spin
 
         layout.addWidget(group)
 
@@ -465,7 +468,8 @@ class SettingsPage(QWidget):
         widgets = [
             self._fuzzy_speed_factor, self._fuzzy_limit_min, self._fuzzy_limit_max,
             self._fuzzy_dead_time, self._rl_fallback_kp, self._rl_fallback_kd,
-            self._rl_learning_rate, self._rl_train_interval, self._ai_period,
+            self._rl_learning_rate, self._rl_train_interval,
+            *self._ai_period_spins.values(),
         ]
         for w in widgets:
             w.blockSignals(True)
@@ -486,8 +490,11 @@ class SettingsPage(QWidget):
             self._rl_learning_rate.setValue(settings["rl_learning_rate"])
         if "rl_train_interval" in settings:
             self._rl_train_interval.setValue(settings["rl_train_interval"])
-        if "ai_period_s" in settings:
-            self._ai_period.setValue(settings["ai_period_s"])
+        # AI period per process speed
+        ai_periods = settings.get("ai_periods", {})
+        for speed_val, spin in self._ai_period_spins.items():
+            if speed_val in ai_periods:
+                spin.setValue(ai_periods[speed_val])
 
         for w in widgets:
             w.blockSignals(False)
@@ -506,7 +513,10 @@ class SettingsPage(QWidget):
             "rl_fallback_kd": self._rl_fallback_kd.value(),
             "rl_learning_rate": self._rl_learning_rate.value(),
             "rl_train_interval": self._rl_train_interval.value(),
-            "ai_period_s": self._ai_period.value(),
+            "ai_periods": {
+                speed_val: spin.value()
+                for speed_val, spin in self._ai_period_spins.items()
+            },
         }
 
     # ── Apply / Cancel logic ───────────────────────────────────────────
