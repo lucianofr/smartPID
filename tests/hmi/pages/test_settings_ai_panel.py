@@ -41,7 +41,6 @@ class TestTwoColumnLayout:
         group_titles = {g.title() for g in right_groups}
         assert "Fuzzy Engine" in group_titles
         assert "RL Engine" in group_titles
-        assert "AI Worker" in group_titles
 
 
 class TestFuzzySettingsGroup:
@@ -156,43 +155,6 @@ class TestRLSettingsGroup:
         assert "train" in spin.toolTip().lower() or "interval" in spin.toolTip().lower()
 
 
-class TestAIWorkerSettingsGroup:
-    """AI Worker settings — period based on ProcessSpeed."""
-
-    def test_ai_period_spinbox_exists(self, qtbot):
-        page = SettingsPage(theme_manager=_make_manager())
-        qtbot.addWidget(page)
-        spin = page.findChild(QSpinBox, "ai_period")
-        assert spin is not None
-
-    def test_ai_period_default_value(self, qtbot):
-        """Default period matches MEDIUM process speed (1800s)."""
-        page = SettingsPage(theme_manager=_make_manager())
-        qtbot.addWidget(page)
-        spin = page.findChild(QSpinBox, "ai_period")
-        assert spin.value() == 1800
-
-    def test_ai_period_has_tooltip(self, qtbot):
-        page = SettingsPage(theme_manager=_make_manager())
-        qtbot.addWidget(page)
-        spin = page.findChild(QSpinBox, "ai_period")
-        assert "period" in spin.toolTip().lower() or "cycle" in spin.toolTip().lower()
-
-    def test_ai_period_suffix(self, qtbot):
-        page = SettingsPage(theme_manager=_make_manager())
-        qtbot.addWidget(page)
-        spin = page.findChild(QSpinBox, "ai_period")
-        assert spin.suffix() == " s"
-
-    def test_ai_period_range(self, qtbot):
-        """AI period allows 1s to 86400s (24h)."""
-        page = SettingsPage(theme_manager=_make_manager())
-        qtbot.addWidget(page)
-        spin = page.findChild(QSpinBox, "ai_period")
-        assert spin.minimum() == 1
-        assert spin.maximum() == 86400
-
-
 class TestAISettingsLoadFromController:
     """Loading AI settings from a controller dict."""
 
@@ -204,7 +166,6 @@ class TestAISettingsLoadFromController:
             "limit_min": 0.5,
             "limit_max": 50.0,
             "dead_time_l": 2.5,
-            "ai_period_s": 30,
             "rl_fallback_kp": 0.8,
             "rl_fallback_kd": 0.3,
             "rl_learning_rate": 1e-3,
@@ -214,7 +175,6 @@ class TestAISettingsLoadFromController:
         assert page._fuzzy_limit_min.value() == pytest.approx(0.5)
         assert page._fuzzy_limit_max.value() == pytest.approx(50.0)
         assert page._fuzzy_dead_time.value() == pytest.approx(2.5)
-        assert page._ai_period.value() == 30
         assert page._rl_fallback_kp.value() == pytest.approx(0.8)
         assert page._rl_fallback_kd.value() == pytest.approx(0.3)
         assert page._rl_learning_rate.value() == pytest.approx(1e-3)
@@ -227,7 +187,6 @@ class TestAISettingsLoadFromController:
         settings = page.get_ai_settings()
         assert "speed_factor" in settings
         assert "limit_min" in settings
-        assert "ai_period_s" in settings
         assert "rl_fallback_kp" in settings
 
 
