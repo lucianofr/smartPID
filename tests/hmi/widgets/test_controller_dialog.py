@@ -22,6 +22,7 @@ EDIT_DATA: dict = {
     },
     "pv_scale": {"eu_min": -50.0, "eu_max": 200.0, "unit": "degC"},
     "out_scale": {"eu_min": 0.0, "eu_max": 100.0, "unit": "%"},
+    "tss_s": 900.0,
     "process_speed": "SLOW",
     "ai_config": {
         "engine": "FUZZY",
@@ -162,8 +163,8 @@ class TestDefaults:
     def test_default_pid_structure(self, dialog):
         assert dialog._pid_structure.currentText() == "ISA"
 
-    def test_default_process_speed(self, dialog):
-        assert dialog._process_speed.currentData() == "MEDIUM"
+    def test_default_tss(self, dialog):
+        assert dialog._tss.value() == 60.0
 
     def test_default_ai_engine(self, dialog):
         assert dialog._ai_engine.currentText() == "NONE"
@@ -432,8 +433,10 @@ class TestEditMode:
         assert edit_dialog._ai_limit_min.value() == pytest.approx(0.5)
         assert edit_dialog._ai_limit_max.value() == pytest.approx(50.0)
 
-    def test_populated_process_speed(self, edit_dialog):
-        assert edit_dialog._process_speed.currentData() == "SLOW"
+    def test_process_speed_inferred_from_tss(self, edit_dialog):
+        """ProcessSpeed is inferred from TSS, not stored in a combo."""
+        data = edit_dialog.get_controller_data()
+        assert "process_speed" in data
 
     # --- Tag Bindings ---
 
@@ -466,7 +469,7 @@ class TestEditMode:
         assert data["pid_params"]["reset"] == pytest.approx(5.0)
         assert data["pv_scale"]["eu_min"] == pytest.approx(-50.0)
         assert data["pv_scale"]["unit"] == "degC"
-        assert data["process_speed"] == "SLOW"
+        assert data["process_speed"] == "SLOW"  # inferred from tss_s=900
         assert data["ai_config"]["engine"] == "FUZZY"
         assert data["tag_bindings"]["node_id_pv"] == "ns=2;s=TIC101.PV"
         assert data["control_opts"]["direct_acting"] is True

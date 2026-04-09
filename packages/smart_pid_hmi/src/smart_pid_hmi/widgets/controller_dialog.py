@@ -30,7 +30,6 @@ from smart_pid_domain.enums import (
     ExecutionMode,
     IntegralType,
     PIDStructure,
-    ProcessSpeed,
     TuningWriteMode,
 )
 
@@ -221,20 +220,7 @@ class ControllerDialog(QDialog):
         )
         form.addRow("TSS:", self._tss)
 
-        self._process_speed = QComboBox()
-        self._process_speed.setToolTip(
-            "Characterizes the process dynamic response speed.\n"
-            "Used by the AI engine to set the tuning cycle cadence.\n"
-            "Fast: flow, pressure (< 10 s dead time)\n"
-            "Medium: level, heat exchangers (10-60 s)\n"
-            "Slow: temperature, large vessels (> 60 s)"
-        )
-        for member in ProcessSpeed:
-            self._process_speed.addItem(member.label, member.value)
-        idx = self._process_speed.findData(ProcessSpeed.MEDIUM.value)
-        if idx >= 0:
-            self._process_speed.setCurrentIndex(idx)
-        form.addRow("Process Speed:", self._process_speed)
+        # ProcessSpeed inferred from TSS — not shown in UI
 
         self._pid_structure = _enum_combo(PIDStructure, PIDStructure.ISA.value)
         self._pid_structure.setToolTip(
@@ -770,10 +756,6 @@ class ControllerDialog(QDialog):
                 self._scan_rate.setCurrentIndex(idx)
         if "tss_s" in data:
             self._tss.setValue(data["tss_s"])
-        if "process_speed" in data:
-            idx = self._process_speed.findData(data["process_speed"])
-            if idx >= 0:
-                self._process_speed.setCurrentIndex(idx)
         self._set_combo(self._pid_structure, data.get("pid_structure"))
         self._set_combo(self._integral_type, data.get("integral_type"))
         self._set_combo(self._mode_normal, data.get("mode_normal"))
@@ -920,6 +902,17 @@ class ControllerDialog(QDialog):
 
     # --------------------------------------------------------- data extraction
 
+    @staticmethod
+    def _infer_process_speed(tss_s: float) -> str:
+        """Derive ProcessSpeed from TSS value."""
+        if tss_s <= 15:
+            return "ULTRA_FAST"
+        if tss_s <= 120:
+            return "FAST"
+        if tss_s <= 600:
+            return "MEDIUM"
+        return "SLOW"
+
     def get_controller_data(self) -> dict:
         """Return form data as a dict matching Controller model field names."""
         return {
@@ -929,7 +922,7 @@ class ControllerDialog(QDialog):
             "execution_mode": self._execution_mode.currentText(),
             "scan_rate_s": self._scan_rate.currentData(),
             "tss_s": self._tss.value(),
-            "process_speed": self._process_speed.currentData(),
+            "process_speed": self._infer_process_speed(self._tss.value()),
             "pid_structure": self._pid_structure.currentText(),
             "integral_type": self._integral_type.currentText(),
             "mode_normal": self._mode_normal.currentText(),
