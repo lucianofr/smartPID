@@ -249,6 +249,14 @@ class ControllerCardWidget(QFrame):
         badges_row.addStretch()
         content.addLayout(badges_row)
 
+        # ── TSS-derived info line ──
+        self._tss_info = QLabel("")
+        self._tss_info.setStyleSheet(
+            f"color: {theme.fg_muted}; background: transparent;"
+            f" font-size: {theme.font_size_label - 1}px;"
+        )
+        content.addWidget(self._tss_info)
+
         root.addLayout(content)
 
     # ── Styling ──────────────────────────────────────────────────
@@ -331,6 +339,22 @@ class ControllerCardWidget(QFrame):
         self.update()
 
     # ── Data updates ─────────────────────────────────────────────
+
+    def set_tss_info(self, tss_s: float) -> None:
+        """Update the TSS-derived info line on the card."""
+        ai_period = 3.0 * tss_s
+        stats_win = 5.0 * tss_s
+        self._tss_info.setText(
+            f"AI: {self._fmt_dur(ai_period)} | Stats: {self._fmt_dur(stats_win)}"
+        )
+
+    @staticmethod
+    def _fmt_dur(seconds: float) -> str:
+        if seconds < 60:
+            return f"{seconds:.0f}s"
+        if seconds < 3600:
+            return f"{seconds / 60:.1f}min"
+        return f"{seconds / 3600:.1f}h"
 
     def on_telemetry(self, controller_id: int, frame: dict) -> None:
         if controller_id != self._controller_id:
