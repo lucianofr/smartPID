@@ -125,10 +125,6 @@ class AlarmPanel(QWidget):
         self._dt_to.setDateTime(now)
         filter_layout.addWidget(self._dt_to)
 
-        self._apply_btn = QPushButton("Apply")
-        self._apply_btn.clicked.connect(self._apply_filters)
-        filter_layout.addWidget(self._apply_btn)
-
         self._load_history_btn = QPushButton("Load History")
         self._load_history_btn.clicked.connect(self._load_history)
         filter_layout.addWidget(self._load_history_btn)
@@ -335,11 +331,6 @@ class AlarmPanel(QWidget):
             result.append(alarm)
         return result
 
-    def _apply_filters(self) -> None:
-        """Rebuild table using current filter criteria."""
-        filtered = self.get_filtered_alarms()
-        self._rebuild_table(alarms=filtered)
-
     def _load_history(self) -> None:
         """Fetch historical alarms from backend and populate table."""
         if self._api_client is None:
@@ -426,17 +417,27 @@ class AlarmPanel(QWidget):
             self._rebuild_table()
 
     def _on_live_toggled(self, checked: bool) -> None:
-        """Toggle live mode — event-driven, no polling."""
+        """Toggle live mode — loads full history from DB then appends new events."""
         self._dt_from.setEnabled(not checked)
         self._dt_to.setEnabled(not checked)
         self._load_history_btn.setEnabled(not checked)
-        self._apply_btn.setEnabled(not checked)
         if checked:
-            # Seed live log with current active alarms as initial TRIGGERED events
-            self.load_active_alarms()
+            # Seed live log with full alarm history from DB
             self._live_events.clear()
-            for alarm in self._active_alarms.values():
-                self._live_events.append({**alarm, "status": "TRIGGERED"})
+            if self._api_client is not None:
+                try:
+                    dt_from = self._dt_from.dateTime().toPython()
+                    dt_to = self._dt_to.dateTime().toPython()
+                    history = self._api_client.get_alarm_history(
+                        start=dt_from, end=dt_to,
+                    )
+                    for alarm in history:
+                        cid = alarm.get("controller_id", 0)
+                        if not alarm.get("controller_name"):
+                            alarm["controller_name"] = self._name_map.get(cid, str(cid))
+                        self._live_events.append(alarm)
+                except Exception:  # noqa: BLE001
+                    pass
         else:
             self._live_events.clear()
         self._rebuild_table()

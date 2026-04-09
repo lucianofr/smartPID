@@ -207,22 +207,21 @@ def test_filter_all_checked_returns_everything():
     assert len(filtered) == 2
 
 
-def test_apply_filters_rebuilds_table():
+def test_load_history_rebuilds_table():
     theme = ISA101Theme()
-    panel = AlarmPanel(theme=theme, api_client=MagicMock())
+    mock_api = MagicMock()
+    mock_api.get_alarm_history.return_value = [
+        _make_alarm(priority="CRITICAL", timestamp="2026-04-03T12:00:00"),
+        _make_alarm(
+            controller_id=2, alarm_type="LO", priority="WARNING",
+            timestamp="2026-04-03T13:00:00",
+        ),
+    ]
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
     panel._dt_from.setDateTime(QDateTime(2026, 1, 1, 0, 0, 0))
     panel._dt_to.setDateTime(QDateTime(2026, 12, 31, 23, 59, 0))
-
-    panel.on_alarm(1, _make_alarm(priority="CRITICAL"))
-    panel.on_alarm(2, _make_alarm(
-        controller_id=2, alarm_type="LO", priority="WARNING",
-        timestamp="2026-04-03T13:00:00",
-    ))
+    panel._load_history()
     assert panel.active_table.rowCount() == 2
-
-    _set_checked(panel._priority_filter, ["WARNING"])
-    panel._apply_filters()
-    assert panel.active_table.rowCount() == 1
 
 
 # --- AI event tests ---
@@ -384,7 +383,7 @@ def test_alarm_panel_has_live_checkbox():
 def test_alarm_panel_live_disables_history_controls():
     theme = ISA101Theme()
     mock_api = MagicMock()
-    mock_api.get_active_alarms.return_value = []
+    mock_api.get_alarm_history.return_value = []
     panel = AlarmPanel(theme=theme, api_client=mock_api)
     panel._live_checkbox.setChecked(True)
     assert not panel._dt_from.isEnabled()
@@ -395,7 +394,7 @@ def test_alarm_panel_live_disables_history_controls():
 def test_alarm_panel_live_enables_history_on_uncheck():
     theme = ISA101Theme()
     mock_api = MagicMock()
-    mock_api.get_active_alarms.return_value = []
+    mock_api.get_alarm_history.return_value = []
     panel = AlarmPanel(theme=theme, api_client=mock_api)
     panel._live_checkbox.setChecked(True)
     panel._live_checkbox.setChecked(False)
@@ -408,7 +407,7 @@ def test_alarm_panel_live_skips_date_filter():
     """In Live mode, events show regardless of date range."""
     theme = ISA101Theme()
     mock_api = MagicMock()
-    mock_api.get_active_alarms.return_value = []
+    mock_api.get_alarm_history.return_value = []
     panel = AlarmPanel(theme=theme, api_client=mock_api)
     # Set a very narrow date range that would exclude everything
     panel._dt_from.setDateTime(QDateTime(2020, 1, 1, 0, 0, 0))
@@ -427,7 +426,7 @@ def test_live_mode_shows_rolling_history():
     """In Live mode, each TRIGGERED and CLEARED event is a separate row."""
     theme = ISA101Theme()
     mock_api = MagicMock()
-    mock_api.get_active_alarms.return_value = []
+    mock_api.get_alarm_history.return_value = []
     panel = AlarmPanel(theme=theme, api_client=mock_api)
     panel._live_checkbox.setChecked(True)
 
