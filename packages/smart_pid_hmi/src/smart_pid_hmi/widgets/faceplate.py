@@ -258,6 +258,22 @@ class FaceplateWidget(QFrame):
         layout.addWidget(perf_title)
         self._perf_title = perf_title
 
+        # AI Period / Stats Window info row
+        info_css = (
+            f"color: {theme.fg_muted}; background: transparent;"
+            f" font-size: {theme.font_size_label - 1}px;"
+        )
+        info_row = QHBoxLayout()
+        info_row.setSpacing(8)
+        self._ai_period_label = QLabel("AI Period: \u2014")
+        self._ai_period_label.setStyleSheet(info_css)
+        info_row.addWidget(self._ai_period_label)
+        self._stats_window_label = QLabel("Stats Window: \u2014")
+        self._stats_window_label.setStyleSheet(info_css)
+        info_row.addWidget(self._stats_window_label)
+        info_row.addStretch()
+        layout.addLayout(info_row)
+
         stats_grid = QGridLayout()
         stats_grid.setSpacing(2)
         stats_grid.setContentsMargins(0, 0, 0, 0)
@@ -390,6 +406,12 @@ class FaceplateWidget(QFrame):
             f"color: {theme.fg_secondary}; background: transparent;"
             f" font-size: {theme.font_size_label}px; font-weight: bold;"
         )
+        info_css = (
+            f"color: {theme.fg_muted}; background: transparent;"
+            f" font-size: {theme.font_size_label - 1}px;"
+        )
+        self._ai_period_label.setStyleSheet(info_css)
+        self._stats_window_label.setStyleSheet(info_css)
         self.update()
 
     def on_controller_selected(
@@ -400,6 +422,7 @@ class FaceplateWidget(QFrame):
         max_val: float,
         pid_gains: dict | None = None,
         ai_engine: str = "NONE",
+        tss_s: float | None = None,
     ) -> None:
         self._controller_id = controller_id
         self._tag_label.setText(tag_name)
@@ -420,6 +443,8 @@ class FaceplateWidget(QFrame):
             self._kp_input.setText("")
             self._ti_input.setText("")
             self._td_input.setText("")
+        # Update AI Period / Stats Window from TSS
+        self._update_tss_info(tss_s)
 
     def on_telemetry(self, controller_id: int, frame: dict) -> None:
         if (
@@ -549,6 +574,23 @@ class FaceplateWidget(QFrame):
         self.gains_changed.emit(self._controller_id, {
             "gain": gain, "reset": reset, "rate": rate,
         })
+
+    def _update_tss_info(self, tss_s: float | None) -> None:
+        """Update the AI Period and Stats Window labels from TSS."""
+        if tss_s is None:
+            self._ai_period_label.setText("AI Period: \u2014")
+            self._stats_window_label.setText("Stats Window: \u2014")
+        else:
+            self._ai_period_label.setText(f"AI Period: {self._fmt_dur(3.0 * tss_s)}")
+            self._stats_window_label.setText(f"Stats Window: {self._fmt_dur(5.0 * tss_s)}")
+
+    @staticmethod
+    def _fmt_dur(seconds: float) -> str:
+        if seconds < 60:
+            return f"{seconds:.0f}s"
+        if seconds < 3600:
+            return f"{seconds / 60:.1f}min"
+        return f"{seconds / 3600:.1f}h"
 
     @staticmethod
     def _stat_cell_css(theme: ThemeBase) -> str:

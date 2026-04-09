@@ -150,6 +150,7 @@ class DashboardPage(QWidget):
                 "name": name, "lo": lo, "hi": hi,
                 "description": desc,
                 "scan_rate_s": ctrl.get("scan_rate_s", 1.0),
+                "tss_s": ctrl.get("tss_s", 60.0),
                 "pid_gains": {
                     "gain": pid_params.get("gain", 1.0),
                     "reset": pid_params.get("reset", 10.0),
@@ -190,6 +191,7 @@ class DashboardPage(QWidget):
             controller_id, meta["name"], meta["lo"], meta["hi"],
             pid_gains=meta.get("pid_gains"),
             ai_engine=meta.get("ai_engine", "NONE"),
+            tss_s=meta.get("tss_s"),
         )
         self._trend.on_controller_selected(
             controller_id,
@@ -211,6 +213,7 @@ class DashboardPage(QWidget):
             "name": name, "lo": lo, "hi": hi,
             "description": desc,
             "scan_rate_s": ctrl.get("scan_rate_s", 1.0),
+            "tss_s": ctrl.get("tss_s", 60.0),
             "pid_gains": {
                 "gain": pid_params.get("gain", 1.0),
                 "reset": pid_params.get("reset", 10.0),

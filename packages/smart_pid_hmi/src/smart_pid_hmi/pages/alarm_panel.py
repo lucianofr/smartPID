@@ -78,6 +78,8 @@ class AlarmPanel(QWidget):
         self._active_alarms: dict[tuple[int, str], dict] = {}
         # Rolling log of all alarm events in LIVE mode (each event is a separate row)
         self._live_events: list[dict] = []
+        # Loaded history from DB (persisted across rebuilds)
+        self._loaded_history: list[dict] = []
         # AI log events and system events (kept separately)
         self._ai_events: list[dict] = []
         self._system_events: list[dict] = []
@@ -277,12 +279,15 @@ class AlarmPanel(QWidget):
         """Merge alarm events, AI events, and system events into one list.
 
         In LIVE mode, uses the rolling event log (each event is a separate row).
-        In normal mode, uses the current-state dict (one row per active alarm).
+        In normal mode, uses loaded history + new real-time alarms.
         """
-        alarm_source = (
-            list(self._live_events) if self.is_live
-            else list(self._active_alarms.values())
-        )
+        if self.is_live:
+            alarm_source = list(self._live_events)
+        elif self._loaded_history:
+            # Show loaded history + any new alarms that arrived after load
+            alarm_source = list(self._loaded_history) + list(self._active_alarms.values())
+        else:
+            alarm_source = list(self._active_alarms.values())
         return alarm_source + list(self._ai_events) + list(self._system_events)
 
     def get_filtered_alarms(self, *, skip_date: bool = False) -> list[dict]:
@@ -332,7 +337,7 @@ class AlarmPanel(QWidget):
         return result
 
     def _load_history(self) -> None:
-        """Fetch historical alarms from backend and populate table."""
+        """Fetch historical alarms from backend and store + display."""
         if self._api_client is None:
             return
         dt_from = self._dt_from.dateTime().toPython()
@@ -343,7 +348,13 @@ class AlarmPanel(QWidget):
             )
         except Exception:  # noqa: BLE001
             return
-        self._rebuild_table(alarms=history)
+        # Populate controller names
+        for alarm in history:
+            cid = alarm.get("controller_id", 0)
+            if not alarm.get("controller_name"):
+                alarm["controller_name"] = self._name_map.get(cid, str(cid))
+        self._loaded_history = history
+        self._rebuild_table()
 
     # --- Table rendering ---
 
