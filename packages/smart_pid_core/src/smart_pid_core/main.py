@@ -237,6 +237,13 @@ async def run_daemon(settings: CoreSettings) -> None:
             count=len(controllers),
             ids=[c.id for c in controllers],
         )
+        # Restore persisted simulator configs from DB
+        sim_configs = await repo.list_sim_configs()
+        for cfg in sim_configs:
+            simulator_adapter.load_sim_config(cfg)
+        if sim_configs:
+            logger.info("simulator_configs_restored", count=len(sim_configs))
+
         simulator_adapter.start_opcua()
         logger.info("opcua_server_started", port=settings.simulator_port)
         simulator_adapter.start()
