@@ -166,6 +166,7 @@ class DashboardPage(QWidget):
                 min_val=lo, max_val=hi, theme=self._theme,
                 ai_engine=ai_engine,
             )
+            card.set_tss_info(ctrl.get("tss_s", 60.0))
             card.controller_selected.connect(self._on_card_selected)
             card.settings_requested.connect(self.settings_requested)
             self._cards_layout.addWidget(card)

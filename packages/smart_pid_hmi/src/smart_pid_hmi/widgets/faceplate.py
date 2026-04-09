@@ -283,12 +283,13 @@ class FaceplateWidget(QFrame):
             ("IAE", 0, 0), ("ITAE", 0, 1),
             ("ISE", 1, 0), ("MSE", 1, 1),
             ("StdDev", 2, 0), ("TV", 2, 1),
-            ("2\u03c3/Range", 3, 0), ("2\u03c3/SP", 3, 1),
+            ("2\u03c3/Rng", 3, 0), ("2\u03c3/SP", 3, 1),
         ]
         stat_css = self._stat_cell_css(theme)
         for name, row, col in metrics:
-            lbl = QLabel(f"{name}: \u2014")
+            lbl = QLabel(f"{name}\n\u2014")
             lbl.setStyleSheet(stat_css)
+            lbl.setMinimumWidth(70)
             stats_grid.addWidget(lbl, row, col)
             self._stat_labels[name] = lbl
 
@@ -595,10 +596,11 @@ class FaceplateWidget(QFrame):
     @staticmethod
     def _stat_cell_css(theme: ThemeBase) -> str:
         return (
-            f"color: {theme.fg_primary}; background: transparent;"
-            f" font-size: {theme.font_size_normal}px;"
+            f"color: {theme.fg_primary}; background: {theme.bg_card};"
+            f" font-size: {theme.font_size_label}px;"
             f" font-family: 'Fira Code', monospace;"
-            f" padding: 1px 4px;"
+            f" padding: 2px 4px; border-radius: 3px;"
+            f" qproperty-alignment: AlignCenter;"
         )
 
     def update_stats(self, stats: dict) -> None:
@@ -611,19 +613,19 @@ class FaceplateWidget(QFrame):
         key_map = {
             "IAE": "iae", "ITAE": "itae", "ISE": "ise", "MSE": "mse",
             "StdDev": "std_dev", "TV": "total_variation",
-            "2\u03c3/Range": "variability_range",
+            "2\u03c3/Rng": "variability_range",
             "2\u03c3/SP": "variability_sp",
         }
         for label_name, lbl in self._stat_labels.items():
             key = key_map.get(label_name, label_name.lower())
             val = stats.get(key)
             if val is not None:
-                if label_name in ("2\u03c3/Range", "2\u03c3/SP"):
-                    lbl.setText(f"{label_name}: {val * 100:.1f}%")
+                if label_name in ("2\u03c3/Rng", "2\u03c3/SP"):
+                    lbl.setText(f"{label_name}\n{val * 100:.1f}%")
                 else:
-                    lbl.setText(f"{label_name}: {val:.2f}")
+                    lbl.setText(f"{label_name}\n{val:.1f}")
             else:
-                lbl.setText(f"{label_name}: \u2014")
+                lbl.setText(f"{label_name}\n\u2014")
 
     def _apply_optimizer_style(self, theme: ThemeBase) -> None:
         """Style optimizer buttons — highlight active state."""
