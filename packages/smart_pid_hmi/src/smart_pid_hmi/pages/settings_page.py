@@ -350,11 +350,12 @@ class SettingsPage(QWidget):
         self._rl_fallback_kp.setSingleStep(0.05)
         self._rl_fallback_kp.setValue(0.5)
         self._rl_fallback_kp.setToolTip(
-            "Fallback policy proportional gain (Kp).\n"
+            "Policy Gain — proportional sensitivity of the fallback RL policy.\n"
+            "Controls how strongly the error influences the gamma (Ki/Ti adjustment factor).\n"
             "Used when stable-baselines3 is not available or the RL model is untrained.\n"
-            "Maps error to gamma: gamma = Kp × error + Kd × delta_error"
+            "Higher = more aggressive Ki/Ti corrections per error unit."
         )
-        form.addRow("Fallback Kp:", self._rl_fallback_kp)
+        form.addRow("Policy Gain:", self._rl_fallback_kp)
 
         self._rl_fallback_kd = QDoubleSpinBox()
         self._rl_fallback_kd.setObjectName("rl_fallback_kd")
@@ -363,11 +364,12 @@ class SettingsPage(QWidget):
         self._rl_fallback_kd.setSingleStep(0.05)
         self._rl_fallback_kd.setValue(0.2)
         self._rl_fallback_kd.setToolTip(
-            "Fallback policy derivative gain (Kd).\n"
+            "Policy Damping — derivative sensitivity of the fallback RL policy.\n"
+            "Controls how strongly the error rate of change influences gamma.\n"
             "Used when stable-baselines3 is not available or the RL model is untrained.\n"
-            "Adds damping based on error rate of change: gamma = Kp × error + Kd × delta_error"
+            "Higher = more damping, reduces oscillation in Ki/Ti adjustments."
         )
-        form.addRow("Fallback Kd:", self._rl_fallback_kd)
+        form.addRow("Policy Damping:", self._rl_fallback_kd)
 
         self._rl_learning_rate = QDoubleSpinBox()
         self._rl_learning_rate.setObjectName("rl_learning_rate")
