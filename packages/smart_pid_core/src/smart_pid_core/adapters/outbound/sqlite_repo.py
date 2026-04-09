@@ -285,6 +285,24 @@ class SQLiteRepository:
                     f"ALTER TABLE Configuracao_Simulador ADD COLUMN {col_name} {col_def}",
                 )
 
+        # Rename scan_rate_ms → scan_rate_s (convert ms to seconds)
+        cursor = await self.db.execute("PRAGMA table_info(Controladores)")
+        col_names = {r[1] for r in await cursor.fetchall()}
+        if "scan_rate_ms" in col_names and "scan_rate_s" not in col_names:
+            await self.db.execute(
+                "ALTER TABLE Controladores ADD COLUMN scan_rate_s REAL NOT NULL DEFAULT 1.0"
+            )
+            await self.db.execute(
+                "UPDATE Controladores SET scan_rate_s = scan_rate_ms / 1000.0"
+            )
+
+        # Add tss_s column
+        if "tss_s" not in col_names:
+            with contextlib.suppress(Exception):
+                await self.db.execute(
+                    "ALTER TABLE Controladores ADD COLUMN tss_s REAL NOT NULL DEFAULT 60.0"
+                )
+
     # ------------------------------------------------------------------
     # CRUD
     # ------------------------------------------------------------------
