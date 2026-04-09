@@ -1,7 +1,9 @@
-"""SettingsPage — theme selector, connection display, refresh rate.
+"""SettingsPage — theme selector, connection display, refresh rate, AI config.
 
 Apply/Cancel pattern: edits are buffered until the user clicks Apply.
 Reconnect remains an immediate action (not buffered).
+
+Layout: two-column — existing groups on the left, AI groups on the right.
 """
 from __future__ import annotations
 
@@ -10,12 +12,14 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
+    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -27,7 +31,7 @@ if TYPE_CHECKING:
 
 
 class SettingsPage(QWidget):
-    """Application settings page with theme, connection, and refresh controls.
+    """Application settings page with theme, connection, refresh, and AI controls.
 
     Changes are buffered — nothing is emitted until Apply is clicked.
     Cancel reverts all fields to their last committed state.
@@ -38,6 +42,7 @@ class SettingsPage(QWidget):
     opcua_connect_requested = Signal(str)  # (endpoint_url)
     opcua_disconnect_requested = Signal()
     opcua_endpoint_save_requested = Signal(str)  # emitted on Apply when endpoint changed
+    ai_settings_changed = Signal(dict)  # emitted on Apply when AI settings changed
 
     # Project signals (immediate — not affected by Apply/Cancel)
     project_changed = Signal(str, str)  # (name, path)
@@ -56,14 +61,94 @@ class SettingsPage(QWidget):
         super().__init__(parent)
         self._theme_manager = theme_manager
 
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
 
         # Title
         title = QLabel("Settings")
         title.setStyleSheet("font-size: 20px; font-weight: bold;")
-        layout.addWidget(title)
+        root_layout.addWidget(title)
 
-        # --- Project group (at top, before Appearance) ---
+        # --- Two-column layout ---
+        columns_layout = QHBoxLayout()
+
+        # LEFT COLUMN — existing settings
+        self._left_column = QWidget()
+        left_layout = QVBoxLayout(self._left_column)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+
+        self._build_project_group(left_layout)
+        self._build_appearance_group(left_layout, theme_manager)
+        self._build_connection_group(left_layout, server_url, zmq_url)
+        self._build_performance_group(left_layout)
+        self._build_opcua_group(left_layout)
+        left_layout.addStretch()
+
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setWidget(self._left_column)
+        left_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        columns_layout.addWidget(left_scroll, stretch=1)
+
+        # RIGHT COLUMN — AI settings
+        self._right_column = QWidget()
+        right_layout = QVBoxLayout(self._right_column)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+
+        self._build_fuzzy_group(right_layout)
+        self._build_rl_group(right_layout)
+        self._build_ai_worker_group(right_layout)
+        right_layout.addStretch()
+
+        right_scroll = QScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setWidget(self._right_column)
+        right_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        columns_layout.addWidget(right_scroll, stretch=1)
+
+        root_layout.addLayout(columns_layout, stretch=1)
+
+        # --- Apply / Cancel buttons ---
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        self._apply_btn = QPushButton("Apply")
+        self._apply_btn.setObjectName("apply_btn")
+        self._apply_btn.setEnabled(False)
+        self._apply_btn.clicked.connect(self._on_apply)
+        btn_row.addWidget(self._apply_btn)
+
+        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.setObjectName("cancel_btn")
+        self._cancel_btn.setEnabled(False)
+        self._cancel_btn.clicked.connect(self._on_cancel)
+        btn_row.addWidget(self._cancel_btn)
+
+        root_layout.addLayout(btn_row)
+
+        # --- Committed state (snapshot of last-applied values) ---
+        self._committed_theme_idx: int = self._theme_combo.currentIndex()
+        self._committed_refresh: int = self._refresh_spin.value()
+        self._committed_opcua_url: str = self._opcua_endpoint.text()
+        self._committed_ai_settings: dict = self.get_ai_settings()
+
+        # --- Connect field-change signals to enable Apply/Cancel ---
+        self._theme_combo.currentIndexChanged.connect(self._on_field_changed)
+        self._refresh_spin.valueChanged.connect(self._on_field_changed)
+        self._opcua_endpoint.textChanged.connect(self._on_field_changed)
+        # AI fields
+        self._fuzzy_speed_factor.valueChanged.connect(self._on_field_changed)
+        self._fuzzy_limit_min.valueChanged.connect(self._on_field_changed)
+        self._fuzzy_limit_max.valueChanged.connect(self._on_field_changed)
+        self._fuzzy_dead_time.valueChanged.connect(self._on_field_changed)
+        self._rl_fallback_kp.valueChanged.connect(self._on_field_changed)
+        self._rl_fallback_kd.valueChanged.connect(self._on_field_changed)
+        self._rl_learning_rate.valueChanged.connect(self._on_field_changed)
+        self._rl_train_interval.valueChanged.connect(self._on_field_changed)
+        self._ai_period.valueChanged.connect(self._on_field_changed)
+
+    # ── Left column group builders ─────────────────────────────────────
+
+    def _build_project_group(self, layout: QVBoxLayout) -> None:
         project_group = QGroupBox("Project")
         project_group.setObjectName("project_group")
         project_form = QFormLayout(project_group)
@@ -114,14 +199,15 @@ class SettingsPage(QWidget):
 
         layout.addWidget(project_group)
 
-        # Theme group
+    def _build_appearance_group(
+        self, layout: QVBoxLayout, theme_manager: ThemeManager
+    ) -> None:
         theme_group = QGroupBox("Appearance")
         theme_form = QFormLayout(theme_group)
 
         self._theme_combo = QComboBox()
         self._theme_combo.setObjectName("theme_combo")
         self._theme_combo.addItems(theme_manager.available_themes())
-        # Set current theme
         current_name = theme_manager.current.name
         idx = self._theme_combo.findText(current_name)
         if idx >= 0:
@@ -130,7 +216,9 @@ class SettingsPage(QWidget):
 
         layout.addWidget(theme_group)
 
-        # Connection group
+    def _build_connection_group(
+        self, layout: QVBoxLayout, server_url: str, zmq_url: str
+    ) -> None:
         conn_group = QGroupBox("Connection")
         conn_form = QFormLayout(conn_group)
 
@@ -144,7 +232,7 @@ class SettingsPage(QWidget):
 
         layout.addWidget(conn_group)
 
-        # Refresh group
+    def _build_performance_group(self, layout: QVBoxLayout) -> None:
         refresh_group = QGroupBox("Performance")
         refresh_form = QFormLayout(refresh_group)
 
@@ -157,7 +245,7 @@ class SettingsPage(QWidget):
 
         layout.addWidget(refresh_group)
 
-        # OPC-UA group (Gap #46)
+    def _build_opcua_group(self, layout: QVBoxLayout) -> None:
         opcua_group = QGroupBox("OPC-UA Server")
         opcua_form = QFormLayout(opcua_group)
 
@@ -188,34 +276,148 @@ class SettingsPage(QWidget):
         opcua_form.addRow("Status:", status_row)
         layout.addWidget(opcua_group)
 
-        # --- Apply / Cancel buttons ---
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
+    # ── Right column group builders (AI) ───────────────────────────────
 
-        self._apply_btn = QPushButton("Apply")
-        self._apply_btn.setObjectName("apply_btn")
-        self._apply_btn.setEnabled(False)
-        self._apply_btn.clicked.connect(self._on_apply)
-        btn_row.addWidget(self._apply_btn)
+    def _build_fuzzy_group(self, layout: QVBoxLayout) -> None:
+        group = QGroupBox("Fuzzy Engine")
+        form = QFormLayout(group)
 
-        self._cancel_btn = QPushButton("Cancel")
-        self._cancel_btn.setObjectName("cancel_btn")
-        self._cancel_btn.setEnabled(False)
-        self._cancel_btn.clicked.connect(self._on_cancel)
-        btn_row.addWidget(self._cancel_btn)
+        self._fuzzy_speed_factor = QDoubleSpinBox()
+        self._fuzzy_speed_factor.setObjectName("fuzzy_speed_factor")
+        self._fuzzy_speed_factor.setRange(0.001, 1.0)
+        self._fuzzy_speed_factor.setDecimals(3)
+        self._fuzzy_speed_factor.setSingleStep(0.01)
+        self._fuzzy_speed_factor.setValue(0.15)
+        self._fuzzy_speed_factor.setToolTip(
+            "Speed Factor (Sv) — AI tuning aggressiveness multiplier.\n"
+            "Higher values make Ki/Ti adjustments bolder per cycle.\n"
+            "Formula: Ki_new = Ki × (1 + gamma × Sv)\n"
+            "Typical: 0.04 (slow) to 0.30 (ultra-fast processes)"
+        )
+        form.addRow("Speed Factor (Sv):", self._fuzzy_speed_factor)
 
-        layout.addLayout(btn_row)
-        layout.addStretch()
+        self._fuzzy_limit_min = QDoubleSpinBox()
+        self._fuzzy_limit_min.setObjectName("fuzzy_limit_min")
+        self._fuzzy_limit_min.setRange(0.001, 1000.0)
+        self._fuzzy_limit_min.setDecimals(3)
+        self._fuzzy_limit_min.setSingleStep(0.1)
+        self._fuzzy_limit_min.setValue(0.1)
+        self._fuzzy_limit_min.setToolTip(
+            "Minimum clamp for Ki/Ti value.\n"
+            "The AI engine will never reduce the integral parameter below this limit.\n"
+            "Prevents the controller from becoming too sluggish."
+        )
+        form.addRow("Limit Min:", self._fuzzy_limit_min)
 
-        # --- Committed state (snapshot of last-applied values) ---
-        self._committed_theme_idx: int = self._theme_combo.currentIndex()
-        self._committed_refresh: int = self._refresh_spin.value()
-        self._committed_opcua_url: str = self._opcua_endpoint.text()
+        self._fuzzy_limit_max = QDoubleSpinBox()
+        self._fuzzy_limit_max.setObjectName("fuzzy_limit_max")
+        self._fuzzy_limit_max.setRange(0.1, 10000.0)
+        self._fuzzy_limit_max.setDecimals(1)
+        self._fuzzy_limit_max.setSingleStep(1.0)
+        self._fuzzy_limit_max.setValue(100.0)
+        self._fuzzy_limit_max.setToolTip(
+            "Maximum clamp for Ki/Ti value.\n"
+            "The AI engine will never increase the integral parameter above this limit.\n"
+            "Prevents the controller from becoming too aggressive or unstable."
+        )
+        form.addRow("Limit Max:", self._fuzzy_limit_max)
 
-        # --- Connect field-change signals to enable Apply/Cancel ---
-        self._theme_combo.currentIndexChanged.connect(self._on_field_changed)
-        self._refresh_spin.valueChanged.connect(self._on_field_changed)
-        self._opcua_endpoint.textChanged.connect(self._on_field_changed)
+        self._fuzzy_dead_time = QDoubleSpinBox()
+        self._fuzzy_dead_time.setObjectName("fuzzy_dead_time")
+        self._fuzzy_dead_time.setRange(0.1, 3600.0)
+        self._fuzzy_dead_time.setDecimals(1)
+        self._fuzzy_dead_time.setSingleStep(0.5)
+        self._fuzzy_dead_time.setValue(1.0)
+        self._fuzzy_dead_time.setSuffix(" s")
+        self._fuzzy_dead_time.setToolTip(
+            "Estimated process dead time (L) in seconds.\n"
+            "Used to calculate the AI optimization cycle period.\n"
+            "Larger dead times require longer observation windows."
+        )
+        form.addRow("Dead Time (L):", self._fuzzy_dead_time)
+
+        layout.addWidget(group)
+
+    def _build_rl_group(self, layout: QVBoxLayout) -> None:
+        group = QGroupBox("RL Engine")
+        form = QFormLayout(group)
+
+        self._rl_fallback_kp = QDoubleSpinBox()
+        self._rl_fallback_kp.setObjectName("rl_fallback_kp")
+        self._rl_fallback_kp.setRange(0.01, 5.0)
+        self._rl_fallback_kp.setDecimals(2)
+        self._rl_fallback_kp.setSingleStep(0.05)
+        self._rl_fallback_kp.setValue(0.5)
+        self._rl_fallback_kp.setToolTip(
+            "Fallback policy proportional gain (Kp).\n"
+            "Used when stable-baselines3 is not available or the RL model is untrained.\n"
+            "Maps error to gamma: gamma = Kp × error + Kd × delta_error"
+        )
+        form.addRow("Fallback Kp:", self._rl_fallback_kp)
+
+        self._rl_fallback_kd = QDoubleSpinBox()
+        self._rl_fallback_kd.setObjectName("rl_fallback_kd")
+        self._rl_fallback_kd.setRange(0.0, 5.0)
+        self._rl_fallback_kd.setDecimals(2)
+        self._rl_fallback_kd.setSingleStep(0.05)
+        self._rl_fallback_kd.setValue(0.2)
+        self._rl_fallback_kd.setToolTip(
+            "Fallback policy derivative gain (Kd).\n"
+            "Used when stable-baselines3 is not available or the RL model is untrained.\n"
+            "Adds damping based on error rate of change: gamma = Kp × error + Kd × delta_error"
+        )
+        form.addRow("Fallback Kd:", self._rl_fallback_kd)
+
+        self._rl_learning_rate = QDoubleSpinBox()
+        self._rl_learning_rate.setObjectName("rl_learning_rate")
+        self._rl_learning_rate.setRange(1e-6, 0.1)
+        self._rl_learning_rate.setDecimals(6)
+        self._rl_learning_rate.setSingleStep(1e-4)
+        self._rl_learning_rate.setValue(3e-4)
+        self._rl_learning_rate.setToolTip(
+            "Learning rate for the RL neural network optimizer (Adam).\n"
+            "Lower values = more stable but slower learning.\n"
+            "Higher values = faster adaptation but risk of instability.\n"
+            "Default: 3×10⁻⁴ (stable-baselines3 default)"
+        )
+        form.addRow("Learning Rate:", self._rl_learning_rate)
+
+        self._rl_train_interval = QSpinBox()
+        self._rl_train_interval.setObjectName("rl_train_interval")
+        self._rl_train_interval.setRange(1, 1000)
+        self._rl_train_interval.setSingleStep(8)
+        self._rl_train_interval.setValue(32)
+        self._rl_train_interval.setToolTip(
+            "Online training interval — train the RL model every N AI steps.\n"
+            "Lower values = more frequent training updates (more CPU).\n"
+            "Higher values = less frequent but more stable training."
+        )
+        form.addRow("Train Interval:", self._rl_train_interval)
+
+        layout.addWidget(group)
+
+    def _build_ai_worker_group(self, layout: QVBoxLayout) -> None:
+        group = QGroupBox("AI Worker")
+        form = QFormLayout(group)
+
+        self._ai_period = QSpinBox()
+        self._ai_period.setObjectName("ai_period")
+        self._ai_period.setRange(1, 86400)
+        self._ai_period.setSingleStep(10)
+        self._ai_period.setValue(1800)  # MEDIUM default
+        self._ai_period.setSuffix(" s")
+        self._ai_period.setToolTip(
+            "AI optimization cycle period in seconds.\n"
+            "The AI engine evaluates and adjusts Ki/Ti at this interval.\n"
+            "Derived from Process Speed:\n"
+            "  Ultra Fast: 30s | Fast: 180s | Medium: 1800s | Slow: 14400s\n"
+            "Can be overridden manually per controller."
+        )
+        form.addRow("Period:", self._ai_period)
+
+        layout.addWidget(group)
+
+    # ── OPC-UA status helpers ──────────────────────────────────────────
 
     def set_opcua_endpoint(self, url: str) -> None:
         """Set the OPC-UA endpoint URL externally."""
@@ -255,7 +457,59 @@ class SettingsPage(QWidget):
         self._committed_opcua_url = url
         self.set_opcua_status(connected)
 
-    # --- Apply / Cancel logic ---------------------------------------------------
+    # ── AI settings helpers ────────────────────────────────────────────
+
+    def load_ai_settings(self, settings: dict) -> None:
+        """Populate AI fields from a dict (e.g. loaded from controller config)."""
+        # Block signals during bulk load
+        widgets = [
+            self._fuzzy_speed_factor, self._fuzzy_limit_min, self._fuzzy_limit_max,
+            self._fuzzy_dead_time, self._rl_fallback_kp, self._rl_fallback_kd,
+            self._rl_learning_rate, self._rl_train_interval, self._ai_period,
+        ]
+        for w in widgets:
+            w.blockSignals(True)
+
+        if "speed_factor" in settings:
+            self._fuzzy_speed_factor.setValue(settings["speed_factor"])
+        if "limit_min" in settings:
+            self._fuzzy_limit_min.setValue(settings["limit_min"])
+        if "limit_max" in settings:
+            self._fuzzy_limit_max.setValue(settings["limit_max"])
+        if "dead_time_l" in settings:
+            self._fuzzy_dead_time.setValue(settings["dead_time_l"])
+        if "rl_fallback_kp" in settings:
+            self._rl_fallback_kp.setValue(settings["rl_fallback_kp"])
+        if "rl_fallback_kd" in settings:
+            self._rl_fallback_kd.setValue(settings["rl_fallback_kd"])
+        if "rl_learning_rate" in settings:
+            self._rl_learning_rate.setValue(settings["rl_learning_rate"])
+        if "rl_train_interval" in settings:
+            self._rl_train_interval.setValue(settings["rl_train_interval"])
+        if "ai_period_s" in settings:
+            self._ai_period.setValue(settings["ai_period_s"])
+
+        for w in widgets:
+            w.blockSignals(False)
+
+        # Update committed state
+        self._committed_ai_settings = self.get_ai_settings()
+
+    def get_ai_settings(self) -> dict:
+        """Return current AI settings as a dict."""
+        return {
+            "speed_factor": self._fuzzy_speed_factor.value(),
+            "limit_min": self._fuzzy_limit_min.value(),
+            "limit_max": self._fuzzy_limit_max.value(),
+            "dead_time_l": self._fuzzy_dead_time.value(),
+            "rl_fallback_kp": self._rl_fallback_kp.value(),
+            "rl_fallback_kd": self._rl_fallback_kd.value(),
+            "rl_learning_rate": self._rl_learning_rate.value(),
+            "rl_train_interval": self._rl_train_interval.value(),
+            "ai_period_s": self._ai_period.value(),
+        }
+
+    # ── Apply / Cancel logic ───────────────────────────────────────────
 
     def _on_field_changed(self) -> None:
         """Enable or disable Apply/Cancel based on pending changes."""
@@ -269,7 +523,9 @@ class SettingsPage(QWidget):
             return True
         if self._refresh_spin.value() != self._committed_refresh:
             return True
-        return self._opcua_endpoint.text() != self._committed_opcua_url
+        if self._opcua_endpoint.text() != self._committed_opcua_url:
+            return True
+        return self.get_ai_settings() != self._committed_ai_settings
 
     def _on_apply(self) -> None:
         """Emit signals for changed values, update committed state, disable buttons."""
@@ -281,10 +537,15 @@ class SettingsPage(QWidget):
         if self._opcua_endpoint.text() != self._committed_opcua_url:
             self.opcua_endpoint_save_requested.emit(self._opcua_endpoint.text())
 
+        current_ai = self.get_ai_settings()
+        if current_ai != self._committed_ai_settings:
+            self.ai_settings_changed.emit(current_ai)
+
         # Update committed state
         self._committed_theme_idx = self._theme_combo.currentIndex()
         self._committed_refresh = self._refresh_spin.value()
         self._committed_opcua_url = self._opcua_endpoint.text()
+        self._committed_ai_settings = current_ai
 
         self._apply_btn.setEnabled(False)
         self._cancel_btn.setEnabled(False)
@@ -304,10 +565,13 @@ class SettingsPage(QWidget):
         self._refresh_spin.blockSignals(False)
         self._opcua_endpoint.blockSignals(False)
 
+        # Revert AI settings
+        self.load_ai_settings(self._committed_ai_settings)
+
         self._apply_btn.setEnabled(False)
         self._cancel_btn.setEnabled(False)
 
-    # --- Immediate actions -----------------------------------------------------
+    # ── Immediate actions ──────────────────────────────────────────────
 
     def _on_opcua_connect(self) -> None:
         url = self._opcua_endpoint.text().strip()
@@ -318,7 +582,7 @@ class SettingsPage(QWidget):
     def _on_opcua_disconnect(self) -> None:
         self.opcua_disconnect_requested.emit()
 
-    # --- Project actions (immediate — not buffered) ----------------------------
+    # ── Project actions (immediate — not buffered) ─────────────────────
 
     def update_project_info(self, name: str, path: str, count: int) -> None:
         """Update the project information labels."""

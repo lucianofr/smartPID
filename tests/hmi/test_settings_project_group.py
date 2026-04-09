@@ -117,7 +117,9 @@ class TestProjectGroupPosition:
     """Project group should be ABOVE Appearance group in the layout."""
 
     def test_project_group_is_before_appearance(self, page):
-        layout = page.layout()
+        # Groups are inside the left column widget
+        left = page._left_column
+        layout = left.layout()
         project_idx = None
         appearance_idx = None
         for i in range(layout.count()):
