@@ -206,6 +206,21 @@ class ControllerDialog(QDialog):
         self._scan_rate.setCurrentIndex(2)  # default 1s
         form.addRow("Scan Rate:", self._scan_rate)
 
+        self._tss = QDoubleSpinBox()
+        self._tss.setRange(0.1, 86400.0)
+        self._tss.setDecimals(1)
+        self._tss.setSingleStep(1.0)
+        self._tss.setValue(60.0)
+        self._tss.setSuffix(" s")
+        self._tss.setToolTip(
+            "Time to Steady State (TSS) — estimated time for the process\n"
+            "to reach a new steady state after a step change.\n"
+            "Used to derive the statistics window and AI Worker period.\n"
+            "Typical: 5-30 s (flow/pressure), 60-300 s (level),\n"
+            "300-3600 s (temperature/furnace)."
+        )
+        form.addRow("TSS:", self._tss)
+
         self._process_speed = QComboBox()
         self._process_speed.setToolTip(
             "Characterizes the process dynamic response speed.\n"
@@ -753,6 +768,8 @@ class ControllerDialog(QDialog):
             idx = self._scan_rate.findData(data["scan_rate_s"])
             if idx >= 0:
                 self._scan_rate.setCurrentIndex(idx)
+        if "tss_s" in data:
+            self._tss.setValue(data["tss_s"])
         if "process_speed" in data:
             idx = self._process_speed.findData(data["process_speed"])
             if idx >= 0:
@@ -911,6 +928,7 @@ class ControllerDialog(QDialog):
             "description": self._description.text().strip(),
             "execution_mode": self._execution_mode.currentText(),
             "scan_rate_s": self._scan_rate.currentData(),
+            "tss_s": self._tss.value(),
             "process_speed": self._process_speed.currentData(),
             "pid_structure": self._pid_structure.currentText(),
             "integral_type": self._integral_type.currentText(),
