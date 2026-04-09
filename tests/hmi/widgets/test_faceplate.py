@@ -107,7 +107,7 @@ def test_update_stats_formats_values(qtbot, theme):
     """update_stats() formats metrics correctly."""
     fp = FaceplateWidget(theme=theme)
     qtbot.addWidget(fp)
-    fp.update_stats({"iae": 12.345, "variability_range": 3.78, "tv": 5.1})
+    fp.update_stats({"iae": 12.345, "variability_range": 0.038, "total_variation": 5.1})
     assert "12.35" in fp._stat_labels["IAE"].text()
     assert "3.8%" in fp._stat_labels["2\u03c3/Range"].text()
     assert "5.10" in fp._stat_labels["TV"].text()

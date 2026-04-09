@@ -74,8 +74,10 @@ class AlarmPanel(QWidget):
         self._api_client = api_client
         # controller_id -> controller_name lookup
         self._name_map: dict[int, str] = {}
-        # (controller_id, alarm_type) -> row data dict
+        # (controller_id, alarm_type) -> row data dict (current state view)
         self._active_alarms: dict[tuple[int, str], dict] = {}
+        # Rolling log of all alarm events in LIVE mode (each event is a separate row)
+        self._live_events: list[dict] = []
         # AI log events and system events (kept separately)
         self._ai_events: list[dict] = []
         self._system_events: list[dict] = []
@@ -240,6 +242,7 @@ class AlarmPanel(QWidget):
                 controller_id, str(controller_id),
             )
 
+        # Always update current-state dict (used by non-live mode and filters)
         if transition == "TRIGGERED":
             self._active_alarms[key] = {
                 **alarm,
@@ -248,6 +251,13 @@ class AlarmPanel(QWidget):
         elif transition == "CLEARED" and key in self._active_alarms:
             self._active_alarms[key]["status"] = "CLEARED_UNACK"
             self._active_alarms[key]["transition"] = "CLEARED"
+
+        # In LIVE mode, also append to rolling event log
+        if self.is_live:
+            status = transition if transition else "UNKNOWN"
+            self._live_events.append({**alarm, "status": status})
+            if len(self._live_events) > 2000:
+                self._live_events = self._live_events[-2000:]
 
         self._rebuild_table()
 
@@ -268,12 +278,16 @@ class AlarmPanel(QWidget):
     # --- Filtering ---
 
     def _get_all_events(self) -> list[dict]:
-        """Merge active alarms, AI events, and system events into one list."""
-        return (
-            list(self._active_alarms.values())
-            + list(self._ai_events)
-            + list(self._system_events)
+        """Merge alarm events, AI events, and system events into one list.
+
+        In LIVE mode, uses the rolling event log (each event is a separate row).
+        In normal mode, uses the current-state dict (one row per active alarm).
+        """
+        alarm_source = (
+            list(self._live_events) if self.is_live
+            else list(self._active_alarms.values())
         )
+        return alarm_source + list(self._ai_events) + list(self._system_events)
 
     def get_filtered_alarms(self, *, skip_date: bool = False) -> list[dict]:
         """Return events filtered by current UI criteria."""
@@ -418,8 +432,13 @@ class AlarmPanel(QWidget):
         self._load_history_btn.setEnabled(not checked)
         self._apply_btn.setEnabled(not checked)
         if checked:
-            # Seed with current active alarms from DB
+            # Seed live log with current active alarms as initial TRIGGERED events
             self.load_active_alarms()
+            self._live_events.clear()
+            for alarm in self._active_alarms.values():
+                self._live_events.append({**alarm, "status": "TRIGGERED"})
+        else:
+            self._live_events.clear()
         self._rebuild_table()
 
     def apply_theme(self, theme: ThemeBase) -> None:

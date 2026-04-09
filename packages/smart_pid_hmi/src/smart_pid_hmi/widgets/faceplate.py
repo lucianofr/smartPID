@@ -568,7 +568,7 @@ class FaceplateWidget(QFrame):
         """
         key_map = {
             "IAE": "iae", "ITAE": "itae", "ISE": "ise", "MSE": "mse",
-            "StdDev": "std_dev", "TV": "tv",
+            "StdDev": "std_dev", "TV": "total_variation",
             "2\u03c3/Range": "variability_range",
             "2\u03c3/SP": "variability_sp",
         }
@@ -577,7 +577,7 @@ class FaceplateWidget(QFrame):
             val = stats.get(key)
             if val is not None:
                 if label_name in ("2\u03c3/Range", "2\u03c3/SP"):
-                    lbl.setText(f"{label_name}: {val:.1f}%")
+                    lbl.setText(f"{label_name}: {val * 100:.1f}%")
                 else:
                     lbl.setText(f"{label_name}: {val:.2f}")
             else:

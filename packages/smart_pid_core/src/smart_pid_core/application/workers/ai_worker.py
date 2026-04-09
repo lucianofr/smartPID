@@ -102,6 +102,10 @@ class AIWorker:
     def is_enabled(self) -> bool:
         return self._enabled
 
+    def update_process_speed(self, process_speed) -> None:
+        """Hot-reload AI period when process speed changes. Thread-safe via GIL."""
+        self._ai_period_s = process_speed.ai_period_s
+
     def _is_auto_mode(self) -> bool:
         """Return True if the last known controller mode allows AI tuning."""
         try:

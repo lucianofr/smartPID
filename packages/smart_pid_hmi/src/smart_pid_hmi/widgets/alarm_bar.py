@@ -116,6 +116,10 @@ class AlarmBarWidget(QFrame):
             if priority == "LOG" or not atype:
                 continue
             key = (cid, atype)
+            # Skip already-cleared alarms (returned by API for ISA-18.2 but not
+            # actively alarming — the alarm panel handles those separately)
+            if alarm.get("cleared_at") is not None:
+                continue
             acked = bool(alarm.get("acknowledged", False))
             self._active[key] = {**alarm, "acked": acked, "transition": "TRIGGERED"}
         self._rebuild()

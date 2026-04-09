@@ -331,6 +331,17 @@ async def run_daemon(settings: CoreSettings) -> None:
         bus=bus, alarm_configs=alarm_configs, alarm_repo=alarm_repo,
         event_loop=asyncio.get_running_loop(),
     )
+    # Seed engine with active alarms from DB so it can generate CLEARED
+    # transitions for alarms that were active before daemon restart
+    try:
+        db_active = await alarm_repo.get_active()
+        genuinely_active = [a for a in db_active if a.get("cleared_at") is None]
+        alarm_worker.seed_active_alarms(genuinely_active)
+        if genuinely_active:
+            logger.info("alarm_engine_seeded", count=len(genuinely_active))
+    except Exception:
+        logger.debug("alarm_seed_skipped", exc_info=True)
+
     alarm_worker.start()
     logger.info("alarm_worker_started")
 

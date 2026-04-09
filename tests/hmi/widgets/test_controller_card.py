@@ -313,6 +313,35 @@ def test_highest_priority_alarm_wins(qtbot, theme):
     assert card._alarm_priority == "WARNING"
 
 
+def test_load_active_alarms_skips_cleared(qtbot, theme):
+    """load_active_alarms must NOT show alarms that have cleared_at set."""
+    card = ControllerCardWidget(
+        controller_id=1, tag_name="FIC-101",
+        min_val=0.0, max_val=100.0, theme=theme,
+    )
+    qtbot.addWidget(card)
+    alarms = [
+        {
+            "controller_id": 1, "alarm_type": "LO", "priority": "WARNING",
+            "value": 25.0, "limit": 30.0,
+            "timestamp": "2026-04-07T12:00:00",
+            "cleared_at": "2026-04-07T12:05:00",  # already cleared
+            "acknowledged": 0,
+        },
+        {
+            "controller_id": 1, "alarm_type": "HIHI", "priority": "CRITICAL",
+            "value": 96.0, "limit": 95.0,
+            "timestamp": "2026-04-07T12:01:00",
+            "cleared_at": None,  # still active
+            "acknowledged": 0,
+        },
+    ]
+    card.load_active_alarms(alarms)
+    assert "LO" not in card._active_alarms
+    assert "HIHI" in card._active_alarms
+    assert card._alarm_priority == "CRITICAL"
+
+
 def test_alarm_ignores_other_controller(qtbot, theme):
     card = ControllerCardWidget(
         controller_id=1, tag_name="FIC-101",
