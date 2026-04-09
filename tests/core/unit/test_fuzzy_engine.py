@@ -205,8 +205,9 @@ class TestComputeGamma:
             limit_min=0.1, limit_max=100.0,
             integral_type="GAIN_KI",
         )
-        # GAIN_KI: Sv=0.04, Ki_new = Ki * (1 + gamma * 0.04)
-        expected_ki = 1.0 * (1.0 + decision.gamma * 0.04)
+        # GAIN_KI: Sv from ProcessSpeed.SLOW, Ki_new = Ki * (1 + gamma * Sv)
+        sv = ProcessSpeed.SLOW.speed_factor
+        expected_ki = 1.0 * (1.0 + decision.gamma * sv)
         assert decision.new_ki == pytest.approx(max(0.1, min(100.0, expected_ki)))
 
     def test_speed_factor_slow_ti(self):
@@ -221,7 +222,8 @@ class TestComputeGamma:
             integral_type="TIME_TI",
         )
         # TIME_TI: gamma inverted. Positive gamma → decrease Ti (faster)
-        expected_ti = 10.0 * (1.0 + (-decision.gamma) * 0.04)
+        sv = ProcessSpeed.SLOW.speed_factor
+        expected_ti = 10.0 * (1.0 + (-decision.gamma) * sv)
         assert decision.new_ki == pytest.approx(max(0.1, min(100.0, expected_ti)))
 
     def test_ki_clamped_to_limits(self):
