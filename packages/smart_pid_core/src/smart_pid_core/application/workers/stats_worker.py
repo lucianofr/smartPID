@@ -28,9 +28,9 @@ class StatsWorker:
     ) -> None:
         self._bus = bus
         self._controller = controller
-        window_size = int(
-            controller.process_speed.stats_window_s / controller.scan_rate_s
-        )
+        # Stats window = 5 × TSS (captures ~5 full response cycles)
+        stats_window_s = 5.0 * controller.tss_s
+        window_size = max(10, int(stats_window_s / controller.scan_rate_s))
         self._publish_interval = max(1, int(5.0 / controller.scan_rate_s))
         self._calculator = StatsCalculator(
             window_size=window_size,

@@ -42,7 +42,8 @@ class AIWorker:
         self._bus = bus
         self._controller = controller
         self._ai_config = controller.ai_config
-        self._ai_period_s = controller.process_speed.ai_period_s
+        # AI period = 3 × TSS (wait for process to settle before next adjustment)
+        self._ai_period_s = 3.0 * controller.tss_s
         self._integral_type = controller.integral_type.value  # "GAIN_KI" or "TIME_TI"
         self._execution_mode = controller.execution_mode.value  # "SUPERVISORY" or "DDC"
         self._ki_current = controller.pid_params.reset  # initial from config
@@ -104,7 +105,11 @@ class AIWorker:
 
     def update_process_speed(self, process_speed) -> None:
         """Hot-reload AI period when process speed changes. Thread-safe via GIL."""
-        self._ai_period_s = process_speed.ai_period_s
+        self._ai_period_s = 3.0 * self._controller.tss_s
+
+    def update_tss(self, tss_s: float) -> None:
+        """Hot-reload AI period when TSS changes. Thread-safe via GIL."""
+        self._ai_period_s = 3.0 * tss_s
 
     def _is_auto_mode(self) -> bool:
         """Return True if the last known controller mode allows AI tuning."""
