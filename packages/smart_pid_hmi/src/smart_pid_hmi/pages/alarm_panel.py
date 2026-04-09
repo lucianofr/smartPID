@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QDateTime, Qt, Signal
+from PySide6.QtCore import QDateTime, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -63,9 +63,6 @@ def _priority_colors(theme: ThemeBase) -> dict[str, str]:
 class AlarmPanel(QWidget):
     """Page for alarm & event management: active alarms + AI logs + system events."""
 
-    ack_requested = Signal(int)  # alarm_id
-    ack_all_requested = Signal()
-
     def __init__(
         self,
         theme: ThemeBase,
@@ -75,6 +72,8 @@ class AlarmPanel(QWidget):
         super().__init__(parent)
         self._theme = theme
         self._api_client = api_client
+        # controller_id -> controller_name lookup
+        self._name_map: dict[int, str] = {}
         # (controller_id, alarm_type) -> row data dict
         self._active_alarms: dict[tuple[int, str], dict] = {}
         # AI log events and system events (kept separately)
@@ -103,6 +102,11 @@ class AlarmPanel(QWidget):
         self._level_filter.add_items(_LEVEL_ITEMS, check_all=True)
         self._level_filter.setMinimumWidth(140)
         filter_layout.addWidget(self._level_filter)
+
+        # Auto-refresh table when filters change in Live mode
+        self._category_filter.selection_changed.connect(self._on_filter_changed)
+        self._priority_filter.selection_changed.connect(self._on_filter_changed)
+        self._level_filter.selection_changed.connect(self._on_filter_changed)
 
         filter_layout.addWidget(QLabel("From:"))
         self._dt_from = QDateTimeEdit()
@@ -134,24 +138,12 @@ class AlarmPanel(QWidget):
         filter_layout.addStretch()
         layout.addLayout(filter_layout)
 
-        # --- Action buttons ---
-        btn_layout = QHBoxLayout()
-        self._ack_btn = QPushButton("ACK Selected")
-        self._ack_all_btn = QPushButton("ACK All")
-        btn_layout.addWidget(self._ack_btn)
-        btn_layout.addWidget(self._ack_all_btn)
-        btn_layout.addStretch()
-        layout.addLayout(btn_layout)
-
-        self._ack_btn.clicked.connect(self._on_ack_selected)
-        self._ack_all_btn.clicked.connect(self.ack_all_requested.emit)
-
         # Active alarms / events table (full height)
         self.active_table = QTableWidget(0, len(_ACTIVE_COLUMNS))
         self.active_table.setHorizontalHeaderLabels(_ACTIVE_COLUMNS)
-        self.active_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        hdr = self.active_table.horizontalHeader()
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        hdr.setStretchLastSection(True)
         self.active_table.setSelectionBehavior(
             QTableWidget.SelectionBehavior.SelectRows
         )
@@ -159,11 +151,23 @@ class AlarmPanel(QWidget):
 
     # --- Public API ---
 
-    def on_ai_event(self, controller_id: int, message: str) -> None:
+    def set_controller_names(self, controllers: list[dict]) -> None:
+        """Build controller_id -> name lookup from controller list."""
+        self._name_map = {
+            c["id"]: c.get("name", f"Loop-{c['id']}") for c in controllers
+        }
+
+    def on_ai_event(
+        self, controller_id: int, message: str, controller_name: str = "",
+    ) -> None:
         """Add an AI tuning action as event row (level/priority not applicable)."""
         ts = datetime.now().isoformat()[:19]
+        name = controller_name or self._name_map.get(
+            controller_id, str(controller_id),
+        )
         event = {
             "controller_id": controller_id,
+            "controller_name": name,
             "alarm_type": "",
             "_category": CATEGORY_AI,
             "priority": "\u2014",
@@ -207,11 +211,21 @@ class AlarmPanel(QWidget):
             return
         self._active_alarms.clear()
         for alarm in alarms:
-            key = (alarm.get("controller_id", 0), alarm.get("alarm_type", ""))
-            self._active_alarms[key] = {
-                **alarm,
-                "status": alarm.get("status", "UNACKNOWLEDGED"),
-            }
+            cid = alarm.get("controller_id", 0)
+            key = (cid, alarm.get("alarm_type", ""))
+            # API returns 'acknowledged' (0/1), derive display status
+            acked = bool(alarm.get("acknowledged", 0))
+            cleared = alarm.get("cleared_at") is not None
+            if acked:
+                status = "ACKNOWLEDGED"
+            elif cleared:
+                status = "CLEARED_UNACK"
+            else:
+                status = "UNACKNOWLEDGED"
+            # Ensure controller_name is populated
+            if not alarm.get("controller_name"):
+                alarm["controller_name"] = self._name_map.get(cid, str(cid))
+            self._active_alarms[key] = {**alarm, "status": status}
         self._rebuild_table()
 
     def on_alarm(self, controller_id: int, alarm: dict) -> None:
@@ -219,6 +233,12 @@ class AlarmPanel(QWidget):
         atype = alarm.get("alarm_type", "")
         transition = alarm.get("transition", "")
         key = (controller_id, atype)
+
+        # Ensure controller_name is populated
+        if not alarm.get("controller_name"):
+            alarm["controller_name"] = self._name_map.get(
+                controller_id, str(controller_id),
+            )
 
         if transition == "TRIGGERED":
             self._active_alarms[key] = {
@@ -386,6 +406,11 @@ class AlarmPanel(QWidget):
         """True when Live mode is active (no date filtering)."""
         return self._live_checkbox.isChecked()
 
+    def _on_filter_changed(self) -> None:
+        """Auto-refresh table when filter combos change in Live mode."""
+        if self.is_live:
+            self._rebuild_table()
+
     def _on_live_toggled(self, checked: bool) -> None:
         """Toggle live mode — event-driven, no polling."""
         self._dt_from.setEnabled(not checked)
@@ -396,16 +421,6 @@ class AlarmPanel(QWidget):
             # Seed with current active alarms from DB
             self.load_active_alarms()
         self._rebuild_table()
-
-    def _on_ack_selected(self) -> None:
-        selected = self.active_table.selectedItems()
-        if selected:
-            row = selected[0].row()
-            first_item = self.active_table.item(row, 0)
-            if first_item is not None:
-                alarm_id = first_item.data(Qt.ItemDataRole.UserRole)
-                if alarm_id is not None:
-                    self.ack_requested.emit(int(alarm_id))
 
     def apply_theme(self, theme: ThemeBase) -> None:
         """Re-apply theme colors to dynamic elements."""

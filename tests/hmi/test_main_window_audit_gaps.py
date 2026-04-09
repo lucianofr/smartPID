@@ -148,10 +148,10 @@ class TestExecutiveDashboardWiring:
 # --- Gap #44: ACK individual alarm ---
 
 class TestAlarmAckWiring:
-    def test_ack_single_connected(self, main_window, api_client):
-        """ack_requested signal should trigger _send_ack_single."""
+    def test_ack_single_via_dashboard(self, main_window, api_client):
+        """alarm_ack_requested from dashboard should trigger _send_ack_single."""
         with patch.object(main_window, "_send_ack_single") as mock_call:
-            main_window._alarm_panel.ack_requested.emit(42)
+            main_window._dashboard_page.alarm_ack_requested.emit(42)
             mock_call.assert_called_once_with(42)
 
     def test_send_ack_single(self, main_window, api_client):

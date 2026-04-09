@@ -363,8 +363,6 @@ class MainWindow(QMainWindow):
         bus_bridge.alarm_received.connect(self._alarm_panel.on_alarm)
         bus_bridge.ai_action_received.connect(self._on_ai_action)
         bus_bridge.system_event_received.connect(self._on_system_event)
-        self._alarm_panel.ack_all_requested.connect(self._send_ack_all)
-        self._alarm_panel.ack_requested.connect(self._send_ack_single)
         self._dashboard_page.alarm_ack_requested.connect(self._send_ack_single)
         self._dashboard_page.alarm_ack_all_requested.connect(self._send_ack_all)
         self._simulator_page.preset_changed.connect(self._send_sim_preset)
@@ -551,6 +549,9 @@ class MainWindow(QMainWindow):
 
         # Feed executive dashboard controller cards
         self._executive_page.update_controller_cards(controllers)
+
+        # Feed alarm panel with controller name lookup
+        self._alarm_panel.set_controller_names(controllers)
 
         # Now that cards exist, load initial alarm state from backend
         self._load_initial_alarm_state()
@@ -1148,7 +1149,12 @@ class MainWindow(QMainWindow):
         reasoning = action.get("reasoning", "")
         ts = action.get("timestamp", "")[:19]
         msg = f"[{ts}] {engine} \u03b3={gamma:+.4f} Ki={new_ki:.4f} \u2014 {reasoning}"
-        self._alarm_panel.on_ai_event(controller_id, msg)
+        ctrl_name = next(
+            (c.get("name", "") for c in self._cached_controllers
+             if c.get("id") == controller_id),
+            "",
+        )
+        self._alarm_panel.on_ai_event(controller_id, msg, ctrl_name)
         self._dashboard_page.on_ai_action(controller_id, action)
 
         # Write new Ki (Ti) to OPC-UA so the DCS uses the updated value
