@@ -63,7 +63,7 @@ class TestControllerDTOs:
     def test_controller_create_defaults(self) -> None:
         c = ControllerCreate(name="TIC-101")
         assert c.description == ""
-        assert c.scan_rate_ms == 1000
+        assert c.scan_rate_s == 1.0
 
     def test_controller_update_all_optional(self) -> None:
         u = ControllerUpdate()

@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS Controladores (
     nome                TEXT    NOT NULL,
     descricao           TEXT    NOT NULL DEFAULT '',
     modo_execucao       TEXT    NOT NULL DEFAULT 'DDC',
-    scan_rate_ms        INTEGER NOT NULL DEFAULT 1000,
+    scan_rate_s         REAL    NOT NULL DEFAULT 1.0,
     -- PID params
     kp_manual           REAL    NOT NULL DEFAULT 1.0,
     ki_inicial          REAL    NOT NULL DEFAULT 10.0,
@@ -363,7 +363,7 @@ class SQLiteRepository:
             "nome": c.name,
             "descricao": c.description,
             "modo_execucao": str(c.execution_mode),
-            "scan_rate_ms": c.scan_rate_ms,
+            "scan_rate_s": c.scan_rate_s,
             "kp_manual": c.pid_params.gain,
             "ki_inicial": c.pid_params.reset,
             "kd_manual": c.pid_params.rate,
@@ -473,7 +473,7 @@ class SQLiteRepository:
             name=row["nome"],
             description=row["descricao"],
             execution_mode=ExecutionMode(row["modo_execucao"]),
-            scan_rate_ms=row["scan_rate_ms"],
+            scan_rate_s=row["scan_rate_s"],
             process_speed=ProcessSpeed(row["process_speed"]),
             process_type=ProcessType(row["process_type"]),
             pid_params=PIDParams(

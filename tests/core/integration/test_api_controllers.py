@@ -122,7 +122,7 @@ FULL_CREATE_PAYLOAD: dict = {
     "name": "FIC-301",
     "description": "Flow control loop",
     "execution_mode": "SUPERVISORY",
-    "scan_rate_ms": 500,
+    "scan_rate_s": 0.5,
     "pid_params": {
         "gain": 2.5,
         "reset": 20.0,
@@ -209,7 +209,7 @@ class TestFullFieldCreateAndGet:
         data = resp.json()
         assert data["name"] == "FIC-301"
         assert data["execution_mode"] == "SUPERVISORY"
-        assert data["scan_rate_ms"] == 500
+        assert data["scan_rate_s"] == 0.5
         assert data["pid_params"]["gain"] == 2.5
         assert data["pid_params"]["alpha"] == 0.1
         assert data["pid_structure"] == "PARALLEL"

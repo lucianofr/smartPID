@@ -130,7 +130,7 @@ class TestControllerCreate:
         c = ControllerCreate(name="TIC-100")
         assert c.name == "TIC-100"
         assert c.description == ""
-        assert c.scan_rate_ms == 1000
+        assert c.scan_rate_s == 1.0
         assert c.pid_params == PIDParamsDTO()
         assert c.sp_hi_lim == 100.0
         assert c.sp_lo_lim == 0.0
@@ -143,7 +143,7 @@ class TestControllerCreate:
             name="FIC-200",
             description="Flow controller",
             execution_mode="DDC",
-            scan_rate_ms=500,
+            scan_rate_s=0.5,
             pid_params=PIDParamsDTO(gain=2.0, reset=5.0),
             pid_structure="ISA",
             pv_scale=ScaleConfigDTO(eu_min=0, eu_max=500, unit="m3/h"),
@@ -183,7 +183,7 @@ class TestControllerUpdate:
         assert u.control_opts is None
         assert u.io_opts is None
         assert u.sp_hi_lim is None
-        assert u.scan_rate_ms is None
+        assert u.scan_rate_s is None
 
     def test_partial_update(self) -> None:
         u = ControllerUpdate(
@@ -220,7 +220,7 @@ class TestControllerResponse:
             sp=100.0,
             co=65.0,
             execution_mode="SUPERVISORY",
-            scan_rate_ms=500,
+            scan_rate_s=0.5,
             pid_params=PIDParamsDTO(gain=2.0),
             pid_structure="PARALLEL",
             integral_type="GAIN_KI",

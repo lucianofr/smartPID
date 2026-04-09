@@ -25,7 +25,7 @@ def bus():
 @pytest.fixture
 def controller():
     return Controller(
-        id=1, name="E2E-Test", scan_rate_ms=100,
+        id=1, name="E2E-Test", scan_rate_s=0.1,
         process_speed=ProcessSpeed.ULTRA_FAST,
         pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
         pv_scale=ScaleConfig(eu_min=0.0, eu_max=100.0),

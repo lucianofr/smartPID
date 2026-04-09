@@ -97,6 +97,7 @@ class SettingsPage(QWidget):
         self._build_fuzzy_group(right_layout)
         self._build_rl_group(right_layout)
         self._build_ai_worker_group(right_layout)
+        self._build_stats_window_group(right_layout)
         right_layout.addStretch()
 
         right_scroll = QScrollArea()
@@ -145,6 +146,8 @@ class SettingsPage(QWidget):
         self._rl_learning_rate.valueChanged.connect(self._on_field_changed)
         self._rl_train_interval.valueChanged.connect(self._on_field_changed)
         for spin in self._ai_period_spins.values():
+            spin.valueChanged.connect(self._on_field_changed)
+        for spin in self._stats_window_spins.values():
             spin.valueChanged.connect(self._on_field_changed)
 
     # ── Left column group builders ─────────────────────────────────────
@@ -422,6 +425,30 @@ class SettingsPage(QWidget):
 
         layout.addWidget(group)
 
+    def _build_stats_window_group(self, layout: QVBoxLayout) -> None:
+        from smart_pid_domain.enums import ProcessSpeed
+
+        group = QGroupBox("Statistics — Window per Process Speed")
+        form = QFormLayout(group)
+
+        self._stats_window_spins: dict[str, QSpinBox] = {}
+        for speed in ProcessSpeed:
+            spin = QSpinBox()
+            spin.setObjectName(f"stats_window_{speed.value.lower()}")
+            spin.setRange(1, 86400)
+            spin.setSingleStep(10)
+            spin.setValue(speed.stats_window_s)  # default from enum
+            spin.setSuffix(" s")
+            spin.setToolTip(
+                f"Sliding window for statistics calculation ({speed.label}).\n"
+                f"IAE, ITAE, ISE, MSE, StdDev, TV are computed over this period.\n"
+                f"Default: {speed.stats_window_s} s"
+            )
+            form.addRow(f"{speed.label}:", spin)
+            self._stats_window_spins[speed.value] = spin
+
+        layout.addWidget(group)
+
     # ── OPC-UA status helpers ──────────────────────────────────────────
 
     def set_opcua_endpoint(self, url: str) -> None:
@@ -472,6 +499,7 @@ class SettingsPage(QWidget):
             self._fuzzy_dead_time, self._rl_fallback_kp, self._rl_fallback_kd,
             self._rl_learning_rate, self._rl_train_interval,
             *self._ai_period_spins.values(),
+            *self._stats_window_spins.values(),
         ]
         for w in widgets:
             w.blockSignals(True)
@@ -497,6 +525,11 @@ class SettingsPage(QWidget):
         for speed_val, spin in self._ai_period_spins.items():
             if speed_val in ai_periods:
                 spin.setValue(ai_periods[speed_val])
+        # Stats window per process speed
+        stats_windows = settings.get("stats_windows", {})
+        for speed_val, spin in self._stats_window_spins.items():
+            if speed_val in stats_windows:
+                spin.setValue(stats_windows[speed_val])
 
         for w in widgets:
             w.blockSignals(False)
@@ -518,6 +551,10 @@ class SettingsPage(QWidget):
             "ai_periods": {
                 speed_val: spin.value()
                 for speed_val, spin in self._ai_period_spins.items()
+            },
+            "stats_windows": {
+                speed_val: spin.value()
+                for speed_val, spin in self._stats_window_spins.items()
             },
         }
 

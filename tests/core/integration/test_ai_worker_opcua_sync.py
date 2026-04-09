@@ -33,7 +33,7 @@ def controller_fuzzy():
     return Controller(
         id=1,
         name="TestSync",
-        scan_rate_ms=100,
+        scan_rate_s=0.1,
         process_speed=ProcessSpeed.MEDIUM,
         pv_scale=ScaleConfig(eu_min=0.0, eu_max=100.0),
         ai_config=AIConfig(

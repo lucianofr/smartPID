@@ -94,7 +94,7 @@ class TestCASINHandling:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-CAS", scan_rate_ms=100,
+                id=1, name="T-CAS", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
                 permitted_modes={
                     ControllerMode.MAN,
@@ -131,7 +131,7 @@ class TestCASINHandling:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-RCAS", scan_rate_ms=100,
+                id=1, name="T-RCAS", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
                 permitted_modes={
                     ControllerMode.MAN,
@@ -168,7 +168,7 @@ class TestCASINHandling:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-AUTO-CAS", scan_rate_ms=100,
+                id=1, name="T-AUTO-CAS", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
             )
             worker = _make_worker(
@@ -208,7 +208,7 @@ class TestBypassMode:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-BYPASS", scan_rate_ms=100,
+                id=1, name="T-BYPASS", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
                 control_opts=ControlOpts(bypass_enable=True),
                 out_hi_lim=100.0,
@@ -241,7 +241,7 @@ class TestBypassMode:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-BYPASS-CLAMP", scan_rate_ms=100,
+                id=1, name="T-BYPASS-CLAMP", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
                 control_opts=ControlOpts(bypass_enable=True),
                 out_hi_lim=80.0,
@@ -281,7 +281,7 @@ class TestSimulateMode:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-SIM", scan_rate_ms=100,
+                id=1, name="T-SIM", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
             )
             worker = _make_worker(
@@ -311,7 +311,7 @@ class TestSimulateMode:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-SIM-CLR", scan_rate_ms=100,
+                id=1, name="T-SIM-CLR", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
             )
             worker = _make_worker(
@@ -425,7 +425,7 @@ class TestTrackOpt:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-TRK-OPT", scan_rate_ms=100,
+                id=1, name="T-TRK-OPT", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
                 track_opt=TrackOpt.ALWAYS_USE_VALUE,
                 control_opts=ControlOpts(track_enable=True),
@@ -446,7 +446,7 @@ class TestTrackOpt:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-TRK-LG", scan_rate_ms=100,
+                id=1, name="T-TRK-LG", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
                 track_opt=TrackOpt.USE_LAST_GOOD,
                 control_opts=ControlOpts(track_enable=True),
@@ -476,7 +476,7 @@ class TestTrackOpt:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-TRK-BAD", scan_rate_ms=100,
+                id=1, name="T-TRK-BAD", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
                 track_opt=TrackOpt.TRACK_IF_BAD,
                 control_opts=ControlOpts(track_enable=True),
@@ -500,7 +500,7 @@ class TestTrackOpt:
         try:
             for opt in TrackOpt:
                 ctrl = Controller(
-                    id=1, name="T-TRK-GOOD", scan_rate_ms=100,
+                    id=1, name="T-TRK-GOOD", scan_rate_s=0.1,
                     pid_params=PIDParams(gain=1.0, reset=10.0),
                     track_opt=opt,
                 )
@@ -537,7 +537,7 @@ class TestSPPVTracking:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-TRACK", scan_rate_ms=100,
+                id=1, name="T-TRACK", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
                 control_opts=ControlOpts(sp_pv_track_in_man=True),
             )
@@ -566,7 +566,7 @@ class TestOutputSelectionByMode:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-MAN", scan_rate_ms=100,
+                id=1, name="T-MAN", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
             )
             worker = _make_worker(
@@ -602,7 +602,7 @@ class TestOutputSelectionByMode:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-ROUT", scan_rate_ms=100,
+                id=1, name="T-ROUT", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
             )
             worker = _make_worker(
@@ -627,7 +627,7 @@ class TestOutputSelectionByMode:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-LO", scan_rate_ms=100,
+                id=1, name="T-LO", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
             )
             worker = _make_worker(
@@ -654,7 +654,7 @@ class TestShedTimeout:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-SHED", scan_rate_ms=50,
+                id=1, name="T-SHED", scan_rate_s=0.05,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
                 shed_time_s=0.2,
                 shed_opt=ControllerMode.MAN,
@@ -682,7 +682,7 @@ class TestIncreaseToClose:
         bus = _make_bus()
         try:
             ctrl = Controller(
-                id=1, name="T-ITC", scan_rate_ms=100,
+                id=1, name="T-ITC", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
                 io_opts=IOOpts(increase_to_close=True),
                 out_hi_lim=100.0,

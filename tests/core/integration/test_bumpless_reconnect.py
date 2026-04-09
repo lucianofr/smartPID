@@ -36,7 +36,7 @@ def _make_controller(cid: int = 1) -> Controller:
         id=cid,
         name="TIC-101",
         pid_params=PIDParams(gain=1.0, reset=10.0, rate=1.0),
-        scan_rate_ms=100,
+        scan_rate_s=0.1,
     )
 
 
@@ -324,7 +324,7 @@ class TestPIDWorkerBumplessOnReconnect:
             controller = Controller(
                 id=1, name="TIC-101",
                 pid_params=PIDParams(gain=1.0, reset=10.0, rate=2.0),
-                scan_rate_ms=100,
+                scan_rate_s=0.1,
             )
             engine = PIDEngine()
             worker = PIDWorker(

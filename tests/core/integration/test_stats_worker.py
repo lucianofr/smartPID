@@ -24,7 +24,7 @@ def bus():
 @pytest.fixture
 def controller():
     return Controller(
-        id=1, name="Test", scan_rate_ms=100,
+        id=1, name="Test", scan_rate_s=0.1,
         pv_scale=ScaleConfig(eu_min=0.0, eu_max=100.0),
         process_speed=ProcessSpeed.ULTRA_FAST,
     )

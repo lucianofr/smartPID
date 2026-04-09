@@ -385,7 +385,7 @@ class _ControllerCard(QFrame):
 
         # Config section
         speed = str(data.get("process_speed", _PLACEHOLDER))
-        scan_rate = data.get("scan_rate_ms")
+        scan_rate = data.get("scan_rate_s")
 
         if engine == "NONE":
             self._objective_value.setText(_PLACEHOLDER)
@@ -394,7 +394,7 @@ class _ControllerCard(QFrame):
 
         self._speed_value.setText(speed)
         self._scan_rate_value.setText(
-            f"{scan_rate / 1000:.1f} s" if scan_rate is not None else _PLACEHOLDER
+            f"{scan_rate:.1f} s" if scan_rate is not None else _PLACEHOLDER
         )
 
         # Performance metrics

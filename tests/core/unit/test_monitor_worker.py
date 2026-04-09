@@ -124,7 +124,7 @@ class TestMonitorWorkerIntegration:
         bus.stop()
 
     def test_publishes_status_with_error(self, bus: EventBus) -> None:
-        worker = MonitorWorker(bus=bus, controller_id=1, scan_rate_ms=50)
+        worker = MonitorWorker(bus=bus, controller_id=1, scan_rate_s=0.05)
         worker.start()
 
         pub = bus.create_publisher()
@@ -153,7 +153,7 @@ class TestMonitorWorkerIntegration:
         assert data["controller_id"] == 1
 
     def test_detects_saturation(self, bus: EventBus) -> None:
-        worker = MonitorWorker(bus=bus, controller_id=1, scan_rate_ms=50)
+        worker = MonitorWorker(bus=bus, controller_id=1, scan_rate_s=0.05)
         worker.start()
 
         pub = bus.create_publisher()
@@ -184,7 +184,7 @@ class TestMonitorWorkerIntegration:
     def test_drains_to_latest(self, bus: EventBus) -> None:
         """When multiple TELEMETRY messages queue up, only the latest is used."""
         # Use a long scan rate so the worker doesn't process between sends
-        worker = MonitorWorker(bus=bus, controller_id=1, scan_rate_ms=2000)
+        worker = MonitorWorker(bus=bus, controller_id=1, scan_rate_s=2.0)
         worker.start()
 
         pub = bus.create_publisher()
@@ -198,7 +198,7 @@ class TestMonitorWorkerIntegration:
 
         # Now stop and restart with fast scan to process
         worker.stop()
-        worker = MonitorWorker(bus=bus, controller_id=1, scan_rate_ms=50)
+        worker = MonitorWorker(bus=bus, controller_id=1, scan_rate_s=0.05)
         worker.start()
         time.sleep(0.05)
 
@@ -224,7 +224,7 @@ class TestMonitorWorkerIntegration:
         assert data["error"] == pytest.approx(-20.0)
 
     def test_stop_is_clean(self, bus: EventBus) -> None:
-        worker = MonitorWorker(bus=bus, controller_id=1, scan_rate_ms=50)
+        worker = MonitorWorker(bus=bus, controller_id=1, scan_rate_s=0.05)
         worker.start()
         assert worker.is_alive()
         worker.stop()

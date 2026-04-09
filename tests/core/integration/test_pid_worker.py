@@ -23,7 +23,7 @@ class TestPIDWorker:
             controller = Controller(
                 id=1, name="TIC-101",
                 pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
-                scan_rate_ms=100,
+                scan_rate_s=0.1,
             )
             worker = PIDWorker(
                 bus=bus, controller=controller, engine=PIDEngine(), mode_manager=ModeManager()
@@ -57,7 +57,7 @@ class TestPIDWorker:
         bus = EventBus()
         bus.start()
         try:
-            controller = Controller(id=2, name="FIC-201", scan_rate_ms=100)
+            controller = Controller(id=2, name="FIC-201", scan_rate_s=0.1)
             worker = PIDWorker(
                 bus=bus, controller=controller, engine=PIDEngine(), mode_manager=ModeManager()
             )
@@ -75,7 +75,7 @@ class TestPIDWorkerAIIntegration:
         bus.start()
         try:
             sample_controller = Controller(
-                id=1, name="TIC-AI", scan_rate_ms=100,
+                id=1, name="TIC-AI", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
             )
             engine = PIDEngine()
