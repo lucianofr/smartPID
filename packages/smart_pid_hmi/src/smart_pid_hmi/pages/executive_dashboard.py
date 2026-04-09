@@ -294,13 +294,21 @@ class _ControllerCard(QFrame):
         sep.setFixedHeight(1)
         root.addWidget(sep)
 
-        # --- Config row (Objective, Process Speed, Scan Rate) ---
+        # --- Config row 1 (Objective, Process Speed, Scan Rate) ---
         cfg_row = QHBoxLayout()
         cfg_row.setSpacing(8)
         self._objective_value = self._make_tile("Objective", cfg_row)
         self._speed_value = self._make_tile("Process Speed", cfg_row)
         self._scan_rate_value = self._make_tile("Scan Rate", cfg_row)
         root.addLayout(cfg_row)
+
+        # --- Config row 2 (TSS, AI Period, Stats Window) ---
+        cfg_row2 = QHBoxLayout()
+        cfg_row2.setSpacing(8)
+        self._tss_value = self._make_tile("TSS", cfg_row2)
+        self._ai_period_value = self._make_tile("AI Period", cfg_row2)
+        self._stats_window_value = self._make_tile("Stats Window", cfg_row2)
+        root.addLayout(cfg_row2)
 
         # --- Performance grid (4x2) ---
         perf_grid = QGridLayout()
@@ -397,6 +405,17 @@ class _ControllerCard(QFrame):
             f"{scan_rate:.1f} s" if scan_rate is not None else _PLACEHOLDER
         )
 
+        # TSS-derived values
+        tss = data.get("tss_s")
+        if tss is not None:
+            self._tss_value.setText(self._fmt_duration(tss))
+            self._ai_period_value.setText(self._fmt_duration(3.0 * tss))
+            self._stats_window_value.setText(self._fmt_duration(5.0 * tss))
+        else:
+            self._tss_value.setText(_PLACEHOLDER)
+            self._ai_period_value.setText(_PLACEHOLDER)
+            self._stats_window_value.setText(_PLACEHOLDER)
+
         # Performance metrics
         for label, key, is_pct in _PERF_METRICS:
             raw = data.get(key)
@@ -408,6 +427,17 @@ class _ControllerCard(QFrame):
         self._style_engine_badge(engine)
         self._style_opt_state_badge(opt_state)
         self._style_exec_badge(exec_mode)
+
+    @staticmethod
+    def _fmt_duration(seconds: float) -> str:
+        """Format seconds into a human-readable duration string."""
+        if seconds < 60:
+            return f"{seconds:.0f} s"
+        if seconds < 3600:
+            m = seconds / 60
+            return f"{m:.1f} min"
+        h = seconds / 3600
+        return f"{h:.1f} h"
 
     @staticmethod
     def _badge_style(bg: str, fg: str) -> str:
