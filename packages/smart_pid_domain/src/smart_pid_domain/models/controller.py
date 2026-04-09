@@ -135,6 +135,7 @@ class Controller:
     description: str = ""
     execution_mode: ExecutionMode = ExecutionMode.SUPERVISORY
     scan_rate_s: float = 1.0
+    tss_s: float = 60.0  # Time to Steady State in seconds
     process_speed: ProcessSpeed = ProcessSpeed.MEDIUM
     process_type: ProcessType = ProcessType.SELF_REGULATING
     pid_params: PIDParams = field(default_factory=PIDParams)

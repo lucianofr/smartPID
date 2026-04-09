@@ -110,6 +110,7 @@ def _to_response(c: Controller) -> ControllerResponse:
         co=0.0,
         execution_mode=str(c.execution_mode),
         scan_rate_s=c.scan_rate_s,
+        tss_s=c.tss_s,
         process_speed=str(c.process_speed),
         pid_params=PIDParamsDTO(
             gain=c.pid_params.gain,
@@ -201,6 +202,7 @@ def _body_to_controller(body: ControllerCreate) -> Controller:
         description=body.description,
         execution_mode=ExecutionMode(body.execution_mode),
         scan_rate_s=body.scan_rate_s,
+        tss_s=body.tss_s,
         process_speed=ProcessSpeed(body.process_speed),
         pid_params=PIDParams(
             gain=body.pid_params.gain,

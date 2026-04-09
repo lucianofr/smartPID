@@ -130,7 +130,7 @@ class TestDefaults:
     """Verify sensible defaults match domain model defaults."""
 
     def test_default_scan_rate(self, dialog):
-        assert dialog._scan_rate.currentData() == 1000
+        assert dialog._scan_rate.currentData() == 1.0
 
     def test_default_gain(self, dialog):
         assert dialog._gain.value() == 1.0
@@ -182,7 +182,7 @@ class TestGetControllerData:
         data = dialog.get_controller_data()
         expected_keys = {
             "name", "description", "execution_mode", "scan_rate_s",
-            "process_speed",
+            "tss_s", "process_speed",
             "pid_structure", "integral_type", "mode_normal",
             "permitted_modes",
             "pid_params", "pv_scale", "out_scale",
@@ -265,7 +265,7 @@ class TestEditing:
         assert data["name"] == "FIC-200"
 
     def test_scan_rate_change(self, dialog):
-        idx = dialog._scan_rate.findData(500)
+        idx = dialog._scan_rate.findData(0.5)
         dialog._scan_rate.setCurrentIndex(idx)
         assert dialog.get_controller_data()["scan_rate_s"] == 0.5
 
@@ -333,7 +333,7 @@ class TestEditMode:
         assert edit_dialog._execution_mode.currentText() == "SUPERVISORY"
 
     def test_populated_scan_rate(self, edit_dialog):
-        assert edit_dialog._scan_rate.currentData() == 500
+        assert edit_dialog._scan_rate.currentData() == 0.5
 
     def test_populated_pid_structure(self, edit_dialog):
         assert edit_dialog._pid_structure.currentText() == "PARALLEL"
