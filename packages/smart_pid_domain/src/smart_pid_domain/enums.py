@@ -76,10 +76,10 @@ _STATS_WINDOWS: dict[ProcessSpeed, int] = {
 }
 
 _SPEED_FACTORS: dict[ProcessSpeed, float] = {
-    ProcessSpeed.ULTRA_FAST: 0.02,
-    ProcessSpeed.FAST: 0.05,
-    ProcessSpeed.MEDIUM: 0.15,
-    ProcessSpeed.SLOW: 0.30,
+    ProcessSpeed.ULTRA_FAST: 0.30,
+    ProcessSpeed.FAST: 0.15,
+    ProcessSpeed.MEDIUM: 0.08,
+    ProcessSpeed.SLOW: 0.04,
 }
 
 _AI_PERIODS: dict[ProcessSpeed, int] = {

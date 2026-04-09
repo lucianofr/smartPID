@@ -149,6 +149,15 @@ class AlarmEngine:
 
         return transitions
 
+    def seed_active(self, controller_id: int, alarm_type: AlarmType) -> None:
+        """Mark an alarm as already active (sync with DB state on startup).
+
+        This allows the engine to generate CLEARED transitions for alarms
+        that were active before the daemon restarted.
+        """
+        state = self._get_state(controller_id, alarm_type)
+        state.active = True
+
     def remove_controller(self, controller_id: int) -> None:
         """Remove all alarm states for a controller (cleanup on delete)."""
         keys_to_remove = [

@@ -194,6 +194,54 @@ class TestAlarmWorkerIntegration:
         await repo.db.close()
 
 
+class TestSeedActiveAlarms:
+    """Tests for seeding engine state from DB active alarms."""
+
+    def test_seed_active_alarms_sets_engine_state(self, mock_bus):
+        from smart_pid_domain.models.alarm_config import AlarmConfig
+
+        config = AlarmConfig(
+            lo_enabled=True, lo_value=30.0, lo_priority=AlarmPriority.WARNING,
+            deadband_percent=1.0,
+        )
+        worker = AlarmWorker(bus=mock_bus, alarm_configs={1: config})
+        worker.seed_active_alarms([
+            {"controller_id": 1, "alarm_type": "LO"},
+        ])
+        # Engine should have LO as active for controller 1
+        state = worker._engine._states.get((1, AlarmType.LO))
+        assert state is not None
+        assert state.active is True
+
+    def test_seed_skips_invalid_alarm_type(self, mock_bus):
+        worker = AlarmWorker(bus=mock_bus, alarm_configs={})
+        # Should not raise on invalid alarm_type
+        worker.seed_active_alarms([
+            {"controller_id": 1, "alarm_type": "INVALID"},
+        ])
+        assert len(worker._engine._states) == 0
+
+    def test_seeded_alarm_clears_on_evaluate(self, mock_bus):
+        """After seeding, engine should generate CLEARED when PV recovers."""
+        from smart_pid_domain.models.alarm_config import AlarmConfig
+
+        config = AlarmConfig(
+            lo_enabled=True, lo_value=30.0, lo_priority=AlarmPriority.WARNING,
+            deadband_percent=0.0,
+        )
+        worker = AlarmWorker(bus=mock_bus, alarm_configs={1: config})
+        worker.seed_active_alarms([
+            {"controller_id": 1, "alarm_type": "LO"},
+        ])
+        # Evaluate with PV above alarm limit
+        transitions = worker._engine.evaluate(
+            1, pv=50.0, sp=50.0, alarm_config=config, sp_ramping=False,
+        )
+        cleared = [t for t in transitions if t.alarm_type == AlarmType.LO
+                   and t.transition == "CLEARED"]
+        assert len(cleared) == 1
+
+
 class TestAlarmWorkerEnrichment:
     """Tests for controller meta, pv_range, and remove_controller (Bug #6, #9)."""
 

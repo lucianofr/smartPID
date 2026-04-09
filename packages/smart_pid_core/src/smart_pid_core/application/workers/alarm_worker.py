@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 import msgpack
 
 from smart_pid_core.domain.services.alarm_engine import AlarmEngine
+from smart_pid_domain.enums import AlarmType
 from smart_pid_domain.models.alarm_config import AlarmConfig
 
 if TYPE_CHECKING:
@@ -69,6 +70,21 @@ class AlarmWorker:
         asyncio.run_coroutine_threadsafe(
             self._persist_alarm(transition), self._event_loop,
         )
+
+    def seed_active_alarms(self, active_alarms: list[dict]) -> None:
+        """Seed the engine with alarms that are active in the DB.
+
+        Must be called before start() so the engine can generate CLEARED
+        transitions for alarms that were active before the daemon restarted.
+        """
+        for alarm in active_alarms:
+            cid = alarm.get("controller_id", 0)
+            atype_str = alarm.get("alarm_type", "")
+            try:
+                atype = AlarmType(atype_str)
+            except ValueError:
+                continue
+            self._engine.seed_active(cid, atype)
 
     def update_controller_meta(
         self, controller_id: int, name: str, description: str,

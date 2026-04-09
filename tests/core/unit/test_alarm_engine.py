@@ -181,6 +181,43 @@ class TestNoRetrigger:
         assert hihi_count == 0
 
 
+class TestSeedActive:
+    def test_seed_active_allows_clearing(self):
+        """Seeded active alarm should generate CLEARED when PV recovers."""
+        engine = AlarmEngine()
+        engine.seed_active(1, AlarmType.LO)
+        # PV=50 is well above LO limit=20, should clear
+        transitions = engine.evaluate(
+            1, pv=50.0, sp=50.0, alarm_config=_BASE_CONFIG, sp_ramping=False,
+        )
+        cleared = [t for t in transitions if t.alarm_type == AlarmType.LO
+                   and t.transition == "CLEARED"]
+        assert len(cleared) == 1
+
+    def test_seed_active_no_retrigger(self):
+        """Seeded active alarm should NOT re-trigger on same condition."""
+        engine = AlarmEngine()
+        engine.seed_active(1, AlarmType.LO)
+        # PV=15 is below LO limit=20, but alarm is already active — no retrigger
+        transitions = engine.evaluate(
+            1, pv=15.0, sp=50.0, alarm_config=_BASE_CONFIG, sp_ramping=False,
+        )
+        lo_triggered = [t for t in transitions if t.alarm_type == AlarmType.LO
+                        and t.transition == "TRIGGERED"]
+        assert len(lo_triggered) == 0
+
+    def test_unseeded_alarm_does_not_clear(self):
+        """Without seeding, engine cannot clear an alarm it never triggered."""
+        engine = AlarmEngine()
+        # PV=50 is above LO limit=20 — but engine state is inactive, so no CLEARED
+        transitions = engine.evaluate(
+            1, pv=50.0, sp=50.0, alarm_config=_BASE_CONFIG, sp_ramping=False,
+        )
+        cleared = [t for t in transitions if t.alarm_type == AlarmType.LO
+                   and t.transition == "CLEARED"]
+        assert len(cleared) == 0
+
+
 class TestSpanBasedDeadband:
     def test_deadband_uses_span_when_pv_range_provided(self):
         """Deadband should be calculated as % of span, not % of limit (Bug #11)."""

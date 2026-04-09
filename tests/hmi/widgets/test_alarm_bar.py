@@ -133,6 +133,33 @@ def test_alarm_bar_counters(bar):
     assert "WARNING: 1" in text
 
 
+def test_load_active_alarms_skips_cleared(bar):
+    """load_active_alarms must NOT show alarms that have cleared_at set."""
+    alarms = [
+        {
+            "controller_id": 1, "controller_name": "TIC-101",
+            "alarm_type": "LO", "priority": "WARNING",
+            "value": 25.0, "limit": 30.0,
+            "timestamp": "2026-04-07T12:00:00",
+            "cleared_at": "2026-04-07T12:05:00",  # already cleared
+            "acknowledged": 0,
+        },
+        {
+            "controller_id": 2, "controller_name": "FIC-203",
+            "alarm_type": "HIHI", "priority": "CRITICAL",
+            "value": 96.0, "limit": 95.0,
+            "timestamp": "2026-04-07T12:01:00",
+            "cleared_at": None,  # still active
+            "acknowledged": 0,
+        },
+    ]
+    bar.load_active_alarms(alarms)
+    # Only the genuinely active alarm (FIC-203 HIHI) should appear
+    assert bar.alarm_count == 1
+    assert (2, "HIHI") in bar._active
+    assert (1, "LO") not in bar._active
+
+
 def test_alarm_bar_sorted_by_priority_then_time(bar):
     """CRITICAL alarms should appear before WARNING."""
     bar.on_alarm({

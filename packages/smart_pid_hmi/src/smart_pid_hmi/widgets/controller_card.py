@@ -365,6 +365,9 @@ class ControllerCardWidget(QFrame):
             atype = alarm.get("alarm_type", "")
             priority = alarm.get("priority", "")
             if atype:
+                # Skip already-cleared alarms
+                if alarm.get("cleared_at") is not None:
+                    continue
                 acked = bool(alarm.get("acknowledged", False))
                 self._active_alarms[atype] = {"priority": priority, "acked": acked}
         self._resolve_top_alarm()

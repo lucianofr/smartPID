@@ -423,6 +423,13 @@ async def update_controller(
     if "tag_bindings" in updates:
         _reregister_opcua(request, controller)
 
+    # Hot-reload AI Worker period when process_speed changes
+    if "process_speed" in updates:
+        ai_workers = getattr(request.app.state, "ai_workers", {})
+        ai_worker = ai_workers.get(controller_id)
+        if ai_worker is not None:
+            ai_worker.update_process_speed(controller.process_speed)
+
     audit_detail = json.dumps({
         "old": {k: str(v) for k, v in old_values.items()},
         "new": {k: str(v) for k, v in new_values.items()},

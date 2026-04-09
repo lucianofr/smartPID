@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import sys
 import threading
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Q_ARG, QMetaObject, Qt, QTimer, Signal, Slot
@@ -1141,13 +1142,28 @@ class MainWindow(QMainWindow):
         severity = event.get("severity", "INFO")
         self._alarm_panel.on_system_event(message, priority=severity)
 
+    @staticmethod
+    def _utc_to_local(iso_str: str) -> str:
+        """Convert ISO timestamp (UTC) to local time string for display."""
+        if not iso_str:
+            return ""
+        try:
+            dt = datetime.fromisoformat(iso_str)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone()  # convert to local timezone
+            else:
+                dt = dt.replace(tzinfo=UTC).astimezone()
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            return iso_str[:19]
+
     def _on_ai_action(self, controller_id: int, action: dict) -> None:
         """Handle AI optimizer action: log to alarm panel and write Ki to OPC-UA."""
         engine = action.get("engine", "?")
         gamma = action.get("gamma", 0.0)
         new_ki = action.get("new_ki", 0.0)
         reasoning = action.get("reasoning", "")
-        ts = action.get("timestamp", "")[:19]
+        ts = self._utc_to_local(action.get("timestamp", ""))
         msg = f"[{ts}] {engine} \u03b3={gamma:+.4f} Ki={new_ki:.4f} \u2014 {reasoning}"
         ctrl_name = next(
             (c.get("name", "") for c in self._cached_controllers

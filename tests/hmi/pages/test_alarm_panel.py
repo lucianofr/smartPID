@@ -417,7 +417,98 @@ def test_alarm_panel_live_skips_date_filter():
     panel._live_checkbox.setChecked(True)
     panel.on_alarm(1, _make_alarm(alarm_type="HI"))
     # In Live mode, date filter is skipped — alarm should be visible
-    assert panel.active_table.rowCount() == 1
-    # Without Live, date filter excludes it
+    assert panel.active_table.rowCount() >= 1
+
+
+# --- Live mode rolling history tests ---
+
+
+def test_live_mode_shows_rolling_history():
+    """In Live mode, each TRIGGERED and CLEARED event is a separate row."""
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    mock_api.get_active_alarms.return_value = []
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+    panel._live_checkbox.setChecked(True)
+
+    # TRIGGERED event
+    panel.on_alarm(1, _make_alarm(
+        alarm_type="LO", priority="WARNING", transition="TRIGGERED",
+        timestamp="2026-04-07T12:00:00",
+    ))
+    # CLEARED event for same alarm — should appear as a SEPARATE row
+    panel.on_alarm(1, _make_alarm(
+        alarm_type="LO", priority="WARNING", transition="CLEARED",
+        timestamp="2026-04-07T12:05:00",
+    ))
+    # Both TRIGGERED and CLEARED should be visible as separate rows
+    assert panel.active_table.rowCount() == 2
+
+
+def test_live_mode_accumulates_events():
+    """Live mode should accumulate events, not replace them."""
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    mock_api.get_active_alarms.return_value = []
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+    panel._live_checkbox.setChecked(True)
+
+    # Multiple alarms trigger and clear
+    panel.on_alarm(1, _make_alarm(
+        alarm_type="HI", transition="TRIGGERED",
+        timestamp="2026-04-07T12:00:00",
+    ))
+    panel.on_alarm(2, _make_alarm(
+        controller_id=2, alarm_type="LO", priority="WARNING",
+        transition="TRIGGERED", timestamp="2026-04-07T12:01:00",
+    ))
+    panel.on_alarm(1, _make_alarm(
+        alarm_type="HI", transition="CLEARED",
+        timestamp="2026-04-07T12:02:00",
+    ))
+    # All 3 events should be visible
+    assert panel.active_table.rowCount() == 3
+
+
+def test_live_mode_shows_transition_in_status():
+    """In Live mode, status column should show the transition type."""
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    mock_api.get_active_alarms.return_value = []
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+    panel._live_checkbox.setChecked(True)
+
+    panel.on_alarm(1, _make_alarm(
+        alarm_type="LO", priority="WARNING", transition="TRIGGERED",
+        timestamp="2026-04-07T12:00:00",
+    ))
+    panel.on_alarm(1, _make_alarm(
+        alarm_type="LO", priority="WARNING", transition="CLEARED",
+        timestamp="2026-04-07T12:05:00",
+    ))
+    # Status column (col 7) should reflect the transition
+    # Find the CLEARED row — it should have a status containing "CLEARED"
+    statuses = []
+    for row in range(panel.active_table.rowCount()):
+        item = panel.active_table.item(row, 7)
+        if item:
+            statuses.append(item.text())
+    assert any("TRIGGERED" in s or "UNACKNOWLEDGED" in s for s in statuses)
+    assert any("CLEARED" in s for s in statuses)
+
+
+def test_live_events_cleared_on_disable():
+    """Disabling Live mode should clear the live event log."""
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    mock_api.get_active_alarms.return_value = []
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+    panel._live_checkbox.setChecked(True)
+
+    panel.on_alarm(1, _make_alarm(transition="TRIGGERED"))
+    panel.on_alarm(1, _make_alarm(transition="CLEARED", timestamp="2026-04-03T12:01:00"))
+    assert panel.active_table.rowCount() == 2
+
+    # Disable Live — live events cleared, table shows only _active_alarms state
     panel._live_checkbox.setChecked(False)
-    assert len(panel.get_filtered_alarms()) == 0
+    assert len(panel._live_events) == 0

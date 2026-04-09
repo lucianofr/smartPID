@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import deque
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
@@ -82,8 +83,24 @@ class AILogWidget(QWidget):
         gamma = action.get("gamma", 0.0)
         new_ki = action.get("new_ki", 0.0)
         reasoning = action.get("reasoning", "")
-        ts = action.get("timestamp", "")[:19]
+        ts = self._to_local_time(action.get("timestamp", ""))
         self._append(f"[{ts}] {engine} \u03b3={gamma:+.4f} Ki={new_ki:.4f} \u2014 {reasoning}")
+
+    @staticmethod
+    def _to_local_time(iso_str: str) -> str:
+        """Convert ISO timestamp (UTC) to local time string for display."""
+        if not iso_str:
+            return ""
+        try:
+            dt = datetime.fromisoformat(iso_str)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone()  # convert to local timezone
+            else:
+                # Assume UTC if no timezone info
+                dt = dt.replace(tzinfo=UTC).astimezone()
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            return iso_str[:19]
 
     def _append(self, text: str) -> None:
         self._entries.appendleft(text)
