@@ -94,7 +94,7 @@ class TestGetControllerData:
     def test_returns_all_top_level_keys(self, dialog):
         data = dialog.get_controller_data()
         expected_keys = {
-            "name", "description", "execution_mode", "scan_rate_ms",
+            "name", "description", "execution_mode", "scan_rate_s",
             "process_speed",
             "pid_structure", "integral_type", "mode_normal",
             "pid_params", "pv_scale", "out_scale",
@@ -180,7 +180,7 @@ class TestEditing:
     def test_scan_rate_change(self, dialog):
         idx = dialog._scan_rate.findData(500)
         dialog._scan_rate.setCurrentIndex(idx)
-        assert dialog.get_controller_data()["scan_rate_ms"] == 500
+        assert dialog.get_controller_data()["scan_rate_s"] == 0.5
 
     def test_checkbox_ff_enable(self, dialog):
         dialog._ff_enable.setChecked(True)

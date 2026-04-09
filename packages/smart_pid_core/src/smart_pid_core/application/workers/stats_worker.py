@@ -28,11 +28,10 @@ class StatsWorker:
     ) -> None:
         self._bus = bus
         self._controller = controller
-        window_size = (
-            controller.process_speed.stats_window_s * 1000
-            // controller.scan_rate_ms
+        window_size = int(
+            controller.process_speed.stats_window_s / controller.scan_rate_s
         )
-        self._publish_interval = max(1, 5000 // controller.scan_rate_ms)
+        self._publish_interval = max(1, int(5.0 / controller.scan_rate_s))
         self._calculator = StatsCalculator(
             window_size=window_size,
             span=controller.pv_scale.span,
@@ -92,7 +91,7 @@ class StatsWorker:
             f"ACTION.CTRL.{self.controller_id}".encode()
         )
         pub = self._bus.create_publisher()
-        scan_s = self._controller.scan_rate_ms / 1000.0
+        scan_s = self._controller.scan_rate_s
         time.sleep(0.02)
 
         while not self._stop_event.is_set():

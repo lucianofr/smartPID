@@ -37,11 +37,11 @@ class MonitorWorker:
         self,
         bus: EventBus,
         controller_id: int,
-        scan_rate_ms: int = 100,
+        scan_rate_s: float = 0.1,
     ) -> None:
         self._bus = bus
         self._cid = controller_id
-        self._scan_rate_s = scan_rate_ms / 1000.0
+        self._scan_rate_s = scan_rate_s
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 

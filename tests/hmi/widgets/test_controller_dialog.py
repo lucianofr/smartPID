@@ -9,7 +9,7 @@ EDIT_DATA: dict = {
     "name": "TIC-101",
     "description": "Temperature loop",
     "execution_mode": "SUPERVISORY",
-    "scan_rate_ms": 500,
+    "scan_rate_s": 0.5,
     "pid_structure": "PARALLEL",
     "integral_type": "GAIN_KI",
     "mode_normal": "MAN",
@@ -181,7 +181,7 @@ class TestGetControllerData:
     def test_returns_all_top_level_keys(self, dialog):
         data = dialog.get_controller_data()
         expected_keys = {
-            "name", "description", "execution_mode", "scan_rate_ms",
+            "name", "description", "execution_mode", "scan_rate_s",
             "process_speed",
             "pid_structure", "integral_type", "mode_normal",
             "permitted_modes",
@@ -267,7 +267,7 @@ class TestEditing:
     def test_scan_rate_change(self, dialog):
         idx = dialog._scan_rate.findData(500)
         dialog._scan_rate.setCurrentIndex(idx)
-        assert dialog.get_controller_data()["scan_rate_ms"] == 500
+        assert dialog.get_controller_data()["scan_rate_s"] == 0.5
 
     def test_checkbox_ff_enable(self, dialog):
         dialog._ff_enable.setChecked(True)
@@ -458,7 +458,7 @@ class TestEditMode:
         assert data["name"] == "TIC-101"
         assert data["description"] == "Temperature loop"
         assert data["execution_mode"] == "SUPERVISORY"
-        assert data["scan_rate_ms"] == 500
+        assert data["scan_rate_s"] == 0.5
         assert data["pid_structure"] == "PARALLEL"
         assert data["integral_type"] == "GAIN_KI"
         assert data["mode_normal"] == "MAN"

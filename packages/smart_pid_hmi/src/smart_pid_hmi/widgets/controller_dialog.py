@@ -197,12 +197,12 @@ class ControllerDialog(QDialog):
             "Typical: 0.1-1 s for flow/pressure, 1-5 s for temperature/level."
         )
         _SCAN_RATES = [
-            ("0.1 s", 100), ("0.5 s", 500), ("1 s", 1000), ("2 s", 2000),
-            ("5 s", 5000), ("10 s", 10000), ("15 s", 15000), ("20 s", 20000),
-            ("30 s", 30000), ("60 s", 60000),
+            ("0.1 s", 0.1), ("0.5 s", 0.5), ("1 s", 1.0), ("2 s", 2.0),
+            ("5 s", 5.0), ("10 s", 10.0), ("15 s", 15.0), ("20 s", 20.0),
+            ("30 s", 30.0), ("60 s", 60.0),
         ]
-        for label, ms in _SCAN_RATES:
-            self._scan_rate.addItem(label, ms)
+        for label, val in _SCAN_RATES:
+            self._scan_rate.addItem(label, val)
         self._scan_rate.setCurrentIndex(2)  # default 1s
         form.addRow("Scan Rate:", self._scan_rate)
 
@@ -749,8 +749,8 @@ class ControllerDialog(QDialog):
         self._name.setText(data.get("name", ""))
         self._description.setText(data.get("description", ""))
         self._set_combo(self._execution_mode, data.get("execution_mode"))
-        if "scan_rate_ms" in data:
-            idx = self._scan_rate.findData(data["scan_rate_ms"])
+        if "scan_rate_s" in data:
+            idx = self._scan_rate.findData(data["scan_rate_s"])
             if idx >= 0:
                 self._scan_rate.setCurrentIndex(idx)
         if "process_speed" in data:
@@ -910,7 +910,7 @@ class ControllerDialog(QDialog):
             "name": self._name.text().strip(),
             "description": self._description.text().strip(),
             "execution_mode": self._execution_mode.currentText(),
-            "scan_rate_ms": self._scan_rate.currentData(),
+            "scan_rate_s": self._scan_rate.currentData(),
             "process_speed": self._process_speed.currentData(),
             "pid_structure": self._pid_structure.currentText(),
             "integral_type": self._integral_type.currentText(),

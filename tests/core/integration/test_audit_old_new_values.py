@@ -15,7 +15,7 @@ async def test_update_controller_audit_captures_old_new(
     create_resp = await client.post("/controllers", json={
         "name": "FIC-100",
         "description": "test",
-        "scan_rate_ms": 1000,
+        "scan_rate_s": 1.0,
         "pid_params": {"gain": 1.5, "reset": 10.0, "rate": 0.0},
     }, headers=admin_headers)
     assert create_resp.status_code == 201

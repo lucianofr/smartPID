@@ -48,11 +48,11 @@ class TestSQLiteRepository:
     async def test_update_controller(self, repo) -> None:
         ctrl = Controller(id=0, name="TIC-101", description="Old")
         saved = await repo.save(ctrl)
-        saved_copy = Controller(id=saved.id, name="TIC-101", description="New", scan_rate_ms=500)
+        saved_copy = Controller(id=saved.id, name="TIC-101", description="New", scan_rate_s=0.5)
         await repo.save(saved_copy)
         loaded = await repo.get(saved.id)
         assert loaded.description == "New"
-        assert loaded.scan_rate_ms == 500
+        assert loaded.scan_rate_s == 0.5
 
     @pytest.mark.asyncio
     async def test_delete_controller(self, repo) -> None:

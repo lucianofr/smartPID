@@ -56,7 +56,7 @@ class LoopManager:
             monitor_worker = MonitorWorker(
                 bus=self._bus,
                 controller_id=controller.id,
-                scan_rate_ms=controller.scan_rate_ms,
+                scan_rate_s=controller.scan_rate_s,
             )
             ctx = LoopContext(
                 controller=controller,

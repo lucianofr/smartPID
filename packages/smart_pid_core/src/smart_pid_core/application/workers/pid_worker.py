@@ -208,7 +208,7 @@ class PIDWorker:
             f"SYS.RECONNECT.{self.controller_id}".encode(),
         )
         pub = self._bus.create_publisher()
-        scan_s = self._controller.scan_rate_ms / 1000.0
+        scan_s = self._controller.scan_rate_s
         time.sleep(0.02)
 
         while not self._stop_event.is_set():

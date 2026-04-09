@@ -94,7 +94,7 @@ class ControllerCreate(BaseModel):
     name: str
     description: str = ""
     execution_mode: str = "SUPERVISORY"
-    scan_rate_ms: int = 1000
+    scan_rate_s: float = 1.0
     process_speed: str = "MEDIUM"
 
     # Nested config groups
@@ -152,7 +152,7 @@ class ControllerUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     execution_mode: str | None = None
-    scan_rate_ms: int | None = None
+    scan_rate_s: float | None = None
     process_speed: str | None = None
 
     pid_params: PIDParamsDTO | None = None
@@ -206,7 +206,7 @@ class ControllerResponse(BaseModel):
     co: float
 
     execution_mode: str = "SUPERVISORY"
-    scan_rate_ms: int = 1000
+    scan_rate_s: float = 1.0
     process_speed: str = "MEDIUM"
 
     pid_params: PIDParamsDTO = PIDParamsDTO()

@@ -13,7 +13,7 @@ class TestLoopManager:
         bus.start()
         try:
             manager = LoopManager(bus=bus)
-            controller = Controller(id=1, name="TIC-101", scan_rate_ms=100)
+            controller = Controller(id=1, name="TIC-101", scan_rate_s=0.1)
             manager.start_loop(controller)
             time.sleep(0.1)
             assert manager.is_loop_running(1)
@@ -28,8 +28,8 @@ class TestLoopManager:
         bus.start()
         try:
             manager = LoopManager(bus=bus)
-            ctrl1 = Controller(id=1, name="TIC-101", scan_rate_ms=100)
-            ctrl2 = Controller(id=2, name="FIC-201", scan_rate_ms=100)
+            ctrl1 = Controller(id=1, name="TIC-101", scan_rate_s=0.1)
+            ctrl2 = Controller(id=2, name="FIC-201", scan_rate_s=0.1)
             manager.start_loop(ctrl1)
             manager.start_loop(ctrl2)
             time.sleep(0.1)
@@ -47,7 +47,7 @@ class TestLoopManager:
         bus.start()
         try:
             manager = LoopManager(bus=bus)
-            controller = Controller(id=1, name="TIC-101", scan_rate_ms=100)
+            controller = Controller(id=1, name="TIC-101", scan_rate_s=0.1)
             manager.start_loop(controller)
             manager.start_loop(controller)  # Should not raise or create duplicate
             time.sleep(0.1)

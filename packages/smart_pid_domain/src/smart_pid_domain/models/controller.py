@@ -134,7 +134,7 @@ class Controller:
     name: str = ""
     description: str = ""
     execution_mode: ExecutionMode = ExecutionMode.SUPERVISORY
-    scan_rate_ms: int = 1000
+    scan_rate_s: float = 1.0
     process_speed: ProcessSpeed = ProcessSpeed.MEDIUM
     process_type: ProcessType = ProcessType.SELF_REGULATING
     pid_params: PIDParams = field(default_factory=PIDParams)
