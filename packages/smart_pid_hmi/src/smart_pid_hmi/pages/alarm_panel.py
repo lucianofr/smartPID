@@ -453,6 +453,11 @@ class AlarmPanel(QWidget):
             self._live_events.clear()
         self._rebuild_table()
 
+    def showEvent(self, event) -> None:  # noqa: N802
+        """Rebuild table when navigating to this page."""
+        super().showEvent(event)
+        self._rebuild_table()
+
     def apply_theme(self, theme: ThemeBase) -> None:
         """Re-apply theme colors to dynamic elements."""
         self._theme = theme

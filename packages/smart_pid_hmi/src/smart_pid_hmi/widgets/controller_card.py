@@ -98,6 +98,18 @@ def _badge_stylesheet(bg: str, fg: str) -> str:
     )
 
 
+def _info_badge_style(theme: ThemeBase) -> str:
+    """Return QLabel stylesheet for an info badge (muted, subtle)."""
+    bg = _theme_attr(theme, "bg_card", "#2C2C2C")
+    fg = _theme_attr(theme, "fg_secondary", "#B0BEC5")
+    return (
+        f"background-color: {bg}; color: {fg};"
+        " font-size: 10px;"
+        " border-radius: 3px; padding: 1px 5px;"
+        f" border: 1px solid {_theme_attr(theme, 'border', '#3A3A3A')};"
+    )
+
+
 def _alarm_color(theme: ThemeBase, priority: str) -> str:
     """Return the theme color for a given alarm priority."""
     if priority == "CRITICAL":
@@ -249,13 +261,25 @@ class ControllerCardWidget(QFrame):
         badges_row.addStretch()
         content.addLayout(badges_row)
 
-        # ── TSS-derived info line ──
-        self._tss_info = QLabel("")
-        self._tss_info.setStyleSheet(
-            f"color: {theme.fg_muted}; background: transparent;"
-            f" font-size: {theme.font_size_label - 1}px;"
-        )
-        content.addWidget(self._tss_info)
+        # ── TSS-derived info badges row ──
+        tss_row = QHBoxLayout()
+        tss_row.setSpacing(4)
+        tss_row.setContentsMargins(0, 2, 0, 0)
+
+        self._badge_ai_period = QLabel("")
+        self._badge_ai_period.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._badge_ai_period.setFixedHeight(18)
+        self._badge_ai_period.setStyleSheet(_info_badge_style(theme))
+        tss_row.addWidget(self._badge_ai_period)
+
+        self._badge_stats_win = QLabel("")
+        self._badge_stats_win.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._badge_stats_win.setFixedHeight(18)
+        self._badge_stats_win.setStyleSheet(_info_badge_style(theme))
+        tss_row.addWidget(self._badge_stats_win)
+
+        tss_row.addStretch()
+        content.addLayout(tss_row)
 
         root.addLayout(content)
 
@@ -341,12 +365,11 @@ class ControllerCardWidget(QFrame):
     # ── Data updates ─────────────────────────────────────────────
 
     def set_tss_info(self, tss_s: float) -> None:
-        """Update the TSS-derived info line on the card."""
+        """Update the TSS-derived info badges on the card."""
         ai_period = 3.0 * tss_s
         stats_win = 5.0 * tss_s
-        self._tss_info.setText(
-            f"AI: {self._fmt_dur(ai_period)} | Stats: {self._fmt_dur(stats_win)}"
-        )
+        self._badge_ai_period.setText(f"AI {self._fmt_dur(ai_period)}")
+        self._badge_stats_win.setText(f"Stats {self._fmt_dur(stats_win)}")
 
     @staticmethod
     def _fmt_dur(seconds: float) -> str:
