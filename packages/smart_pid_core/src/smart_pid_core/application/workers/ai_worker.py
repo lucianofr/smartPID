@@ -48,6 +48,7 @@ class AIWorker:
         self._execution_mode = controller.execution_mode.value  # "SUPERVISORY" or "DDC"
         self._ki_current = controller.pid_params.reset  # initial from config
         self._ki_from_opcua: float | None = None  # latest Ti/Ki from OPC-UA telemetry
+        self._ki_from_opcua_prev: float | None = None  # previous OPC-UA read (change detection)
         self._last_pv: float = 0.0
         self._last_sp: float = 0.0
         self._last_co: float = 0.0
@@ -163,9 +164,15 @@ class AIWorker:
                     )
                     continue
 
-                # Sync ki_current from latest OPC-UA telemetry read
-                if self._ki_from_opcua is not None:
+                # Sync ki_current from OPC-UA only when the DCS value changed
+                # externally (manual tuning or DCS clamping).  Re-reading the
+                # same stale value must NOT revert an AI-computed Ki.
+                if (
+                    self._ki_from_opcua is not None
+                    and self._ki_from_opcua != self._ki_from_opcua_prev
+                ):
                     self._ki_current = self._ki_from_opcua
+                self._ki_from_opcua_prev = self._ki_from_opcua
 
                 error = self._last_sp - self._last_pv
                 delta_error = error - self._prev_error
