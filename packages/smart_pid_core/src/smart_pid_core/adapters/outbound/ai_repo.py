@@ -4,6 +4,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 
 
@@ -116,3 +118,31 @@ class AIRepository:
             }
             for r in rows
         ]
+
+    async def get_tuning_history_range(
+        self,
+        start: datetime,
+        end: datetime,
+        controller_id: int | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        """Return AI tuning log entries in a time range (all controllers)."""
+        sql = (
+            "SELECT a.id, a.controlador_id as controller_id, "
+            "c.nome as controller_name, "
+            "a.timestamp, a.motor as engine, "
+            "a.ki_antes as ki_before, a.ki_depois as ki_after, "
+            "a.objetivo as objective, a.metrica as metric "
+            "FROM Log_Sintonia_IA a "
+            "LEFT JOIN Controladores c ON c.id = a.controlador_id "
+            "WHERE a.timestamp BETWEEN ? AND ?"
+        )
+        params: list = [start.isoformat(), end.isoformat()]
+        if controller_id is not None:
+            sql += " AND a.controlador_id = ?"
+            params.append(controller_id)
+        sql += " ORDER BY a.timestamp DESC LIMIT ?"
+        params.append(limit)
+        async with self._db.execute(sql, params) as cur:
+            rows = await cur.fetchall()
+        return [dict(r) for r in rows]

@@ -7,10 +7,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
+    get_ai_repo,
     get_alarm_repo,
     get_audit_repo,
     require_operator,
 )
+from smart_pid_core.adapters.outbound.ai_repo import AIRepository  # noqa: TC001
 from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository  # noqa: TC001
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository  # noqa: TC001
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
@@ -49,6 +51,23 @@ async def get_alarm_history(
         controller_id=controller_id,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get("/ai-history")
+async def get_ai_log_history(
+    _user: Annotated[UserClaims, Depends(require_operator)],
+    ai_repo: Annotated[AIRepository, Depends(get_ai_repo)],
+    start: str = Query(...),
+    end: str = Query(...),
+    controller_id: int | None = None,
+) -> list[dict]:
+    from datetime import datetime as dt
+
+    start_dt = dt.fromisoformat(start)
+    end_dt = dt.fromisoformat(end)
+    return await ai_repo.get_tuning_history_range(
+        start=start_dt, end=end_dt, controller_id=controller_id,
     )
 
 

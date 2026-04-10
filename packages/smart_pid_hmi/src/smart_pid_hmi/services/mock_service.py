@@ -211,6 +211,11 @@ class MockAPIClient:
     ) -> list[dict]:
         return []
 
+    def get_ai_history(
+        self, start: datetime, end: datetime, controller_id: int | None = None,
+    ) -> list[dict]:
+        return []
+
     def get_system_events(
         self, start: datetime, end: datetime,
         source: str | None = None, severity: str | None = None,
