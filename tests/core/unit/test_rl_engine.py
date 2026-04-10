@@ -555,3 +555,60 @@ class TestAllObjectives:
         assert -1.0 <= decision.gamma <= 1.0
         assert 0.1 <= decision.new_ki <= 100.0
         assert len(decision.reasoning) > 0
+
+
+class TestFallbackOscillationDetector:
+    """Fallback policy must detect oscillation and back off integral action."""
+
+    def test_oscillating_error_produces_negative_gamma(self):
+        """When error sign flips rapidly, gamma should be negative (back off)."""
+        from smart_pid_core.domain.services.rl_engine import _FallbackPolicy
+
+        fp = _FallbackPolicy()
+        # Feed alternating positive/negative errors to trigger oscillation
+        errors = [0.3, -0.3, 0.3, -0.3, 0.3, -0.3, 0.3, -0.3,
+                  0.3, -0.3, 0.3, -0.3, 0.3, -0.3]
+        prev = 0.0
+        last_gamma = 0.0
+        for err in errors:
+            de = err - prev
+            last_gamma = fp.predict([err, de, 0.0, 0.0])
+            prev = err
+        # After many sign reversals, gamma should be negative (damping)
+        assert last_gamma < 0.0
+
+    def test_steady_error_no_oscillation(self):
+        """With steady error (no oscillation), normal P+D policy applies."""
+        from smart_pid_core.domain.services.rl_engine import _FallbackPolicy
+
+        fp = _FallbackPolicy()
+        # Feed constant positive error — no sign changes
+        for _ in range(20):
+            gamma = fp.predict([0.2, 0.0, 0.0, 0.0])
+        # Positive error → positive gamma (normal behavior)
+        assert gamma > 0.0
+
+    def test_oscillation_increases_ti_for_time_ti(self):
+        """In TIME_TI mode, oscillation detection should cause Ti to increase."""
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        engine = RLEngine()
+        ti = 1.0  # Start low (unstable)
+        # Oscillating errors
+        errors = [0.3, -0.3] * 20
+        prev_err = 0.0
+        for err in errors:
+            de = err - prev_err
+            decision = engine.compute_gamma(
+                error=err * 100, delta_error=de * 100,
+                ki_current=ti, span=100.0,
+                co=50.0, integral_val=0.0,
+                objective=ControlObjective.SP_TRACKING,
+                speed=ProcessSpeed.MEDIUM,
+                limit_min=0.1, limit_max=100.0,
+                integral_type="TIME_TI",
+            )
+            ti = decision.new_ki
+            prev_err = err
+        # Ti should have increased significantly from 1.0
+        assert ti > 5.0, f"Ti={ti} should have increased from 1.0 with oscillation"
