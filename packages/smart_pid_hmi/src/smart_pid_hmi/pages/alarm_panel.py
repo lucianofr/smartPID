@@ -197,7 +197,7 @@ class AlarmPanel(QWidget):
         self._ai_events.append(event)
         if len(self._ai_events) > 500:
             self._ai_events = self._ai_events[-500:]
-        self._rebuild_table()
+        self._dirty = True
 
     def on_system_event(self, message: str, priority: str = "LOG") -> None:
         """Add a system event (e.g. login, config change). Level not applicable."""
@@ -216,7 +216,7 @@ class AlarmPanel(QWidget):
         self._system_events.append(event)
         if len(self._system_events) > 500:
             self._system_events = self._system_events[-500:]
-        self._rebuild_table()
+        self._dirty = True
 
     def load_active_alarms(self) -> None:
         """Fetch currently active alarms from backend and populate table."""
@@ -275,8 +275,6 @@ class AlarmPanel(QWidget):
                 self._live_events = self._live_events[-2000:]
 
         self._dirty = True
-        self._rebuild_table()
-        self._dirty = False
 
     def on_all_acked(self) -> None:
         """Mark all active alarms as ACKNOWLEDGED (called after ACK All response)."""
@@ -391,6 +389,9 @@ class AlarmPanel(QWidget):
                 alarms = self.get_filtered_alarms(skip_date=True)
             else:
                 alarms = self._get_all_events()
+
+        # Sort by timestamp descending (newest first)
+        alarms.sort(key=lambda a: a.get("timestamp", ""), reverse=True)
 
         colors = _priority_colors(self._theme)
 

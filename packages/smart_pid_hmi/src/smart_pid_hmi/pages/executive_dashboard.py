@@ -294,18 +294,17 @@ class _ControllerCard(QFrame):
         sep.setFixedHeight(1)
         root.addWidget(sep)
 
-        # --- Config row 1 (Objective, Process Speed, Scan Rate) ---
+        # --- Config row 1 (Objective, TSS, Scan Rate) ---
         cfg_row = QHBoxLayout()
         cfg_row.setSpacing(8)
         self._objective_value = self._make_tile("Objective", cfg_row)
-        self._speed_value = self._make_tile("Process Speed", cfg_row)
+        self._tss_value = self._make_tile("TSS", cfg_row)
         self._scan_rate_value = self._make_tile("Scan Rate", cfg_row)
         root.addLayout(cfg_row)
 
-        # --- Config row 2 (TSS, AI Period, Stats Window) ---
+        # --- Config row 2 (AI Period, Stats Window) ---
         cfg_row2 = QHBoxLayout()
         cfg_row2.setSpacing(8)
-        self._tss_value = self._make_tile("TSS", cfg_row2)
         self._ai_period_value = self._make_tile("AI Period", cfg_row2)
         self._stats_window_value = self._make_tile("Stats Window", cfg_row2)
         root.addLayout(cfg_row2)
@@ -392,7 +391,6 @@ class _ControllerCard(QFrame):
             self._led.setStyleSheet("color: #888888; font-size: 12px;")
 
         # Config section
-        speed = str(data.get("process_speed", _PLACEHOLDER))
         scan_rate = data.get("scan_rate_s")
 
         if engine == "NONE":
@@ -400,7 +398,6 @@ class _ControllerCard(QFrame):
         else:
             self._objective_value.setText(objective)
 
-        self._speed_value.setText(speed)
         self._scan_rate_value.setText(
             f"{scan_rate:.1f} s" if scan_rate is not None else _PLACEHOLDER
         )

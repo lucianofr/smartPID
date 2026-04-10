@@ -17,6 +17,11 @@ from smart_pid_hmi.themes.isa101 import ISA101Theme
 app = QApplication.instance() or QApplication([])
 
 
+def _flush(panel: AlarmPanel) -> None:
+    """Simulate timer tick to flush deferred table rebuilds."""
+    panel._on_refresh_tick()
+
+
 def _make_alarm(
     controller_id: int = 1,
     alarm_type: str = "HI",
@@ -51,6 +56,7 @@ def test_alarm_panel_add_active_alarm():
     theme = ISA101Theme()
     panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel.on_alarm(1, _make_alarm(alarm_type="HIHI"))
+    _flush(panel)
     assert panel.active_table.rowCount() == 1
 
 
@@ -62,6 +68,7 @@ def test_alarm_panel_clear_removes_from_active():
         alarm_type="HIHI", value=85.0, transition="CLEARED",
         timestamp="2026-04-03T12:01:00",
     ))
+    _flush(panel)
     # Cleared but not ACK'd — still in active table with CLEARED_UNACK status
     assert panel.active_table.rowCount() == 1
 
@@ -74,6 +81,7 @@ def test_alarm_has_category_column():
     theme = ISA101Theme()
     panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel.on_alarm(1, _make_alarm(alarm_type="HI"))
+    _flush(panel)
     # Category is column 1
     item = panel.active_table.item(0, 1)
     assert item is not None
@@ -84,6 +92,7 @@ def test_ai_event_has_category():
     theme = ISA101Theme()
     panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel.on_ai_event(1, "Ki adjusted +5%")
+    _flush(panel)
     item = panel.active_table.item(0, 1)
     assert item is not None
     assert item.text() == CATEGORY_AI
@@ -231,6 +240,7 @@ def test_ai_event_appears_in_table():
     theme = ISA101Theme()
     panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel.on_ai_event(1, "Ki adjusted +5% via fuzzy")
+    _flush(panel)
     assert panel.active_table.rowCount() == 1
     # Category column (col 1) should be AI Log
     assert panel.active_table.item(0, 1).text() == CATEGORY_AI
@@ -253,6 +263,7 @@ def test_system_event_appears_in_table():
     theme = ISA101Theme()
     panel = AlarmPanel(theme=theme, api_client=MagicMock())
     panel.on_system_event("User admin logged in")
+    _flush(panel)
     assert panel.active_table.rowCount() == 1
     assert panel.active_table.item(0, 1).text() == CATEGORY_SYSTEM
 
@@ -332,6 +343,7 @@ def test_alarm_panel_ack_uses_id_field():
         "timestamp": "2026-04-07T12:00:00",
         "id": 42,
     })
+    _flush(panel)
 
     item = panel.active_table.item(0, 0)
     assert item is not None
@@ -415,6 +427,7 @@ def test_alarm_panel_live_skips_date_filter():
     # Enable Live first, then add alarm (simulating real-time event arrival)
     panel._live_checkbox.setChecked(True)
     panel.on_alarm(1, _make_alarm(alarm_type="HI"))
+    _flush(panel)
     # In Live mode, date filter is skipped — alarm should be visible
     assert panel.active_table.rowCount() >= 1
 
@@ -440,6 +453,7 @@ def test_live_mode_shows_rolling_history():
         alarm_type="LO", priority="WARNING", transition="CLEARED",
         timestamp="2026-04-07T12:05:00",
     ))
+    _flush(panel)
     # Both TRIGGERED and CLEARED should be visible as separate rows
     assert panel.active_table.rowCount() == 2
 
@@ -465,6 +479,7 @@ def test_live_mode_accumulates_events():
         alarm_type="HI", transition="CLEARED",
         timestamp="2026-04-07T12:02:00",
     ))
+    _flush(panel)
     # All 3 events should be visible
     assert panel.active_table.rowCount() == 3
 
@@ -485,6 +500,7 @@ def test_live_mode_shows_transition_in_status():
         alarm_type="LO", priority="WARNING", transition="CLEARED",
         timestamp="2026-04-07T12:05:00",
     ))
+    _flush(panel)
     # Status column (col 7) should reflect the transition
     # Find the CLEARED row — it should have a status containing "CLEARED"
     statuses = []
@@ -506,6 +522,7 @@ def test_live_events_cleared_on_disable():
 
     panel.on_alarm(1, _make_alarm(transition="TRIGGERED"))
     panel.on_alarm(1, _make_alarm(transition="CLEARED", timestamp="2026-04-03T12:01:00"))
+    _flush(panel)
     assert panel.active_table.rowCount() == 2
 
     # Disable Live — live events cleared, table shows only _active_alarms state
