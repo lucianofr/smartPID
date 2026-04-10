@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timezone
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QDateTime, Qt
+from PySide6.QtCore import QDateTime, Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -95,6 +95,11 @@ class AlarmPanel(QWidget):
         # AI log events and system events (kept separately)
         self._ai_events: list[dict] = []
         self._system_events: list[dict] = []
+        # Dirty flag + timer for deferred table rebuild (avoids flood)
+        self._dirty = False
+        self._refresh_timer = QTimer(self)
+        self._refresh_timer.setInterval(1000)
+        self._refresh_timer.timeout.connect(self._on_refresh_tick)
 
         layout = QVBoxLayout(self)
 
@@ -269,7 +274,9 @@ class AlarmPanel(QWidget):
             if len(self._live_events) > 2000:
                 self._live_events = self._live_events[-2000:]
 
+        self._dirty = True
         self._rebuild_table()
+        self._dirty = False
 
     def on_all_acked(self) -> None:
         """Mark all active alarms as ACKNOWLEDGED (called after ACK All response)."""
@@ -473,6 +480,19 @@ class AlarmPanel(QWidget):
         """Rebuild table when navigating to this page."""
         super().showEvent(event)
         self._rebuild_table()
+        self._dirty = False
+        self._refresh_timer.start()
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        """Stop refresh timer when leaving the page."""
+        super().hideEvent(event)
+        self._refresh_timer.stop()
+
+    def _on_refresh_tick(self) -> None:
+        """Periodic refresh — catches any missed updates."""
+        if self._dirty:
+            self._rebuild_table()
+            self._dirty = False
 
     def apply_theme(self, theme: ThemeBase) -> None:
         """Re-apply theme colors to dynamic elements."""
