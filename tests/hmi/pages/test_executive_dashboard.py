@@ -140,12 +140,12 @@ def test_controller_card_shows_ai_info_fuzzy(qtbot):
     qtbot.addWidget(card)
     card.update_data(_make_controller_data(
         ai_config={"engine": "FUZZY", "objective": "SP_TRACKING"},
-        process_speed="MEDIUM",
         scan_rate_s=0.5,
+        tss_s=40.0,
     ))
     assert card._engine_badge.text() == "FUZZY"
     assert card._objective_value.text() == "SP_TRACKING"
-    assert card._speed_value.text() == "MEDIUM"
+    assert card._tss_value.text() == "40 s"
     assert card._scan_rate_value.text() == "0.5 s"
 
 
