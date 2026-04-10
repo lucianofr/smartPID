@@ -191,6 +191,7 @@ class _FallbackPolicy:
     _OSCILLATION_WINDOW = 12   # sign-changes counted over this many steps
     _OSCILLATION_THRESHOLD = 3  # ≥3 reversals in 12 steps → oscillating
     _DAMPING_GAIN = 1.5         # scales amplitude into gamma
+    _MIN_OSC_AMPLITUDE = 0.05   # ignore oscillation below 5% of span (noise/settling)
 
     def __init__(self, kp: float = 0.6, kd: float = 0.2) -> None:
         self._kp = kp
@@ -230,14 +231,14 @@ class _FallbackPolicy:
         self._error_signs.append(cur_sign)
         self._recent_errors.append(error)
 
-        # Oscillation detection: many sign reversals → back off
+        # Oscillation detection: many sign reversals with significant amplitude
         reversals = self._sign_changes()
-        if reversals >= self._OSCILLATION_THRESHOLD:
+        amp = self._amplitude()
+        if reversals >= self._OSCILLATION_THRESHOLD and amp >= self._MIN_OSC_AMPLITUDE:
             # Damping proportional to error amplitude:
             #   Large oscillation (amp ~0.3) → strong damping (~0.45)
-            #   Small oscillation (amp ~0.02) → weak damping (~0.03)
-            # This lets Ti converge instead of overshooting to limit_max.
-            amp = self._amplitude()
+            #   Moderate oscillation (amp ~0.1) → moderate damping (~0.15)
+            # Below _MIN_OSC_AMPLITUDE the P+D policy handles fine-tuning.
             damping = min(0.8, self._DAMPING_GAIN * amp)
             self._integral = 0.0  # reset accumulated bias
             return -damping
