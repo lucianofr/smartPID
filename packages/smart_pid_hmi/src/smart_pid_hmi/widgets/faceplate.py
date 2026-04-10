@@ -277,25 +277,26 @@ class FaceplateWidget(QFrame):
         info_row.addStretch()
         layout.addLayout(info_row)
 
-        # Stats as vertical list (label: value per row)
-        stats_form = QFormLayout()
-        stats_form.setSpacing(1)
-        stats_form.setContentsMargins(0, 2, 0, 0)
+        # Stats as 4x4 tile grid (label on top, value below, centered)
+        stats_grid = QGridLayout()
+        stats_grid.setSpacing(4)
+        stats_grid.setContentsMargins(0, 4, 0, 0)
 
         self._stat_labels: dict[str, QLabel] = {}
-        stat_val_css = self._stat_val_css(theme)
-        stat_lbl_css = self._stat_lbl_css(theme)
-        for name in ("IAE", "ITAE", "ISE", "MSE", "StdDev", "TV",
-                      "2\u03c3/Rng", "2\u03c3/SP"):
-            lbl = QLabel(name)
-            lbl.setStyleSheet(stat_lbl_css)
-            val = QLabel("\u2014")
-            val.setStyleSheet(stat_val_css)
-            val.setAlignment(Qt.AlignmentFlag.AlignRight)
-            stats_form.addRow(lbl, val)
-            self._stat_labels[name] = val
+        tile_css = self._stat_tile_css(theme)
+        metrics = [
+            ("IAE", 0, 0), ("ITAE", 0, 1), ("ISE", 0, 2), ("MSE", 0, 3),
+            ("StdDev", 1, 0), ("TV", 1, 1),
+            ("2\u03c3/Rng", 1, 2), ("2\u03c3/SP", 1, 3),
+        ]
+        for name, row, col in metrics:
+            tile = QLabel(f"{name}\n\u2014")
+            tile.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            tile.setStyleSheet(tile_css)
+            stats_grid.addWidget(tile, row, col)
+            self._stat_labels[name] = tile
 
-        layout.addLayout(stats_form)
+        layout.addLayout(stats_grid)
         layout.addStretch()
 
     def _apply_ai_engine_badge(self, theme: ThemeBase) -> None:
@@ -402,9 +403,9 @@ class FaceplateWidget(QFrame):
         self._apply_input_style(self._kp_input, theme)
         self._apply_input_style(self._ti_input, theme)
         self._apply_input_style(self._td_input, theme)
-        stat_val_css = self._stat_val_css(theme)
-        for lbl in self._stat_labels.values():
-            lbl.setStyleSheet(stat_val_css)
+        tile_css = self._stat_tile_css(theme)
+        for tile in self._stat_labels.values():
+            tile.setStyleSheet(tile_css)
         self._perf_title.setStyleSheet(
             f"color: {theme.fg_secondary}; background: transparent;"
             f" font-size: {theme.font_size_label}px; font-weight: bold;"
@@ -598,18 +599,12 @@ class FaceplateWidget(QFrame):
         return f"{seconds / 3600:.1f}h"
 
     @staticmethod
-    def _stat_lbl_css(theme: ThemeBase) -> str:
+    def _stat_tile_css(theme: ThemeBase) -> str:
         return (
-            f"color: {theme.fg_secondary}; background: transparent;"
-            f" font-size: {theme.font_size_label}px;"
-        )
-
-    @staticmethod
-    def _stat_val_css(theme: ThemeBase) -> str:
-        return (
-            f"color: {theme.fg_primary}; background: transparent;"
-            f" font-size: {theme.font_size_label}px;"
-            f" font-family: 'Fira Code', monospace;"
+            f"color: {theme.fg_primary}; background: {theme.bg_card};"
+            f" font-size: {theme.font_size_normal}px;"
+            f" border: 1px solid {theme.border}; border-radius: 4px;"
+            f" padding: 3px 2px;"
         )
 
     def update_stats(self, stats: dict) -> None:
@@ -625,16 +620,16 @@ class FaceplateWidget(QFrame):
             "2\u03c3/Rng": "variability_range",
             "2\u03c3/SP": "variability_sp",
         }
-        for label_name, val_label in self._stat_labels.items():
+        for label_name, tile in self._stat_labels.items():
             key = key_map.get(label_name, label_name.lower())
             val = stats.get(key)
             if val is not None:
                 if label_name in ("2\u03c3/Rng", "2\u03c3/SP"):
-                    val_label.setText(f"{val * 100:.1f}%")
+                    tile.setText(f"{label_name}\n{val * 100:.1f}%")
                 else:
-                    val_label.setText(f"{val:.1f}")
+                    tile.setText(f"{label_name}\n{val:.1f}")
             else:
-                val_label.setText("\u2014")
+                tile.setText(f"{label_name}\n\u2014")
 
     def _apply_optimizer_style(self, theme: ThemeBase) -> None:
         """Style optimizer buttons — highlight active state."""

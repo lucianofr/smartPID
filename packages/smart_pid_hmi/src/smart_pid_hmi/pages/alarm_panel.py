@@ -1,7 +1,7 @@
 """AlarmPanel — alarm & event management page with active alarms table and ACK."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime, timezone
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QDateTime, Qt
@@ -24,6 +24,18 @@ from smart_pid_hmi.widgets.checkable_combo import CheckableComboBox
 if TYPE_CHECKING:
     from smart_pid_hmi.services.ports import APIClientPort
     from smart_pid_hmi.themes.base import ThemeBase
+
+def _utc_to_local_str(ts_str: str) -> str:
+    """Convert an ISO timestamp (assumed UTC) to local time display string."""
+    try:
+        dt = datetime.fromisoformat(ts_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        local_dt = dt.astimezone()
+        return local_dt.strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return ts_str[:19].replace("T", " ") if ts_str else ""
+
 
 _ACTIVE_COLUMNS = [
     "Controller", "Category", "Level", "Priority", "Value",
@@ -329,7 +341,11 @@ class AlarmPanel(QWidget):
                 if ts_str:
                     try:
                         ts = datetime.fromisoformat(ts_str)
-                        if ts < dt_from or ts > dt_to:
+                        if ts.tzinfo is None:
+                            ts = ts.replace(tzinfo=UTC)
+                        # Convert to local for comparison with UI date pickers
+                        ts_local = ts.astimezone().replace(tzinfo=None)
+                        if ts_local < dt_from or ts_local > dt_to:
                             continue
                     except (ValueError, TypeError):
                         pass
@@ -386,7 +402,7 @@ class AlarmPanel(QWidget):
             display_pri = "\u2014" if category == CATEGORY_AI else pri
             ctrl_display = alarm.get("controller_name") or str(alarm.get("controller_id", ""))
             raw_ts = alarm.get("timestamp", "")
-            display_ts = raw_ts[:19].replace("T", " ") if raw_ts else ""
+            display_ts = _utc_to_local_str(raw_ts) if raw_ts else ""
             items = [
                 ctrl_display,
                 category,

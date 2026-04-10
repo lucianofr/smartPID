@@ -1,6 +1,7 @@
 """AlarmBarWidget — QTableWidget grid showing active alarms (spec section 8.1)."""
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -24,6 +25,17 @@ _BAR_HEIGHT = 150
 _COLUMNS = ["Priority", "Level", "Loop", "Description", "Date/Time", "ACK"]
 
 _PRIORITY_RANK = {"CRITICAL": 0, "WARNING": 1, "ADVISORY": 2}
+def _utc_to_local(ts_str: str) -> str:
+    """Convert ISO UTC timestamp to local time string."""
+    try:
+        dt = datetime.fromisoformat(ts_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return ts_str[:19].replace("T", " ") if ts_str else ""
+
+
 _PRIORITY_COLORS = {
     "CRITICAL": "#D32F2F",
     "WARNING": "#FBC02D",
@@ -185,7 +197,7 @@ class AlarmBarWidget(QFrame):
                 alarm.get("alarm_type", ""),
                 alarm.get("controller_name", "?"),
                 alarm.get("controller_description", ""),
-                (alarm.get("timestamp", "")[:19].replace("T", " ")),
+                _utc_to_local(alarm.get("timestamp", "")),
                 "\u2713" if acked else "ACK",
             ]
             color = _PRIORITY_COLORS.get(priority, "#757575")
