@@ -414,6 +414,12 @@ class APIClient:
     def get_alarm_history(
         self, start: datetime, end: datetime, controller_id: int | None = None,
     ) -> list[dict]:
+        # Convert local datetimes to UTC for DB query (timestamps stored as UTC)
+        from datetime import timezone as tz
+        if start.tzinfo is None:
+            start = start.astimezone(tz.utc)
+        if end.tzinfo is None:
+            end = end.astimezone(tz.utc)
         params: dict = {"start": start.isoformat(), "end": end.isoformat()}
         if controller_id is not None:
             params["controller_id"] = controller_id
@@ -425,6 +431,11 @@ class APIClient:
         self, start: datetime, end: datetime,
         source: str | None = None, severity: str | None = None,
     ) -> list[dict]:
+        from datetime import timezone as tz
+        if start.tzinfo is None:
+            start = start.astimezone(tz.utc)
+        if end.tzinfo is None:
+            end = end.astimezone(tz.utc)
         params: dict = {"start": start.isoformat(), "end": end.isoformat()}
         if source is not None:
             params["source"] = source
