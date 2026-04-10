@@ -174,32 +174,65 @@ def compute_reward_surge_level(
 
 
 class _FallbackPolicy:
-    """Proportional-derivative policy used when sb3 is not available.
+    """Proportional-derivative policy with oscillation detection.
 
-    Maps observation to gamma using a nonlinear P+D strategy with
-    integral memory for persistent offset correction:
+    Maps observation to gamma using a P+D strategy with integral memory
+    and a sign-change counter that detects oscillation.  When the error
+    sign flips rapidly the process is over-tuned (Ti too low / Ki too
+    high), so the policy outputs a NEGATIVE gamma to back off the
+    integral action and let the process stabilise.
 
-      gamma_pd = Kp × error + Kd × delta_error
-      gamma_i  += Ki_acc × error          (accumulated offset driver)
-      gamma    = gamma_pd + gamma_i
-
-    The nonlinear gain (sqrt scaling) makes the policy more aggressive
-    for larger errors while remaining smooth near zero.
+      gamma_pd  = Kp × error + Kd × delta_error
+      gamma_i  += Ki_acc × error            (offset driver)
+      gamma     = gamma_pd + gamma_i        (normal)
+      gamma     = −damping                  (if oscillating)
     """
+
+    _OSCILLATION_WINDOW = 12   # sign-changes counted over this many steps
+    _OSCILLATION_THRESHOLD = 3  # ≥3 reversals in 12 steps → oscillating
 
     def __init__(self, kp: float = 1.2, kd: float = 0.3) -> None:
         self._kp = kp
         self._kd = kd
-        self._ki_acc = 0.15  # integral accumulation rate
-        self._integral = 0.0  # accumulated offset correction
-        self._integral_limit = 0.6  # anti-windup clamp
+        self._ki_acc = 0.15
+        self._integral = 0.0
+        self._integral_limit = 0.6
+        # Oscillation detector
+        self._error_signs: deque[int] = deque(maxlen=self._OSCILLATION_WINDOW)
+        self._prev_sign: int = 0
+
+    def _sign_changes(self) -> int:
+        """Count error-sign reversals in the sliding window."""
+        changes = 0
+        prev = 0
+        for s in self._error_signs:
+            if prev != 0 and s != 0 and s != prev:
+                changes += 1
+            if s != 0:
+                prev = s
+        return changes
 
     def predict(self, observation: list[float]) -> float:
         """Return gamma in [-1, 1] based on error and delta_error."""
         error = observation[0]  # Normalized error
         delta_error = observation[1]  # Normalized delta error
 
-        # Nonlinear gain: sqrt scaling for stronger response to large errors
+        # Track error sign for oscillation detection
+        cur_sign = 1 if error > 0.005 else (-1 if error < -0.005 else 0)
+        self._error_signs.append(cur_sign)
+
+        # Oscillation detection: many sign reversals → back off
+        reversals = self._sign_changes()
+        if reversals >= self._OSCILLATION_THRESHOLD:
+            # Negative gamma means "reduce integral action":
+            #   For Ki: new_ki = ki * (1 + gamma * Sv) → lower Ki
+            #   For Ti: effective_gamma = -gamma → positive → higher Ti
+            # Both slow down the integral, stabilising the loop.
+            damping = min(0.8, 0.15 * reversals)
+            self._integral = 0.0  # reset accumulated bias
+            return -damping
+
+        # Normal P+D policy
         sign = 1.0 if error >= 0 else -1.0
         error_nl = sign * math.sqrt(abs(error))
 
@@ -209,7 +242,6 @@ class _FallbackPolicy:
         self._integral += self._ki_acc * error
         self._integral = max(-self._integral_limit,
                              min(self._integral_limit, self._integral))
-        # Decay integral when error is very small (prevent overshoot)
         if abs(error) < 0.01:
             self._integral *= 0.9
 
@@ -217,8 +249,10 @@ class _FallbackPolicy:
         return max(-1.0, min(1.0, gamma))
 
     def reset(self) -> None:
-        """Reset integral accumulator."""
+        """Reset integral accumulator and oscillation history."""
         self._integral = 0.0
+        self._error_signs.clear()
+        self._prev_sign = 0
 
 
 class RLEngine:
