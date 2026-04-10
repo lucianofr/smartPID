@@ -427,6 +427,21 @@ class APIClient:
         resp.raise_for_status()
         return resp.json()
 
+    def get_ai_history(
+        self, start: datetime, end: datetime, controller_id: int | None = None,
+    ) -> list[dict]:
+        from datetime import timezone as tz
+        if start.tzinfo is None:
+            start = start.astimezone(tz.utc)
+        if end.tzinfo is None:
+            end = end.astimezone(tz.utc)
+        params: dict = {"start": start.isoformat(), "end": end.isoformat()}
+        if controller_id is not None:
+            params["controller_id"] = controller_id
+        resp = self._http.get("/alarms/ai-history", params=params, headers=self._headers())
+        resp.raise_for_status()
+        return resp.json()
+
     def get_system_events(
         self, start: datetime, end: datetime,
         source: str | None = None, severity: str | None = None,

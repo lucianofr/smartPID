@@ -124,7 +124,12 @@ class AlarmRepository:
                         a.limite as "limit",
                         a.timestamp, a.cleared_at,
                         a.reconhecido as acknowledged,
-                        a.reconhecido_por as ack_by_user, a.reconhecido_em as ack_at
+                        a.reconhecido_por as ack_by_user, a.reconhecido_em as ack_at,
+                        CASE
+                            WHEN a.reconhecido = 1 THEN 'ACKNOWLEDGED'
+                            WHEN a.cleared_at IS NOT NULL THEN 'CLEARED_UNACK'
+                            ELSE 'UNACKNOWLEDGED'
+                        END as status
                  FROM Log_Alarmes a
                  LEFT JOIN Controladores c ON c.id = a.controlador_id
                  WHERE NOT (a.cleared_at IS NOT NULL AND a.reconhecido = 1)"""
@@ -199,7 +204,12 @@ class AlarmRepository:
                         a.limite as "limit",
                         a.timestamp, a.cleared_at,
                         a.reconhecido as acknowledged,
-                        a.reconhecido_por as ack_by_user, a.reconhecido_em as ack_at
+                        a.reconhecido_por as ack_by_user, a.reconhecido_em as ack_at,
+                        CASE
+                            WHEN a.reconhecido = 1 THEN 'ACKNOWLEDGED'
+                            WHEN a.cleared_at IS NOT NULL THEN 'CLEARED_UNACK'
+                            ELSE 'UNACKNOWLEDGED'
+                        END as status
                  FROM Log_Alarmes a
                  LEFT JOIN Controladores c ON c.id = a.controlador_id
                  WHERE a.timestamp BETWEEN ? AND ?"""

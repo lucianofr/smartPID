@@ -358,7 +358,7 @@ class AlarmPanel(QWidget):
         return result
 
     def _load_history(self) -> None:
-        """Fetch historical alarms from backend and store + display."""
+        """Fetch historical alarms + AI logs from backend and store + display."""
         if self._api_client is None:
             return
         dt_from = self._dt_from.dateTime().toPython()
@@ -368,14 +368,46 @@ class AlarmPanel(QWidget):
                 start=dt_from, end=dt_to,
             )
         except Exception:  # noqa: BLE001
-            return
+            history = []
         # Populate controller names
         for alarm in history:
             cid = alarm.get("controller_id", 0)
             if not alarm.get("controller_name"):
                 alarm["controller_name"] = self._name_map.get(cid, str(cid))
         self._loaded_history = history
+        # Load AI logs from DB
+        self._load_ai_history(dt_from, dt_to)
         self._rebuild_table()
+
+    def _load_ai_history(self, dt_from, dt_to) -> None:
+        """Fetch AI tuning logs from backend and populate _ai_events."""
+        if self._api_client is None:
+            return
+        try:
+            ai_logs = self._api_client.get_ai_history(start=dt_from, end=dt_to)
+        except Exception:  # noqa: BLE001
+            return
+        self._ai_events.clear()
+        for log in ai_logs:
+            cid = log.get("controller_id", 0)
+            name = log.get("controller_name") or self._name_map.get(cid, str(cid))
+            engine = log.get("engine", "?")
+            ki_before = log.get("ki_before", 0.0)
+            ki_after = log.get("ki_after", 0.0)
+            objective = log.get("objective", "")
+            msg = f"{engine}: Ti {ki_before:.4f} -> {ki_after:.4f} ({objective})"
+            self._ai_events.append({
+                "controller_id": cid,
+                "controller_name": name,
+                "alarm_type": "",
+                "_category": CATEGORY_AI,
+                "priority": "\u2014",
+                "value": 0.0,
+                "limit": 0.0,
+                "timestamp": log.get("timestamp", ""),
+                "status": msg,
+                "transition": "INFO",
+            })
 
     # --- Table rendering ---
 
@@ -459,10 +491,10 @@ class AlarmPanel(QWidget):
         if checked:
             # Seed live log with full alarm history from DB
             self._live_events.clear()
+            dt_from = self._dt_from.dateTime().toPython()
+            dt_to = self._dt_to.dateTime().toPython()
             if self._api_client is not None:
                 try:
-                    dt_from = self._dt_from.dateTime().toPython()
-                    dt_to = self._dt_to.dateTime().toPython()
                     history = self._api_client.get_alarm_history(
                         start=dt_from, end=dt_to,
                     )
@@ -473,8 +505,11 @@ class AlarmPanel(QWidget):
                         self._live_events.append(alarm)
                 except Exception:  # noqa: BLE001
                     pass
+            # Also seed AI logs from DB
+            self._load_ai_history(dt_from, dt_to)
         else:
             self._live_events.clear()
+            self._ai_events.clear()
         self._rebuild_table()
 
     def showEvent(self, event) -> None:  # noqa: N802

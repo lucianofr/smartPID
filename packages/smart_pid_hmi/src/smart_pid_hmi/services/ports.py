@@ -109,6 +109,11 @@ class APIClientPort(Protocol):
         self, start: datetime, end: datetime, controller_id: int | None = ...,
     ) -> list[dict]: ...
 
+    # AI History
+    def get_ai_history(
+        self, start: datetime, end: datetime, controller_id: int | None = ...,
+    ) -> list[dict]: ...
+
     # System Events
     def get_system_events(
         self, start: datetime, end: datetime,
