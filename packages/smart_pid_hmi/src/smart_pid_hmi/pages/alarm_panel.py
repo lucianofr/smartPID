@@ -178,7 +178,7 @@ class AlarmPanel(QWidget):
         self, controller_id: int, message: str, controller_name: str = "",
     ) -> None:
         """Add an AI tuning action as event row (level/priority not applicable)."""
-        ts = datetime.now().isoformat()[:19]
+        ts = datetime.now(tz=UTC).isoformat()[:19]
         name = controller_name or self._name_map.get(
             controller_id, str(controller_id),
         )
@@ -201,7 +201,7 @@ class AlarmPanel(QWidget):
 
     def on_system_event(self, message: str, priority: str = "LOG") -> None:
         """Add a system event (e.g. login, config change). Level not applicable."""
-        ts = datetime.now().isoformat()[:19]
+        ts = datetime.now(tz=UTC).isoformat()[:19]
         event = {
             "controller_id": "",
             "alarm_type": "",

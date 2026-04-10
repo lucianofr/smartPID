@@ -528,3 +528,75 @@ def test_live_events_cleared_on_disable():
     # Disable Live — live events cleared, table shows only _active_alarms state
     panel._live_checkbox.setChecked(False)
     assert len(panel._live_events) == 0
+
+
+# --- AI / System events in Live mode ---
+
+
+def test_live_mode_shows_ai_events():
+    """AI events must appear in Live mode table."""
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    mock_api.get_alarm_history.return_value = []
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+    panel._live_checkbox.setChecked(True)
+
+    panel.on_ai_event(1, "Ki adjusted +5% via fuzzy")
+    _flush(panel)
+    assert panel.active_table.rowCount() == 1
+    # Category column should be AI Log
+    assert panel.active_table.item(0, 1).text() == CATEGORY_AI
+
+
+def test_live_mode_shows_system_events():
+    """System events must appear in Live mode table."""
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    mock_api.get_alarm_history.return_value = []
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+    panel._live_checkbox.setChecked(True)
+
+    panel.on_system_event("User admin logged in")
+    _flush(panel)
+    assert panel.active_table.rowCount() == 1
+    assert panel.active_table.item(0, 1).text() == CATEGORY_SYSTEM
+
+
+def test_live_mode_mixed_categories():
+    """Live mode should show alarms, AI events, and system events together."""
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    mock_api.get_alarm_history.return_value = []
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+    panel._live_checkbox.setChecked(True)
+
+    panel.on_alarm(1, _make_alarm(alarm_type="HI", timestamp="2026-04-10T10:00:00"))
+    panel.on_ai_event(1, "Ki adjusted")
+    panel.on_system_event("Config saved")
+    _flush(panel)
+    assert panel.active_table.rowCount() == 3
+    categories = {panel.active_table.item(r, 1).text() for r in range(3)}
+    assert categories == {CATEGORY_ALARM, CATEGORY_AI, CATEGORY_SYSTEM}
+
+
+def test_live_mode_respects_category_filter():
+    """Live mode must respect the category filter."""
+    theme = ISA101Theme()
+    mock_api = MagicMock()
+    mock_api.get_alarm_history.return_value = []
+    panel = AlarmPanel(theme=theme, api_client=mock_api)
+    panel._live_checkbox.setChecked(True)
+
+    panel.on_alarm(1, _make_alarm(alarm_type="HI", timestamp="2026-04-10T10:00:00"))
+    panel.on_ai_event(1, "Ki adjusted")
+    panel.on_system_event("Config saved")
+    _flush(panel)
+    assert panel.active_table.rowCount() == 3
+
+    # Filter to AI Log only
+    _set_checked(panel._category_filter, [CATEGORY_AI])
+    _flush(panel)
+    # Force rebuild since filter changed
+    panel._on_filter_changed()
+    assert panel.active_table.rowCount() == 1
+    assert panel.active_table.item(0, 1).text() == CATEGORY_AI
