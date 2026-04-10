@@ -250,51 +250,58 @@ class FaceplateWidget(QFrame):
         self._separators.append(sep7)
         layout.addWidget(sep7)
 
-        # -- Performance section --
+        # -- Performance section (compact) --
+        hdr_css = (
+            f"color: {theme.fg_secondary}; background: transparent;"
+            f" font-size: {theme.font_size_label}px;"
+        )
+        # Title + AI Period / Stats Window in one line
+        perf_header = QHBoxLayout()
+        perf_header.setSpacing(0)
         perf_title = QLabel("Performance")
         perf_title.setStyleSheet(
             f"color: {theme.fg_secondary}; background: transparent;"
             f" font-size: {theme.font_size_label}px; font-weight: bold;"
         )
-        layout.addWidget(perf_title)
+        perf_header.addWidget(perf_title)
+        perf_header.addStretch()
+        self._ai_period_label = QLabel("AI: \u2014")
+        self._ai_period_label.setStyleSheet(hdr_css)
+        perf_header.addWidget(self._ai_period_label)
+        spacer = QLabel("  ")
+        spacer.setStyleSheet("background: transparent;")
+        perf_header.addWidget(spacer)
+        self._stats_window_label = QLabel("Stats: \u2014")
+        self._stats_window_label.setStyleSheet(hdr_css)
+        perf_header.addWidget(self._stats_window_label)
+        layout.addLayout(perf_header)
         self._perf_title = perf_title
 
-        # AI Period / Stats Window badges
-        info_row = QHBoxLayout()
-        info_row.setSpacing(6)
-        badge_css = (
-            f"color: {theme.fg_secondary}; background: {theme.bg_card};"
-            f" font-size: {theme.font_size_label}px;"
-            f" border-radius: 3px; padding: 2px 6px;"
-            f" border: 1px solid {theme.border};"
-        )
-        self._ai_period_label = QLabel("AI: \u2014")
-        self._ai_period_label.setStyleSheet(badge_css)
-        info_row.addWidget(self._ai_period_label)
-        self._stats_window_label = QLabel("Stats: \u2014")
-        self._stats_window_label.setStyleSheet(badge_css)
-        info_row.addWidget(self._stats_window_label)
-        info_row.addStretch()
-        layout.addLayout(info_row)
-
-        # Stats as 4x4 tile grid (label on top, value below, centered)
+        # Stats grid: 4 columns, 2 header rows + 2 value rows
         stats_grid = QGridLayout()
-        stats_grid.setSpacing(4)
-        stats_grid.setContentsMargins(0, 4, 0, 0)
+        stats_grid.setSpacing(1)
+        stats_grid.setContentsMargins(0, 2, 0, 0)
 
         self._stat_labels: dict[str, QLabel] = {}
-        tile_css = self._stat_tile_css(theme)
+        label_css = self._stat_header_css(theme)
+        value_css = self._stat_value_css(theme)
         metrics = [
             ("IAE", 0, 0), ("ITAE", 0, 1), ("ISE", 0, 2), ("MSE", 0, 3),
-            ("StdDev", 1, 0), ("TV", 1, 1),
-            ("2\u03c3/Rng", 1, 2), ("2\u03c3/SP", 1, 3),
+            ("StdDev", 2, 0), ("TV", 2, 1),
+            ("Var/SP", 2, 2), ("Var/Rng", 2, 3),
         ]
         for name, row, col in metrics:
-            tile = QLabel(f"{name}\n\u2014")
-            tile.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            tile.setStyleSheet(tile_css)
-            stats_grid.addWidget(tile, row, col)
-            self._stat_labels[name] = tile
+            # Header label
+            h = QLabel(name)
+            h.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            h.setStyleSheet(label_css)
+            stats_grid.addWidget(h, row, col)
+            # Value label (row below header)
+            v = QLabel("\u2014")
+            v.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            v.setStyleSheet(value_css)
+            stats_grid.addWidget(v, row + 1, col)
+            self._stat_labels[name] = v
 
         layout.addLayout(stats_grid)
         layout.addStretch()
@@ -403,21 +410,19 @@ class FaceplateWidget(QFrame):
         self._apply_input_style(self._kp_input, theme)
         self._apply_input_style(self._ti_input, theme)
         self._apply_input_style(self._td_input, theme)
-        tile_css = self._stat_tile_css(theme)
-        for tile in self._stat_labels.values():
-            tile.setStyleSheet(tile_css)
+        val_css = self._stat_value_css(theme)
+        for v in self._stat_labels.values():
+            v.setStyleSheet(val_css)
         self._perf_title.setStyleSheet(
             f"color: {theme.fg_secondary}; background: transparent;"
             f" font-size: {theme.font_size_label}px; font-weight: bold;"
         )
-        badge_css = (
-            f"color: {theme.fg_secondary}; background: {theme.bg_card};"
+        hdr_css = (
+            f"color: {theme.fg_secondary}; background: transparent;"
             f" font-size: {theme.font_size_label}px;"
-            f" border-radius: 3px; padding: 2px 6px;"
-            f" border: 1px solid {theme.border};"
         )
-        self._ai_period_label.setStyleSheet(badge_css)
-        self._stats_window_label.setStyleSheet(badge_css)
+        self._ai_period_label.setStyleSheet(hdr_css)
+        self._stats_window_label.setStyleSheet(hdr_css)
         self.update()
 
     def on_controller_selected(
@@ -599,12 +604,19 @@ class FaceplateWidget(QFrame):
         return f"{seconds / 3600:.1f}h"
 
     @staticmethod
-    def _stat_tile_css(theme: ThemeBase) -> str:
+    def _stat_header_css(theme: ThemeBase) -> str:
         return (
-            f"color: {theme.fg_primary}; background: {theme.bg_card};"
+            f"color: {theme.fg_secondary}; background: {theme.bg_card};"
+            f" font-size: {theme.font_size_label}px; font-weight: bold;"
+            f" padding: 1px 2px;"
+        )
+
+    @staticmethod
+    def _stat_value_css(theme: ThemeBase) -> str:
+        return (
+            f"color: {theme.fg_primary}; background: transparent;"
             f" font-size: {theme.font_size_normal}px;"
-            f" border: 1px solid {theme.border}; border-radius: 4px;"
-            f" padding: 3px 2px;"
+            f" padding: 0px 2px;"
         )
 
     def update_stats(self, stats: dict) -> None:
@@ -617,19 +629,19 @@ class FaceplateWidget(QFrame):
         key_map = {
             "IAE": "iae", "ITAE": "itae", "ISE": "ise", "MSE": "mse",
             "StdDev": "std_dev", "TV": "total_variation",
-            "2\u03c3/Rng": "variability_range",
-            "2\u03c3/SP": "variability_sp",
+            "Var/Rng": "variability_range",
+            "Var/SP": "variability_sp",
         }
-        for label_name, tile in self._stat_labels.items():
+        for label_name, val_lbl in self._stat_labels.items():
             key = key_map.get(label_name, label_name.lower())
             val = stats.get(key)
             if val is not None:
-                if label_name in ("2\u03c3/Rng", "2\u03c3/SP"):
-                    tile.setText(f"{label_name}\n{val * 100:.1f}%")
+                if label_name in ("Var/Rng", "Var/SP"):
+                    val_lbl.setText(f"{val * 100:.1f}%")
                 else:
-                    tile.setText(f"{label_name}\n{val:.1f}")
+                    val_lbl.setText(f"{val:.1f}")
             else:
-                tile.setText(f"{label_name}\n\u2014")
+                val_lbl.setText("\u2014")
 
     def _apply_optimizer_style(self, theme: ThemeBase) -> None:
         """Style optimizer buttons — highlight active state."""
