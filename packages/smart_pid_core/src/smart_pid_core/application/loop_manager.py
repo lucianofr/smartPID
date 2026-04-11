@@ -173,6 +173,28 @@ class LoopManager:
             raise DomainError(transition.rejection_reason)
         ctx.pid_worker.set_mode(mode)
 
+    def restart_ai_worker(self, controller: Controller) -> None:
+        """Stop current AI worker and start a new one with updated config.
+
+        Called when ai_config (engine, objective, limits) changes at runtime.
+        Preserves the current Ki value so the new engine resumes from the same point.
+        """
+        ctx = self._loops.get(controller.id)
+        if ctx is None:
+            return
+        # Preserve current Ki
+        current_ki: float | None = None
+        if ctx.ai_worker is not None:
+            current_ki = ctx.ai_worker._ki_current
+            ctx.ai_worker.stop()
+        # Update controller reference
+        ctx.controller = controller
+        # Create and start new AI worker
+        ctx.ai_worker = AIWorker(
+            bus=self._bus, controller=controller, initial_ki=current_ki,
+        )
+        ctx.ai_worker.start()
+
     def get_stats_workers(self) -> dict[int, StatsWorker]:
         """Return dict of controller_id -> StatsWorker for REST API."""
         return {
