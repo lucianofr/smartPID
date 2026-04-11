@@ -388,9 +388,17 @@ async def run_daemon(settings: CoreSettings) -> None:
     io_worker.start()
     logger.info("io_worker_started")
 
+    # Resume AI Ki from last DB entry for each controller
+    last_ki_map: dict[int, float] = {}
+    for ctrl in all_controllers:
+        last_ki = await ai_repo.get_last_ki(ctrl.id)
+        if last_ki is not None:
+            last_ki_map[ctrl.id] = last_ki
+            logger.info("ai_ki_resumed", controller_id=ctrl.id, ki=last_ki)
+
     # Start PID/Monitor control loops for all controllers
     for ctrl in all_controllers:
-        loop_manager.start_loop(ctrl)
+        loop_manager.start_loop(ctrl, initial_ki=last_ki_map.get(ctrl.id))
     logger.info("control_loops_started", count=len(all_controllers))
 
     # Populate AlarmWorker controller metadata for event enrichment

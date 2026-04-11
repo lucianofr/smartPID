@@ -243,11 +243,8 @@ class _FallbackPolicy:
             self._integral = 0.0  # reset accumulated bias
             return -damping
 
-        # Normal P+D policy
-        sign = 1.0 if error >= 0 else -1.0
-        error_nl = sign * math.sqrt(abs(error))
-
-        gamma_pd = self._kp * error_nl + self._kd * delta_error
+        # Normal P+D policy — linear gain (symmetric for +/- error)
+        gamma_pd = self._kp * error + self._kd * delta_error
 
         # Integral term: drives offset to zero over time
         self._integral += self._ki_acc * error

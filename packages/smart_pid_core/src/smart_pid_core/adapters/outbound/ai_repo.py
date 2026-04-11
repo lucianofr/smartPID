@@ -90,6 +90,18 @@ class AIRepository:
         )
         await self._db.commit()
 
+    async def get_last_ki(self, controller_id: int) -> float | None:
+        """Return the most recent Ki/Ti value computed by AI for a controller."""
+        async with self._db.execute(
+            "SELECT ki_depois FROM Log_Sintonia_IA "
+            "WHERE controlador_id = ? ORDER BY timestamp DESC LIMIT 1",
+            (controller_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        return float(row[0])
+
     async def get_tuning_history(
         self,
         controller_id: int,
