@@ -215,9 +215,11 @@ async def run_daemon(settings: CoreSettings) -> None:
     historian = SQLiteHistorian(repo)
     bus = EventBus()
     bus.start()
+    model_dir = settings.db_path.parent / "models"
     loop_manager = LoopManager(
         bus=bus,
         execution_mode=settings.execution_mode,
+        model_dir=model_dir,
     )
     logger.info("event_bus_started")
 

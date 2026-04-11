@@ -691,6 +691,84 @@ class RLEngine:
         self._step_count = 0
         self._fallback.reset()
 
+    def save_state(self, model_dir: Path) -> dict:
+        """Persist model + engine state.  Returns metadata dict for DB.
+
+        Saves sb3 model weights to *model_dir* (if trained) and returns
+        a JSON-serialisable dict with replay buffer, counters, and
+        fallback state so the engine can resume exactly where it left off.
+        """
+        model_dir.mkdir(parents=True, exist_ok=True)
+        model_path = ""
+        if self._model is not None:
+            p = model_dir / f"rl_{self._algorithm.lower()}"
+            self._model.save(str(p))
+            model_path = str(p.with_suffix(".zip"))
+            logger.info("rl_model_saved path=%s", model_path)
+
+        # Serialise replay buffer (last 2000 to keep size manageable)
+        buf = list(self._replay_buffer)[-2000:]
+        serialised_buffer = [
+            {"obs": o, "action": a, "reward": r, "next_obs": n, "done": d}
+            for o, a, r, n, d in buf
+        ]
+
+        return {
+            "algorithm": self._algorithm,
+            "model_path": model_path,
+            "is_trained": self._is_trained,
+            "step_count": self._step_count,
+            "reward_steps": self._reward_steps,
+            "total_reward": self._total_reward,
+            "replay_buffer": serialised_buffer,
+            "fallback": {
+                "integral": self._fallback._integral,
+                "error_signs": list(self._fallback._error_signs),
+                "recent_errors": list(self._fallback._recent_errors),
+            },
+        }
+
+    def load_state(self, state: dict, model_dir: Path | None = None) -> None:
+        """Restore engine state from a previously saved dict."""
+        self._step_count = state.get("step_count", 0)
+        self._reward_steps = state.get("reward_steps", 0)
+        self._total_reward = state.get("total_reward", 0.0)
+        self._is_trained = state.get("is_trained", False)
+
+        # Restore replay buffer
+        buf = state.get("replay_buffer", [])
+        self._replay_buffer.clear()
+        for t in buf:
+            self._replay_buffer.append((
+                t["obs"], t["action"], t["reward"], t["next_obs"], t["done"],
+            ))
+
+        # Restore fallback state
+        fb = state.get("fallback", {})
+        self._fallback._integral = fb.get("integral", 0.0)
+        self._fallback._error_signs.clear()
+        for s in fb.get("error_signs", []):
+            self._fallback._error_signs.append(s)
+        self._fallback._recent_errors.clear()
+        for e in fb.get("recent_errors", []):
+            self._fallback._recent_errors.append(e)
+
+        # Load sb3 model weights if available
+        model_path = state.get("model_path", "")
+        if model_path and model_dir is not None:
+            p = Path(model_path)
+            if p.exists():
+                try:
+                    self.load_model(p)
+                    logger.info("rl_model_loaded path=%s", p)
+                except Exception:
+                    logger.warning("rl_model_load_failed path=%s", p, exc_info=True)
+
+        logger.info(
+            "rl_state_restored steps=%d buffer=%d trained=%s",
+            self._step_count, len(self._replay_buffer), self._is_trained,
+        )
+
 
 def _fmt_obs(obs: list[float]) -> str:
     """Format observation for logging."""

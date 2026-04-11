@@ -6,10 +6,12 @@ STATS publication rate.
 """
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import msgpack
@@ -43,6 +45,7 @@ class AIWorker:
         bus: EventBus,
         controller: Controller,
         initial_ki: float | None = None,
+        model_dir: Path | None = None,
     ) -> None:
         self._bus = bus
         self._controller = controller
@@ -55,6 +58,7 @@ class AIWorker:
         self._ki_current = initial_ki if initial_ki is not None else controller.pid_params.reset
         self._ki_from_opcua: float | None = None  # latest Ti/Ki from OPC-UA telemetry
         self._ki_from_opcua_prev: float | None = None  # previous OPC-UA read (change detection)
+        self._model_dir = model_dir  # directory for persisting RL model weights
         self._last_pv: float = 0.0
         self._last_sp: float = 0.0
         self._last_co: float = 0.0
@@ -89,6 +93,8 @@ class AIWorker:
                 self.controller_id,
             )
             return
+        # Restore RL state from disk (if available)
+        self._load_rl_state()
         self._stop_event.clear()
         self._thread = threading.Thread(
             target=self._run,
@@ -102,6 +108,8 @@ class AIWorker:
         if self._thread:
             self._thread.join(timeout=5.0)
             self._thread = None
+        # Persist RL state to disk
+        self._save_rl_state()
 
     def is_alive(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
@@ -246,6 +254,9 @@ class AIWorker:
                     f"LOG.AI.{self.controller_id}".encode(),
                     msgpack.packb(log_data),
                 )
+
+                # Persist RL state after each AI cycle
+                self._save_rl_state()
             except zmq.ZMQError:
                 break
 
@@ -267,6 +278,48 @@ class AIWorker:
                     logger.info("ai_worker_disabled cid=%d", self.controller_id)
             except Exception:
                 pass
+
+    def _rl_state_path(self) -> Path | None:
+        """Return the path for persisting RL state JSON, or None."""
+        if self._model_dir is None:
+            return None
+        return self._model_dir / f"rl_state_{self.controller_id}.json"
+
+    def _save_rl_state(self) -> None:
+        """Persist RL engine state (model weights + replay buffer) to disk."""
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        if not isinstance(self._engine, RLEngine) or self._model_dir is None:
+            return
+        try:
+            state = self._engine.save_state(self._model_dir)
+            state_path = self._rl_state_path()
+            if state_path is not None:
+                state_path.write_text(json.dumps(state), encoding="utf-8")
+                logger.info(
+                    "rl_state_saved cid=%d steps=%d buffer=%d",
+                    self.controller_id,
+                    state.get("step_count", 0),
+                    len(state.get("replay_buffer", [])),
+                )
+        except Exception:
+            logger.warning("rl_state_save_failed cid=%d", self.controller_id, exc_info=True)
+
+    def _load_rl_state(self) -> None:
+        """Restore RL engine state from disk (if available)."""
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        if not isinstance(self._engine, RLEngine) or self._model_dir is None:
+            return
+        state_path = self._rl_state_path()
+        if state_path is None or not state_path.exists():
+            return
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self._engine.load_state(state, self._model_dir)
+            logger.info("rl_state_loaded cid=%d", self.controller_id)
+        except Exception:
+            logger.warning("rl_state_load_failed cid=%d", self.controller_id, exc_info=True)
 
     def _drain_telemetry(self, sub) -> None:
         while True:
