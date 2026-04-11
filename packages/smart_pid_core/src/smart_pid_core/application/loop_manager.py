@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from smart_pid_core.application.workers.ai_worker import AIWorker
@@ -40,9 +41,11 @@ class LoopManager:
         self,
         bus: EventBus,
         execution_mode: str = "execute",
+        model_dir: Path | None = None,
     ) -> None:
         self._bus = bus
         self._execution_mode = execution_mode
+        self._model_dir = model_dir
         self._loops: dict[int, LoopContext] = {}
 
     def start_loop(
@@ -57,6 +60,7 @@ class LoopManager:
         # AI worker — resume from last AI-computed Ki if available
         ai_worker = AIWorker(
             bus=self._bus, controller=controller, initial_ki=initial_ki,
+            model_dir=self._model_dir,
         )
 
         if self._execution_mode == "monitor":
@@ -199,6 +203,7 @@ class LoopManager:
         # Create and start new AI worker
         ctx.ai_worker = AIWorker(
             bus=self._bus, controller=controller, initial_ki=current_ki,
+            model_dir=self._model_dir,
         )
         ctx.ai_worker.start()
         logger.info(
