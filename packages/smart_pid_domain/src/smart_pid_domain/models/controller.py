@@ -59,6 +59,11 @@ class AIConfig:
     dead_time_l: float = 1.0      # Estimated dead time (seconds)
     limit_min: float = 0.1        # Ki/Ti minimum clamp
     limit_max: float = 100.0      # Ki/Ti maximum clamp
+    # RL-specific parameters
+    rl_fallback_kp: float = 0.6   # Fallback policy proportional gain
+    rl_fallback_kd: float = 0.2   # Fallback policy derivative gain
+    rl_learning_rate: float = 3e-4  # sb3 learning rate
+    rl_train_interval: int = 32   # Train every N steps
 
 
 @dataclass

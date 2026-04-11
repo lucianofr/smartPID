@@ -83,7 +83,12 @@ class AIWorker:
         elif self._ai_config.engine == AIEngine.RL:
             from smart_pid_core.domain.services.rl_engine import RLEngine
 
-            return RLEngine()
+            engine = RLEngine(algorithm="SAC")
+            # Apply per-controller RL config from ai_config
+            engine._fallback._kp = self._ai_config.rl_fallback_kp
+            engine._fallback._kd = self._ai_config.rl_fallback_kd
+            engine._train_interval = self._ai_config.rl_train_interval
+            return engine
         return None
 
     def start(self) -> None:

@@ -32,6 +32,10 @@ class AIConfigDTO(BaseModel):
     dead_time_l: float = 1.0
     limit_min: float = 0.1
     limit_max: float = 100.0
+    rl_fallback_kp: float = 0.6
+    rl_fallback_kd: float = 0.2
+    rl_learning_rate: float = 3e-4
+    rl_train_interval: int = 32
 
 
 class TagBindingsDTO(BaseModel):
