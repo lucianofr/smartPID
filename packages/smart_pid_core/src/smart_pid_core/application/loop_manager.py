@@ -1,10 +1,13 @@
 """Loop Manager — lifecycle management for controller PID loops."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from smart_pid_core.application.workers.ai_worker import AIWorker
+
+logger = logging.getLogger(__name__)
 from smart_pid_core.application.workers.monitor_worker import MonitorWorker
 from smart_pid_core.application.workers.pid_worker import PIDWorker
 from smart_pid_core.application.workers.stats_worker import StatsWorker
@@ -181,6 +184,10 @@ class LoopManager:
         """
         ctx = self._loops.get(controller.id)
         if ctx is None:
+            logger.warning(
+                "restart_ai_worker: no loop context for controller %d",
+                controller.id,
+            )
             return
         # Preserve current Ki
         current_ki: float | None = None
@@ -194,6 +201,12 @@ class LoopManager:
             bus=self._bus, controller=controller, initial_ki=current_ki,
         )
         ctx.ai_worker.start()
+        logger.info(
+            "ai_worker_restarted controller_id=%d engine=%s ki=%.4f",
+            controller.id,
+            controller.ai_config.engine.value,
+            current_ki if current_ki is not None else controller.pid_params.reset,
+        )
 
     def get_stats_workers(self) -> dict[int, StatsWorker]:
         """Return dict of controller_id -> StatsWorker for REST API."""
