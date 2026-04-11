@@ -137,6 +137,10 @@ def get_stats_workers(request: Request) -> dict[int, StatsWorker]:
 
 
 def get_ai_workers(request: Request) -> dict[int, object]:
+    # Read live workers from loop_manager (not the static startup snapshot)
+    loop_mgr = getattr(request.app.state, "loop_manager", None)
+    if loop_mgr is not None:
+        return loop_mgr.get_ai_workers()
     return getattr(request.app.state, "ai_workers", {})
 
 
