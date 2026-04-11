@@ -42,15 +42,19 @@ class LoopManager:
         self._execution_mode = execution_mode
         self._loops: dict[int, LoopContext] = {}
 
-    def start_loop(self, controller: Controller) -> None:
+    def start_loop(
+        self, controller: Controller, initial_ki: float | None = None,
+    ) -> None:
         if controller.id in self._loops:
             return
 
         # Stats worker — always active
         stats_worker = StatsWorker(bus=self._bus, controller=controller)
 
-        # AI worker — only if engine != NONE
-        ai_worker = AIWorker(bus=self._bus, controller=controller)
+        # AI worker — resume from last AI-computed Ki if available
+        ai_worker = AIWorker(
+            bus=self._bus, controller=controller, initial_ki=initial_ki,
+        )
 
         if self._execution_mode == "monitor":
             monitor_worker = MonitorWorker(

@@ -38,7 +38,12 @@ class AIWorker:
     executes when the loop is in an automatic mode (AUTO, CAS, RCAS).
     """
 
-    def __init__(self, bus: EventBus, controller: Controller) -> None:
+    def __init__(
+        self,
+        bus: EventBus,
+        controller: Controller,
+        initial_ki: float | None = None,
+    ) -> None:
         self._bus = bus
         self._controller = controller
         self._ai_config = controller.ai_config
@@ -46,7 +51,8 @@ class AIWorker:
         self._ai_period_s = 3.0 * controller.tss_s
         self._integral_type = controller.integral_type.value  # "GAIN_KI" or "TIME_TI"
         self._execution_mode = controller.execution_mode.value  # "SUPERVISORY" or "DDC"
-        self._ki_current = controller.pid_params.reset  # initial from config
+        # Resume from last AI-computed Ki if available, otherwise use config default
+        self._ki_current = initial_ki if initial_ki is not None else controller.pid_params.reset
         self._ki_from_opcua: float | None = None  # latest Ti/Ki from OPC-UA telemetry
         self._ki_from_opcua_prev: float | None = None  # previous OPC-UA read (change detection)
         self._last_pv: float = 0.0
