@@ -2,9 +2,15 @@
 
 7 linguistic levels on [-100%, +100%] with triangular (center) and
 trapezoidal (extremes) membership functions, 50% overlap.
+
+Includes oscillation detection: when the error sign reverses rapidly
+the engine overrides the rule-based gamma with a negative damping
+proportional to the oscillation amplitude (backs off integral action).
 """
 from __future__ import annotations
 
+import math
+from collections import deque
 from dataclasses import dataclass
 
 from smart_pid_domain.enums import ControlObjective, ProcessSpeed
@@ -112,10 +118,37 @@ class AIDecision:
 
 
 class FuzzyEngine:
-    """Fuzzy logic Ki optimizer.
+    """Fuzzy logic Ki optimizer with oscillation detection.
 
     Pure domain service — no I/O, no threading.
+    When the error sign flips rapidly (oscillation), the engine overrides
+    the rule-based gamma with a negative value proportional to error
+    amplitude, which increases Ti / decreases Ki to stabilise the loop.
     """
+
+    _OSC_WINDOW = 12
+    _OSC_THRESHOLD = 3
+    _OSC_MIN_AMPLITUDE = 0.05  # 5% of span (normalised to [-1,+1])
+    _OSC_DAMPING_GAIN = 1.5
+
+    def __init__(self) -> None:
+        self._error_signs: deque[int] = deque(maxlen=self._OSC_WINDOW)
+        self._recent_errors: deque[float] = deque(maxlen=self._OSC_WINDOW)
+
+    def _sign_changes(self) -> int:
+        changes = 0
+        prev = 0
+        for s in self._error_signs:
+            if prev != 0 and s != 0 and s != prev:
+                changes += 1
+            if s != 0:
+                prev = s
+        return changes
+
+    def _amplitude(self) -> float:
+        if not self._recent_errors:
+            return 0.0
+        return math.sqrt(sum(e * e for e in self._recent_errors) / len(self._recent_errors))
 
     def fuzzify(self, value: float) -> dict[str, float]:
         """Compute membership degree for each fuzzy level."""
@@ -215,12 +248,32 @@ class FuzzyEngine:
             error_norm = 0.0
             delta_error_norm = 0.0
 
+        # Track oscillation (normalised to [-1,+1] for amplitude check)
+        error_frac = error_norm / 100.0
+        cur_sign = 1 if error_frac > 0.005 else (-1 if error_frac < -0.005 else 0)
+        self._error_signs.append(cur_sign)
+        self._recent_errors.append(error_frac)
+
         # Fuzzify (for debug output)
         error_mf = self.fuzzify(error_norm)
         delta_error_mf = self.fuzzify(delta_error_norm)
 
-        # Infer gamma
-        gamma = self.infer(error_norm, delta_error_norm, objective)
+        # Oscillation override: if sign flips rapidly with significant amplitude
+        reversals = self._sign_changes()
+        amp = self._amplitude()
+        oscillating = (
+            reversals >= self._OSC_THRESHOLD and amp >= self._OSC_MIN_AMPLITUDE
+        )
+
+        if oscillating:
+            # Negative gamma → for TIME_TI: effective_gamma = +damping → Ti increases
+            # For GAIN_KI: Ki decreases. Both slow down integral action.
+            gamma = -min(0.8, self._OSC_DAMPING_GAIN * amp)
+            reason_prefix = f"Fuzzy(OSC_DAMP rev={reversals} amp={amp:.3f})"
+        else:
+            # Normal fuzzy inference
+            gamma = self.infer(error_norm, delta_error_norm, objective)
+            reason_prefix = f"Fuzzy({objective.value})"
 
         # Apply gamma direction: Ki and Ti have OPPOSITE effects
         # Positive gamma means "more aggressive integral action"
@@ -233,7 +286,7 @@ class FuzzyEngine:
 
         param_label = "Ki" if integral_type == "GAIN_KI" else "Ti"
         reasoning = (
-            f"Fuzzy({objective.value}): "
+            f"{reason_prefix}: "
             f"e_norm={error_norm:.1f}%, de_norm={delta_error_norm:.1f}%, "
             f"gamma={gamma:.4f}, Sv={sv}, "
             f"{param_label}: {ki_current:.4f} -> {new_val:.4f}"
