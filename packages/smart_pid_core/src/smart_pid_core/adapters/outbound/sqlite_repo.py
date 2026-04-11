@@ -285,6 +285,19 @@ class SQLiteRepository:
                     f"ALTER TABLE Configuracao_Simulador ADD COLUMN {col_name} {col_def}",
                 )
 
+        # AIConfig RL-specific columns
+        ai_new_columns = [
+            ("rl_fallback_kp", "REAL NOT NULL DEFAULT 0.6"),
+            ("rl_fallback_kd", "REAL NOT NULL DEFAULT 0.2"),
+            ("rl_learning_rate", "REAL NOT NULL DEFAULT 0.0003"),
+            ("rl_train_interval", "INTEGER NOT NULL DEFAULT 32"),
+        ]
+        for col_name, col_def in ai_new_columns:
+            with contextlib.suppress(Exception):
+                await self.db.execute(
+                    f"ALTER TABLE Controladores ADD COLUMN {col_name} {col_def}",
+                )
+
         # Rename scan_rate_ms → scan_rate_s (convert ms to seconds)
         cursor = await self.db.execute("PRAGMA table_info(Controladores)")
         col_names = {r[1] for r in await cursor.fetchall()}
@@ -479,6 +492,10 @@ class SQLiteRepository:
             "tempo_morto_l": c.ai_config.dead_time_l,
             "ai_limit_min": c.ai_config.limit_min,
             "ai_limit_max": c.ai_config.limit_max,
+            "rl_fallback_kp": c.ai_config.rl_fallback_kp,
+            "rl_fallback_kd": c.ai_config.rl_fallback_kd,
+            "rl_learning_rate": c.ai_config.rl_learning_rate,
+            "rl_train_interval": c.ai_config.rl_train_interval,
         }
 
     def _row_to_controller(self, row: aiosqlite.Row) -> Controller:
@@ -593,6 +610,10 @@ class SQLiteRepository:
                 dead_time_l=row["tempo_morto_l"],
                 limit_min=row["ai_limit_min"],
                 limit_max=row["ai_limit_max"],
+                rl_fallback_kp=row["rl_fallback_kp"],
+                rl_fallback_kd=row["rl_fallback_kd"],
+                rl_learning_rate=row["rl_learning_rate"],
+                rl_train_interval=row["rl_train_interval"],
             ),
         )
 

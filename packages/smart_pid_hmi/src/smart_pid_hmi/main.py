@@ -390,6 +390,7 @@ class MainWindow(QMainWindow):
         self._settings_page.opcua_endpoint_save_requested.connect(
             self._on_opcua_endpoint_save,
         )
+        self._settings_page.ai_settings_changed.connect(self._on_ai_settings_changed)
         self._settings_page.project_new_requested.connect(self._show_project_dialog)
         self._settings_page.project_open_requested.connect(self._show_project_dialog)
         self._settings_page.project_download_requested.connect(self._on_project_download)
@@ -553,6 +554,20 @@ class MainWindow(QMainWindow):
 
         # Feed alarm panel with controller name lookup
         self._alarm_panel.set_controller_names(controllers)
+
+        # Load AI settings from first controller into Settings page
+        if controllers:
+            ai_cfg = controllers[0].get("ai_config", {})
+            self._settings_page.load_ai_settings({
+                "speed_factor": ai_cfg.get("rl_fallback_kp", 0.6),
+                "limit_min": ai_cfg.get("limit_min", 0.1),
+                "limit_max": ai_cfg.get("limit_max", 100.0),
+                "dead_time_l": ai_cfg.get("dead_time_l", 1.0),
+                "rl_fallback_kp": ai_cfg.get("rl_fallback_kp", 0.6),
+                "rl_fallback_kd": ai_cfg.get("rl_fallback_kd", 0.2),
+                "rl_learning_rate": ai_cfg.get("rl_learning_rate", 3e-4),
+                "rl_train_interval": ai_cfg.get("rl_train_interval", 32),
+            })
 
         # Now that cards exist, load initial alarm state from backend
         self._load_initial_alarm_state()
@@ -955,6 +970,42 @@ class MainWindow(QMainWindow):
     def _on_refresh_rate_changed(self, ms: int) -> None:
         """Update BusBridge refresh interval when user changes setting."""
         self._bus_bridge.set_refresh_ms(ms)
+
+    def _on_ai_settings_changed(self, settings: dict) -> None:
+        """Persist AI settings to the currently selected controller."""
+        cid = self._dashboard_page._selected_id  # noqa: SLF001
+        if cid is None:
+            # No controller selected — try first cached controller
+            if self._cached_controllers:
+                cid = self._cached_controllers[0].get("id")
+        if cid is None:
+            return
+
+        ai_config = {
+            "dead_time_l": settings.get("dead_time_l", 1.0),
+            "limit_min": settings.get("limit_min", 0.1),
+            "limit_max": settings.get("limit_max", 100.0),
+            "rl_fallback_kp": settings.get("rl_fallback_kp", 0.6),
+            "rl_fallback_kd": settings.get("rl_fallback_kd", 0.2),
+            "rl_learning_rate": settings.get("rl_learning_rate", 3e-4),
+            "rl_train_interval": settings.get("rl_train_interval", 32),
+        }
+        # Preserve engine and objective from current controller config
+        for ctrl in self._cached_controllers:
+            if ctrl.get("id") == cid:
+                existing_ai = ctrl.get("ai_config", {})
+                ai_config["engine"] = existing_ai.get("engine", "NONE")
+                ai_config["objective"] = existing_ai.get("objective", "DISTURBANCE_REJECTION")
+                break
+
+        def do_update():
+            try:
+                self._api_client.update_controller(cid, {"ai_config": ai_config})
+                logger.info("ai_settings_saved controller_id=%d", cid)
+            except Exception as e:
+                logger.error("Failed to save AI settings: %s", e)
+
+        threading.Thread(target=do_update, daemon=True).start()
 
     def _on_opcua_connect(self, endpoint_url: str) -> None:
         """Connect to OPC-UA server via backend, passing the current field endpoint."""
