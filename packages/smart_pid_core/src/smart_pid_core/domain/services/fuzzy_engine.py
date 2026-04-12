@@ -66,22 +66,26 @@ MF_PARAMS: dict[str, tuple[str, tuple[float, ...]]] = {
 }
 
 # Rule matrices: rows = |error| level, cols = |delta_error| level
-# Output is one of the 5 levels interpreted as a SIGNED value:
-#   NL = −1.0, NM = −0.5, ZO = 0.0, PM = +0.3, PL = +0.6
+# Output is one of the 5 levels interpreted as a SIGNED value.
+#
+# Asymmetric output centers: decreasing Ti (positive gamma) is risky because
+# a peak of damped oscillation looks identical to a steady offset when |Δe|≈0.
+# Increasing Ti (negative gamma) only slows convergence — cheap. So positive
+# side is deliberately weaker than negative side.
 #
 # Logic:
-#   • High |error| + low |Δerror| = steady offset  → positive (decrease Ti)
-#   • High |error| + high |Δerror| = oscillating    → negative (increase Ti)
-#   • Low  |error| + low |Δerror| = settled          → zero (Ti OK)
-#   • Low  |error| + high |Δerror| = noise/settling → slight negative
+#   • High |error| + low  |Δerror| = offset OR oscillation peak → mild positive
+#   • High |error| + high |Δerror| = oscillating → strong negative (damp)
+#   • Low  |error| + low  |Δerror| = settled → zero (Ti OK)
+#   • Low  |error| + high |Δerror| = noise/settling → negative
 
 OUTPUT_LEVELS = ("NL", "NM", "ZO", "PM", "PL")
 OUTPUT_CENTERS: dict[str, float] = {
     "NL": -1.0,
     "NM": -0.5,
     "ZO": 0.0,
-    "PM": 0.5,
-    "PL": 1.0,
+    "PM": 0.3,
+    "PL": 0.6,
 }
 
 RULE_MATRICES: dict[ControlObjective, list[list[str]]] = {
@@ -90,25 +94,26 @@ RULE_MATRICES: dict[ControlObjective, list[list[str]]] = {
         # |e|:
         ["ZO",  "ZO",  "NM",  "NM",  "NL"],  # ZO — settled
         ["PM",  "ZO",  "ZO",  "NM",  "NL"],  # SM — small offset
-        ["PL",  "PM",  "ZO",  "NM",  "NL"],  # ME — medium offset
-        ["PL",  "PL",  "PM",  "ZO",  "NM"],  # LA — large offset
-        ["PL",  "PL",  "PL",  "PM",  "ZO"],  # VL — very large offset
+        ["PM",  "PM",  "ZO",  "NM",  "NL"],  # ME — ambiguous (offset or peak)
+        ["PM",  "PM",  "ZO",  "NM",  "NL"],  # LA — ambiguous (offset or peak)
+        ["PL",  "PM",  "PM",  "ZO",  "NM"],  # VL — strong offset, still cautious
     ],
     ControlObjective.DISTURBANCE_REJECTION: [
-        # More aggressive offset correction, same oscillation damping
+        # Slightly more aggressive offset correction than SP_TRACKING,
+        # but still avoids strong positive at moderate |e| with low |Δe|.
         ["ZO",  "ZO",  "NM",  "NL",  "NL"],  # ZO
         ["PM",  "PM",  "ZO",  "NM",  "NL"],  # SM
-        ["PL",  "PM",  "PM",  "NM",  "NL"],  # ME
-        ["PL",  "PL",  "PM",  "ZO",  "NM"],  # LA
-        ["PL",  "PL",  "PL",  "PM",  "ZO"],  # VL
+        ["PM",  "PM",  "ZO",  "NM",  "NL"],  # ME
+        ["PL",  "PM",  "PM",  "ZO",  "NM"],  # LA
+        ["PL",  "PL",  "PM",  "ZO",  "NM"],  # VL
     ],
     ControlObjective.SURGE_LEVEL: [
-        # Conservative — prioritise stability over offset elimination
+        # Most conservative — stability over offset elimination.
         ["ZO",  "NM",  "NM",  "NL",  "NL"],  # ZO
         ["ZO",  "ZO",  "NM",  "NM",  "NL"],  # SM
-        ["PM",  "ZO",  "ZO",  "NM",  "NL"],  # ME
-        ["PM",  "PM",  "ZO",  "NM",  "NM"],  # LA
-        ["PL",  "PM",  "PM",  "ZO",  "NM"],  # VL
+        ["ZO",  "ZO",  "ZO",  "NM",  "NL"],  # ME
+        ["PM",  "ZO",  "ZO",  "NM",  "NM"],  # LA
+        ["PM",  "PM",  "ZO",  "NM",  "NM"],  # VL
     ],
 }
 
@@ -135,9 +140,9 @@ class FuzzyEngine:
     """
 
     _OSC_WINDOW = 12
-    _OSC_THRESHOLD = 3
-    _OSC_MIN_AMPLITUDE = 0.05  # 5% of span (normalised to [-1,+1])
-    _OSC_DAMPING_GAIN = 1.5
+    _OSC_THRESHOLD = 2  # 2 sign flips catch converging oscillation earlier
+    _OSC_MIN_AMPLITUDE = 0.015  # 1.5% of span — override stays active during damped convergence
+    _OSC_DAMPING_GAIN = 2.0
 
     def __init__(self) -> None:
         self._error_signs: deque[int] = deque(maxlen=self._OSC_WINDOW)

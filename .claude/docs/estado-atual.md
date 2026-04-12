@@ -1,55 +1,37 @@
-# Estado Atual — Phase 6: Alarms, Events & ACK Workflow
+# Estado atual — 2026-04-12
 
-**Data:** 2026-04-07
-**Branch:** `feat/phase6-alarms-events`
+## Tarefa concluída
+Fix: Fuzzy engine reduzia Ti novamente durante convergência, reexcitando oscilação da malha.
 
-## Status: COMPLETO — Todas as 17 Tasks implementadas
+## Branch
+`fix/fuzzy-no-ti-reversal-on-convergence` (criada a partir de main, **NÃO mergeada** — aguardando aprovação).
 
-### Commits (em ordem cronológica)
-1. `0376128` — Task 1: Remove AlarmEngine from PIDWorker/LoopManager (Bug #1, #2)
-2. `211a7a9` — Task 2: Fix deadband calc over instrument span (Bug #11)
-3. `2d06479` — Task 3: Fix AlarmWorker — enrich events, pv_range, log errors (Bug #6, #9)
-4. `05fe03b` — Task 4: ACK returns alarm details and controller_ids (§5.5, §9.1)
-5. `4c7a7c6` — Task 6: SystemEventRepository + Log_System_Events DDL (§4.3)
-6. `c5c8d6c` — Task 7: SystemEventWorker facade (§6.1)
-7. `2a25e9c` — Task 8: GET /system-events endpoint (§9.3)
-8. `3f90cbe` — Task 9: Bridge EVENT.SYSTEM via ZMQ (§6.3, §6.4)
-9. `16a16ec` — Task 10: Wire SystemEventWorker + AlarmWorker metadata in daemon (§6.2)
-10. `e4de577` — Task 11: HMI API client — get_system_events (§9.3)
-11. `a26f02e` — Task 12: Fix AlarmPanel — api_client required, ACK uses 'id' (Bug #3, #4)
-12. `42cd383` — Task 13: Redesign AlarmBar as QTableWidget grid (§8.1)
-13. `11e64b1` — Task 14: ACK updates all 3 widgets (Bug #5)
-14. `5149154` — Task 15: AlarmPanel Live mode with 5s auto-refresh (§7.3)
-15. `92647b9` — Task 16: Daily retention cleanup — alarms 30d, logs 7d (§4)
-16. `9569610` — Task 17: Fix lint + stale tests
+## Causa raiz
+1. Regras `(ME,ZO)` e `(LA,ZO)` disparavam `PL=+1.0`, interpretando picos de oscilação (|e| moderado-grande com |Δe|≈0) como offset estável → reduzia Ti exatamente no pico.
+2. Detector de oscilação só disparava com amplitude RMS ≥ 5% do span. Assim que a malha convergia para < 5%, o override desligava e as regras voltavam a reduzir Ti, reexcitando oscilação.
 
-## Bugs corrigidos
-| Bug # | Descrição |
-|-------|-----------|
-| #1 | Duplicate alarm engines — removed from PIDWorker/LoopManager |
-| #2 | Alarms never trigger in Execute — dead code removed |
-| #3 | AlarmPanel no api_client — made required parameter |
-| #4 | ACK Selected wrong field — uses 'id' not 'alarm_id' |
-| #5 | ACK All doesn't update all widgets — all 3 updated |
-| #6 | AlarmBar shows "?" for name — events enriched |
-| #9 | Silent processing failures — added logging |
-| #11 | Zero deadband at limit=0 — span-based calculation |
+## Correções aplicadas em `packages/smart_pid_core/src/smart_pid_core/domain/services/fuzzy_engine.py`
+1. **Output centers assimétricos** (curvas de defuzzificação):
+   - `PL`: +1.0 → **+0.6**
+   - `PM`: +0.5 → **+0.3**
+   - Negativos (`NL=-1.0`, `NM=-0.5`) mantidos — errar aumentando Ti é barato; errar reduzindo é caro.
+2. **Regras menos agressivas nas células ambíguas** (|e|=ME/LA, |Δe|=ZO/SM) para `SP_TRACKING`, `DISTURBANCE_REJECTION`, `SURGE_LEVEL` — `PL` substituído por `PM` onde pico e offset são indistinguíveis.
+3. **Detector de oscilação mais sensível**:
+   - `_OSC_THRESHOLD`: 3 → **2** sign flips
+   - `_OSC_MIN_AMPLITUDE`: 0.05 → **0.015** (1.5% do span)
+   - `_OSC_DAMPING_GAIN`: 1.5 → **2.0**
 
-## Features entregues
-- SystemEventRepository + DDL + REST API
-- SystemEventWorker facade
-- EVENT.SYSTEM ZMQ bridging (backend → HMI)
-- AlarmBar redesigned as QTableWidget grid with per-row ACK
-- AlarmPanel Live mode (5s refresh)
-- ACK response contracts (alarm details + controller_ids)
-- Data retention cleanup (30d alarms, 7d logs)
+## Teste de regressão adicionado
+`tests/core/unit/test_fuzzy_engine.py::TestOscillationDetection::test_damped_oscillation_does_not_reduce_ti` — simula senoide amortecida (10% decaindo a ~2%) e verifica que Ti não cai abaixo do valor inicial.
 
-## Testes
-- 116 tests Phase 6-específicos: ALL PASS
-- 2 falhas pré-existentes (não relacionadas a Phase 6):
-  - `test_stats_worker::test_publishes_stats_after_samples` — flaky ZMQ timing
-  - `test_config_users_db::test_default_users_db_path` — path mismatch
-- Lint (ruff): ALL PASS
+## Validação
+- 25/25 testes fuzzy PASSAM (24 antigos + 1 novo).
+- Ruff lint: OK no fuzzy_engine.py e test_fuzzy_engine.py.
 
-## Próximos passos
-- Aguardando aprovação do usuário para merge para main
+## Próximos passos (aguardando usuário)
+1. Aprovação explícita para merge da branch em main.
+2. Teste em processo real / simulador para confirmar que a malha sustenta a convergência sem reversão de Ti.
+
+## Arquivos modificados
+- `packages/smart_pid_core/src/smart_pid_core/domain/services/fuzzy_engine.py`
+- `tests/core/unit/test_fuzzy_engine.py`
