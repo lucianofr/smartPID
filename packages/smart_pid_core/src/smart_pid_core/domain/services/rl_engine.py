@@ -8,9 +8,18 @@ from __future__ import annotations
 import logging
 import math
 from collections import deque
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from smart_pid_core.domain.services.fuzzy_engine import AIDecision
+
+@dataclass(frozen=True)
+class AIDecision:
+    """Result of an RL Ki optimization computation."""
+
+    gamma: float
+    new_ki: float
+    reasoning: str
+    membership_values: dict[str, dict[str, float]] | None = None
 
 if TYPE_CHECKING:
     from pathlib import Path
