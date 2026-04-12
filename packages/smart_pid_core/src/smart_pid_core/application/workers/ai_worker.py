@@ -77,9 +77,14 @@ class AIWorker:
 
     def _create_engine(self):
         if self._ai_config.engine == AIEngine.FUZZY:
-            from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
+            from smart_pid_core.domain.services.fuzzy_engine_v2 import (
+                FuzzyEngineV2Dispatcher,
+            )
 
-            return FuzzyEngine()
+            return FuzzyEngineV2Dispatcher(
+                objective=self._ai_config.objective,
+                dt_sec=self._ai_period_s,
+            )
         elif self._ai_config.engine == AIEngine.RL:
             from smart_pid_core.domain.services.rl_engine import RLEngine
 
@@ -197,19 +202,35 @@ class AIWorker:
                 delta_error = error - self._prev_error
 
                 if self._ai_config.engine == AIEngine.FUZZY:
-                    decision = self._engine.compute_gamma(
-                        error=error,
-                        delta_error=delta_error,
-                        ki_current=self._ki_current,
-                        span=self._controller.pv_scale.span,
-                        objective=self._ai_config.objective,
-                        speed=self._controller.process_speed,
+                    # V2 uses normalised [0, 1] signals. Feed the current
+                    # sample and then read the decision from the dispatcher.
+                    span = self._controller.pv_scale.span
+                    eu_min = self._controller.pv_scale.eu_min
+                    error_frac = (error / span) if span > 0 else 0.0
+                    pv_frac = (
+                        (self._last_pv - eu_min) / span if span > 0 else 0.5
+                    )
+                    co_frac = self._last_co / 100.0
+                    self._engine.update_sample(error_frac, pv_frac, co_frac)
+                    decision = self._engine.compute_adjustment(
+                        ti_current=self._ki_current,
                         limit_min=self._ai_config.limit_min,
                         limit_max=self._ai_config.limit_max,
-                        integral_type=self._integral_type,
                     )
+                    # V2 returns delta_ti ∈ [−0.5..+1.5]. For GAIN_KI loops the
+                    # integral parameter has the opposite sense, so invert.
+                    if self._integral_type == "GAIN_KI":
+                        new_ki = self._ki_current / (1.0 + decision.delta_ti)
+                        new_ki = max(
+                            self._ai_config.limit_min,
+                            min(self._ai_config.limit_max, new_ki),
+                        )
+                    else:
+                        new_ki = decision.new_ki
+                    gamma_value = decision.delta_ti
+                    reasoning = decision.reasoning
                 else:
-                    # RL engine
+                    # RL engine (unchanged V1 interface)
                     decision = self._engine.compute_gamma(
                         error=error,
                         delta_error=delta_error,
@@ -223,21 +244,24 @@ class AIWorker:
                         limit_max=self._ai_config.limit_max,
                         integral_type=self._integral_type,
                     )
+                    new_ki = decision.new_ki
+                    gamma_value = decision.gamma
+                    reasoning = decision.reasoning
 
                 old_ki = self._ki_current
-                self._ki_current = decision.new_ki
+                self._ki_current = new_ki
                 self._prev_error = error
 
                 # Publish ACTION.AI
                 action_data = {
                     "controller_id": self.controller_id,
-                    "gamma": decision.gamma,
-                    "new_ki": decision.new_ki,
+                    "gamma": gamma_value,
+                    "new_ki": new_ki,
                     "engine": self._ai_config.engine.value,
                     "objective": self._ai_config.objective.value,
                     "integral_type": self._integral_type,
                     "execution_mode": self._execution_mode,
-                    "reasoning": decision.reasoning,
+                    "reasoning": reasoning,
                     "timestamp": datetime.now(tz=UTC).isoformat(),
                 }
                 pub.send(
@@ -249,10 +273,10 @@ class AIWorker:
                 log_data = {
                     "controller_id": self.controller_id,
                     "engine": self._ai_config.engine.value,
-                    "gamma": decision.gamma,
+                    "gamma": gamma_value,
                     "old_ki": old_ki,
-                    "new_ki": decision.new_ki,
-                    "reasoning": decision.reasoning,
+                    "new_ki": new_ki,
+                    "reasoning": reasoning,
                     "timestamp": datetime.now(tz=UTC).isoformat(),
                 }
                 pub.send(
