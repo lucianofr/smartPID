@@ -140,9 +140,12 @@ class FuzzyEngine:
     """
 
     _OSC_WINDOW = 12
-    _OSC_THRESHOLD = 2  # 2 sign flips catch converging oscillation earlier
-    _OSC_MIN_AMPLITUDE = 0.015  # 1.5% of span — override stays active during damped convergence
-    _OSC_DAMPING_GAIN = 2.0
+    _OSC_THRESHOLD = 3
+    _OSC_MIN_AMPLITUDE = 0.025  # 2.5% of span — rejects typical measurement noise
+    _OSC_DAMPING_GAIN = 1.5
+    # If recent-half RMS / older-half RMS < this, oscillation is damping
+    # on its own — don't push Ti higher, let the loop settle.
+    _TREND_DAMPING_RATIO = 0.9
 
     def __init__(self) -> None:
         self._error_signs: deque[int] = deque(maxlen=self._OSC_WINDOW)
@@ -162,6 +165,25 @@ class FuzzyEngine:
         if not self._recent_errors:
             return 0.0
         return math.sqrt(sum(e * e for e in self._recent_errors) / len(self._recent_errors))
+
+    def _amplitude_trend(self) -> float:
+        """Ratio of recent-half RMS to older-half RMS.
+
+        Returns 1.0 when window not yet full.
+        < 1.0 means amplitude is decreasing (oscillation damping).
+        > 1.0 means amplitude is growing (oscillation worsening).
+        """
+        if len(self._recent_errors) < self._OSC_WINDOW:
+            return 1.0
+        half = self._OSC_WINDOW // 2
+        errs = list(self._recent_errors)
+        older = errs[:half]
+        newer = errs[half:]
+        old_rms = math.sqrt(sum(e * e for e in older) / len(older))
+        new_rms = math.sqrt(sum(e * e for e in newer) / len(newer))
+        if old_rms < 1e-6:
+            return 1.0
+        return new_rms / old_rms
 
     def fuzzify(self, value: float) -> dict[str, float]:
         """Compute membership degree for each fuzzy level."""
@@ -277,8 +299,20 @@ class FuzzyEngine:
         )
 
         if oscillating:
-            gamma = -min(0.8, self._OSC_DAMPING_GAIN * amp)
-            reason_prefix = f"Fuzzy(OSC_DAMP rev={reversals} amp={amp:.3f})"
+            trend = self._amplitude_trend()
+            if trend < self._TREND_DAMPING_RATIO:
+                # Oscillation is converging on its own — don't increase Ti further.
+                # Holding gamma at 0 prevents the Ti-overshoot seen with FOPDT K=1,
+                # τ1=10, τ2=5, θ=3 where the optimum Ti ≈ 13 was being overshot.
+                gamma = 0.0
+                reason_prefix = (
+                    f"Fuzzy(OSC_DAMPING_SELF trend={trend:.2f} amp={amp:.3f})"
+                )
+            else:
+                gamma = -min(0.8, self._OSC_DAMPING_GAIN * amp)
+                reason_prefix = (
+                    f"Fuzzy(OSC_DAMP rev={reversals} amp={amp:.3f} trend={trend:.2f})"
+                )
         else:
             # Normal fuzzy inference on absolute values
             gamma = self.infer(abs_error_norm, abs_delta_norm, objective)
