@@ -307,6 +307,7 @@ class SimulatorAdapter:
             ctrl.pid_params.reset = cfg.get("pid_ti", 10.0)
             ctrl.pid_params.rate = cfg.get("pid_td", 0.0)
             ctrl.pid_mode = cfg.get("pid_mode", 0)
+            ctrl.sp = cfg.get("pid_sp", 50.0)
             # Auto SP / Auto Disturbance
             ctrl.auto_sp_enabled = cfg.get("auto_sp_enabled", False)
             ctrl.auto_sp_min_pct = cfg.get("auto_sp_min_pct", 30.0)
@@ -371,6 +372,7 @@ class SimulatorAdapter:
                 "auto_sp_max_pct": ctrl.auto_sp_max_pct,
                 "auto_dist_enabled": ctrl.auto_dist_enabled,
                 "auto_dist_max_pct": ctrl.auto_dist_max_pct,
+                "pid_sp": ctrl.sp,
             }
 
     def get_controller_status(self, controller_id: int) -> ControllerSimStatus:

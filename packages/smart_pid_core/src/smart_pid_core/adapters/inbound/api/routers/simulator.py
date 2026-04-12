@@ -60,6 +60,7 @@ async def _persist_sim_config(
         auto_sp_max_pct=cfg["auto_sp_max_pct"],
         auto_dist_enabled=cfg["auto_dist_enabled"],
         auto_dist_max_pct=cfg["auto_dist_max_pct"],
+        pid_sp=cfg.get("pid_sp", 50.0),
     )
 
 
@@ -222,11 +223,13 @@ async def set_pid_sp(
     body: SimulatorPIDSPRequest,
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
     try:
         adapter.set_pid_sp(controller_id, body.sp)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
+    await _persist_sim_config(adapter, repo, controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID SP={body.sp}")
 
 
@@ -236,11 +239,13 @@ async def set_co(
     body: SimulatorPIDSPRequest,  # reuse — same shape (float 0-100)
     _user: Annotated[UserClaims, Depends(require_supervisor)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
     try:
         adapter.write_output(controller_id, body.sp)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
+    await _persist_sim_config(adapter, repo, controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail=f"CO={body.sp}")
 
 
