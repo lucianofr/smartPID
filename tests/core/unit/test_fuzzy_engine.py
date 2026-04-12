@@ -251,3 +251,35 @@ class TestOscillationDetection:
             )
             ti = d.new_ki
         assert ti < 25.0, f"Ti={ti} should have decreased from 30.0 with steady offset"
+
+    def test_damped_oscillation_does_not_reduce_ti(self):
+        """Regression: a converging (damped) oscillation must NOT trigger Ti reduction.
+
+        Previously, once amplitude dropped below 5% of span the oscillation
+        override disengaged and rules fired PL at the peaks (|e| moderate,
+        |Δe|≈0), reducing Ti and re-exciting the oscillation.
+        """
+        import math
+
+        from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
+
+        engine = FuzzyEngine()
+        ti = 20.0
+        prev = 0.0
+        # Damped sinewave: starts at 10% amplitude, decays to ~2%.
+        for k in range(60):
+            amp = 10.0 * math.exp(-k / 40.0)
+            err = amp * math.sin(k * math.pi / 4.0)  # 8-sample period
+            de = err - prev
+            d = engine.compute_gamma(
+                error=err, delta_error=de, ki_current=ti, span=100.0,
+                objective=ControlObjective.SP_TRACKING,
+                speed=ProcessSpeed.MEDIUM, limit_min=0.1, limit_max=100.0,
+                integral_type="TIME_TI",
+            )
+            ti = d.new_ki
+            prev = err
+        assert ti >= 20.0, (
+            f"Ti={ti} must not drop below initial 20.0 during damped oscillation "
+            "(fuzzy incorrectly treated peaks as steady offset)"
+        )
