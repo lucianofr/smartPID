@@ -30,6 +30,14 @@ class OPCUAAdapter:
     # Backoff constants
     _BACKOFF_BASE_S = 1.0
 
+    # Write verification — after writing tuning/mode, read back the value and
+    # retry the write if it didn't take. Guards against DCS write-through
+    # failures that leave the setpoint stale without raising.
+    _VERIFY_DELAY_S = 1.5
+    _VERIFY_MAX_RETRIES = 2
+    _VERIFY_FLOAT_REL_TOL = 0.005  # 0.5 % of expected magnitude
+    _VERIFY_FLOAT_ABS_TOL = 1e-3   # absolute minimum tolerance
+
     def __init__(self, settings: CoreSettings) -> None:
         self._settings = settings
         self._endpoint = settings.opcua_endpoint
@@ -383,6 +391,103 @@ class OPCUAAdapter:
         dv = ua.DataValue(ua.Variant(value, ua.VariantType.Int32))
         await node.write_value(dv)
 
+    # ---- Write verification (fire-and-forget retry on mismatch) ----
+
+    async def _async_verify_write_float(
+        self, client, node_id: str, expected: float,
+    ) -> bool:
+        """Read-back a float node after _VERIFY_DELAY_S; retry write on mismatch.
+
+        Fire-and-forget: the caller schedules this on the event loop and does
+        not wait. Returns True if the value was confirmed, False if all
+        retries were exhausted (or the adapter went offline mid-check).
+        """
+        tolerance = max(
+            self._VERIFY_FLOAT_ABS_TOL, abs(expected) * self._VERIFY_FLOAT_REL_TOL,
+        )
+        last_actual: float | None = None
+        for attempt in range(self._VERIFY_MAX_RETRIES + 1):
+            await asyncio.sleep(self._VERIFY_DELAY_S)
+            if self.state != ConnectionState.ONLINE:
+                logger.warning(
+                    "opcua_verify_skipped_disconnected node=%s", node_id,
+                )
+                return False
+            try:
+                node = client.get_node(node_id)
+                last_actual = float(await node.read_value())
+            except Exception:
+                logger.warning(
+                    "opcua_verify_read_failed node=%s attempt=%d",
+                    node_id, attempt + 1, exc_info=True,
+                )
+                continue
+            if abs(last_actual - expected) <= tolerance:
+                return True
+            logger.warning(
+                "opcua_verify_mismatch node=%s expected=%.6f actual=%.6f "
+                "attempt=%d/%d",
+                node_id, expected, last_actual,
+                attempt + 1, self._VERIFY_MAX_RETRIES + 1,
+            )
+            if attempt < self._VERIFY_MAX_RETRIES:
+                try:
+                    await self._async_write_value(client, node_id, expected)
+                except Exception:
+                    logger.warning(
+                        "opcua_verify_rewrite_failed node=%s attempt=%d",
+                        node_id, attempt + 1, exc_info=True,
+                    )
+        logger.error(
+            "opcua_verify_exhausted node=%s expected=%.6f last_actual=%s",
+            node_id, expected,
+            f"{last_actual:.6f}" if last_actual is not None else "n/a",
+        )
+        return False
+
+    async def _async_verify_write_int(
+        self, client, node_id: str, expected: int,
+    ) -> bool:
+        """Read-back an int node after _VERIFY_DELAY_S; retry write on mismatch."""
+        last_actual: int | None = None
+        for attempt in range(self._VERIFY_MAX_RETRIES + 1):
+            await asyncio.sleep(self._VERIFY_DELAY_S)
+            if self.state != ConnectionState.ONLINE:
+                logger.warning(
+                    "opcua_verify_skipped_disconnected node=%s", node_id,
+                )
+                return False
+            try:
+                node = client.get_node(node_id)
+                last_actual = int(await node.read_value())
+            except Exception:
+                logger.warning(
+                    "opcua_verify_read_failed node=%s attempt=%d",
+                    node_id, attempt + 1, exc_info=True,
+                )
+                continue
+            if last_actual == expected:
+                return True
+            logger.warning(
+                "opcua_verify_mismatch_int node=%s expected=%d actual=%d "
+                "attempt=%d/%d",
+                node_id, expected, last_actual,
+                attempt + 1, self._VERIFY_MAX_RETRIES + 1,
+            )
+            if attempt < self._VERIFY_MAX_RETRIES:
+                try:
+                    await self._async_write_int32(client, node_id, expected)
+                except Exception:
+                    logger.warning(
+                        "opcua_verify_rewrite_failed node=%s attempt=%d",
+                        node_id, attempt + 1, exc_info=True,
+                    )
+        logger.error(
+            "opcua_verify_exhausted_int node=%s expected=%d last_actual=%s",
+            node_id, expected, last_actual,
+        )
+        return False
+
     # ---- Tuning Read/Write ----
 
     def read_pid_params(self, controller_id: int) -> PIDParamsRead | None:
@@ -458,6 +563,14 @@ class OPCUAAdapter:
             self._loop,
         )
         future.result(timeout=self._timeout_s)
+        # Fire-and-forget read-back verification per node. If the DCS silently
+        # dropped the write (ACL quirks, write-through race, etc.) the verify
+        # coroutine will retry up to _VERIFY_MAX_RETRIES times.
+        for node_id, value in pairs:
+            asyncio.run_coroutine_threadsafe(
+                self._async_verify_write_float(client, node_id, value),
+                self._loop,
+            )
 
     async def _async_write_pid_params(
         self, client, pairs: list[tuple[str, float]],
@@ -526,10 +639,15 @@ class OPCUAAdapter:
         )
         try:
             future.result(timeout=self._timeout_s)
-            return True
         except Exception:
             logger.exception("write_target_mode_failed controller=%d", controller_id)
             return False
+        # Fire-and-forget read-back verification
+        asyncio.run_coroutine_threadsafe(
+            self._async_verify_write_int(client, target_id, int(int_val)),
+            self._loop,
+        )
+        return True
 
     # ---- TagBrowser ----
 
