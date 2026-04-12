@@ -226,7 +226,8 @@ class AIWorker:
                             min(self._ai_config.limit_max, new_ki),
                         )
                     else:
-                        new_ki = decision.new_ki
+                        # AIDecisionV2 uses `new_ti` (already clamped inside V2).
+                        new_ki = decision.new_ti
                     gamma_value = decision.delta_ti
                     reasoning = decision.reasoning
                 else:
@@ -288,6 +289,14 @@ class AIWorker:
                 self._save_rl_state()
             except zmq.ZMQError:
                 break
+            except Exception:
+                # Never let a transient error kill the worker thread silently —
+                # log and keep looping so the optimizer stays alive.
+                logger.exception(
+                    "ai_worker_iteration_error controller_id=%d engine=%s",
+                    self.controller_id,
+                    self._ai_config.engine.value,
+                )
 
     def _drain_commands(self, sub) -> None:
         """Drain CMD.AI messages and update enabled state."""
