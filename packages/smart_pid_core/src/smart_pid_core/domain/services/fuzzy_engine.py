@@ -147,6 +147,11 @@ class FuzzyEngine:
     # If recent-half RMS / older-half RMS < this, oscillation is damping
     # on its own — don't push Ti higher, let the loop settle.
     _TREND_DAMPING_RATIO = 0.9
+    # Variability gate (2σ / span, as %). Distinguishes:
+    #   high variability + persistent error → oscillation (increase Ti)
+    #   low variability + persistent error → steady offset (decrease Ti)
+    _VAR_LOW_PCT = 2.0  # below → full trust in rules (reduce Ti for offset)
+    _VAR_HIGH_PCT = 5.0  # above → force negative gamma (oscillation signature)
 
     def __init__(self) -> None:
         self._error_signs: deque[int] = deque(maxlen=self._OSC_WINDOW)
@@ -166,6 +171,23 @@ class FuzzyEngine:
         if not self._recent_errors:
             return 0.0
         return math.sqrt(sum(e * e for e in self._recent_errors) / len(self._recent_errors))
+
+    def _error_variability_pct(self) -> float:
+        """Return 2σ of recent errors as % of span.
+
+        Errors in ``_recent_errors`` are already stored as fractions of span,
+        so 2σ × 100 gives the standard process-variability metric.
+        Uses std (centred around mean) so a pure steady offset — every sample
+        the same — yields 0 variability, while oscillation around the mean
+        yields the full excursion.
+        """
+        n = len(self._recent_errors)
+        if n < 4:
+            return 0.0
+        errs = list(self._recent_errors)
+        mean = sum(errs) / n
+        variance = sum((e - mean) ** 2 for e in errs) / n
+        return 2.0 * math.sqrt(variance) * 100.0
 
     def _amplitude_trend(self) -> float:
         """Ratio of recent-half RMS to older-half RMS.
@@ -299,27 +321,52 @@ class FuzzyEngine:
             reversals >= self._OSC_THRESHOLD and amp >= self._OSC_MIN_AMPLITUDE
         )
 
-        if oscillating:
-            trend = self._amplitude_trend()
-            if trend < self._TREND_DAMPING_RATIO:
-                # Oscillation converging on its own — don't push Ti up further.
-                gamma = 0.0
-                reason_prefix = (
-                    f"Fuzzy(OSC_DAMPING_SELF trend={trend:.2f} amp={amp:.3f})"
-                )
-            else:
-                # Growing oscillation (trend > 1) gets proportionally more aggressive
-                # damping to stabilise the loop faster.
-                adaptive_gain = self._OSC_DAMPING_GAIN * max(1.0, trend)
-                gamma = -min(self._OSC_GAMMA_CAP, adaptive_gain * amp)
-                reason_prefix = (
-                    f"Fuzzy(OSC_DAMP rev={reversals} amp={amp:.3f} "
-                    f"trend={trend:.2f} gain={adaptive_gain:.2f})"
-                )
+        trend = self._amplitude_trend()
+        is_self_damping = oscillating and trend < self._TREND_DAMPING_RATIO
+        if oscillating and not is_self_damping:
+            # Growing oscillation (trend > 1) gets proportionally more aggressive
+            # damping to stabilise the loop faster.
+            adaptive_gain = self._OSC_DAMPING_GAIN * max(1.0, trend)
+            gamma = -min(self._OSC_GAMMA_CAP, adaptive_gain * amp)
+            reason_prefix = (
+                f"Fuzzy(OSC_DAMP rev={reversals} amp={amp:.3f} "
+                f"trend={trend:.2f} gain={adaptive_gain:.2f})"
+            )
+        elif is_self_damping:
+            # Oscillation converging on its own — don't push Ti up further.
+            gamma = 0.0
+            reason_prefix = (
+                f"Fuzzy(OSC_DAMPING_SELF trend={trend:.2f} amp={amp:.3f})"
+            )
         else:
             # Normal fuzzy inference on absolute values
             gamma = self.infer(abs_error_norm, abs_delta_norm, objective)
             reason_prefix = f"Fuzzy({objective.value})"
+
+        # --- Variability gate -------------------------------------------------
+        # 2σ/span distinguishes oscillation (high σ) from steady offset (low σ).
+        # Rules alone can't tell a mid-|e|/low-|Δe| sample at an oscillation
+        # peak from a true steady offset; variability over the window does.
+        # Requires a full window (else we can't tell "growing oscillation" from
+        # "initial transient damping to setpoint"). Skipped when self-damping
+        # is in effect so we don't fight a converging loop.
+        variability_pct = self._error_variability_pct()
+        window_full = len(self._recent_errors) >= self._OSC_WINDOW
+        if window_full and not is_self_damping:
+            if variability_pct >= self._VAR_HIGH_PCT:
+                osc_gamma = -min(
+                    1.0, (variability_pct - self._VAR_LOW_PCT) / 10.0,
+                )
+                if osc_gamma < gamma:
+                    gamma = osc_gamma
+                    reason_prefix += f" var={variability_pct:.1f}%(HI)"
+            elif variability_pct > self._VAR_LOW_PCT and gamma > 0:
+                blend = (self._VAR_HIGH_PCT - variability_pct) / (
+                    self._VAR_HIGH_PCT - self._VAR_LOW_PCT
+                )
+                gamma = gamma * blend
+                reason_prefix += f" var={variability_pct:.1f}%(MID×{blend:.2f})"
+        # else: low variability, self-damping, or window not yet full — trust current gamma
 
         # Apply gamma direction: Ki and Ti have OPPOSITE effects
         # Positive gamma means "more integral action" → decrease Ti / increase Ki
