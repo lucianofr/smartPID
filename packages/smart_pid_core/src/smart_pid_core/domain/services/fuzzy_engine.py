@@ -80,8 +80,8 @@ OUTPUT_CENTERS: dict[str, float] = {
     "NL": -1.0,
     "NM": -0.5,
     "ZO": 0.0,
-    "PM": 0.3,
-    "PL": 0.6,
+    "PM": 0.5,
+    "PL": 1.0,
 }
 
 RULE_MATRICES: dict[ControlObjective, list[list[str]]] = {
