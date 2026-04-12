@@ -8,14 +8,19 @@ from fastapi import APIRouter, Depends, HTTPException
 from starlette.requests import Request
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
+    audit_and_broadcast,
     get_audit_repo,
     get_execution_mode,
     get_loop_manager,
+    get_system_event_worker,
     require_operator,
     require_supervisor,
 )
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.application.loop_manager import LoopManager
+from smart_pid_core.application.workers.system_event_worker import (  # noqa: TC001
+    SystemEventWorker,
+)
 from smart_pid_core.domain.services.tuning_guardrails import clamp_tuning_params
 from smart_pid_domain.dtos.auth import UserClaims
 from smart_pid_domain.dtos.commands import (
@@ -38,6 +43,7 @@ async def set_setpoint(
     user: Annotated[UserClaims, Depends(require_operator)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+    sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
     execution_mode: Annotated[str, Depends(get_execution_mode)],
 ) -> CommandResponse:
     if execution_mode == "monitor":
@@ -47,9 +53,11 @@ async def set_setpoint(
         opcua.write_parameter(body.controller_id, "sp", body.value)
     else:
         lm.set_setpoint(body.controller_id, body.value)
-    await audit_repo.record(
+    await audit_and_broadcast(
+        audit_repo, sew,
         user.user_id, user.username, AuditAction.SP_CHANGE,
         f"controller:{body.controller_id}", json.dumps({"value": body.value}),
+        message=f"{user.username} changed SP of controller {body.controller_id} to {body.value}",
     )
     return CommandResponse(
         ok=True,
@@ -65,6 +73,7 @@ async def set_mode(
     user: Annotated[UserClaims, Depends(require_operator)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+    sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
     execution_mode: Annotated[str, Depends(get_execution_mode)],
 ) -> CommandResponse:
     if execution_mode == "monitor":
@@ -78,9 +87,11 @@ async def set_mode(
             )
     else:
         lm.set_mode(body.controller_id, body.mode)
-    await audit_repo.record(
+    await audit_and_broadcast(
+        audit_repo, sew,
         user.user_id, user.username, AuditAction.MODE_CHANGE,
         f"controller:{body.controller_id}", json.dumps({"mode": body.mode}),
+        message=f"{user.username} changed mode of controller {body.controller_id} to {body.mode}",
     )
     return CommandResponse(
         ok=True,
@@ -96,6 +107,7 @@ async def set_output(
     user: Annotated[UserClaims, Depends(require_operator)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+    sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
     execution_mode: Annotated[str, Depends(get_execution_mode)],
 ) -> CommandResponse:
     if execution_mode == "monitor":
@@ -105,9 +117,11 @@ async def set_output(
         opcua.write_parameter(body.controller_id, "co", body.value)
     else:
         lm.set_output(body.controller_id, body.value)
-    await audit_repo.record(
+    await audit_and_broadcast(
+        audit_repo, sew,
         user.user_id, user.username, AuditAction.OUTPUT_CHANGE,
         f"controller:{body.controller_id}", json.dumps({"value": body.value}),
+        message=f"{user.username} set CO of controller {body.controller_id} to {body.value}",
     )
     return CommandResponse(
         ok=True,
@@ -122,6 +136,7 @@ async def write_tuning(
     body: dict,
     user: Annotated[UserClaims, Depends(require_operator)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+    sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
 ) -> CommandResponse:
     """Write Kp/Ti/Td directly to OPC-UA."""
     controller_id = body.get("controller_id", 0)
@@ -132,10 +147,18 @@ async def write_tuning(
     if opcua is None or not opcua.is_connected:
         raise HTTPException(status_code=409, detail="OPC-UA not connected")
     opcua.write_pid_params(controller_id, kp, ti, td)
-    await audit_repo.record(
+    _parts = [
+        f"{name}={val:.4f}"
+        for name, val in (("Kp", kp), ("Ti", ti), ("Td", td))
+        if val is not None
+    ]
+    _parts_str = ", ".join(_parts) or "no change"
+    await audit_and_broadcast(
+        audit_repo, sew,
         user.user_id, user.username, AuditAction.TUNE_PID,
         f"controller:{controller_id}",
         json.dumps({"kp": kp, "ti": ti, "td": td}),
+        message=f"{user.username} tuned controller {controller_id}: {_parts_str}",
     )
     return CommandResponse(
         ok=True, controller_id=controller_id,
@@ -181,6 +204,7 @@ async def apply_tuning(
     user: Annotated[UserClaims, Depends(require_supervisor)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+    sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
 ) -> dict:
     """Apply a pending tuning recommendation to the DCS via OPC-UA."""
     # Get pending recommendation
@@ -219,13 +243,16 @@ async def apply_tuning(
     # Clear recommendation
     recs.pop(controller_id, None)
 
-    # Audit
-    await audit_repo.record(
-        user.user_id,
-        user.username,
-        AuditAction.TUNE_PID,
+    # Audit + broadcast
+    await audit_and_broadcast(
+        audit_repo, sew,
+        user.user_id, user.username, AuditAction.TUNE_PID,
         f"controller:{controller_id}",
         f"Applied tuning: Kp={kp:.4f}, Ti={ti:.4f}, Td={td:.4f}",
+        message=(
+            f"{user.username} applied tuning to controller {controller_id}: "
+            f"Kp={kp:.4f}, Ti={ti:.4f}, Td={td:.4f}"
+        ),
     )
 
     return {

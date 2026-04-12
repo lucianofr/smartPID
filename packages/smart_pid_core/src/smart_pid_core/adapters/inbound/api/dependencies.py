@@ -22,6 +22,9 @@ if TYPE_CHECKING:
     from smart_pid_core.application.loop_manager import LoopManager
     from smart_pid_core.application.workers.alarm_worker import AlarmWorker
     from smart_pid_core.application.workers.stats_worker import StatsWorker
+    from smart_pid_core.application.workers.system_event_worker import (
+        SystemEventWorker,
+    )
     from smart_pid_core.config import CoreSettings
 
 
@@ -182,3 +185,47 @@ def get_audit_repo(request: Request) -> AuditRepository:
 
 def get_system_event_repo(request: Request) -> SystemEventRepository:
     return request.app.state.system_event_repo
+
+
+def get_system_event_worker(request: Request) -> SystemEventWorker | None:
+    """Return the SystemEventWorker used to broadcast user-action events
+    onto EVENT.SYSTEM (displayed live in the HMI alarm panel).
+
+    None when the backend is running in a mode without event broadcast
+    (unit tests, monitor-only). Callers should treat it as best-effort.
+    """
+    return getattr(request.app.state, "system_event_worker", None)
+
+
+# ----- Audit helper --------------------------------------------------------
+
+
+async def audit_and_broadcast(
+    audit_repo: AuditRepository,
+    sew: SystemEventWorker | None,
+    user_id: int,
+    username: str,
+    action,  # AuditAction
+    resource: str | None,
+    detail: str | None,
+    *,
+    severity: str = "INFO",
+    message: str | None = None,
+) -> None:
+    """Record an audit entry AND emit a matching EVENT.SYSTEM.
+
+    The audit trail in ``Log_Auditoria`` stays authoritative for search and
+    compliance; the system event gives the HMI alarm panel a live feed of
+    user actions (SP changes, mode changes, PID tuning, AI start/stop, …).
+    """
+    await audit_repo.record(user_id, username, action, resource, detail)
+    if sew is None:
+        return
+    msg = message or (
+        f"{username} — {action} on {resource}"
+        + (f" ({detail})" if detail else "")
+    )
+    # Never let a broadcast failure abort the HTTP request.
+    import contextlib
+    with contextlib.suppress(Exception):
+        sew.emit(source="USER", severity=severity, message=msg)

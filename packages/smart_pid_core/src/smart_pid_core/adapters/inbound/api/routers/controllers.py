@@ -445,10 +445,23 @@ async def update_controller(
         "old": {k: str(v) for k, v in old_values.items()},
         "new": {k: str(v) for k, v in new_values.items()},
     })
+    sew = getattr(request.app.state, "system_event_worker", None)
+    changed_keys = ", ".join(updates.keys()) if updates else "no changes"
     await audit_repo.record(
         user.user_id, user.username, AuditAction.UPDATE_CONTROLLER,
         f"controller:{controller_id}", audit_detail,
     )
+    if sew is not None and updates:
+        import contextlib
+        with contextlib.suppress(Exception):
+            sew.emit(
+                source="USER",
+                severity="INFO",
+                message=(
+                    f"{user.username} updated controller {controller_id} "
+                    f"({changed_keys})"
+                ),
+            )
     return _to_response(controller)
 
 

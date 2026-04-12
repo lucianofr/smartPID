@@ -8,14 +8,19 @@ import msgpack
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
+    audit_and_broadcast,
     get_ai_repo,
     get_ai_workers,
     get_audit_repo,
     get_event_bus,
+    get_system_event_worker,
     require_operator,
 )
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository  # noqa: TC001
 from smart_pid_core.application.event_bus import EventBus  # noqa: TC001
+from smart_pid_core.application.workers.system_event_worker import (  # noqa: TC001
+    SystemEventWorker,
+)
 from smart_pid_domain.dtos.ai import AIHistoryResponse, AIStatusResponse, AITuningLogEntry
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
 from smart_pid_domain.enums import AuditAction
@@ -64,6 +69,7 @@ async def start_ai(
     user: Annotated[UserClaims, Depends(require_operator)],
     bus: Annotated[EventBus, Depends(get_event_bus)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+    sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
 ) -> dict:
     """Start AI optimization for a controller loop via ZMQ command."""
     pub = bus.create_publisher()
@@ -75,9 +81,11 @@ async def start_ai(
         )
     finally:
         pub.close()
-    await audit_repo.record(
+    await audit_and_broadcast(
+        audit_repo, sew,
         user.user_id, user.username, AuditAction.CONFIG_AI,
         f"controller:{controller_id}", json.dumps({"action": "start"}),
+        message=f"{user.username} started AI optimizer on controller {controller_id}",
     )
     return {"ok": True, "controller_id": controller_id, "detail": "AI start command sent"}
 
@@ -88,6 +96,7 @@ async def stop_ai(
     user: Annotated[UserClaims, Depends(require_operator)],
     bus: Annotated[EventBus, Depends(get_event_bus)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+    sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
 ) -> dict:
     """Stop AI optimization for a controller loop via ZMQ command."""
     pub = bus.create_publisher()
@@ -99,9 +108,11 @@ async def stop_ai(
         )
     finally:
         pub.close()
-    await audit_repo.record(
+    await audit_and_broadcast(
+        audit_repo, sew,
         user.user_id, user.username, AuditAction.CONFIG_AI,
         f"controller:{controller_id}", json.dumps({"action": "stop"}),
+        message=f"{user.username} stopped AI optimizer on controller {controller_id}",
     )
     return {"ok": True, "controller_id": controller_id, "detail": "AI stop command sent"}
 
@@ -112,6 +123,7 @@ async def pause_ai(
     user: Annotated[UserClaims, Depends(require_operator)],
     bus: Annotated[EventBus, Depends(get_event_bus)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+    sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
 ) -> dict:
     """Pause AI optimization for a controller loop via ZMQ command."""
     pub = bus.create_publisher()
@@ -123,8 +135,10 @@ async def pause_ai(
         )
     finally:
         pub.close()
-    await audit_repo.record(
+    await audit_and_broadcast(
+        audit_repo, sew,
         user.user_id, user.username, AuditAction.CONFIG_AI,
         f"controller:{controller_id}", json.dumps({"action": "pause"}),
+        message=f"{user.username} paused AI optimizer on controller {controller_id}",
     )
     return {"ok": True, "controller_id": controller_id, "detail": "AI pause command sent"}

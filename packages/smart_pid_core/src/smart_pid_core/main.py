@@ -473,6 +473,9 @@ async def run_daemon(settings: CoreSettings) -> None:
 
     # Set export_worker on app.state so the export router can use it
     app.state.export_worker = export_worker
+    # Expose SystemEventWorker so routes can broadcast user-action events
+    # (displayed live in the HMI alarm panel alongside backend events).
+    app.state.system_event_worker = system_event_worker
 
     # Phase 2: Telemetry Publisher
     telemetry_pub = TelemetryPublisher(bus=bus, publish_port=settings.zmq_publish_port)
