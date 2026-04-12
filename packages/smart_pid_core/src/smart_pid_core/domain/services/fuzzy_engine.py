@@ -145,8 +145,11 @@ class FuzzyEngine:
     _OSC_DAMPING_GAIN = 3.0  # stronger Ti push per unit amplitude
     _OSC_GAMMA_CAP = 1.0  # allow full-magnitude damping when amp × gain saturates
     # If recent-half RMS / older-half RMS < this, oscillation is damping
-    # on its own — don't push Ti higher, let the loop settle.
+    # on its own. But we only TRUST this signal when amplitude is already
+    # small (below _AMP_SETTLED). If amp is still high, slow damping is
+    # not enough — keep pushing Ti up regardless of trend.
     _TREND_DAMPING_RATIO = 0.9
+    _AMP_SETTLED = 0.04  # 4% RMS — threshold below which "damping" means "near settled"
     # Variability gate (2σ / span, as %). Distinguishes:
     #   high variability + persistent error → oscillation (increase Ti)
     #   low variability + persistent error → steady offset (decrease Ti)
@@ -322,10 +325,14 @@ class FuzzyEngine:
         )
 
         trend = self._amplitude_trend()
-        is_self_damping = oscillating and trend < self._TREND_DAMPING_RATIO
+        # "Settled" means amplitude is already small enough that Ti is
+        # adequate — don't push it up further (trend alone is unreliable
+        # while amp is still large: slow damping still means insufficient Ti).
+        is_self_damping = oscillating and amp < self._AMP_SETTLED
         if oscillating and not is_self_damping:
             # Growing oscillation (trend > 1) gets proportionally more aggressive
-            # damping to stabilise the loop faster.
+            # damping to stabilise the loop faster. High amp with slow damping
+            # still counts as "not settled yet" — keep pushing.
             adaptive_gain = self._OSC_DAMPING_GAIN * max(1.0, trend)
             gamma = -min(self._OSC_GAMMA_CAP, adaptive_gain * amp)
             reason_prefix = (
@@ -333,10 +340,10 @@ class FuzzyEngine:
                 f"trend={trend:.2f} gain={adaptive_gain:.2f})"
             )
         elif is_self_damping:
-            # Oscillation converging on its own — don't push Ti up further.
+            # Amplitude is already below the settled threshold — hold Ti.
             gamma = 0.0
             reason_prefix = (
-                f"Fuzzy(OSC_DAMPING_SELF trend={trend:.2f} amp={amp:.3f})"
+                f"Fuzzy(OSC_SETTLED amp={amp:.3f} trend={trend:.2f})"
             )
         else:
             # Normal fuzzy inference on absolute values

@@ -360,22 +360,53 @@ class TestOscillationDetection:
             f"Ti={ti} — growing oscillation should raise Ti by >30% from {ti_start}"
         )
 
-    def test_self_damping_oscillation_does_not_overshoot_ti(self):
-        """Regression: when oscillation is damping on its own, Ti should stabilise.
+    def test_settled_residual_noise_holds_ti_stable(self):
+        """Once the window is entirely residual (<4% amp), Ti must stabilise.
 
-        Otherwise the engine keeps adding integral damping and overshoots the
-        IAE/ITAE-optimal Ti.
+        Tests the "amp < settled" gate in isolation: feed a settled loop
+        directly (no transient phase) and verify Ti does not drift.
         """
         import math
 
         from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
 
         engine = FuzzyEngine()
-        ti = 20.0
+        ti_start = 25.0
+        ti = ti_start
         prev = 0.0
-        # Strong damping: 15% -> ~2% over 80 samples
-        for k in range(80):
-            amp = 15.0 * math.exp(-k / 20.0)
+        # Residual oscillation 1% amp — below settled threshold (4%).
+        for k in range(60):
+            err = 1.0 * math.sin(k * math.pi / 4.0)
+            de = err - prev
+            d = engine.compute_gamma(
+                error=err, delta_error=de, ki_current=ti, span=100.0,
+                objective=ControlObjective.SP_TRACKING,
+                speed=ProcessSpeed.MEDIUM, limit_min=0.1, limit_max=100.0,
+                integral_type="TIME_TI",
+            )
+            ti = d.new_ki
+            prev = err
+        assert abs(ti - ti_start) / ti_start < 0.10, (
+            f"Ti drifted from {ti_start} to {ti:.2f} on settled residual noise"
+        )
+
+    def test_persistent_high_amp_oscillation_keeps_raising_ti(self):
+        """Regression (user report): an oscillation with amp ~15% that is only
+        slowly damping must keep Ti increasing — `trend < 0.9` alone is not
+        enough to declare the loop "settled" when amp is still large.
+        """
+        import math
+
+        from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
+
+        engine = FuzzyEngine()
+        ti_start = 3.87
+        ti = ti_start
+        prev = 0.0
+        # Slow damping mimicking the user's log: amp starts ~18%, ends ~11%
+        # over 30 tuning cycles (trend stays around 0.8–0.9 throughout).
+        for k in range(30):
+            amp = 18.0 * math.exp(-k / 60.0)
             err = amp * math.sin(k * math.pi / 4.0)
             de = err - prev
             d = engine.compute_gamma(
@@ -386,8 +417,8 @@ class TestOscillationDetection:
             )
             ti = d.new_ki
             prev = err
-        # Initial phase may raise Ti; once damping trend is detected, Ti must level off.
-        assert ti < 40.0, (
-            f"Ti={ti} overshot — self-damping oscillation should stop raising Ti"
+        assert ti > ti_start * 2.0, (
+            f"Ti={ti:.2f} barely moved from {ti_start} despite persistent "
+            "high-amplitude oscillation"
         )
 
