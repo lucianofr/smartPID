@@ -448,6 +448,10 @@ class MainWindow(QMainWindow):
         self._stats_timer.start(2000)
         self._exec_cards_timer.start(2000)
         self._faceplate_poll_timer.start(1000)
+        # Auto-refresh JWT token every 7 hours (expires at 8h)
+        self._token_refresh_timer = QTimer(self)
+        self._token_refresh_timer.timeout.connect(self._refresh_jwt_token)
+        self._token_refresh_timer.start(7 * 3600 * 1000)  # 7h in ms
 
         # Check if backend has a managed project active
         QTimer.singleShot(500, self._check_active_project)
@@ -966,6 +970,17 @@ class MainWindow(QMainWindow):
     def _on_sim_initial_status(self, status: object) -> None:
         """Populate simulator page with persisted config on sim start."""
         self._simulator_page.populate_from_status(status)
+
+    def _refresh_jwt_token(self) -> None:
+        """Silently refresh the JWT token before it expires."""
+        def do_refresh():
+            try:
+                self._api_client.refresh_token()
+                logger.info("jwt_token_refreshed")
+            except Exception as e:
+                logger.warning("jwt_token_refresh_failed: %s", e)
+
+        threading.Thread(target=do_refresh, daemon=True).start()
 
     def _on_refresh_rate_changed(self, ms: int) -> None:
         """Update BusBridge refresh interval when user changes setting."""
