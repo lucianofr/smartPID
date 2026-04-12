@@ -236,7 +236,8 @@ CREATE TABLE IF NOT EXISTS Configuracao_Simulador (
     auto_sp_min_pct   REAL NOT NULL DEFAULT 30.0,
     auto_sp_max_pct   REAL NOT NULL DEFAULT 70.0,
     auto_dist_enabled INTEGER NOT NULL DEFAULT 0,
-    auto_dist_max_pct REAL NOT NULL DEFAULT 10.0
+    auto_dist_max_pct REAL NOT NULL DEFAULT 10.0,
+    pid_sp            REAL NOT NULL DEFAULT 50.0
 );
 """
 
@@ -271,13 +272,14 @@ class SQLiteRepository:
                 await self.db.execute(
                     f"ALTER TABLE Controladores ADD COLUMN {col_name} {col_def}",
                 )
-        # Configuracao_Simulador: auto SP / auto disturbance columns
+        # Configuracao_Simulador: auto SP / auto disturbance columns + pid_sp
         sim_new_columns = [
             ("auto_sp_enabled", "INTEGER NOT NULL DEFAULT 0"),
             ("auto_sp_min_pct", "REAL NOT NULL DEFAULT 30.0"),
             ("auto_sp_max_pct", "REAL NOT NULL DEFAULT 70.0"),
             ("auto_dist_enabled", "INTEGER NOT NULL DEFAULT 0"),
             ("auto_dist_max_pct", "REAL NOT NULL DEFAULT 10.0"),
+            ("pid_sp", "REAL NOT NULL DEFAULT 50.0"),
         ]
         for col_name, col_def in sim_new_columns:
             with contextlib.suppress(Exception):
@@ -659,6 +661,7 @@ class SQLiteRepository:
         auto_sp_max_pct: float = 70.0,
         auto_dist_enabled: bool = False,
         auto_dist_max_pct: float = 10.0,
+        pid_sp: float = 50.0,
     ) -> None:
         """Insert or replace a simulator configuration for *controller_id*."""
         await self.db.execute(
@@ -666,13 +669,13 @@ class SQLiteRepository:
             " (controlador_id, preset, gain, tau1, tau2, dead_time,"
             "  pid_enabled, pid_kp, pid_ti, pid_td, pid_mode,"
             "  auto_sp_enabled, auto_sp_min_pct, auto_sp_max_pct,"
-            "  auto_dist_enabled, auto_dist_max_pct)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "  auto_dist_enabled, auto_dist_max_pct, pid_sp)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 controller_id, preset, gain, tau1, tau2, dead_time,
                 int(pid_enabled), pid_kp, pid_ti, pid_td, pid_mode,
                 int(auto_sp_enabled), auto_sp_min_pct, auto_sp_max_pct,
-                int(auto_dist_enabled), auto_dist_max_pct,
+                int(auto_dist_enabled), auto_dist_max_pct, pid_sp,
             ),
         )
         await self.db.commit()
@@ -715,6 +718,7 @@ class SQLiteRepository:
             "auto_sp_max_pct": row["auto_sp_max_pct"],
             "auto_dist_enabled": bool(row["auto_dist_enabled"]),
             "auto_dist_max_pct": row["auto_dist_max_pct"],
+            "pid_sp": row["pid_sp"] if "pid_sp" in row.keys() else 50.0,
         }
 
     # ------------------------------------------------------------------
