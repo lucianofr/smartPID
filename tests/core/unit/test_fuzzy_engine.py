@@ -282,6 +282,53 @@ class TestOscillationDetection:
             f"Ti={ti} — noise around SP must not drive Ti above 15 (started at 13)"
         )
 
+    def test_high_variability_forces_ti_increase_not_decrease(self):
+        """High variability + persistent error must NOT reduce Ti.
+
+        Classic ambiguity: |e| mid-range, |Δe| small at the peak of an
+        oscillation looks identical to a steady offset. The variability
+        gate (2σ/span) disambiguates: if the recent window has high
+        variance, it's oscillation, not offset.
+        """
+        import math
+
+        from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
+
+        engine = FuzzyEngine()
+        ti = 20.0
+        prev = 0.0
+        # Sinewave amp=8%, period=6 samples. At peaks |e|≈8 (ME), |Δe|≈0 — the
+        # ambiguous cell. Without the gate, rules fire PM → Ti decreases.
+        for k in range(40):
+            err = 8.0 * math.sin(k * math.pi / 3.0)
+            de = err - prev
+            d = engine.compute_gamma(
+                error=err, delta_error=de, ki_current=ti, span=100.0,
+                objective=ControlObjective.SP_TRACKING,
+                speed=ProcessSpeed.MEDIUM, limit_min=0.1, limit_max=100.0,
+                integral_type="TIME_TI",
+            )
+            ti = d.new_ki
+            prev = err
+        assert ti >= 20.0, f"Ti={ti} must not drop when variability is high (oscillation)"
+
+    def test_low_variability_steady_offset_reduces_ti(self):
+        """Low variability + persistent error = true steady offset → reduce Ti."""
+        from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
+
+        engine = FuzzyEngine()
+        ti = 30.0
+        # Constant error 12% — std=0, variability=0%, pure offset.
+        for _ in range(20):
+            d = engine.compute_gamma(
+                error=12.0, delta_error=0.0, ki_current=ti, span=100.0,
+                objective=ControlObjective.SP_TRACKING,
+                speed=ProcessSpeed.MEDIUM, limit_min=0.1, limit_max=100.0,
+                integral_type="TIME_TI",
+            )
+            ti = d.new_ki
+        assert ti < 20.0, f"Ti={ti} should drop from 30 with steady offset + zero variability"
+
     def test_growing_oscillation_raises_ti_rapidly(self):
         """Fast detection + aggressive damping: Ti must climb quickly when PV oscillates.
 
