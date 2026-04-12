@@ -15,6 +15,7 @@ import uvicorn
 from smart_pid_core.adapters.factory import AdapterFactory
 from smart_pid_core.adapters.inbound.api.app import create_app
 from smart_pid_core.adapters.inbound.api.auth import hash_password
+from smart_pid_core.adapters.inbound.sim_persistence import persist_sim_config
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
@@ -154,6 +155,29 @@ async def _migrate_users_if_needed(spid_path: Path, users_db_path: Path) -> None
     logger.info(
         "migrated_users", count=len(rows), source=str(spid_path), target=str(users_db_path),
     )
+
+
+async def _sim_persist_flusher(
+    adapter,  # noqa: ANN001
+    repo: SQLiteRepository,
+    stop_event: asyncio.Event,
+    interval_s: float = 2.0,
+) -> None:
+    """Periodically persist simulator controllers whose PID config changed via OPC-UA.
+
+    REST routes already persist on-demand. This flusher covers writes that reach
+    the simulator via OPC-UA (e.g. Ti updates from the Fuzzy/RL AI engine) which
+    otherwise live only in memory and are lost on restart.
+    """
+    _log = structlog.get_logger()
+    while not stop_event.is_set():
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(stop_event.wait(), timeout=interval_s)
+        for cid in adapter.consume_dirty_cids():
+            try:
+                await persist_sim_config(adapter, repo, cid)
+            except Exception:
+                _log.exception("sim_persist_flush_failed", controller_id=cid)
 
 
 async def _retention_cleanup(repo_db, interval_hours: int = 24) -> None:  # noqa: ANN001
@@ -476,6 +500,13 @@ async def run_daemon(settings: CoreSettings) -> None:
     # Data retention cleanup (daily)
     cleanup_task = asyncio.create_task(_retention_cleanup(repo.db))
 
+    # Simulator config flusher (drains dirty set from OPC-UA-initiated writes)
+    sim_flush_task: asyncio.Task | None = None
+    if simulator_adapter is not None:
+        sim_flush_task = asyncio.create_task(
+            _sim_persist_flusher(simulator_adapter, repo, stop_event)
+        )
+
     # Run uvicorn and wait for shutdown signal concurrently
     server_task = asyncio.create_task(server.serve())
     logger.info("daemon_ready")
@@ -488,6 +519,14 @@ async def run_daemon(settings: CoreSettings) -> None:
     cleanup_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await cleanup_task
+    if sim_flush_task is not None:
+        # stop_event already set — let the flusher complete one last drain
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(sim_flush_task, timeout=3.0)
+        if simulator_adapter is not None:
+            for cid in simulator_adapter.consume_dirty_cids():
+                with contextlib.suppress(Exception):
+                    await persist_sim_config(simulator_adapter, repo, cid)
     server.should_exit = True
     await server_task
     await telemetry_pub.stop()

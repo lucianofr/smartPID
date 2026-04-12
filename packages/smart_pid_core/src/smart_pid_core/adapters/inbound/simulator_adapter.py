@@ -72,6 +72,14 @@ class _ControllerSim:
     live_disturbance_output: float = 0.0
 
 
+# OPC-UA parameters whose mutation changes persistent PID configuration.
+# CO and SP are excluded: they are transient runtime values written every
+# scan by the control loop, and persisting them would thrash the DB.
+_OPCUA_PERSISTABLE_PARAMS: frozenset[str] = frozenset({
+    "kp", "ti", "td", "mode", "pid_structure", "pid_sp",
+})
+
+
 class SimulatorAdapter:
     """Digital twin adapter — TelemetrySource + ControlWriter."""
 
@@ -84,6 +92,9 @@ class SimulatorAdapter:
         self._pid_engine = PIDEngine()
         self._opcua_server = OPCUAServer(port=settings.simulator_port)
         self._opcua_server.set_on_write(self._on_opcua_write)
+        # Controllers whose persistable config changed via OPC-UA since the
+        # last flush. Drained by the main-loop flusher through consume_dirty_cids().
+        self._dirty_cids: set[int] = set()
 
     def start_opcua(self) -> None:
         """Start only the OPC-UA server (without simulation loop)."""
@@ -154,6 +165,21 @@ class SimulatorAdapter:
                 ctrl.sp = value
             elif param == "mode":
                 ctrl.pid_mode = int(value)
+            if param in _OPCUA_PERSISTABLE_PARAMS:
+                self._dirty_cids.add(controller_id)
+
+    def consume_dirty_cids(self) -> list[int]:
+        """Return and clear the list of controllers whose persistable config
+        changed via OPC-UA since the last call.
+
+        Thread-safe.
+        """
+        with self._lock:
+            if not self._dirty_cids:
+                return []
+            dirty = list(self._dirty_cids)
+            self._dirty_cids.clear()
+        return dirty
 
     def write_output(self, controller_id: int, co: float) -> None:
         with self._lock:

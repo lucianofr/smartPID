@@ -212,6 +212,40 @@ class TestSimulatorAdapterOPCUA:
     ) -> None:
         mock_adapter._on_opcua_write(999, "co", 50.0)  # Should not raise
 
+    def test_opcua_ti_write_marks_controller_dirty(
+        self, mock_adapter: SimulatorAdapter,
+    ) -> None:
+        """Regression: Fuzzy/RL Ti updates arriving via OPC-UA must be flagged
+        for background persistence. Otherwise fuzzy-tuned Ti is lost on restart.
+        """
+        mock_adapter.register_controller(1)
+        assert mock_adapter.consume_dirty_cids() == []
+        mock_adapter._on_opcua_write(1, "ti", 13.5)
+        assert mock_adapter._controllers[1].pid_params.reset == 13.5
+        dirty = mock_adapter.consume_dirty_cids()
+        assert dirty == [1]
+        # Consume clears the set — second call is empty.
+        assert mock_adapter.consume_dirty_cids() == []
+
+    def test_opcua_co_write_does_not_mark_dirty(
+        self, mock_adapter: SimulatorAdapter,
+    ) -> None:
+        """CO is transient runtime state — do not thrash DB every scan."""
+        mock_adapter.register_controller(1)
+        mock_adapter._on_opcua_write(1, "co", 42.0)
+        assert mock_adapter.consume_dirty_cids() == []
+
+    def test_opcua_persistable_params_all_mark_dirty(
+        self, mock_adapter: SimulatorAdapter,
+    ) -> None:
+        mock_adapter.register_controller(1)
+        for param, value in (
+            ("kp", 2.0), ("ti", 5.0), ("td", 0.1),
+            ("mode", 1), ("pid_structure", 2), ("pid_sp", 55.0),
+        ):
+            mock_adapter._on_opcua_write(1, param, value)
+        assert mock_adapter.consume_dirty_cids() == [1]
+
 
 class TestSimulatorAdapterConfigPersistence:
     """Tests for get_config_dict and load_sim_config round-trip."""
@@ -418,7 +452,7 @@ class TestSimulatorPIDInternal:
 
     def test_on_opcua_write_pid_mode(self, adapter: SimulatorAdapter) -> None:
         adapter.register_controller(1)
-        adapter._on_opcua_write(1, "pid_mode", 1.0)
+        adapter._on_opcua_write(1, "mode", 1.0)
         assert adapter._controllers[1].pid_mode == 1
 
     def test_on_opcua_write_pid_sp(self, adapter: SimulatorAdapter) -> None:
