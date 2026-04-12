@@ -1,40 +1,37 @@
 # Estado atual — 2026-04-12
 
 ## Última tarefa
-Fix: Fuzzy engine empurrava Ti para cima indefinidamente após convergência (ruído de medição disparava o override de oscilação).
+Detecção mais rápida de oscilação + damping mais agressivo do Ti.
 
-## Branch (não mergeada — aguardando aprovação)
-`fix/fuzzy-reject-noise-detect-damping-trend` a partir de main.
+## Branch (aguardando merge)
+`feat/fuzzy-faster-detection-stronger-damping`
 
-## Causa raiz
-Correção anterior (`fix/fuzzy-no-ti-reversal-on-convergence`) baixou demais os thresholds do override (amp 5%→1.5%, flips 3→2). Para o processo FOPDT K=1, τ1=10, τ2=5, θ=3 (optimum Ti≈13 IAE/ITAE), o override passou a disparar em ruído de ±2% após convergência → gamma negativo sustentado → Ti > 33 e ainda subindo.
+## Mudanças em `fuzzy_engine.py`
+- `_OSC_WINDOW`: 12 → **10** (janela enche mais rápido)
+- `_OSC_THRESHOLD`: 3 → **2** (detecta na 3ª amostra com mudanças de sinal)
+- `_OSC_DAMPING_GAIN`: 1.5 → **3.0** (damping 2× mais forte por unidade de amplitude)
+- `_OSC_GAMMA_CAP`: 0.8 → **1.0** (permite damping magnitude total)
+- **Ganho adaptativo**: `effective_gain = _OSC_DAMPING_GAIN * max(1.0, trend)`. Quando a oscilação está crescendo (trend > 1), o gain é escalado pelo ratio → reação ainda mais rápida a divergência.
 
-## Correções aplicadas em `fuzzy_engine.py`
-1. Thresholds do override recalibrados:
-   - `_OSC_MIN_AMPLITUDE`: 0.015 → **0.025** (rejeita ruído típico)
-   - `_OSC_THRESHOLD`: 2 → **3** (restaurado)
-   - `_OSC_DAMPING_GAIN`: 2.0 → **1.5** (restaurado)
-2. **Novo: detecção de tendência de amplitude** (`_amplitude_trend()`).
-   - Compara RMS da metade recente vs metade antiga da janela.
-   - Se razão < 0.9 → oscilação está convergindo espontaneamente → gamma=0 (não sobe Ti).
-   - Se razão ≥ 0.9 → oscilação estável/crescendo → aplica damping negativo.
+Rejeição de ruído preservada via `_OSC_MIN_AMPLITUDE = 0.025` (2.5% RMS) e `_TREND_DAMPING_RATIO = 0.9` (oscilação amortecendo sozinha → gamma=0).
 
-## Testes de regressão adicionados
-- `test_measurement_noise_does_not_increase_ti` — 100 amostras de ruído ±2%; Ti não pode subir acima de 15 a partir de 13.
-- `test_self_damping_oscillation_does_not_overshoot_ti` — senoide amortecida 15%→2%; Ti não pode estourar para > 40.
-- (removido `test_damped_oscillation_does_not_reduce_ti` — premissa inválida em teste sintético sem feedback físico.)
+## Exemplos de comportamento
+| amp | trend | gamma (antes) | gamma (agora) |
+|-----|-------|---------------|---------------|
+| 5%  | 1.0   | -0.075        | -0.15         |
+| 10% | 1.0   | -0.15         | -0.30         |
+| 10% | 1.3   | -0.15         | -0.39         |
+| 20% | 1.0   | -0.30         | -0.60         |
+| 30% | 1.2   | -0.45         | -1.00 (cap)   |
 
-## Validação
-- 26/26 testes fuzzy passam.
-- Ruff lint: OK.
-
-## Arquivos modificados
-- `packages/smart_pid_core/src/smart_pid_core/domain/services/fuzzy_engine.py`
-- `tests/core/unit/test_fuzzy_engine.py`
-
-## Histórico das correções do fuzzy engine
-1. `fix/fuzzy-no-ti-reversal-on-convergence` (MERGED, commit d5ee0fe) — suavizou regras PL→PM nas células ambíguas, abaixou amplitude de osc.
-2. `fix/fuzzy-reject-noise-detect-damping-trend` (ATUAL, não mergeada) — corrige o overshoot de Ti causado pelo (1).
+## Testes
+- `test_growing_oscillation_raises_ti_rapidly` (novo): oscilação crescente 5%→15% em 20 iter deve elevar Ti >30%.
+- 27/27 testes passam. Ruff limpo.
 
 ## Próximo passo
-Teste em simulador com K=1, τ1=10, τ2=5, θ=3 para confirmar que Ti estabiliza próximo de 13 e não continua subindo.
+Testar no simulador com processo oscilante — verificar se Ti sobe rapidamente e estabiliza próximo do ótimo sem overshooting.
+
+## Histórico recente
+1. `fix/fuzzy-no-ti-reversal-on-convergence` (MERGED, d5ee0fe) — suavizou regras.
+2. `fix/fuzzy-reject-noise-detect-damping-trend` (MERGED, c35d0bf) — rejeita ruído, detecta damping próprio.
+3. `feat/fuzzy-faster-detection-stronger-damping` (atual) — detecção rápida + damping agressivo.

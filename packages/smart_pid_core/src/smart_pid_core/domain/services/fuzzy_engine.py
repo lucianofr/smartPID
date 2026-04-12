@@ -139,10 +139,11 @@ class FuzzyEngine:
     amplitude, which increases Ti / decreases Ki to stabilise the loop.
     """
 
-    _OSC_WINDOW = 12
-    _OSC_THRESHOLD = 3
+    _OSC_WINDOW = 10  # smaller window → faster detection latency
+    _OSC_THRESHOLD = 2  # 2 sign flips suffice (amp gate still rejects noise)
     _OSC_MIN_AMPLITUDE = 0.025  # 2.5% of span — rejects typical measurement noise
-    _OSC_DAMPING_GAIN = 1.5
+    _OSC_DAMPING_GAIN = 3.0  # stronger Ti push per unit amplitude
+    _OSC_GAMMA_CAP = 1.0  # allow full-magnitude damping when amp × gain saturates
     # If recent-half RMS / older-half RMS < this, oscillation is damping
     # on its own — don't push Ti higher, let the loop settle.
     _TREND_DAMPING_RATIO = 0.9
@@ -301,17 +302,19 @@ class FuzzyEngine:
         if oscillating:
             trend = self._amplitude_trend()
             if trend < self._TREND_DAMPING_RATIO:
-                # Oscillation is converging on its own — don't increase Ti further.
-                # Holding gamma at 0 prevents the Ti-overshoot seen with FOPDT K=1,
-                # τ1=10, τ2=5, θ=3 where the optimum Ti ≈ 13 was being overshot.
+                # Oscillation converging on its own — don't push Ti up further.
                 gamma = 0.0
                 reason_prefix = (
                     f"Fuzzy(OSC_DAMPING_SELF trend={trend:.2f} amp={amp:.3f})"
                 )
             else:
-                gamma = -min(0.8, self._OSC_DAMPING_GAIN * amp)
+                # Growing oscillation (trend > 1) gets proportionally more aggressive
+                # damping to stabilise the loop faster.
+                adaptive_gain = self._OSC_DAMPING_GAIN * max(1.0, trend)
+                gamma = -min(self._OSC_GAMMA_CAP, adaptive_gain * amp)
                 reason_prefix = (
-                    f"Fuzzy(OSC_DAMP rev={reversals} amp={amp:.3f} trend={trend:.2f})"
+                    f"Fuzzy(OSC_DAMP rev={reversals} amp={amp:.3f} "
+                    f"trend={trend:.2f} gain={adaptive_gain:.2f})"
                 )
         else:
             # Normal fuzzy inference on absolute values

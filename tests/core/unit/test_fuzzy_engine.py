@@ -282,6 +282,37 @@ class TestOscillationDetection:
             f"Ti={ti} — noise around SP must not drive Ti above 15 (started at 13)"
         )
 
+    def test_growing_oscillation_raises_ti_rapidly(self):
+        """Fast detection + aggressive damping: Ti must climb quickly when PV oscillates.
+
+        Plant with growing oscillation (5%→15% over 20 cycles) should see
+        >30% Ti increase within 10 samples of detection.
+        """
+        import math
+
+        from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
+
+        engine = FuzzyEngine()
+        ti_start = 5.0
+        ti = ti_start
+        prev = 0.0
+        # Growing sine: amp 5% → 15% over 20 samples, 4-sample period
+        for k in range(20):
+            amp = 5.0 + 10.0 * (k / 20.0)
+            err = amp * math.sin(k * math.pi / 2.0)
+            de = err - prev
+            d = engine.compute_gamma(
+                error=err, delta_error=de, ki_current=ti, span=100.0,
+                objective=ControlObjective.SP_TRACKING,
+                speed=ProcessSpeed.MEDIUM, limit_min=0.1, limit_max=100.0,
+                integral_type="TIME_TI",
+            )
+            ti = d.new_ki
+            prev = err
+        assert ti > ti_start * 1.30, (
+            f"Ti={ti} — growing oscillation should raise Ti by >30% from {ti_start}"
+        )
+
     def test_self_damping_oscillation_does_not_overshoot_ti(self):
         """Regression: when oscillation is damping on its own, Ti should stabilise.
 
