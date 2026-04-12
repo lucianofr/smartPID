@@ -1,4 +1,4 @@
-"""Unit tests for FuzzyEngine — pure domain service."""
+"""Unit tests for FuzzyEngine — IAE-based Ti/Ki tuning with oscillation detection."""
 from __future__ import annotations
 
 import pytest
@@ -10,7 +10,6 @@ class TestMembershipFunctions:
     def test_triangular_center(self):
         from smart_pid_core.domain.services.fuzzy_engine import triangular_mf
 
-        # Triangular(a=-50, b=0, c=50) at center
         assert triangular_mf(0.0, -50.0, 0.0, 50.0) == pytest.approx(1.0)
 
     def test_triangular_left_edge(self):
@@ -26,86 +25,72 @@ class TestMembershipFunctions:
     def test_triangular_midpoint(self):
         from smart_pid_core.domain.services.fuzzy_engine import triangular_mf
 
-        # Halfway between a and b
         assert triangular_mf(-25.0, -50.0, 0.0, 50.0) == pytest.approx(0.5)
 
     def test_trapezoidal_plateau(self):
         from smart_pid_core.domain.services.fuzzy_engine import trapezoidal_mf
 
-        # Trapezoidal(-100, -100, -67, -33) plateau between a and b
-        assert trapezoidal_mf(-80.0, -100.0, -100.0, -67.0, -33.0) == pytest.approx(1.0)
+        assert trapezoidal_mf(1.0, 0.0, 0.0, 2.0, 5.0) == pytest.approx(1.0)
 
     def test_trapezoidal_slope(self):
         from smart_pid_core.domain.services.fuzzy_engine import trapezoidal_mf
 
-        # Midpoint of the right slope between c and d
-        assert trapezoidal_mf(-50.0, -100.0, -100.0, -67.0, -33.0) == pytest.approx(0.5)
+        assert trapezoidal_mf(3.5, 0.0, 0.0, 2.0, 5.0) == pytest.approx(0.5)
 
     def test_trapezoidal_outside(self):
         from smart_pid_core.domain.services.fuzzy_engine import trapezoidal_mf
 
-        assert trapezoidal_mf(0.0, -100.0, -100.0, -67.0, -33.0) == pytest.approx(0.0)
+        assert trapezoidal_mf(10.0, 0.0, 0.0, 2.0, 5.0) == pytest.approx(0.0)
 
 
 class TestFuzzification:
+    """Fuzzify uses absolute [0, 100] universe with 5 levels: ZO, SM, ME, LA, VL."""
+
     def test_fuzzify_zero_input(self):
         from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
 
         engine = FuzzyEngine()
         memberships = engine.fuzzify(0.0)
-        # At 0, only ZO should be 1.0
         assert memberships["ZO"] == pytest.approx(1.0)
-        assert memberships["NB"] == pytest.approx(0.0)
-        assert memberships["PB"] == pytest.approx(0.0)
+        assert memberships["VL"] == pytest.approx(0.0)
 
-    def test_fuzzify_extreme_negative(self):
-        from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
-
-        engine = FuzzyEngine()
-        memberships = engine.fuzzify(-100.0)
-        assert memberships["NB"] == pytest.approx(1.0)
-        assert memberships["ZO"] == pytest.approx(0.0)
-
-    def test_fuzzify_extreme_positive(self):
+    def test_fuzzify_large_input(self):
         from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
 
         engine = FuzzyEngine()
         memberships = engine.fuzzify(100.0)
-        assert memberships["PB"] == pytest.approx(1.0)
+        assert memberships["VL"] == pytest.approx(1.0)
         assert memberships["ZO"] == pytest.approx(0.0)
 
-    def test_fuzzify_50_overlap(self):
+    def test_fuzzify_medium_input(self):
         from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
 
         engine = FuzzyEngine()
-        # Near the boundary between ZO and PS (~8.33 is midpoint of overlap)
-        memberships = engine.fuzzify(8.0)
-        # Should have non-zero values for ZO and PS
-        assert memberships["ZO"] > 0.0
-        assert memberships["PS"] > 0.0
-        assert memberships["ZO"] + memberships["PS"] == pytest.approx(1.0, abs=0.15)
+        memberships = engine.fuzzify(25.0)
+        # Should peak at ME (center=25)
+        assert memberships["ME"] == pytest.approx(1.0)
 
 
 class TestRuleMatrices:
-    def test_sp_tracking_has_49_rules(self):
+    def test_sp_tracking_has_25_rules(self):
         from smart_pid_core.domain.services.fuzzy_engine import RULE_MATRICES
 
         matrix = RULE_MATRICES[ControlObjective.SP_TRACKING]
-        assert len(matrix) == 7  # 7 rows (error)
+        assert len(matrix) == 5  # 5 rows (|error|)
         for row in matrix:
-            assert len(row) == 7  # 7 columns (delta_error)
+            assert len(row) == 5  # 5 columns (|delta_error|)
 
-    def test_disturbance_rejection_has_49_rules(self):
+    def test_disturbance_rejection_has_25_rules(self):
         from smart_pid_core.domain.services.fuzzy_engine import RULE_MATRICES
 
         matrix = RULE_MATRICES[ControlObjective.DISTURBANCE_REJECTION]
-        assert len(matrix) == 7
+        assert len(matrix) == 5
 
-    def test_surge_level_has_49_rules(self):
+    def test_surge_level_has_25_rules(self):
         from smart_pid_core.domain.services.fuzzy_engine import RULE_MATRICES
 
         matrix = RULE_MATRICES[ControlObjective.SURGE_LEVEL]
-        assert len(matrix) == 7
+        assert len(matrix) == 5
 
 
 class TestInferenceAndDefuzzification:
@@ -114,64 +99,64 @@ class TestInferenceAndDefuzzification:
 
         engine = FuzzyEngine()
         gamma = engine.infer(
-            error=0.0,
-            delta_error=0.0,
+            abs_error=0.0, abs_delta_error=0.0,
             objective=ControlObjective.SP_TRACKING,
         )
         assert gamma == pytest.approx(0.0, abs=0.05)
 
-    def test_large_positive_error_gives_positive_gamma(self):
+    def test_large_error_small_delta_gives_positive_gamma(self):
+        """High steady-state offset → gamma positive → decrease Ti."""
         from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
 
         engine = FuzzyEngine()
         gamma = engine.infer(
-            error=80.0,
-            delta_error=0.0,
+            abs_error=80.0, abs_delta_error=2.0,
             objective=ControlObjective.SP_TRACKING,
         )
         assert gamma > 0.3
 
-    def test_large_negative_error_gives_negative_gamma(self):
+    def test_large_error_large_delta_gives_negative_gamma(self):
+        """Oscillating → gamma negative → increase Ti."""
         from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
 
         engine = FuzzyEngine()
         gamma = engine.infer(
-            error=-80.0,
-            delta_error=0.0,
+            abs_error=50.0, abs_delta_error=80.0,
             objective=ControlObjective.SP_TRACKING,
         )
-        assert gamma < -0.3
+        assert gamma < 0.0
 
     def test_gamma_is_bounded(self):
         from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
 
         engine = FuzzyEngine()
         gamma = engine.infer(
-            error=100.0,
-            delta_error=100.0,
+            abs_error=100.0, abs_delta_error=100.0,
             objective=ControlObjective.SP_TRACKING,
         )
         assert -1.0 <= gamma <= 1.0
 
-    def test_disturbance_rejection_more_aggressive_near_zero(self):
+    def test_both_error_signs_give_same_gamma_for_ti(self):
+        """Positive and negative errors of same magnitude → same Ti adjustment."""
         from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
 
         engine = FuzzyEngine()
-        # Small error with negative delta (error improving) — DR should be gentle
-        gamma_dr = engine.infer(
-            error=5.0,
-            delta_error=-10.0,
-            objective=ControlObjective.DISTURBANCE_REJECTION,
-        )
-        # Same for SP tracking
-        gamma_sp = engine.infer(
-            error=5.0,
-            delta_error=-10.0,
+        d1 = engine.compute_gamma(
+            error=20.0, delta_error=0.0, ki_current=10.0, span=100.0,
             objective=ControlObjective.SP_TRACKING,
+            speed=ProcessSpeed.MEDIUM, limit_min=0.1, limit_max=100.0,
+            integral_type="TIME_TI",
         )
-        # Both should be valid floats in range
-        assert -1.0 <= gamma_dr <= 1.0
-        assert -1.0 <= gamma_sp <= 1.0
+        engine2 = FuzzyEngine()
+        d2 = engine2.compute_gamma(
+            error=-20.0, delta_error=0.0, ki_current=10.0, span=100.0,
+            objective=ControlObjective.SP_TRACKING,
+            speed=ProcessSpeed.MEDIUM, limit_min=0.1, limit_max=100.0,
+            integral_type="TIME_TI",
+        )
+        # Same |error| should produce same gamma and same new_ki
+        assert d1.gamma == pytest.approx(d2.gamma, abs=0.01)
+        assert d1.new_ki == pytest.approx(d2.new_ki, abs=0.01)
 
 
 class TestComputeGamma:
@@ -180,62 +165,38 @@ class TestComputeGamma:
 
         engine = FuzzyEngine()
         decision = engine.compute_gamma(
-            error=10.0,
-            delta_error=5.0,
-            ki_current=1.0,
-            span=100.0,
+            error=10.0, delta_error=5.0, ki_current=1.0, span=100.0,
             objective=ControlObjective.SP_TRACKING,
-            speed=ProcessSpeed.MEDIUM,
-            limit_min=0.1,
-            limit_max=100.0,
+            speed=ProcessSpeed.MEDIUM, limit_min=0.1, limit_max=100.0,
         )
         assert -1.0 <= decision.gamma <= 1.0
         assert decision.new_ki > 0.0
         assert decision.reasoning != ""
         assert decision.membership_values is not None
 
-    def test_speed_factor_slow_ki(self):
+    def test_steady_offset_decreases_ti(self):
+        """With steady offset (no oscillation), Ti should decrease."""
         from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
 
         engine = FuzzyEngine()
         decision = engine.compute_gamma(
-            error=50.0, delta_error=0.0, ki_current=1.0, span=100.0,
+            error=30.0, delta_error=0.0, ki_current=20.0, span=100.0,
             objective=ControlObjective.SP_TRACKING,
-            speed=ProcessSpeed.SLOW,
-            limit_min=0.1, limit_max=100.0,
-            integral_type="GAIN_KI",
-        )
-        # GAIN_KI: Sv from ProcessSpeed.SLOW, Ki_new = Ki * (1 + gamma * Sv)
-        sv = ProcessSpeed.SLOW.speed_factor
-        expected_ki = 1.0 * (1.0 + decision.gamma * sv)
-        assert decision.new_ki == pytest.approx(max(0.1, min(100.0, expected_ki)))
-
-    def test_speed_factor_slow_ti(self):
-        from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
-
-        engine = FuzzyEngine()
-        decision = engine.compute_gamma(
-            error=50.0, delta_error=0.0, ki_current=10.0, span=100.0,
-            objective=ControlObjective.SP_TRACKING,
-            speed=ProcessSpeed.SLOW,
-            limit_min=0.1, limit_max=100.0,
+            speed=ProcessSpeed.MEDIUM, limit_min=0.1, limit_max=100.0,
             integral_type="TIME_TI",
         )
-        # TIME_TI: gamma inverted. Positive gamma → decrease Ti (faster)
-        sv = ProcessSpeed.SLOW.speed_factor
-        expected_ti = 10.0 * (1.0 + (-decision.gamma) * sv)
-        assert decision.new_ki == pytest.approx(max(0.1, min(100.0, expected_ti)))
+        # Positive gamma → effective_gamma = -gamma → Ti should decrease
+        assert decision.gamma > 0.0
+        assert decision.new_ki < 20.0
 
     def test_ki_clamped_to_limits(self):
         from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
 
         engine = FuzzyEngine()
-        # With extreme gamma and small limits
         decision = engine.compute_gamma(
             error=100.0, delta_error=100.0, ki_current=99.0, span=100.0,
             objective=ControlObjective.SP_TRACKING,
-            speed=ProcessSpeed.SLOW,
-            limit_min=0.5, limit_max=100.0,
+            speed=ProcessSpeed.SLOW, limit_min=0.5, limit_max=100.0,
         )
         assert decision.new_ki <= 100.0
         assert decision.new_ki >= 0.5
@@ -247,7 +208,46 @@ class TestComputeGamma:
         decision = engine.compute_gamma(
             error=0.0, delta_error=0.0, ki_current=1.0, span=0.0,
             objective=ControlObjective.SP_TRACKING,
-            speed=ProcessSpeed.MEDIUM,
-            limit_min=0.1, limit_max=100.0,
+            speed=ProcessSpeed.MEDIUM, limit_min=0.1, limit_max=100.0,
         )
         assert decision.gamma == pytest.approx(0.0, abs=0.05)
+
+
+class TestOscillationDetection:
+    """Oscillation detector should override fuzzy rules when process oscillates."""
+
+    def test_oscillation_increases_ti(self):
+        """Oscillating error should produce negative gamma → Ti increases."""
+        from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
+
+        engine = FuzzyEngine()
+        ti = 5.0
+        errors = [30.0, -30.0] * 20  # alternating
+        prev = 0.0
+        for err in errors:
+            de = err - prev
+            d = engine.compute_gamma(
+                error=err, delta_error=de, ki_current=ti, span=100.0,
+                objective=ControlObjective.SP_TRACKING,
+                speed=ProcessSpeed.MEDIUM, limit_min=0.1, limit_max=100.0,
+                integral_type="TIME_TI",
+            )
+            ti = d.new_ki
+            prev = err
+        assert ti > 10.0, f"Ti={ti} should have increased from 5.0 with oscillation"
+
+    def test_settled_process_no_damping(self):
+        """Steady offset without oscillation should decrease Ti (more integral)."""
+        from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
+
+        engine = FuzzyEngine()
+        ti = 30.0
+        for _ in range(20):
+            d = engine.compute_gamma(
+                error=10.0, delta_error=0.0, ki_current=ti, span=100.0,
+                objective=ControlObjective.SP_TRACKING,
+                speed=ProcessSpeed.MEDIUM, limit_min=0.1, limit_max=100.0,
+                integral_type="TIME_TI",
+            )
+            ti = d.new_ki
+        assert ti < 25.0, f"Ti={ti} should have decreased from 30.0 with steady offset"
