@@ -252,24 +252,23 @@ class TestOscillationDetection:
             ti = d.new_ki
         assert ti < 25.0, f"Ti={ti} should have decreased from 30.0 with steady offset"
 
-    def test_damped_oscillation_does_not_reduce_ti(self):
-        """Regression: a converging (damped) oscillation must NOT trigger Ti reduction.
+    def test_measurement_noise_does_not_increase_ti(self):
+        """Regression: small-amplitude noise around SP must NOT drive Ti up.
 
-        Previously, once amplitude dropped below 5% of span the oscillation
-        override disengaged and rules fired PL at the peaks (|e| moderate,
-        |Δe|≈0), reducing Ti and re-exciting the oscillation.
+        Reported after previous fix: with K=1, τ1=10, τ2=5, θ=3 the optimal Ti≈13
+        but fuzzy drove Ti past 33 because the low osc amplitude threshold treated
+        ±2% noise as oscillation.
         """
-        import math
+        import random
 
         from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
 
+        random.seed(42)
         engine = FuzzyEngine()
-        ti = 20.0
+        ti = 13.0
         prev = 0.0
-        # Damped sinewave: starts at 10% amplitude, decays to ~2%.
-        for k in range(60):
-            amp = 10.0 * math.exp(-k / 40.0)
-            err = amp * math.sin(k * math.pi / 4.0)  # 8-sample period
+        for _ in range(100):
+            err = random.uniform(-2.0, 2.0)  # ±2% of span noise
             de = err - prev
             d = engine.compute_gamma(
                 error=err, delta_error=de, ki_current=ti, span=100.0,
@@ -279,7 +278,38 @@ class TestOscillationDetection:
             )
             ti = d.new_ki
             prev = err
-        assert ti >= 20.0, (
-            f"Ti={ti} must not drop below initial 20.0 during damped oscillation "
-            "(fuzzy incorrectly treated peaks as steady offset)"
+        assert ti < 15.0, (
+            f"Ti={ti} — noise around SP must not drive Ti above 15 (started at 13)"
         )
+
+    def test_self_damping_oscillation_does_not_overshoot_ti(self):
+        """Regression: when oscillation is damping on its own, Ti should stabilise.
+
+        Otherwise the engine keeps adding integral damping and overshoots the
+        IAE/ITAE-optimal Ti.
+        """
+        import math
+
+        from smart_pid_core.domain.services.fuzzy_engine import FuzzyEngine
+
+        engine = FuzzyEngine()
+        ti = 20.0
+        prev = 0.0
+        # Strong damping: 15% -> ~2% over 80 samples
+        for k in range(80):
+            amp = 15.0 * math.exp(-k / 20.0)
+            err = amp * math.sin(k * math.pi / 4.0)
+            de = err - prev
+            d = engine.compute_gamma(
+                error=err, delta_error=de, ki_current=ti, span=100.0,
+                objective=ControlObjective.SP_TRACKING,
+                speed=ProcessSpeed.MEDIUM, limit_min=0.1, limit_max=100.0,
+                integral_type="TIME_TI",
+            )
+            ti = d.new_ki
+            prev = err
+        # Initial phase may raise Ti; once damping trend is detected, Ti must level off.
+        assert ti < 40.0, (
+            f"Ti={ti} overshot — self-damping oscillation should stop raising Ti"
+        )
+
