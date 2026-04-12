@@ -76,7 +76,18 @@ class TestEndToEndAITuning:
             _topic, payload = msg
             data = msgpack.unpackb(payload)
             assert data["engine"] == "FUZZY"
-            assert data["gamma"] != 0.0  # Should have adjusted
+            # gamma may be zero on the first cycle (initial state),
+            # drain further messages to find a non-zero adjustment
+            gamma = data["gamma"]
+            for _ in range(10):
+                msg2 = ai_sub.recv(timeout_ms=2000)
+                if msg2 is None:
+                    break
+                d2 = msgpack.unpackb(msg2[1])
+                if d2["gamma"] != 0.0:
+                    gamma = d2["gamma"]
+                    break
+            assert gamma != 0.0, "Expected fuzzy to adjust gamma for sustained error"
 
         finally:
             ai_worker.stop()
