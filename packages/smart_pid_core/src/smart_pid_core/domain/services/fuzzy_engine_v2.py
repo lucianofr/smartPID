@@ -288,7 +288,19 @@ class FuzzyEngineV2:
         second rolling window inside the engine.
         """
         mean_abs = float(stats.get("mean_abs_error", 0.0))
-        pk_pk_raw = float(stats.get("pk_pk_error", 0.0))
+        # OSC combines two signals so both stale and one-off events are
+        # rejected while slow oscillations are still caught:
+        #   - recent_pk_pk_error (amplitude term): drops quickly once the
+        #     loop stabilises, so OSC does not linger for a full window.
+        #   - full-window reversals (frequency term): a slow oscillation
+        #     whose period spans most of the window still accumulates at
+        #     least two reversals, which the recent sub-window alone
+        #     would miss.
+        # Fall back to full-window metrics if the recent ones are absent,
+        # e.g. legacy StatsWorker snapshots.
+        pk_pk_raw = float(stats.get(
+            "recent_pk_pk_error", stats.get("pk_pk_error", 0.0),
+        ))
         reversals = int(stats.get("reversals", 0))
         tv_per = float(stats.get("tv_per_sample", 0.0))
         n = int(stats.get("sample_count", 0))

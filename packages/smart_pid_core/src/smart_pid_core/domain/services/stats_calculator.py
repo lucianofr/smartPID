@@ -25,6 +25,12 @@ class StatsCalculator:
     # Δerror below (reversal_noise_thr × span) is ignored when counting
     # direction reversals, so quantisation noise does not inflate the count.
     _DEFAULT_REVERSAL_NOISE_FRAC = 0.005
+    # Fraction of the window used by the "recent" pk-pk / reversal metrics
+    # consumed by the fuzzy OSC detector. Picking 0.4 of a 5×TSS window
+    # gives a ~2×TSS recent sub-window so OSC drops back to zero within
+    # roughly 2×TSS after the loop stabilises, instead of lingering for
+    # the full 5×TSS while stale oscillation data ages out.
+    _DEFAULT_RECENT_FRACTION = 0.4
 
     def __init__(
         self,
@@ -32,11 +38,13 @@ class StatsCalculator:
         span: float,
         setpoint: float,
         reversal_noise_frac: float = _DEFAULT_REVERSAL_NOISE_FRAC,
+        recent_fraction: float = _DEFAULT_RECENT_FRACTION,
     ) -> None:
         self._window_size = window_size
         self._span = span
         self._setpoint = setpoint
         self._reversal_noise_frac = reversal_noise_frac
+        self._recent_fraction = min(1.0, max(0.1, recent_fraction))
         self._samples: deque[_Sample] = deque(maxlen=window_size)
         self._elapsed_time = 0.0
 
@@ -165,3 +173,44 @@ class StatsCalculator:
         if n < 2:
             return 0.0
         return self.total_variation / (n - 1)
+
+    def _recent_errors(self) -> list[float]:
+        n = len(self._samples)
+        if n == 0:
+            return []
+        recent_n = max(4, int(n * self._recent_fraction))
+        recent_n = min(n, recent_n)
+        return [s.error for s in list(self._samples)[-recent_n:]]
+
+    @property
+    def recent_pk_pk_error(self) -> float:
+        """Peak-to-peak of error over the most recent fraction of the window.
+
+        Used by the fuzzy OSC detector so that a loop which has
+        stabilised stops registering as oscillating once the old
+        high-amplitude samples age out of the recent sub-window.
+        """
+        recent = self._recent_errors()
+        if not recent:
+            return 0.0
+        return max(recent) - min(recent)
+
+    @property
+    def recent_reversals(self) -> int:
+        """Direction reversals within the recent sub-window."""
+        recent = self._recent_errors()
+        n = len(recent)
+        if n < 2:
+            return 0
+        threshold = self._reversal_noise_frac * self._span
+        count = 0
+        last_dir = 0
+        for i in range(1, n):
+            d = recent[i] - recent[i - 1]
+            if abs(d) < threshold:
+                continue
+            cur_dir = 1 if d > 0 else -1
+            if last_dir != 0 and cur_dir != last_dir:
+                count += 1
+            last_dir = cur_dir
+        return count
