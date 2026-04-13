@@ -1147,8 +1147,11 @@ class MainWindow(QMainWindow):
 
     @Slot(int, dict)
     def _on_stats_received(self, controller_id: int, stats: dict) -> None:
-        """Update faceplate with performance stats."""
+        """Update faceplate and trend chart live indicators with stats."""
         self._dashboard_page._faceplate.update_stats(stats)  # noqa: SLF001
+        self._dashboard_page._trend.update_osc_indicators(  # noqa: SLF001
+            controller_id, stats,
+        )
 
     @Slot(int, str, bool)
     def _on_ai_status_received(

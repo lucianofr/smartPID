@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 if TYPE_CHECKING:
     from smart_pid_hmi.themes.base import ThemeBase
 
-_BAR_HEIGHT = 150
+_BAR_HEIGHT = 180
 _COLUMNS = ["Priority", "Level", "Loop", "Description", "Date/Time", "ACK"]
 
 _PRIORITY_RANK = {"CRITICAL": 0, "WARNING": 1, "ADVISORY": 2}

@@ -126,6 +126,24 @@ class TrendChartWidget(QWidget):
         self._export_btn = QPushButton("Export CSV")
         self._export_btn.clicked.connect(self._export_csv)
 
+        # Live OSC-diagnostic indicators (top-left). Updated from the
+        # STATS.{cid} snapshot via update_osc_indicators() so the
+        # operator can watch pk-pk / reversal / zero-crossing numbers
+        # move in real time and correlate them with what the fuzzy
+        # tuner sees. Fixed-width font so the columns stay aligned.
+        self._osc_indicators_label = QLabel(
+            "pkpk: —   rev: —   zc: —   recent pkpk: —",
+        )
+        ind_fg = getattr(theme, "fg_secondary", "#BDBDBD") if theme else "#BDBDBD"
+        self._osc_indicators_label.setStyleSheet(
+            f"color: {ind_fg};"
+            " background: transparent;"
+            " font-family: monospace;"
+            " font-size: 11px;"
+            " padding: 0px 6px;"
+        )
+
+        ctrl_row.addWidget(self._osc_indicators_label)
         ctrl_row.addStretch()
         ctrl_row.addWidget(tw_label)
         ctrl_row.addWidget(self._tw_spin)
@@ -223,6 +241,37 @@ class TrendChartWidget(QWidget):
         for line in self._ai_markers:
             self._plot_widget.removeItem(line)
         self._ai_markers.clear()
+        # Reset the OSC-indicators strip so stale numbers from the
+        # previous controller don't linger until the next STATS arrives.
+        self._osc_indicators_label.setText(
+            "pkpk: —   rev: —   zc: —   recent pkpk: —"
+        )
+
+    def update_osc_indicators(
+        self, controller_id: int, stats: dict,
+    ) -> None:
+        """Refresh the live OSC-diagnostic strip from a STATS snapshot.
+
+        Called from the HMI stats pipeline whenever the backend publishes
+        performance stats for the selected controller. Keeps rendering
+        cheap — just one setText on a short string.
+        """
+        if (
+            self._controller_id is None
+            or controller_id != self._controller_id
+        ):
+            return
+        pk_pk = float(stats.get("pk_pk_error", 0.0))
+        recent_pk_pk = float(stats.get("recent_pk_pk_error", 0.0))
+        reversals = int(stats.get("reversals", 0))
+        zc = int(stats.get("zero_crossings", 0))
+        n = int(stats.get("sample_count", 0))
+        self._osc_indicators_label.setText(
+            f"pkpk: {pk_pk:6.2f}   "
+            f"rev: {reversals:>2}/{n}   "
+            f"zc: {zc:>2}   "
+            f"recent pkpk: {recent_pk_pk:6.2f}"
+        )
 
     def on_telemetry(self, controller_id: int, frame: dict) -> None:
         if self._controller_id is None or controller_id != self._controller_id:
