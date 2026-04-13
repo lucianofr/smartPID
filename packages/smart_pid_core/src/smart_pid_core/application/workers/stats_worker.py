@@ -87,6 +87,7 @@ class StatsWorker:
             "mean_abs_error": calc.mean_abs_error,
             "pk_pk_error": calc.pk_pk_error,
             "reversals": calc.reversals,
+            "zero_crossings": calc.zero_crossings,
             "recent_pk_pk_error": calc.recent_pk_pk_error,
             "recent_reversals": calc.recent_reversals,
             "tv_per_sample": calc.tv_per_sample,

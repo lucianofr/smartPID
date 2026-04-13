@@ -149,6 +149,57 @@ class TestOscillationMetrics:
             calc.add_sample(error=float(k), co=50.0, dt=1.0)
         assert calc.reversals == 0
 
+    def test_zero_crossings_ignores_sp_step_transient(self):
+        """Regression: an error that stays on one side of zero during
+        settling must report zero_crossings = 0 so SP steps are not
+        confused with oscillation.
+        """
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        calc = StatsCalculator(window_size=50, span=100.0, setpoint=0.0)
+        # First-order decay from -30 to 0, no sign flip.
+        import math
+        for k in range(50):
+            calc.add_sample(error=-30.0 * math.exp(-k / 10.0),
+                            co=50.0, dt=1.0)
+        # Reversals may be non-zero (smooth curvature near 0 fails below
+        # the noise threshold, then picks up again), but zero_crossings
+        # must stay zero.
+        assert calc.zero_crossings == 0
+
+    def test_zero_crossings_counts_oscillation(self):
+        """A clean sinewave with 4 full cycles has 8 half-cycle crossings."""
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        calc = StatsCalculator(window_size=200, span=100.0, setpoint=0.0)
+        import math
+        for k in range(200):
+            calc.add_sample(error=30.0 * math.sin(2 * math.pi * k / 50.0),
+                            co=50.0, dt=1.0)
+        assert calc.zero_crossings >= 6  # at least 6 of the expected ~7-8
+
+    def test_zero_crossings_two_opposite_sp_steps_gives_at_most_one(self):
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        calc = StatsCalculator(window_size=200, span=100.0, setpoint=0.0)
+        import math
+        # Decay from -30 to 0 (60 samples)
+        for k in range(60):
+            calc.add_sample(error=-30.0 * math.exp(-k / 20.0),
+                            co=50.0, dt=1.0)
+        # Quiet (40 samples)
+        for _ in range(40):
+            calc.add_sample(error=0.0, co=50.0, dt=1.0)
+        # Decay from +30 to 0 (60 samples)
+        for k in range(60):
+            calc.add_sample(error=30.0 * math.exp(-k / 20.0),
+                            co=50.0, dt=1.0)
+        for _ in range(40):
+            calc.add_sample(error=0.0, co=50.0, dt=1.0)
+        # Error region goes from negative → zero → positive → zero.
+        # One sign transition only.
+        assert calc.zero_crossings <= 1
+
     def test_recent_pk_pk_ignores_stale_samples(self):
         """Regression: once the loop settles, recent_pk_pk must drop even
         when the full window still contains old oscillation data.

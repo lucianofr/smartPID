@@ -214,3 +214,34 @@ class StatsCalculator:
                 count += 1
             last_dir = cur_dir
         return count
+
+    @property
+    def zero_crossings(self) -> int:
+        """Count of sign flips of the error signal over the full window.
+
+        This discriminates oscillation from SP-step transients:
+          - True oscillation around SP: error crosses zero every half
+            cycle, so the count grows linearly with time.
+          - A pure SP step (with first-order settling) keeps the error on
+            a single side of zero until PV catches up — zero crossings = 0.
+          - Two opposite SP steps within the window give at most one
+            crossing total (the error moves from one sign region to the
+            other), so 2-3 SP changes do not fake sustained oscillation.
+
+        Errors within ``reversal_noise_frac × span`` are treated as zero
+        so quantisation noise does not inflate the count.
+        """
+        n = len(self._samples)
+        if n < 2:
+            return 0
+        threshold = self._reversal_noise_frac * self._span
+        count = 0
+        last_sign = 0
+        for s in self._samples:
+            if abs(s.error) < threshold:
+                continue
+            cur_sign = 1 if s.error > 0 else -1
+            if last_sign != 0 and cur_sign != last_sign:
+                count += 1
+            last_sign = cur_sign
+        return count
