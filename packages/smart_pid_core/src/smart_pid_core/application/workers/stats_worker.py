@@ -28,8 +28,12 @@ class StatsWorker:
     ) -> None:
         self._bus = bus
         self._controller = controller
-        # Stats window = TSS (one full settling period of scan-rate samples)
-        stats_window_s = controller.tss_s
+        # Stats window = 5 × TSS. A well-tuned loop shows ~5 response
+        # cycles in this window (smooth metrics for the UI); a mis-tuned
+        # loop's oscillation (period up to ~2 × TSS) fits at least two
+        # full cycles, giving the fuzzy tuner enough direction reversals
+        # to flag oscillation reliably.
+        stats_window_s = 5.0 * controller.tss_s
         window_size = max(10, int(stats_window_s / controller.scan_rate_s))
         self._publish_interval = max(1, int(5.0 / controller.scan_rate_s))
         self._calculator = StatsCalculator(
@@ -80,6 +84,10 @@ class StatsWorker:
             "total_variation": calc.total_variation,
             "variability_sp": calc.variability_sp,
             "variability_range": calc.variability_range,
+            "mean_abs_error": calc.mean_abs_error,
+            "pk_pk_error": calc.pk_pk_error,
+            "reversals": calc.reversals,
+            "tv_per_sample": calc.tv_per_sample,
             "sample_count": calc.sample_count,
         }
 

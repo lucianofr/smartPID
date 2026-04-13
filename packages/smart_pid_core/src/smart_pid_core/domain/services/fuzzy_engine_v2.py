@@ -258,12 +258,66 @@ class FuzzyEngineV2:
     def compute_adjustment(
         self, ti_current: float, limit_min: float, limit_max: float,
     ) -> AIDecisionV2:
+        """Legacy path: infer from the internal sample window.
+
+        Production code uses :meth:`compute_adjustment_from_stats`; this
+        method is kept so unit tests can drive the engine sample-by-sample
+        without standing up a StatsWorker.
+        """
         iae = self._iae_norm()
         osc, pk_pk, reversals = self._osc_stats()
         eff = self._eff_norm()
+        return self._build_decision(
+            iae, osc, eff, pk_pk, reversals, len(self._errors),
+            ti_current, limit_min, limit_max,
+        )
+
+    def compute_adjustment_from_stats(
+        self,
+        stats: dict,
+        span: float,
+        ti_current: float,
+        limit_min: float,
+        limit_max: float,
+    ) -> AIDecisionV2:
+        """Production path: infer from a StatsCalculator snapshot.
+
+        ``stats`` must carry the raw metrics published by StatsWorker:
+        ``mean_abs_error``, ``pk_pk_error``, ``reversals``,
+        ``tv_per_sample`` and ``sample_count``. This avoids maintaining a
+        second rolling window inside the engine.
+        """
+        mean_abs = float(stats.get("mean_abs_error", 0.0))
+        pk_pk_raw = float(stats.get("pk_pk_error", 0.0))
+        reversals = int(stats.get("reversals", 0))
+        tv_per = float(stats.get("tv_per_sample", 0.0))
+        n = int(stats.get("sample_count", 0))
+
+        iae = min(1.0, (mean_abs / span if span > 0 else 0.0) / self._IAE_FULL_SCALE)
+        pk_pk_frac = (pk_pk_raw / span) if span > 0 else 0.0
+        amp_norm = min(1.0, pk_pk_frac / self._OSC_PKPK_FULL_SCALE)
+        osc = amp_norm if reversals >= 2 else 0.0
+        # TV is published in raw CO units (0..100). Normalise to fraction.
+        eff = min(1.0, (tv_per / 100.0) / self._TV_FULL_SCALE)
+        return self._build_decision(
+            iae, osc, eff, pk_pk_frac, reversals, n,
+            ti_current, limit_min, limit_max,
+        )
+
+    def _build_decision(
+        self,
+        iae: float,
+        osc: float,
+        eff: float,
+        pk_pk: float,
+        reversals: int,
+        n: int,
+        ti_current: float,
+        limit_min: float,
+        limit_max: float,
+    ) -> AIDecisionV2:
         delta_ti, mfs = self.infer(iae, osc, eff)
         new_ti = max(limit_min, min(limit_max, ti_current * (1.0 + delta_ti)))
-        n = len(self._errors)
         return AIDecisionV2(
             delta_ti=delta_ti,
             new_ti=new_ti,
@@ -675,4 +729,25 @@ class FuzzyEngineV2Dispatcher:
     def compute_adjustment(
         self, ti_current: float, limit_min: float, limit_max: float,
     ) -> AIDecisionV2:
+        return self._engine.compute_adjustment(ti_current, limit_min, limit_max)
+
+    def compute_adjustment_from_stats(
+        self,
+        stats: dict,
+        span: float,
+        ti_current: float,
+        limit_min: float,
+        limit_max: float,
+    ) -> AIDecisionV2:
+        """For SP_TRACKING, use pre-computed stats from StatsWorker.
+
+        Other strategies (disturbance rejection, surge level) still rely
+        on per-sample state and fall back to the legacy window-based
+        compute_adjustment, so for them this method is equivalent to the
+        legacy path.
+        """
+        if self._objective == ControlObjective.SP_TRACKING:
+            return self._engine.compute_adjustment_from_stats(
+                stats, span, ti_current, limit_min, limit_max,
+            )
         return self._engine.compute_adjustment(ti_current, limit_min, limit_max)

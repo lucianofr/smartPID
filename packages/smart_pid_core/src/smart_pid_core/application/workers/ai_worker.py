@@ -66,6 +66,7 @@ class AIWorker:
         self._last_mode: str = ""
         self._prev_error: float = 0.0
         self._has_telemetry = False
+        self._latest_stats: dict | None = None  # most recent STATS.{cid} snapshot
         self._engine = self._create_engine()
         self._enabled = True  # controlled via CMD.AI start/stop
         self._stop_event = threading.Event()
@@ -161,6 +162,9 @@ class AIWorker:
         cmd_sub = self._bus.create_subscriber(
             f"CMD.AI.{self.controller_id}".encode()
         )
+        stats_sub = self._bus.create_subscriber(
+            f"STATS.{self.controller_id}".encode()
+        )
         pub = self._bus.create_publisher()
         time.sleep(0.02)
 
@@ -173,6 +177,9 @@ class AIWorker:
 
                 # Drain latest telemetry (non-blocking)
                 self._drain_telemetry(telem_sub)
+
+                # Drain latest stats snapshot from StatsWorker
+                self._drain_stats(stats_sub)
 
                 # Check if it's time to run AI
                 now = time.monotonic()
@@ -212,15 +219,28 @@ class AIWorker:
                 delta_error = error - self._prev_error
 
                 if self._ai_config.engine == AIEngine.FUZZY:
-                    # Samples are fed into the engine on every telemetry frame
-                    # (see _drain_telemetry) so the stats window reflects the
-                    # last TSS seconds of scan-rate data. Here we only consume
-                    # the current decision from the dispatcher.
-                    decision = self._engine.compute_adjustment(
-                        ti_current=self._ki_current,
-                        limit_min=self._ai_config.limit_min,
-                        limit_max=self._ai_config.limit_max,
-                    )
+                    # SP_TRACKING consumes the StatsWorker snapshot so the two
+                    # subsystems share a single rolling window. DR / Surge Level
+                    # still have their own per-sample state (fed in
+                    # _drain_telemetry) and fall back to the legacy path.
+                    from smart_pid_domain.enums import ControlObjective
+                    if (
+                        self._ai_config.objective == ControlObjective.SP_TRACKING
+                        and self._latest_stats is not None
+                    ):
+                        decision = self._engine.compute_adjustment_from_stats(
+                            stats=self._latest_stats,
+                            span=self._controller.pv_scale.span,
+                            ti_current=self._ki_current,
+                            limit_min=self._ai_config.limit_min,
+                            limit_max=self._ai_config.limit_max,
+                        )
+                    else:
+                        decision = self._engine.compute_adjustment(
+                            ti_current=self._ki_current,
+                            limit_min=self._ai_config.limit_min,
+                            limit_max=self._ai_config.limit_max,
+                        )
                     # V2 returns delta_ti ∈ [−0.5..+1.5]. For GAIN_KI loops the
                     # integral parameter has the opposite sense, so invert.
                     if self._integral_type == "GAIN_KI":
@@ -388,11 +408,14 @@ class AIWorker:
                 if ti_val is not None:
                     self._ki_from_opcua = float(ti_val)
 
-                # Feed fuzzy engine at scan rate so stats window = TSS seconds.
-                # Only feed while in an auto mode and the optimizer is enabled;
-                # manual/OOS samples would pollute the window.
+                # Feed per-sample state for DR / Surge Level engines only —
+                # they keep event state machines and PV/CO buffers. SP_TRACKING
+                # consumes StatsWorker snapshots via _drain_stats instead, so
+                # the two subsystems share a single rolling window.
+                from smart_pid_domain.enums import ControlObjective
                 if (
                     self._ai_config.engine == AIEngine.FUZZY
+                    and self._ai_config.objective != ControlObjective.SP_TRACKING
                     and self._engine is not None
                     and self._enabled
                     and self._is_auto_mode()
@@ -407,4 +430,22 @@ class AIWorker:
                     co_frac = self._last_co / 100.0
                     self._engine.update_sample(error_frac, pv_frac, co_frac)
             except (KeyError, ValueError, msgpack.UnpackException):
+                pass
+
+    def _drain_stats(self, sub) -> None:
+        """Cache the most recent STATS.{cid} snapshot from StatsWorker.
+
+        Only used by the SP_TRACKING path; other objectives keep their own
+        per-sample state.
+        """
+        while True:
+            msg = sub.recv(timeout_ms=0)
+            if msg is None:
+                break
+            _topic, payload = msg
+            try:
+                data = msgpack.unpackb(payload)
+                if isinstance(data, dict):
+                    self._latest_stats = data
+            except (ValueError, msgpack.UnpackException):
                 pass

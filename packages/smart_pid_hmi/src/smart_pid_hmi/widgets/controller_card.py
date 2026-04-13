@@ -367,7 +367,7 @@ class ControllerCardWidget(QFrame):
     def set_tss_info(self, tss_s: float) -> None:
         """Update the TSS-derived info badges on the card."""
         ai_period = 3.0 * tss_s
-        stats_win = tss_s
+        stats_win = 5.0 * tss_s
         self._badge_ai_period.setText(f"AI {self._fmt_dur(ai_period)}")
         self._badge_stats_win.setText(f"Stats {self._fmt_dur(stats_win)}")
 
