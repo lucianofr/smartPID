@@ -149,9 +149,14 @@ RULES: list[Rule] = [
     ({"iae": "HIGH", "osc": "UNSTABLE"}, "AM"),
     ({"iae": "MED",  "osc": "UNSTABLE"}, "AM"),
     ({"iae": "LOW",  "osc": "UNSTABLE"}, "A"),
-    # R3: nervous loop (oscillating + chattering valve)
+    # R3: nervous loop (oscillating + chattering valve) → slow down integrator
     ({"osc": "OSC", "eff": "EXCESS"}, "A"),
     ({"iae": "LOW", "osc": "OSC", "eff": "MODERATE"}, "A"),
+    # R3': sustained PV oscillation with calm valve. Classical tuning says
+    # oscillation → more damping, so increase Ti regardless of valve state.
+    ({"iae": "LOW",  "osc": "OSC", "eff": "SMOOTH"}, "A"),
+    ({"iae": "MED",  "osc": "OSC", "eff": "SMOOTH"}, "A"),
+    ({"iae": "HIGH", "osc": "OSC", "eff": "SMOOTH"}, "AM"),
     # R4: acceptable compromise
     ({"iae": "MED", "osc": "OSC", "eff": "MODERATE"}, "M"),
     # R5: settled
@@ -169,7 +174,11 @@ class FuzzyEngineV2:
     _DEADBAND = 0.02
     _IAE_FULL_SCALE = 0.20
     _TV_FULL_SCALE  = 0.10
-    _OSC_FULL_SCALE = 0.50
+    # 2σ(error)/span at which OSC saturates to 1.0. A well-tuned loop sits
+    # around 2σ ≈ 2% of span; clearly oscillating loops reach 2σ ≈ 10-15%.
+    # 0.15 puts OSC norm ≈ 0.47 for 2σ=7% (mid-OSC) and ≈ 0.93 for 2σ=14%
+    # (UNSTABLE territory).
+    _OSC_FULL_SCALE = 0.15
 
     def __init__(self, window_samples: int | None = None) -> None:
         n = window_samples if window_samples is not None else self._DEFAULT_WINDOW

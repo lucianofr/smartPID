@@ -50,9 +50,11 @@ class TestIndicators:
         for k in range(20):
             e = 0.10 * math.sin(k * math.pi / 4.0)
             engine.update_sample(error_frac=e, co_frac=0.0)
-        # 2σ of sinewave amp 0.1 ≈ 0.141; /0.5 scale ≈ 0.283
+        # 2σ of sinewave amp 0.1 ≈ 0.141; /0.15 scale ≈ 0.94 → saturates
+        # near 1.0 (UNSTABLE territory — a 10%-amplitude oscillation is a
+        # clear limit cycle that must drive Ti up).
         osc = engine._osc_norm()
-        assert 0.2 < osc < 0.4, f"osc={osc}"
+        assert osc > 0.85, f"osc={osc}"
 
     def test_eff_norm_constant_co_is_zero(self):
         from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
@@ -132,17 +134,36 @@ class TestConfigurableWindow:
         that the engine infers ongoing oscillation.
         """
         from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
-        engine = FuzzyEngineV2(window_samples=60)
-        # First 5 samples: residual error from a past SP change.
-        for _ in range(5):
+        engine = FuzzyEngineV2(window_samples=120)
+        # First 4 samples: residual error from a past SP change.
+        for _ in range(4):
             engine.update_sample(error_frac=0.08, co_frac=0.5)
-        # Next 55 samples: settled, at setpoint.
-        for _ in range(55):
+        # Next 116 samples: settled, at setpoint.
+        for _ in range(116):
             engine.update_sample(error_frac=0.0, co_frac=0.5)
-        # OSC should be low: error series is mostly zero, the early 5 samples
-        # contribute little to σ over a 60-sample window.
+        # OSC must stay inside the STABLE plateau (≤ 0.2): a 4-sample
+        # transient inside a 120-sample window is too diluted to fake
+        # oscillation.
         osc = engine._osc_norm()
         assert osc < 0.2, f"osc={osc} — stale spike should not flag oscillation"
+
+    def test_oscillating_pv_with_calm_valve_increases_ti(self):
+        """Regression: sustained PV oscillation must drive Ti up even when
+        CO barely moves (Kp too small → EFF near zero). Previously the rule
+        base had no entry for OSC + SMOOTH, so Δ_Ti stayed at 0 for cycles.
+        """
+        import math
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        engine = FuzzyEngineV2(window_samples=40)
+        # PV oscillates 10% of span around SP; CO nearly constant (small Kp).
+        for k in range(40):
+            e = 0.10 * math.sin(k * math.pi / 5.0)
+            engine.update_sample(error_frac=e, co_frac=0.50 + 0.001 * k)
+        d = engine.compute_adjustment(ti_current=20.0, limit_min=0.1, limit_max=100.0)
+        assert d.delta_ti > 0.05, (
+            f"Δ_Ti={d.delta_ti} should be clearly positive (inputs={d.inputs})"
+        )
+        assert d.new_ti > 20.0
 
 
 class TestRuleOutcomes:
