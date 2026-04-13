@@ -174,11 +174,12 @@ class FuzzyEngineV2:
     _DEADBAND = 0.02
     _IAE_FULL_SCALE = 0.20
     _TV_FULL_SCALE  = 0.10
-    # 2σ(error)/span at which OSC saturates to 1.0. A well-tuned loop sits
-    # around 2σ ≈ 2% of span; clearly oscillating loops reach 2σ ≈ 10-15%.
-    # 0.15 puts OSC norm ≈ 0.47 for 2σ=7% (mid-OSC) and ≈ 0.93 for 2σ=14%
-    # (UNSTABLE territory).
-    _OSC_FULL_SCALE = 0.15
+    # Peak-to-peak of error / span at which the amplitude factor saturates.
+    # A sustained oscillation with pk-pk ≥ 15% of span reads as UNSTABLE.
+    _OSC_PKPK_FULL_SCALE = 0.15
+    # Δerror below this magnitude is ignored when counting direction
+    # reversals — keeps quantisation noise from inflating the freq factor.
+    _OSC_REVERSAL_NOISE_THR = 0.005
 
     def __init__(self, window_samples: int | None = None) -> None:
         n = window_samples if window_samples is not None else self._DEFAULT_WINDOW
@@ -193,13 +194,43 @@ class FuzzyEngineV2:
         return min(1.0, mean_abs / self._IAE_FULL_SCALE)
 
     def _osc_norm(self) -> float:
+        """Oscillation score combining amplitude AND direction reversals.
+
+        σ-based scoring conflates drift, single SP-change transients, and
+        true oscillation. A sustained oscillation has BOTH a non-trivial
+        peak-to-peak amplitude AND several direction reversals in the
+        window. This detector multiplies those two factors (geometric
+        mean) so a pure ramp (many amplitude, zero reversals) scores 0,
+        and a low-amplitude noise burst (many reversals, zero amplitude)
+        also scores 0.
+        """
         n = len(self._errors)
         if n < 4:
             return 0.0
-        mean = sum(self._errors) / n
-        variance = sum((e - mean) ** 2 for e in self._errors) / n
-        sigma = math.sqrt(variance)
-        return min(1.0, (2.0 * sigma) / self._OSC_FULL_SCALE)
+        errs = list(self._errors)
+
+        # Amplitude term: peak-to-peak / span.
+        pk_pk = max(errs) - min(errs)
+        amp_norm = min(1.0, pk_pk / self._OSC_PKPK_FULL_SCALE)
+
+        # Frequency term: count direction reversals in Δerror, ignoring
+        # sub-noise steps so quantisation does not inflate the count.
+        reversals = 0
+        last_dir = 0
+        for i in range(1, n):
+            d = errs[i] - errs[i - 1]
+            if abs(d) < self._OSC_REVERSAL_NOISE_THR:
+                continue
+            cur_dir = 1 if d > 0 else -1
+            if last_dir != 0 and cur_dir != last_dir:
+                reversals += 1
+            last_dir = cur_dir
+        # Saturate when reversals reach n/5 (≈ one reversal every 5
+        # samples, i.e. oscillation period ~10 samples).
+        freq_norm = min(1.0, reversals / max(1.0, n / 5.0))
+
+        # Geometric mean: both factors must be non-zero for OSC > 0.
+        return math.sqrt(amp_norm * freq_norm)
 
     def _eff_norm(self) -> float:
         n = len(self._cos)

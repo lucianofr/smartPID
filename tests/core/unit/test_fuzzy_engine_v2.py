@@ -147,6 +147,33 @@ class TestConfigurableWindow:
         osc = engine._osc_norm()
         assert osc < 0.2, f"osc={osc} — stale spike should not flag oscillation"
 
+    def test_monotonic_ramp_is_not_oscillation(self):
+        """Regression: a pure drift (error ramping up) has non-trivial pk-pk
+        and non-trivial σ, but zero direction reversals. The new detector
+        must score OSC ≈ 0 so Ti is not bumped up against a one-way trend.
+        """
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        engine = FuzzyEngineV2(window_samples=40)
+        for k in range(40):
+            engine.update_sample(error_frac=0.003 * k, co_frac=0.5)
+        osc = engine._osc_norm()
+        assert osc == 0.0, f"osc={osc} — ramp must not flag oscillation"
+
+    def test_single_spike_is_not_oscillation(self):
+        """Regression: a lone bump (e.g. disturbance rejected in one cycle)
+        produces amplitude but only ~1 reversal — OSC must stay low.
+        """
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        engine = FuzzyEngineV2(window_samples=40)
+        for _ in range(18):
+            engine.update_sample(error_frac=0.0, co_frac=0.5)
+        for _ in range(4):
+            engine.update_sample(error_frac=0.08, co_frac=0.5)
+        for _ in range(18):
+            engine.update_sample(error_frac=0.0, co_frac=0.5)
+        osc = engine._osc_norm()
+        assert osc < 0.35, f"osc={osc} — single spike must stay below OSC MF peak"
+
     def test_oscillating_pv_with_calm_valve_increases_ti(self):
         """Regression: sustained PV oscillation must drive Ti up even when
         CO barely moves (Kp too small → EFF near zero). Previously the rule
