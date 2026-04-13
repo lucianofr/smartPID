@@ -445,7 +445,10 @@ class MainWindow(QMainWindow):
         # _load_initial_alarm_state is called in _on_controllers_received
         # after cards are created (async via _load_dashboard thread)
         self._kpi_timer.start(30_000)
-        self._stats_timer.start(2000)
+        # 1 Hz matches the StatsWorker's per-scan recompute cadence so the
+        # OSC / pk-pk / reversal / zero-crossing strip on the trend chart
+        # tracks the live sliding-window numbers without lag.
+        self._stats_timer.start(1000)
         self._exec_cards_timer.start(2000)
         self._faceplate_poll_timer.start(1000)
         # Auto-refresh JWT token every 7 hours (expires at 8h)
