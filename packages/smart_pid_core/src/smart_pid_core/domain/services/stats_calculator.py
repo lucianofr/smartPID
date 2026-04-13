@@ -224,17 +224,29 @@ class StatsCalculator:
         return amp_norm
 
     def _recent_errors(self) -> list[float]:
-        """Last N non-settling errors for the recent sub-window."""
+        """Last N non-settling errors, walking backward through the window.
+
+        Picking the chronologically most recent N samples and dropping
+        settling ones can leave the list empty whenever a recent
+        SP-step cooldown spans the recent sub-window. Walking backward
+        and skipping settling samples instead gives us the most recent
+        N samples that actually reflect closed-loop behaviour, so
+        recent_pk_pk_error keeps tracking real oscillation even when
+        the auto-SP / disturbance generator is firing frequently.
+        """
         n = len(self._samples)
         if n == 0:
             return []
         recent_n = max(4, int(n * self._recent_fraction))
-        recent_n = min(n, recent_n)
-        return [
-            s.error
-            for s in list(self._samples)[-recent_n:]
-            if not s.is_settling
-        ]
+        out: list[float] = []
+        for s in reversed(self._samples):
+            if s.is_settling:
+                continue
+            out.append(s.error)
+            if len(out) >= recent_n:
+                break
+        out.reverse()
+        return out
 
     @property
     def recent_pk_pk_error(self) -> float:

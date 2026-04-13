@@ -178,6 +178,34 @@ class TestOscillationMetrics:
                             co=50.0, dt=1.0)
         assert calc.zero_crossings >= 6  # at least 6 of the expected ~7-8
 
+    def test_recent_pk_pk_walks_back_when_settling_dominates_recent_window(
+        self,
+    ):
+        """Regression: when the last 40% of the window is all settling
+        (e.g. a recent SP-step cooldown), recent_pk_pk_error must walk
+        backward to the last non-settling samples instead of returning
+        zero.
+        """
+        import math
+
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        calc = StatsCalculator(window_size=200, span=100.0, setpoint=0.0)
+        # Older 120 samples: clean oscillation (non-settling).
+        for k in range(120):
+            calc.add_sample(
+                error=30.0 * math.sin(2 * math.pi * k / 40.0),
+                co=50.0, dt=1.0, is_settling=False,
+            )
+        # Last 80 samples: settling cooldown (would have masked the
+        # entire recent sub-window in the old implementation).
+        for _ in range(80):
+            calc.add_sample(error=10.0, co=50.0, dt=1.0, is_settling=True)
+
+        # Should reflect the oscillation amplitude from the older samples,
+        # not zero.
+        assert calc.recent_pk_pk_error > 50.0
+
     def test_settling_samples_are_masked_from_oscillation_metrics(self):
         """is_settling=True samples must NOT contribute to pk_pk,
         reversals or zero_crossings, but MUST still count toward IAE.
