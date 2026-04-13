@@ -14,6 +14,10 @@ class _Sample:
     co: float
     dt: float
     elapsed_time: float  # cumulative time since window start
+    # SP-step transients are kept out of the oscillation metrics
+    # (pk-pk, reversals, zero_crossings). They still contribute to IAE
+    # and family so error-budget tracking is unaffected.
+    is_settling: bool = False
 
 
 class StatsCalculator:
@@ -52,8 +56,21 @@ class StatsCalculator:
     def sample_count(self) -> int:
         return len(self._samples)
 
-    def add_sample(self, error: float, co: float, dt: float) -> None:
-        """Add a new sample to the sliding window."""
+    def add_sample(
+        self,
+        error: float,
+        co: float,
+        dt: float,
+        is_settling: bool = False,
+    ) -> None:
+        """Add a new sample to the sliding window.
+
+        ``is_settling=True`` marks the sample as part of an SP-step
+        transient. Settling samples still contribute to IAE / ITAE / ISE
+        and standard-deviation metrics, but are ignored by the
+        oscillation indicators (pk_pk, reversals, zero_crossings) so
+        the fuzzy tuner does not interpret SP-chasing as oscillation.
+        """
         self._elapsed_time += dt
         self._samples.append(
             _Sample(
@@ -61,6 +78,7 @@ class StatsCalculator:
                 co=co,
                 dt=dt,
                 elapsed_time=self._elapsed_time,
+                is_settling=is_settling,
             )
         )
 
@@ -133,26 +151,34 @@ class StatsCalculator:
             return 0.0
         return sum(abs(s.error) for s in self._samples) / n
 
+    def _osc_errors(self) -> list[float]:
+        """Error series with settling (SP-step) samples dropped."""
+        return [s.error for s in self._samples if not s.is_settling]
+
     @property
     def pk_pk_error(self) -> float:
-        """Peak-to-peak of error over the window (raw engineering units)."""
-        if not self._samples:
+        """Peak-to-peak of error over the window (raw engineering units).
+
+        Excludes samples flagged as settling so a SP step's one-sided
+        transient does not inflate the amplitude.
+        """
+        errors = self._osc_errors()
+        if not errors:
             return 0.0
-        errors = [s.error for s in self._samples]
         return max(errors) - min(errors)
 
     @property
     def reversals(self) -> int:
-        """Direction reversals in the error series.
+        """Direction reversals in the error series (settling-masked).
 
         A reversal is a sample where Δerror flips sign relative to the
         previous non-negligible Δerror. Steps below ``reversal_noise_frac
         × span`` are skipped so noise does not inflate the count.
         """
-        n = len(self._samples)
+        errors = self._osc_errors()
+        n = len(errors)
         if n < 2:
             return 0
-        errors = [s.error for s in self._samples]
         threshold = self._reversal_noise_frac * self._span
         count = 0
         last_dir = 0
@@ -175,12 +201,17 @@ class StatsCalculator:
         return self.total_variation / (n - 1)
 
     def _recent_errors(self) -> list[float]:
+        """Last N non-settling errors for the recent sub-window."""
         n = len(self._samples)
         if n == 0:
             return []
         recent_n = max(4, int(n * self._recent_fraction))
         recent_n = min(n, recent_n)
-        return [s.error for s in list(self._samples)[-recent_n:]]
+        return [
+            s.error
+            for s in list(self._samples)[-recent_n:]
+            if not s.is_settling
+        ]
 
     @property
     def recent_pk_pk_error(self) -> float:
@@ -217,16 +248,11 @@ class StatsCalculator:
 
     @property
     def zero_crossings(self) -> int:
-        """Count of sign flips of the error signal over the full window.
+        """Count of sign flips of the error signal (settling-masked).
 
-        This discriminates oscillation from SP-step transients:
-          - True oscillation around SP: error crosses zero every half
-            cycle, so the count grows linearly with time.
-          - A pure SP step (with first-order settling) keeps the error on
-            a single side of zero until PV catches up — zero crossings = 0.
-          - Two opposite SP steps within the window give at most one
-            crossing total (the error moves from one sign region to the
-            other), so 2-3 SP changes do not fake sustained oscillation.
+        Samples flagged as settling are skipped so the sign flip that
+        happens when a later SP change moves in the opposite direction
+        from a previous one does not leak into the oscillation signal.
 
         Errors within ``reversal_noise_frac × span`` are treated as zero
         so quantisation noise does not inflate the count.
@@ -238,6 +264,8 @@ class StatsCalculator:
         count = 0
         last_sign = 0
         for s in self._samples:
+            if s.is_settling:
+                continue
             if abs(s.error) < threshold:
                 continue
             cur_sign = 1 if s.error > 0 else -1
