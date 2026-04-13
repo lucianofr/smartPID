@@ -288,32 +288,42 @@ class FuzzyEngineV2:
         second rolling window inside the engine.
         """
         mean_abs = float(stats.get("mean_abs_error", 0.0))
-        # OSC combines two signals so both stale and one-off events are
-        # rejected while slow oscillations are still caught:
-        #   - recent_pk_pk_error (amplitude term): drops quickly once the
-        #     loop stabilises, so OSC does not linger for a full window.
-        #   - full-window reversals (frequency term): a slow oscillation
-        #     whose period spans most of the window still accumulates at
-        #     least two reversals, which the recent sub-window alone
-        #     would miss.
-        # Fall back to full-window metrics if the recent ones are absent,
-        # e.g. legacy StatsWorker snapshots.
+        # OSC has to discriminate four scenarios:
+        #   1. Sustained oscillation around SP — must flag.
+        #   2. Loop just stabilised (stale swings in the full window) —
+        #      must NOT flag.
+        #   3. SP-step transient (error stays on one side until PV
+        #      catches up) — must NOT flag.
+        #   4. Pure drift / ramp — must NOT flag.
+        #
+        # Signals used:
+        #   - recent_pk_pk_error  → amplitude (rejects #2; stays high in #1)
+        #   - zero_crossings      → primary oscillation confirmation: true
+        #                           oscillation crosses SP every half cycle;
+        #                           SP-step transients give ≤ 1 crossing
+        #                           (rejects #3)
+        #   - reversals (full)    → shape check that the amplitude came from
+        #                           repeated direction changes, not a single
+        #                           ramp (rejects #4)
+        # Fall back to legacy fields if recent/zero_crossings are missing.
         pk_pk_raw = float(stats.get(
             "recent_pk_pk_error", stats.get("pk_pk_error", 0.0),
         ))
         reversals = int(stats.get("reversals", 0))
+        zero_crossings = int(stats.get("zero_crossings", reversals))
         tv_per = float(stats.get("tv_per_sample", 0.0))
         n = int(stats.get("sample_count", 0))
 
         iae = min(1.0, (mean_abs / span if span > 0 else 0.0) / self._IAE_FULL_SCALE)
         pk_pk_frac = (pk_pk_raw / span) if span > 0 else 0.0
         amp_norm = min(1.0, pk_pk_frac / self._OSC_PKPK_FULL_SCALE)
-        osc = amp_norm if reversals >= 2 else 0.0
+        osc = amp_norm if (zero_crossings >= 2 and reversals >= 2) else 0.0
         # TV is published in raw CO units (0..100). Normalise to fraction.
         eff = min(1.0, (tv_per / 100.0) / self._TV_FULL_SCALE)
         return self._build_decision(
             iae, osc, eff, pk_pk_frac, reversals, n,
             ti_current, limit_min, limit_max,
+            zero_crossings=zero_crossings,
         )
 
     def _build_decision(
@@ -327,18 +337,24 @@ class FuzzyEngineV2:
         ti_current: float,
         limit_min: float,
         limit_max: float,
+        zero_crossings: int | None = None,
     ) -> AIDecisionV2:
         delta_ti, mfs = self.infer(iae, osc, eff)
         new_ti = max(limit_min, min(limit_max, ti_current * (1.0 + delta_ti)))
+        inputs = {"IAE": iae, "OSC": osc, "EFF": eff,
+                  "pk_pk": pk_pk, "reversals": reversals, "window": n}
+        if zero_crossings is not None:
+            inputs["zero_crossings"] = zero_crossings
+        zc_str = f" zc={zero_crossings}" if zero_crossings is not None else ""
         return AIDecisionV2(
             delta_ti=delta_ti,
             new_ti=new_ti,
-            inputs={"IAE": iae, "OSC": osc, "EFF": eff,
-                    "pk_pk": pk_pk, "reversals": reversals, "window": n},
+            inputs=inputs,
             reasoning=(
                 f"FuzzyV2[SP]: IAE={iae:.2f} OSC={osc:.2f} "
-                f"(pkpk={pk_pk:.2f} rev={reversals}/{n}) EFF={eff:.2f} "
-                f"Δ_Ti={delta_ti:+.3f} Ti: {ti_current:.4f} → {new_ti:.4f}"
+                f"(pkpk={pk_pk:.2f} rev={reversals}/{n}{zc_str}) "
+                f"EFF={eff:.2f} Δ_Ti={delta_ti:+.3f} "
+                f"Ti: {ti_current:.4f} → {new_ti:.4f}"
             ),
             membership_values=mfs,
         )

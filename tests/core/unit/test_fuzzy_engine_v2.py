@@ -94,7 +94,9 @@ class TestComputeAdjustmentFromStats:
         stats = {
             "mean_abs_error": 30.0,  # ≈ 30% of 100-span → IAE norm → HIGH
             "pk_pk_error": 60.0,
+            "recent_pk_pk_error": 60.0,
             "reversals": 3,
+            "zero_crossings": 4,
             "tv_per_sample": 0.5,
             "sample_count": 200,
         }
@@ -164,6 +166,29 @@ class TestComputeAdjustmentFromStats:
             f"stabilised loop must not trigger AM/A rules; Δ_Ti={d.delta_ti}"
         )
 
+    def test_sp_step_transients_are_not_flagged_as_oscillation(self):
+        """Regression: two opposite SP steps create 1–2 reversals and a
+        large recent pk-pk, but the error stays on one side of zero during
+        each settling → zero_crossings ≤ 1. Without this gate the fuzzy
+        would drive Ti up on every SP change.
+        """
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        engine = FuzzyEngineV2()
+        stats = {
+            "mean_abs_error": 5.0,
+            "pk_pk_error": 30.0,
+            "recent_pk_pk_error": 11.0,
+            "reversals": 1,
+            "zero_crossings": 1,   # ← key: pure SP-step transient
+            "tv_per_sample": 0.2,
+            "sample_count": 200,
+        }
+        d = engine.compute_adjustment_from_stats(
+            stats=stats, span=100.0, ti_current=10.0,
+            limit_min=0.1, limit_max=100.0,
+        )
+        assert d.inputs["OSC"] == 0.0
+
     def test_slow_oscillation_still_detected_via_full_reversals(self):
         """Complement: a slow oscillation whose period is ~½ of the full
         window only shows ~1 reversal inside the recent sub-window, so we
@@ -177,6 +202,7 @@ class TestComputeAdjustmentFromStats:
             "pk_pk_error": 60.0,
             "recent_pk_pk_error": 58.0,
             "reversals": 3,
+            "zero_crossings": 2,  # barely qualifies — real oscillation
             "recent_reversals": 1,
             "tv_per_sample": 0.5,
             "sample_count": 200,
