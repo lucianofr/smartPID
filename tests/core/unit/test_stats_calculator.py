@@ -149,6 +149,28 @@ class TestOscillationMetrics:
             calc.add_sample(error=float(k), co=50.0, dt=1.0)
         assert calc.reversals == 0
 
+    def test_recent_pk_pk_ignores_stale_samples(self):
+        """Regression: once the loop settles, recent_pk_pk must drop even
+        when the full window still contains old oscillation data.
+        """
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        calc = StatsCalculator(window_size=20, span=100.0, setpoint=0.0)
+        # First 10 samples: big swings.
+        for e in [-30.0, 30.0, -30.0, 30.0, -30.0,
+                  30.0, -30.0, 30.0, -30.0, 30.0]:
+            calc.add_sample(error=e, co=50.0, dt=1.0)
+        # Last 10 samples: flat at zero.
+        for _ in range(10):
+            calc.add_sample(error=0.0, co=50.0, dt=1.0)
+
+        # Full window still sees the old oscillation.
+        assert calc.pk_pk_error > 50.0
+        assert calc.reversals > 2
+        # Recent sub-window (40%, i.e. last 8 samples) is entirely flat.
+        assert calc.recent_pk_pk_error == 0.0
+        assert calc.recent_reversals == 0
+
     def test_tv_per_sample(self):
         from smart_pid_core.domain.services.stats_calculator import StatsCalculator
 

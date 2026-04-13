@@ -137,6 +137,57 @@ class TestComputeAdjustmentFromStats:
         assert d.inputs["IAE"] == 0.0
         assert d.inputs["OSC"] == 0.0
 
+    def test_stabilised_loop_clears_osc_even_with_stale_reversals(self):
+        """Regression: after the loop stabilises, OSC must drop even though
+        the full window still contains old oscillation samples. Otherwise
+        the fuzzy keeps driving Ti up forever.
+        """
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        engine = FuzzyEngineV2()
+        # Recent sub-window is flat (loop settled) but full-window metrics
+        # still show the earlier oscillation.
+        stats = {
+            "mean_abs_error": 15.0,
+            "pk_pk_error": 60.0,
+            "recent_pk_pk_error": 0.0,   # ← loop now stable
+            "reversals": 4,              # ← stale
+            "recent_reversals": 0,
+            "tv_per_sample": 0.2,
+            "sample_count": 200,
+        }
+        d = engine.compute_adjustment_from_stats(
+            stats=stats, span=100.0, ti_current=10.0,
+            limit_min=0.1, limit_max=100.0,
+        )
+        assert d.inputs["OSC"] == 0.0
+        assert d.delta_ti <= 0.0, (
+            f"stabilised loop must not trigger AM/A rules; Δ_Ti={d.delta_ti}"
+        )
+
+    def test_slow_oscillation_still_detected_via_full_reversals(self):
+        """Complement: a slow oscillation whose period is ~½ of the full
+        window only shows ~1 reversal inside the recent sub-window, so we
+        rely on the full-window reversal count to keep the amplitude
+        signal meaningful.
+        """
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        engine = FuzzyEngineV2()
+        stats = {
+            "mean_abs_error": 30.0,
+            "pk_pk_error": 60.0,
+            "recent_pk_pk_error": 58.0,
+            "reversals": 3,
+            "recent_reversals": 1,
+            "tv_per_sample": 0.5,
+            "sample_count": 200,
+        }
+        d = engine.compute_adjustment_from_stats(
+            stats=stats, span=100.0, ti_current=10.0,
+            limit_min=0.1, limit_max=100.0,
+        )
+        assert d.inputs["OSC"] > 0.8
+        assert d.delta_ti > 0.20
+
 
 class TestConfigurableWindow:
     """The stats window must scale with TSS/scan_rate instead of being fixed."""
