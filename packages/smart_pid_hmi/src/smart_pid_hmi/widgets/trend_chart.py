@@ -128,18 +128,19 @@ class TrendChartWidget(QWidget):
 
         # Live OSC-diagnostic indicators (top-left). Updated from the
         # STATS.{cid} snapshot via update_osc_indicators() so the
-        # operator can watch pk-pk / reversal / zero-crossing numbers
-        # move in real time and correlate them with what the fuzzy
-        # tuner sees. Fixed-width font so the columns stay aligned.
+        # operator can watch the same OSC / pk-pk / reversal /
+        # zero-crossing numbers the fuzzy tuner sees. Fixed-width font
+        # so the columns stay aligned.
         self._osc_indicators_label = QLabel(
-            "pkpk: —   rev: —   zc: —   recent pkpk: —",
+            "OSC: —   pkpk: —   rev: —   zc: —   recent pkpk: —",
         )
-        ind_fg = getattr(theme, "fg_secondary", "#BDBDBD") if theme else "#BDBDBD"
+        ind_fg = getattr(theme, "fg_primary", "#212121") if theme else "#212121"
         self._osc_indicators_label.setStyleSheet(
             f"color: {ind_fg};"
             " background: transparent;"
             " font-family: monospace;"
-            " font-size: 11px;"
+            " font-size: 13px;"
+            " font-weight: bold;"
             " padding: 0px 6px;"
         )
 
@@ -244,7 +245,7 @@ class TrendChartWidget(QWidget):
         # Reset the OSC-indicators strip so stale numbers from the
         # previous controller don't linger until the next STATS arrives.
         self._osc_indicators_label.setText(
-            "pkpk: —   rev: —   zc: —   recent pkpk: —"
+            "OSC: —   pkpk: —   rev: —   zc: —   recent pkpk: —"
         )
 
     def update_osc_indicators(
@@ -261,12 +262,14 @@ class TrendChartWidget(QWidget):
             or controller_id != self._controller_id
         ):
             return
+        osc = float(stats.get("osc", 0.0))
         pk_pk = float(stats.get("pk_pk_error", 0.0))
         recent_pk_pk = float(stats.get("recent_pk_pk_error", 0.0))
         reversals = int(stats.get("reversals", 0))
         zc = int(stats.get("zero_crossings", 0))
         n = int(stats.get("sample_count", 0))
         self._osc_indicators_label.setText(
+            f"OSC: {osc:.2f}   "
             f"pkpk: {pk_pk:6.2f}   "
             f"rev: {reversals:>2}/{n}   "
             f"zc: {zc:>2}   "
