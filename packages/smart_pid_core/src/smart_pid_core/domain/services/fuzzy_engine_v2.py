@@ -193,28 +193,23 @@ class FuzzyEngineV2:
         mean_abs = sum(abs(e) for e in self._errors) / len(self._errors)
         return min(1.0, mean_abs / self._IAE_FULL_SCALE)
 
-    def _osc_norm(self) -> float:
-        """Oscillation score combining amplitude AND direction reversals.
+    def _osc_stats(self) -> tuple[float, float, int]:
+        """Return (osc_norm, pk_pk, reversals).
 
-        σ-based scoring conflates drift, single SP-change transients, and
-        true oscillation. A sustained oscillation has BOTH a non-trivial
-        peak-to-peak amplitude AND several direction reversals in the
-        window. This detector multiplies those two factors (geometric
-        mean) so a pure ramp (many amplitude, zero reversals) scores 0,
-        and a low-amplitude noise burst (many reversals, zero amplitude)
-        also scores 0.
+        A sustained oscillation is characterised by non-trivial
+        peak-to-peak amplitude *and* at least a couple of direction
+        reversals in the window. We report amp_norm (pk-pk / span)
+        gated by a minimum reversal count so a monotonic ramp or a
+        single SP-change spike does not register as oscillation.
         """
         n = len(self._errors)
         if n < 4:
-            return 0.0
+            return 0.0, 0.0, 0
         errs = list(self._errors)
 
-        # Amplitude term: peak-to-peak / span.
         pk_pk = max(errs) - min(errs)
         amp_norm = min(1.0, pk_pk / self._OSC_PKPK_FULL_SCALE)
 
-        # Frequency term: count direction reversals in Δerror, ignoring
-        # sub-noise steps so quantisation does not inflate the count.
         reversals = 0
         last_dir = 0
         for i in range(1, n):
@@ -225,12 +220,15 @@ class FuzzyEngineV2:
             if last_dir != 0 and cur_dir != last_dir:
                 reversals += 1
             last_dir = cur_dir
-        # Saturate when reversals reach n/5 (≈ one reversal every 5
-        # samples, i.e. oscillation period ~10 samples).
-        freq_norm = min(1.0, reversals / max(1.0, n / 5.0))
 
-        # Geometric mean: both factors must be non-zero for OSC > 0.
-        return math.sqrt(amp_norm * freq_norm)
+        # Need ≥ 2 reversals (one full half-cycle, peak & valley) before
+        # attributing amplitude to oscillation. Otherwise it is a ramp or
+        # an isolated spike.
+        osc = amp_norm if reversals >= 2 else 0.0
+        return osc, pk_pk, reversals
+
+    def _osc_norm(self) -> float:
+        return self._osc_stats()[0]
 
     def _eff_norm(self) -> float:
         n = len(self._cos)
@@ -261,16 +259,19 @@ class FuzzyEngineV2:
         self, ti_current: float, limit_min: float, limit_max: float,
     ) -> AIDecisionV2:
         iae = self._iae_norm()
-        osc = self._osc_norm()
+        osc, pk_pk, reversals = self._osc_stats()
         eff = self._eff_norm()
         delta_ti, mfs = self.infer(iae, osc, eff)
         new_ti = max(limit_min, min(limit_max, ti_current * (1.0 + delta_ti)))
+        n = len(self._errors)
         return AIDecisionV2(
             delta_ti=delta_ti,
             new_ti=new_ti,
-            inputs={"IAE": iae, "OSC": osc, "EFF": eff},
+            inputs={"IAE": iae, "OSC": osc, "EFF": eff,
+                    "pk_pk": pk_pk, "reversals": reversals, "window": n},
             reasoning=(
-                f"FuzzyV2[SP]: IAE={iae:.2f} OSC={osc:.2f} EFF={eff:.2f} "
+                f"FuzzyV2[SP]: IAE={iae:.2f} OSC={osc:.2f} "
+                f"(pkpk={pk_pk:.2f} rev={reversals}/{n}) EFF={eff:.2f} "
                 f"Δ_Ti={delta_ti:+.3f} Ti: {ti_current:.4f} → {new_ti:.4f}"
             ),
             membership_values=mfs,

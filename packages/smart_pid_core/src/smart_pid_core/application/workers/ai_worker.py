@@ -81,12 +81,15 @@ class AIWorker:
                 FuzzyEngineV2Dispatcher,
             )
 
-            # Stats window = TSS seconds of scan-rate samples, matching
-            # stats_worker conventions.  Samples are fed from every telemetry
-            # frame (not from AI cycles) so the window reflects real
-            # settling-time dynamics rather than AI-cycle-spaced data.
+            # Fuzzy stats window covers ~5 × TSS so mis-tuned loops whose
+            # oscillation period can reach 2–4 × TSS still fit at least one
+            # full cycle in the window (the detector needs ≥ 2 direction
+            # reversals to flag OSC). The stats_worker/Performance window
+            # is kept at 1 × TSS for the UI; this one is fuzzy-only.
             scan_rate_s = max(self._controller.scan_rate_s, 1e-3)
-            window_samples = max(10, int(self._controller.tss_s / scan_rate_s))
+            window_samples = max(
+                10, int(5.0 * self._controller.tss_s / scan_rate_s),
+            )
             return FuzzyEngineV2Dispatcher(
                 objective=self._ai_config.objective,
                 dt_sec=scan_rate_s,
