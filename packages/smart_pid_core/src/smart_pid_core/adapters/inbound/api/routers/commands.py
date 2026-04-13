@@ -9,6 +9,7 @@ from starlette.requests import Request
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     audit_and_broadcast,
+    controller_label,
     get_audit_repo,
     get_execution_mode,
     get_loop_manager,
@@ -57,7 +58,10 @@ async def set_setpoint(
         audit_repo, sew,
         user.user_id, user.username, AuditAction.SP_CHANGE,
         f"controller:{body.controller_id}", json.dumps({"value": body.value}),
-        message=f"{user.username} changed SP of controller {body.controller_id} to {body.value}",
+        message=(
+            f"{user.username} changed SP of controller "
+            f"{controller_label(request, body.controller_id)} to {body.value}"
+        ),
     )
     return CommandResponse(
         ok=True,
@@ -91,7 +95,10 @@ async def set_mode(
         audit_repo, sew,
         user.user_id, user.username, AuditAction.MODE_CHANGE,
         f"controller:{body.controller_id}", json.dumps({"mode": body.mode}),
-        message=f"{user.username} changed mode of controller {body.controller_id} to {body.mode}",
+        message=(
+            f"{user.username} changed mode of controller "
+            f"{controller_label(request, body.controller_id)} to {body.mode}"
+        ),
     )
     return CommandResponse(
         ok=True,
@@ -121,7 +128,10 @@ async def set_output(
         audit_repo, sew,
         user.user_id, user.username, AuditAction.OUTPUT_CHANGE,
         f"controller:{body.controller_id}", json.dumps({"value": body.value}),
-        message=f"{user.username} set CO of controller {body.controller_id} to {body.value}",
+        message=(
+            f"{user.username} set CO of controller "
+            f"{controller_label(request, body.controller_id)} to {body.value}"
+        ),
     )
     return CommandResponse(
         ok=True,
@@ -158,7 +168,10 @@ async def write_tuning(
         user.user_id, user.username, AuditAction.TUNE_PID,
         f"controller:{controller_id}",
         json.dumps({"kp": kp, "ti": ti, "td": td}),
-        message=f"{user.username} tuned controller {controller_id}: {_parts_str}",
+        message=(
+            f"{user.username} tuned controller "
+            f"{controller_label(request, controller_id)}: {_parts_str}"
+        ),
     )
     return CommandResponse(
         ok=True, controller_id=controller_id,
@@ -250,7 +263,8 @@ async def apply_tuning(
         f"controller:{controller_id}",
         f"Applied tuning: Kp={kp:.4f}, Ti={ti:.4f}, Td={td:.4f}",
         message=(
-            f"{user.username} applied tuning to controller {controller_id}: "
+            f"{user.username} applied tuning to controller "
+            f"{controller_label(request, controller_id)}: "
             f"Kp={kp:.4f}, Ti={ti:.4f}, Td={td:.4f}"
         ),
     )

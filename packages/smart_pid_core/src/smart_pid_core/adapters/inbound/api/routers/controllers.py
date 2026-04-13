@@ -465,7 +465,7 @@ async def update_controller(
                 source="USER",
                 severity="INFO",
                 message=(
-                    f"{user.username} updated controller {controller_id} "
+                    f"{user.username} updated controller {controller.name} "
                     f"({changed_keys})"
                 ),
             )
