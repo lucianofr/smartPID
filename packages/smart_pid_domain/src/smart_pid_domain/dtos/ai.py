@@ -31,6 +31,7 @@ class StatsResponse(BaseModel):
     recent_pk_pk_error: float = 0.0
     recent_reversals: int = 0
     tv_per_sample: float = 0.0
+    osc: float = 0.0
     sample_count: int
 
 

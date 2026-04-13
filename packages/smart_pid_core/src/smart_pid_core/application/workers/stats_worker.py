@@ -103,6 +103,7 @@ class StatsWorker:
             "recent_pk_pk_error": calc.recent_pk_pk_error,
             "recent_reversals": calc.recent_reversals,
             "tv_per_sample": calc.tv_per_sample,
+            "osc": calc.osc_score(),
             "sample_count": calc.sample_count,
         }
 

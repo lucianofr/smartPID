@@ -200,6 +200,29 @@ class StatsCalculator:
             return 0.0
         return self.total_variation / (n - 1)
 
+    def osc_score(
+        self,
+        pkpk_full_scale_frac: float = 0.15,
+        min_reversals: int = 2,
+        min_zero_crossings: int = 2,
+    ) -> float:
+        """Composite oscillation score, same formula the fuzzy SP-tracking
+        tuner uses. Exposed here so the HMI shows the operator the same
+        number the engine sees, without re-implementing the gating logic.
+        ``recent_pk_pk_error`` rejects stale swings; the reversal /
+        zero-crossing gates reject ramps and SP-step transients.
+        """
+        if self._span <= 0:
+            return 0.0
+        pk_pk_frac = self.recent_pk_pk_error / self._span
+        amp_norm = min(1.0, pk_pk_frac / pkpk_full_scale_frac)
+        if (
+            self.reversals < min_reversals
+            or self.zero_crossings < min_zero_crossings
+        ):
+            return 0.0
+        return amp_norm
+
     def _recent_errors(self) -> list[float]:
         """Last N non-settling errors for the recent sub-window."""
         n = len(self._samples)
