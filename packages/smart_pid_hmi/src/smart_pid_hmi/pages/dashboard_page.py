@@ -75,7 +75,12 @@ class DashboardPage(QWidget):
             Qt.ScrollBarPolicy.ScrollBarAsNeeded,
         )
         self._cards_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self._cards_scroll.setFixedHeight(220)
+        # Card body min-height is 200 + a 24 px alarm banner that overlays
+        # the top + ~6 px bottom padding/border. 240 leaves the card's
+        # bottom edge cleanly inside the scroll area when an alarm strip
+        # is showing. The extra height comes out of the trend chart below
+        # (which absorbs the QVBoxLayout's stretch=1).
+        self._cards_scroll.setFixedHeight(240)
         self._cards_container = QWidget()
         self._cards_layout = QHBoxLayout(self._cards_container)
         self._cards_layout.setSpacing(6)
