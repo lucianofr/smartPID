@@ -435,8 +435,15 @@ async def update_controller(
     if "tag_bindings" in updates:
         _reregister_opcua(request, controller)
 
-    # Hot-reload AI Worker when ai_config or process_speed changes
-    if "ai_config" in updates or "process_speed" in updates or "tss_s" in updates:
+    # Hot-reload AI Worker when ai_config, process_speed, tss_s, or
+    # scan_rate_s changes. The fuzzy stats window is derived from
+    # tss_s / scan_rate_s, so the engine must be rebuilt when either moves.
+    if (
+        "ai_config" in updates
+        or "process_speed" in updates
+        or "tss_s" in updates
+        or "scan_rate_s" in updates
+    ):
         loop_mgr = getattr(request.app.state, "loop_manager", None)
         if loop_mgr is not None:
             loop_mgr.restart_ai_worker(controller)
