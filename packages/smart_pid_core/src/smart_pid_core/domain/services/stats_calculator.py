@@ -22,10 +22,21 @@ class StatsCalculator:
     Pure domain service — no I/O, no threading.
     """
 
-    def __init__(self, window_size: int, span: float, setpoint: float) -> None:
+    # Δerror below (reversal_noise_thr × span) is ignored when counting
+    # direction reversals, so quantisation noise does not inflate the count.
+    _DEFAULT_REVERSAL_NOISE_FRAC = 0.005
+
+    def __init__(
+        self,
+        window_size: int,
+        span: float,
+        setpoint: float,
+        reversal_noise_frac: float = _DEFAULT_REVERSAL_NOISE_FRAC,
+    ) -> None:
         self._window_size = window_size
         self._span = span
         self._setpoint = setpoint
+        self._reversal_noise_frac = reversal_noise_frac
         self._samples: deque[_Sample] = deque(maxlen=window_size)
         self._elapsed_time = 0.0
 
@@ -105,3 +116,52 @@ class StatsCalculator:
         if self._span == 0.0:
             return 0.0
         return 2.0 * self.std_dev / self._span
+
+    @property
+    def mean_abs_error(self) -> float:
+        """Mean |error| over the window (raw engineering units)."""
+        n = len(self._samples)
+        if n == 0:
+            return 0.0
+        return sum(abs(s.error) for s in self._samples) / n
+
+    @property
+    def pk_pk_error(self) -> float:
+        """Peak-to-peak of error over the window (raw engineering units)."""
+        if not self._samples:
+            return 0.0
+        errors = [s.error for s in self._samples]
+        return max(errors) - min(errors)
+
+    @property
+    def reversals(self) -> int:
+        """Direction reversals in the error series.
+
+        A reversal is a sample where Δerror flips sign relative to the
+        previous non-negligible Δerror. Steps below ``reversal_noise_frac
+        × span`` are skipped so noise does not inflate the count.
+        """
+        n = len(self._samples)
+        if n < 2:
+            return 0
+        errors = [s.error for s in self._samples]
+        threshold = self._reversal_noise_frac * self._span
+        count = 0
+        last_dir = 0
+        for i in range(1, n):
+            d = errors[i] - errors[i - 1]
+            if abs(d) < threshold:
+                continue
+            cur_dir = 1 if d > 0 else -1
+            if last_dir != 0 and cur_dir != last_dir:
+                count += 1
+            last_dir = cur_dir
+        return count
+
+    @property
+    def tv_per_sample(self) -> float:
+        """Total Variation of CO per sample (raw CO units / sample)."""
+        n = len(self._samples)
+        if n < 2:
+            return 0.0
+        return self.total_variation / (n - 1)

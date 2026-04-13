@@ -15,6 +15,10 @@ class TestStatsCalculatorBasic:
         assert calc.mse == 0.0
         assert calc.std_dev == 0.0
         assert calc.total_variation == 0.0
+        assert calc.mean_abs_error == 0.0
+        assert calc.pk_pk_error == 0.0
+        assert calc.reversals == 0
+        assert calc.tv_per_sample == 0.0
 
     def test_iae_accumulates_absolute_error(self):
         from smart_pid_core.domain.services.stats_calculator import StatsCalculator
@@ -99,6 +103,59 @@ class TestStatsCalculatorBasic:
             calc.add_sample(error=v, co=50.0, dt=1.0)
         # variability_range = 2*sigma/SPAN = 2*2.0/100.0 = 0.04
         assert calc.variability_range == pytest.approx(0.04, abs=0.01)
+
+
+class TestOscillationMetrics:
+    def test_mean_abs_error(self):
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        calc = StatsCalculator(window_size=100, span=100.0, setpoint=50.0)
+        for e in [3.0, -4.0, 5.0]:
+            calc.add_sample(error=e, co=50.0, dt=1.0)
+        assert calc.mean_abs_error == pytest.approx(4.0)  # (3+4+5)/3
+
+    def test_pk_pk_error(self):
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        calc = StatsCalculator(window_size=100, span=100.0, setpoint=50.0)
+        for e in [-2.0, 5.0, 3.0, -7.0, 1.0]:
+            calc.add_sample(error=e, co=50.0, dt=1.0)
+        assert calc.pk_pk_error == pytest.approx(12.0)  # 5 - (-7)
+
+    def test_reversals_counts_direction_changes(self):
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        calc = StatsCalculator(window_size=100, span=100.0, setpoint=50.0)
+        # 0 → 5 → 2 → 8 → 4 : reversals at each peak/valley = 3
+        for e in [0.0, 5.0, 2.0, 8.0, 4.0]:
+            calc.add_sample(error=e, co=50.0, dt=1.0)
+        assert calc.reversals == 3
+
+    def test_reversals_ignores_sub_noise_steps(self):
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        # reversal_noise_frac default 0.005 of span → 0.5 abs. Tiny 0.1
+        # wiggles must not fabricate reversals.
+        calc = StatsCalculator(window_size=100, span=100.0, setpoint=50.0)
+        for e in [5.0, 5.1, 4.9, 5.0]:  # all differences < 0.5
+            calc.add_sample(error=e, co=50.0, dt=1.0)
+        assert calc.reversals == 0
+
+    def test_reversals_ramp_is_zero(self):
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        calc = StatsCalculator(window_size=100, span=100.0, setpoint=50.0)
+        for k in range(20):
+            calc.add_sample(error=float(k), co=50.0, dt=1.0)
+        assert calc.reversals == 0
+
+    def test_tv_per_sample(self):
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        calc = StatsCalculator(window_size=100, span=100.0, setpoint=50.0)
+        for co in [50.0, 52.0, 49.0, 51.0]:  # |Δ|: 2, 3, 2 → TV=7, n-1=3
+            calc.add_sample(error=0.0, co=co, dt=1.0)
+        assert calc.tv_per_sample == pytest.approx(7.0 / 3.0)
 
 
 class TestStatsCalculatorWindow:

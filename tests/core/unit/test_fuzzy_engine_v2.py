@@ -81,6 +81,63 @@ class TestIndicators:
         assert engine._iae_norm() == 0.0
 
 
+class TestComputeAdjustmentFromStats:
+    """New production API: fuzzy consumes a StatsWorker snapshot instead of
+    maintaining its own deque. Covers user's scenario where window = 5×TSS.
+    """
+
+    def test_saturated_oscillation_drives_ti_up_strongly(self):
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        engine = FuzzyEngineV2()
+        # Mimic user's reported case: PV pk-pk 60% of span, clearly cycling
+        # (reversals >> 2), valve nearly constant (tv_per_sample tiny).
+        stats = {
+            "mean_abs_error": 30.0,  # ≈ 30% of 100-span → IAE norm → HIGH
+            "pk_pk_error": 60.0,
+            "reversals": 3,
+            "tv_per_sample": 0.5,
+            "sample_count": 200,
+        }
+        d = engine.compute_adjustment_from_stats(
+            stats=stats, span=100.0, ti_current=1.0,
+            limit_min=0.1, limit_max=100.0,
+        )
+        # IAE HIGH + OSC UNSTABLE fires R2 → AM (+0.35).
+        assert d.delta_ti > 0.20, (
+            f"Δ_Ti={d.delta_ti} should drive Ti up; inputs={d.inputs}"
+        )
+        assert d.inputs["OSC"] == pytest.approx(1.0, abs=0.05)
+
+    def test_drift_without_reversals_does_not_flag_oscillation(self):
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        engine = FuzzyEngineV2()
+        # Pure ramp: large pk-pk but zero reversals → must stay STABLE.
+        stats = {
+            "mean_abs_error": 10.0,
+            "pk_pk_error": 40.0,
+            "reversals": 0,
+            "tv_per_sample": 0.1,
+            "sample_count": 100,
+        }
+        d = engine.compute_adjustment_from_stats(
+            stats=stats, span=100.0, ti_current=10.0,
+            limit_min=0.1, limit_max=100.0,
+        )
+        assert d.inputs["OSC"] == 0.0
+        # Only one reversal required before we'd increase Ti; with pure
+        # drift the engine keeps Ti or reduces it based on IAE/EFF rules.
+
+    def test_missing_fields_default_to_zero(self):
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        engine = FuzzyEngineV2()
+        d = engine.compute_adjustment_from_stats(
+            stats={}, span=100.0, ti_current=5.0,
+            limit_min=0.1, limit_max=100.0,
+        )
+        assert d.inputs["IAE"] == 0.0
+        assert d.inputs["OSC"] == 0.0
+
+
 class TestConfigurableWindow:
     """The stats window must scale with TSS/scan_rate instead of being fixed."""
 
