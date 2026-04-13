@@ -407,7 +407,7 @@ class _ControllerCard(QFrame):
         if tss is not None:
             self._tss_value.setText(self._fmt_duration(tss))
             self._ai_period_value.setText(self._fmt_duration(3.0 * tss))
-            self._stats_window_value.setText(self._fmt_duration(5.0 * tss))
+            self._stats_window_value.setText(self._fmt_duration(tss))
         else:
             self._tss_value.setText(_PLACEHOLDER)
             self._ai_period_value.setText(_PLACEHOLDER)

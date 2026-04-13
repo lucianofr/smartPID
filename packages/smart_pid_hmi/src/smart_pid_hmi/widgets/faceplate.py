@@ -593,7 +593,7 @@ class FaceplateWidget(QFrame):
             self._stats_window_label.setText("Stats: \u2014")
         else:
             self._ai_period_label.setText(f"AI: {self._fmt_dur(3.0 * tss_s)}")
-            self._stats_window_label.setText(f"Stats: {self._fmt_dur(5.0 * tss_s)}")
+            self._stats_window_label.setText(f"Stats: {self._fmt_dur(tss_s)}")
 
     @staticmethod
     def _fmt_dur(seconds: float) -> str:
