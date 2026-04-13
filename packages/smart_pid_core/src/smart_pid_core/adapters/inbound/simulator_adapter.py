@@ -211,6 +211,27 @@ class SimulatorAdapter:
             ctrl.pid_params.gain = kp
             ctrl.pid_params.reset = ti
             ctrl.pid_params.rate = td
+        self._sync_pid_config_to_opcua(controller_id)
+
+    def _sync_pid_config_to_opcua(self, controller_id: int) -> None:
+        """Push PID configuration (kp/ti/td/structure/enabled) to OPC-UA once.
+
+        Called on config changes (preset load, set_pid_params, register) so the
+        OPC-UA nodes reflect the current config without racing with external
+        writes from the AI optimizer or HMI.
+        """
+        with self._lock:
+            ctrl = self._controllers.get(controller_id)
+            if ctrl is None:
+                return
+            values = {
+                "kp": ctrl.pid_params.gain,
+                "ti": ctrl.pid_params.reset,
+                "td": ctrl.pid_params.rate,
+                "pid_structure": ctrl.pid_structure,
+                "pid_enabled": ctrl.pid_enabled,
+            }
+        self._opcua_server.update_values(controller_id=controller_id, values=values)
 
     def set_pid_mode(self, controller_id: int, mode: int) -> None:
         with self._lock:
@@ -340,6 +361,7 @@ class SimulatorAdapter:
             ctrl.auto_sp_max_pct = cfg.get("auto_sp_max_pct", 70.0)
             ctrl.auto_dist_enabled = cfg.get("auto_dist_enabled", False)
             ctrl.auto_dist_max_pct = cfg.get("auto_dist_max_pct", 10.0)
+        self._sync_pid_config_to_opcua(cid)
 
     def _build_status(self, ctrl: _ControllerSim) -> ControllerSimStatus:
         """Build a ControllerSimStatus from a _ControllerSim instance."""
@@ -482,27 +504,24 @@ class SimulatorAdapter:
                     ctrl.pid_state = result.new_state
                     ctrl.last_co = result.cv
 
+                # Echo only state values computed by the simulator. PID config
+                # (kp/ti/td/pid_structure/pid_enabled) is owned by external
+                # clients (HMI, AI optimizer) and re-writing it every tick races
+                # with their OPC-UA writes and reverts their changes.
+                # Config is pushed separately via _sync_pid_config_to_opcua().
                 self._opcua_server.update_values(
                     controller_id=ctrl.controller_id,
                     values={
-                        # PID (13)
                         "pv": pv,
                         "sp": ctrl.sp,
                         "co": ctrl.last_co,
                         "mode": ctrl.pid_mode,
                         "status": 1 if ctrl.pid_enabled else 0,
-                        "kp": ctrl.pid_params.gain,
-                        "ti": ctrl.pid_params.reset,
-                        "td": ctrl.pid_params.rate,
-                        "pid_structure": ctrl.pid_structure,
                         "pid_sp": ctrl.sp,
-                        "pid_enabled": ctrl.pid_enabled,
                         "pid_cv": ctrl.pid_state.cv,
                         "error": error,
-                        # Process (2)
                         "process_input": ctrl.last_co,
                         "process_output": process_output,
-                        # Disturbance (1)
                         "disturbance_output": disturbance,
                     },
                 )

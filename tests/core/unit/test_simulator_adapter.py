@@ -192,10 +192,34 @@ class TestSimulatorAdapterOPCUA:
         assert call_kwargs.kwargs["controller_id"] == 1
         values = call_kwargs.kwargs["values"]
         assert "pv" in values
-        assert "pid_enabled" in values
         assert "process_input" in values
         assert "process_output" in values
         assert "disturbance_output" in values
+        # PID config (kp/ti/td/pid_structure/pid_enabled) must NOT be echoed
+        # every tick — doing so races with external writes from the AI
+        # optimizer / HMI and reverts their tuning updates.
+        assert "kp" not in values
+        assert "ti" not in values
+        assert "td" not in values
+        assert "pid_structure" not in values
+        assert "pid_enabled" not in values
+
+    def test_set_pid_params_syncs_to_opcua(
+        self, mock_adapter: SimulatorAdapter,
+    ) -> None:
+        """Regression: tuning changes must propagate to OPC-UA via the sync
+        helper, since _tick no longer echoes kp/ti/td every cycle.
+        """
+        mock_adapter.register_controller(1)
+        mock_adapter._opcua_server.update_values.reset_mock()
+        mock_adapter.set_pid_params(1, kp=2.5, ti=15.6590, td=0.1)
+        mock_adapter._opcua_server.update_values.assert_called_once()
+        call_kwargs = mock_adapter._opcua_server.update_values.call_args
+        assert call_kwargs.kwargs["controller_id"] == 1
+        values = call_kwargs.kwargs["values"]
+        assert values["kp"] == 2.5
+        assert values["ti"] == 15.6590
+        assert values["td"] == 0.1
 
     def test_on_opcua_write_updates_co(self, mock_adapter: SimulatorAdapter) -> None:
         mock_adapter.register_controller(1)
