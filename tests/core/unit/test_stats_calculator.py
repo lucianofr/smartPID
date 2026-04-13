@@ -178,6 +178,25 @@ class TestOscillationMetrics:
                             co=50.0, dt=1.0)
         assert calc.zero_crossings >= 6  # at least 6 of the expected ~7-8
 
+    def test_settling_samples_are_masked_from_oscillation_metrics(self):
+        """is_settling=True samples must NOT contribute to pk_pk,
+        reversals or zero_crossings, but MUST still count toward IAE.
+        """
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        calc = StatsCalculator(window_size=20, span=100.0, setpoint=0.0)
+        # Big swings flagged as settling.
+        for e in [-30.0, +30.0, -30.0, +30.0]:
+            calc.add_sample(error=e, co=50.0, dt=1.0, is_settling=True)
+        # Small steady error not flagged.
+        for _ in range(16):
+            calc.add_sample(error=0.0, co=50.0, dt=1.0)
+        assert calc.pk_pk_error == 0.0
+        assert calc.reversals == 0
+        assert calc.zero_crossings == 0
+        # IAE still includes the masked samples (4 × 30 × 1.0 = 120).
+        assert calc.iae == pytest.approx(120.0)
+
     def test_zero_crossings_two_opposite_sp_steps_gives_at_most_one(self):
         from smart_pid_core.domain.services.stats_calculator import StatsCalculator
 

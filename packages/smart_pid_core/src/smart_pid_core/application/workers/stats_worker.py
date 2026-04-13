@@ -46,6 +46,18 @@ class StatsWorker:
         self._last_pv: float = 0.0
         self._has_telemetry: bool = False
         self._sample_count_since_publish: int = 0
+        # SP-step detection: when |ΔSP|/span > _SP_CHANGE_FRAC, start a
+        # cooldown during which samples are flagged as settling — kept
+        # out of the oscillation metrics so the fuzzy does not confuse
+        # SP tracking with oscillation. 2 × TSS gives ~exp(-8) residual
+        # at the boundary (well below the noise threshold), so when the
+        # next SP step lands the previous transient is fully decayed.
+        self._sp_change_frac = 0.01  # 1% of span = significant step
+        self._settling_cooldown_samples = max(
+            1, int(2.0 * controller.tss_s / controller.scan_rate_s),
+        )
+        self._settling_remaining: int = 0
+        self._prev_sp_at_sample: float | None = None
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -115,10 +127,28 @@ class StatsWorker:
                 if self._has_telemetry:
                     error = self._last_sp - self._last_pv
                     self._calculator._setpoint = self._last_sp
+                    # Detect a SP step large enough to start a settling
+                    # cooldown. Samples flagged as settling stay out of
+                    # the oscillation metrics.
+                    if (
+                        self._prev_sp_at_sample is not None
+                        and self._calculator._span > 0
+                        and (
+                            abs(self._last_sp - self._prev_sp_at_sample)
+                            / self._calculator._span
+                            > self._sp_change_frac
+                        )
+                    ):
+                        self._settling_remaining = self._settling_cooldown_samples
+                    self._prev_sp_at_sample = self._last_sp
+                    is_settling = self._settling_remaining > 0
+                    if is_settling:
+                        self._settling_remaining -= 1
                     self._calculator.add_sample(
                         error=error,
                         co=self._last_co,
                         dt=scan_s,
+                        is_settling=is_settling,
                     )
                     self._sample_count_since_publish += 1
 
