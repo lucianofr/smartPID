@@ -81,9 +81,16 @@ class AIWorker:
                 FuzzyEngineV2Dispatcher,
             )
 
+            # Stats window = TSS seconds of scan-rate samples, matching
+            # stats_worker conventions.  Samples are fed from every telemetry
+            # frame (not from AI cycles) so the window reflects real
+            # settling-time dynamics rather than AI-cycle-spaced data.
+            scan_rate_s = max(self._controller.scan_rate_s, 1e-3)
+            window_samples = max(10, int(self._controller.tss_s / scan_rate_s))
             return FuzzyEngineV2Dispatcher(
                 objective=self._ai_config.objective,
-                dt_sec=self._ai_period_s,
+                dt_sec=scan_rate_s,
+                window_samples=window_samples,
             )
         elif self._ai_config.engine == AIEngine.RL:
             from smart_pid_core.domain.services.rl_engine import RLEngine
@@ -202,16 +209,10 @@ class AIWorker:
                 delta_error = error - self._prev_error
 
                 if self._ai_config.engine == AIEngine.FUZZY:
-                    # V2 uses normalised [0, 1] signals. Feed the current
-                    # sample and then read the decision from the dispatcher.
-                    span = self._controller.pv_scale.span
-                    eu_min = self._controller.pv_scale.eu_min
-                    error_frac = (error / span) if span > 0 else 0.0
-                    pv_frac = (
-                        (self._last_pv - eu_min) / span if span > 0 else 0.5
-                    )
-                    co_frac = self._last_co / 100.0
-                    self._engine.update_sample(error_frac, pv_frac, co_frac)
+                    # Samples are fed into the engine on every telemetry frame
+                    # (see _drain_telemetry) so the stats window reflects the
+                    # last TSS seconds of scan-rate data. Here we only consume
+                    # the current decision from the dispatcher.
                     decision = self._engine.compute_adjustment(
                         ti_current=self._ki_current,
                         limit_min=self._ai_config.limit_min,
@@ -383,5 +384,24 @@ class AIWorker:
                 ti_val = data.get("ti")
                 if ti_val is not None:
                     self._ki_from_opcua = float(ti_val)
+
+                # Feed fuzzy engine at scan rate so stats window = TSS seconds.
+                # Only feed while in an auto mode and the optimizer is enabled;
+                # manual/OOS samples would pollute the window.
+                if (
+                    self._ai_config.engine == AIEngine.FUZZY
+                    and self._engine is not None
+                    and self._enabled
+                    and self._is_auto_mode()
+                ):
+                    span = self._controller.pv_scale.span
+                    eu_min = self._controller.pv_scale.eu_min
+                    error = self._last_sp - self._last_pv
+                    error_frac = (error / span) if span > 0 else 0.0
+                    pv_frac = (
+                        (self._last_pv - eu_min) / span if span > 0 else 0.5
+                    )
+                    co_frac = self._last_co / 100.0
+                    self._engine.update_sample(error_frac, pv_frac, co_frac)
             except (KeyError, ValueError, msgpack.UnpackException):
                 pass
