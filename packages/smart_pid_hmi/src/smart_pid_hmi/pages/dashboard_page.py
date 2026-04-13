@@ -48,7 +48,10 @@ class DashboardPage(QWidget):
         self._selected_id: int | None = None
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 0)
+        # Keep a bit of breathing room at the bottom so the alarm bar's
+        # border does not get clipped by the window edge when an alarm
+        # is active.
+        layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
         # Section title: overview

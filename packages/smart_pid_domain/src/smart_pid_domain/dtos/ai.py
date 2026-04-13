@@ -21,6 +21,16 @@ class StatsResponse(BaseModel):
     total_variation: float
     variability_sp: float
     variability_range: float
+    # Raw metrics used by the fuzzy OSC detector — published for live
+    # inspection in the HMI so the operator can see why OSC is (or is
+    # not) firing.
+    mean_abs_error: float = 0.0
+    pk_pk_error: float = 0.0
+    reversals: int = 0
+    zero_crossings: int = 0
+    recent_pk_pk_error: float = 0.0
+    recent_reversals: int = 0
+    tv_per_sample: float = 0.0
     sample_count: int
 
 
