@@ -165,15 +165,17 @@ RULES: list[Rule] = [
 class FuzzyEngineV2:
     """SP Tracking tuner: IAE + 2σ/span + TV → Δ_Ti."""
 
-    _WINDOW = 20
+    _DEFAULT_WINDOW = 20
     _DEADBAND = 0.02
     _IAE_FULL_SCALE = 0.20
     _TV_FULL_SCALE  = 0.10
     _OSC_FULL_SCALE = 0.50
 
-    def __init__(self) -> None:
-        self._errors: deque[float] = deque(maxlen=self._WINDOW)
-        self._cos:    deque[float] = deque(maxlen=self._WINDOW)
+    def __init__(self, window_samples: int | None = None) -> None:
+        n = window_samples if window_samples is not None else self._DEFAULT_WINDOW
+        self._window_samples = max(4, int(n))
+        self._errors: deque[float] = deque(maxlen=self._window_samples)
+        self._cos:    deque[float] = deque(maxlen=self._window_samples)
 
     def _iae_norm(self) -> float:
         if not self._errors:
@@ -299,7 +301,7 @@ class FuzzyEngineV2DisturbanceRejection:
 
     _EVENT_TRIGGER = 0.02           # |e/span| above → start event
     _EVENT_EXIT_DWELL = 3           # samples in-band to end the event
-    _POST_EVENT_WINDOW = 15         # samples for residual-oscillation window
+    _DEFAULT_POST_EVENT_WINDOW = 15 # default residual-oscillation window
     _OSC_FULL_SCALE = 0.50          # same 2σ/span normalisation as SP
 
     def __init__(
@@ -307,10 +309,13 @@ class FuzzyEngineV2DisturbanceRejection:
         tau_estimate_sec: float = 10.0,
         e_max_norm_full: float = 0.05,
         dt_sec: float = 1.0,
+        window_samples: int | None = None,
     ) -> None:
         self._tau = tau_estimate_sec
         self._e_max_full = e_max_norm_full
         self._dt = dt_sec
+        n = window_samples if window_samples is not None else self._DEFAULT_POST_EVENT_WINDOW
+        self._post_event_window = max(4, int(n))
         self._state: str = "IDLE"
         self._e_max_observed: float = 0.0
         self._event_sample_count: int = 0
@@ -345,7 +350,7 @@ class FuzzyEngineV2DisturbanceRejection:
 
         if self._state == "SETTLING":
             self._post_errors.append(error_frac)
-            if len(self._post_errors) >= self._POST_EVENT_WINDOW:
+            if len(self._post_errors) >= self._post_event_window:
                 self._finalise_event()
 
     def _finalise_event(self) -> None:
@@ -479,13 +484,17 @@ class FuzzyEngineV2SurgeLevel:
     except in the critical+racing-to-limit emergency.
     """
 
-    _WINDOW = 20
+    _DEFAULT_WINDOW = 20
     _TV_FULL_SCALE_PER_SAMPLE = 0.05   # 5% CO change per sample → TV_norm = 1
 
-    def __init__(self, dt_sec: float = 60.0) -> None:
+    def __init__(
+        self, dt_sec: float = 60.0, window_samples: int | None = None,
+    ) -> None:
         self._dt = dt_sec
-        self._pvs: deque[float] = deque(maxlen=self._WINDOW)
-        self._cos: deque[float] = deque(maxlen=self._WINDOW)
+        n = window_samples if window_samples is not None else self._DEFAULT_WINDOW
+        self._window_samples = max(4, int(n))
+        self._pvs: deque[float] = deque(maxlen=self._window_samples)
+        self._cos: deque[float] = deque(maxlen=self._window_samples)
 
     def update_sample(self, pv_frac: float, co_frac: float) -> None:
         self._pvs.append(pv_frac)
@@ -583,19 +592,23 @@ class FuzzyEngineV2Dispatcher:
         tau_estimate_sec: float = 10.0,
         e_max_norm_full: float = 0.05,
         dt_sec: float = 1.0,
+        window_samples: int | None = None,
     ) -> None:
         self._objective = objective
         engine: AnyFuzzyV2Engine
         if objective == ControlObjective.SP_TRACKING:
-            engine = FuzzyEngineV2()
+            engine = FuzzyEngineV2(window_samples=window_samples)
         elif objective == ControlObjective.DISTURBANCE_REJECTION:
             engine = FuzzyEngineV2DisturbanceRejection(
                 tau_estimate_sec=tau_estimate_sec,
                 e_max_norm_full=e_max_norm_full,
                 dt_sec=dt_sec,
+                window_samples=window_samples,
             )
         elif objective == ControlObjective.SURGE_LEVEL:
-            engine = FuzzyEngineV2SurgeLevel(dt_sec=dt_sec)
+            engine = FuzzyEngineV2SurgeLevel(
+                dt_sec=dt_sec, window_samples=window_samples,
+            )
         else:
             raise ValueError(f"Unsupported control objective: {objective}")
         self._engine = engine

@@ -79,6 +79,72 @@ class TestIndicators:
         assert engine._iae_norm() == 0.0
 
 
+class TestConfigurableWindow:
+    """The stats window must scale with TSS/scan_rate instead of being fixed."""
+
+    def test_sp_engine_accepts_window_samples(self):
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        engine = FuzzyEngineV2(window_samples=60)
+        assert engine._window_samples == 60
+        assert engine._errors.maxlen == 60
+        assert engine._cos.maxlen == 60
+
+    def test_sp_engine_defaults_to_20_samples(self):
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        engine = FuzzyEngineV2()
+        assert engine._window_samples == 20
+
+    def test_sp_engine_clamps_tiny_window(self):
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        engine = FuzzyEngineV2(window_samples=1)
+        assert engine._window_samples == 4  # min
+
+    def test_surge_engine_accepts_window_samples(self):
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
+            FuzzyEngineV2SurgeLevel,
+        )
+        engine = FuzzyEngineV2SurgeLevel(dt_sec=1.0, window_samples=45)
+        assert engine._window_samples == 45
+        assert engine._pvs.maxlen == 45
+
+    def test_dr_engine_accepts_window_samples(self):
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
+            FuzzyEngineV2DisturbanceRejection,
+        )
+        engine = FuzzyEngineV2DisturbanceRejection(window_samples=30)
+        assert engine._post_event_window == 30
+
+    def test_dispatcher_propagates_window_to_sp_engine(self):
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
+            FuzzyEngineV2Dispatcher,
+        )
+        from smart_pid_domain.enums import ControlObjective
+        d = FuzzyEngineV2Dispatcher(
+            objective=ControlObjective.SP_TRACKING,
+            window_samples=60,
+        )
+        assert d.engine._window_samples == 60
+
+    def test_long_window_does_not_detect_oscillation_from_stale_setpoint_change(
+        self,
+    ):
+        """Regression: a single SP change ~TSS ago must not dominate σ so much
+        that the engine infers ongoing oscillation.
+        """
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        engine = FuzzyEngineV2(window_samples=60)
+        # First 5 samples: residual error from a past SP change.
+        for _ in range(5):
+            engine.update_sample(error_frac=0.08, co_frac=0.5)
+        # Next 55 samples: settled, at setpoint.
+        for _ in range(55):
+            engine.update_sample(error_frac=0.0, co_frac=0.5)
+        # OSC should be low: error series is mostly zero, the early 5 samples
+        # contribute little to σ over a 60-sample window.
+        osc = engine._osc_norm()
+        assert osc < 0.2, f"osc={osc} — stale spike should not flag oscillation"
+
+
 class TestRuleOutcomes:
     """Verify the qualitative behaviour of each named rule."""
 
