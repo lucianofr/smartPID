@@ -200,6 +200,22 @@ def get_system_event_worker(request: Request) -> SystemEventWorker | None:
 # ----- Audit helper --------------------------------------------------------
 
 
+def controller_label(request: Request, controller_id: int) -> str:
+    """Resolve a controller's display name for use in event/audit messages.
+
+    Looks up the LoopManager's in-memory context (fast, no DB hit). Falls
+    back to ``#<id>`` when the loop is not registered (e.g., a command
+    targets a controller whose loop hasn't started yet).
+    """
+    lm = getattr(request.app.state, "loop_manager", None)
+    if lm is not None:
+        try:
+            return lm.get_controller(controller_id).name
+        except Exception:
+            pass
+    return f"#{controller_id}"
+
+
 async def audit_and_broadcast(
     audit_repo: AuditRepository,
     sew: SystemEventWorker | None,

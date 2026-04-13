@@ -5,10 +5,11 @@ import json
 from typing import Annotated
 
 import msgpack
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     audit_and_broadcast,
+    controller_label,
     get_ai_repo,
     get_ai_workers,
     get_audit_repo,
@@ -66,6 +67,7 @@ async def get_ai_history(
 @router.post("/{controller_id}/ai/start")
 async def start_ai(
     controller_id: int,
+    request: Request,
     user: Annotated[UserClaims, Depends(require_operator)],
     bus: Annotated[EventBus, Depends(get_event_bus)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
@@ -85,7 +87,10 @@ async def start_ai(
         audit_repo, sew,
         user.user_id, user.username, AuditAction.CONFIG_AI,
         f"controller:{controller_id}", json.dumps({"action": "start"}),
-        message=f"{user.username} started AI optimizer on controller {controller_id}",
+        message=(
+            f"{user.username} started AI optimizer on controller "
+            f"{controller_label(request, controller_id)}"
+        ),
     )
     return {"ok": True, "controller_id": controller_id, "detail": "AI start command sent"}
 
@@ -93,6 +98,7 @@ async def start_ai(
 @router.post("/{controller_id}/ai/stop")
 async def stop_ai(
     controller_id: int,
+    request: Request,
     user: Annotated[UserClaims, Depends(require_operator)],
     bus: Annotated[EventBus, Depends(get_event_bus)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
@@ -112,7 +118,10 @@ async def stop_ai(
         audit_repo, sew,
         user.user_id, user.username, AuditAction.CONFIG_AI,
         f"controller:{controller_id}", json.dumps({"action": "stop"}),
-        message=f"{user.username} stopped AI optimizer on controller {controller_id}",
+        message=(
+            f"{user.username} stopped AI optimizer on controller "
+            f"{controller_label(request, controller_id)}"
+        ),
     )
     return {"ok": True, "controller_id": controller_id, "detail": "AI stop command sent"}
 
@@ -120,6 +129,7 @@ async def stop_ai(
 @router.post("/{controller_id}/ai/pause")
 async def pause_ai(
     controller_id: int,
+    request: Request,
     user: Annotated[UserClaims, Depends(require_operator)],
     bus: Annotated[EventBus, Depends(get_event_bus)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
@@ -139,6 +149,9 @@ async def pause_ai(
         audit_repo, sew,
         user.user_id, user.username, AuditAction.CONFIG_AI,
         f"controller:{controller_id}", json.dumps({"action": "pause"}),
-        message=f"{user.username} paused AI optimizer on controller {controller_id}",
+        message=(
+            f"{user.username} paused AI optimizer on controller "
+            f"{controller_label(request, controller_id)}"
+        ),
     )
     return {"ok": True, "controller_id": controller_id, "detail": "AI pause command sent"}
