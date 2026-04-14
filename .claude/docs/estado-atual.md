@@ -1,6 +1,42 @@
 # Estado atual — 2026-04-14
 
-## Tarefa concluída e mergeada: fix/fuzzy-dr-no-reduce-on-stable (c87bd40)
+## Tarefa concluída e mergeada: fix/fuzzy-dr-overshoot-triggers-damp (99ccfbb)
+
+### Problema relatado
+Com Ti estabilizado em ~11.35, cada recuperação de distúrbio mostrava
+overshoot no gráfico (PV caía para 30, voltava passando de 50 até 55,
+e só depois assentava em 50). Classic "Ti pequeno demais". O log fuzzy:
+`E_max=1.50 T_rec=16.10τ OSC=0.04 Δ_Ti=0` — Ti nem subia.
+
+### Causa raiz
+`_finalise_event` computava `osc_norm` a partir de σ dos 15 samples
+**pós-evento**. Ao chegar a SETTLING, o overshoot já tinha decaído,
+então σ ≈ 0 e OSC ≈ 0. A regra R1 (HIGH/SLOW/STABLE → M) segurava Ti.
+Mas o sinal estava lá: `_active_zero_crossings = 1` capturado durante
+ACTIVE (o error cruzou zero do + para o - no overshoot) — apenas
+não era lido antes do `_reset_event_state()` apagar o contador.
+
+### Correção
+`_finalise_event` checa `_active_zero_crossings >= 1` PRIMEIRO.
+Se houve qualquer cruzamento durante ACTIVE, o controlador overshot
+na recuperação → redireciona para `_finalise_oscillation` (Ti up
++0.275). Recuperações limpas (zero cruzamentos de sinal) continuam
+pelo caminho do evento normal.
+
+Nova constante: `_EVENT_OVERSHOOT_MIN_CROSSINGS = 1`. Diferente do
+`_OSC_LOCK_MIN_CROSSINGS = 2` usado em `update_sample` / eager check
+(que exige 2 para disparar durante ACTIVE, sem esperar o finalise).
+
+### Verificação
+- Teste `test_event_with_overshoot_damps_not_holds` reproduz um
+  overshoot com 1 zero crossing → passa a emitir Δ_Ti = +0.275.
+- Teste `test_event_without_overshoot_still_holds` confirma que
+  recuperação limpa (zero crossings) ainda segura Ti.
+- 86/86 tests pass. Ruff clean.
+
+---
+
+## Histórico anterior: fix/fuzzy-dr-no-reduce-on-stable (c87bd40)
 
 ### Problema relatado
 Depois do fix de falsos-positivos, o Ti não mais estourava o guardrail,
