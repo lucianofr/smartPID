@@ -431,7 +431,11 @@ class FuzzyEngineV2DisturbanceRejection:
     # crossing zero, the loop is in a limit cycle, not rejecting a
     # transient. Force-finalise so the rules can prescribe damping (Ti up).
     _OSC_LOCK_TAU_THRESHOLD = 3.0   # ACTIVE for ≥ 3τ → candidate for limit cycle
-    _OSC_LOCK_MIN_CROSSINGS = 3     # plus this many zero crossings → confirm
+    _OSC_LOCK_MIN_CROSSINGS = 2     # plus this many zero crossings → confirm
+    # A transient disturbance has 0 crossings (error ramps up and back on the
+    # same side of SP). Even one full half-cycle of oscillation already crosses
+    # zero twice, so ≥ 2 is the tightest threshold that still safely rejects
+    # lone recovery transients.
 
     def __init__(
         self,
@@ -587,6 +591,18 @@ class FuzzyEngineV2DisturbanceRejection:
     def compute_adjustment(
         self, ti_current: float, limit_min: float, limit_max: float,
     ) -> AIDecisionV2:
+        # Eager limit-cycle check at query time. Waiting for the time-based
+        # threshold in update_sample (3τ at default τ=10 s) means most AI
+        # cycles return "holding" even while the loop is clearly oscillating
+        # — the operator sees many Δ_Ti=0 log entries and Ti barely moves.
+        # If we're still ACTIVE but already have enough zero crossings,
+        # emit a damping decision now so every AI cycle makes progress.
+        if (
+            self._decision_inputs is None
+            and self._state == "ACTIVE"
+            and self._active_zero_crossings >= self._OSC_LOCK_MIN_CROSSINGS
+        ):
+            self._finalise_oscillation()
         if self._decision_inputs is None:
             return AIDecisionV2(
                 delta_ti=0.0,
