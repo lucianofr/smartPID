@@ -730,6 +730,67 @@ class TestDisturbanceRejectionStateMachine:
             f"Δ_Ti={d.delta_ti}, reasoning={d.reasoning}"
         )
 
+    def test_stats_based_osc_rejects_isolated_disturbance(self):
+        """Regression: an isolated big disturbance dragged PV way below SP
+        then recovered. The rolling 200-sample window still carries the
+        excursion, so stats reported pkpk=40 % span / zc=2 / reversals=2 —
+        the old gate passed it, the limit-cycle path fired, Ti ran up to
+        the guardrail. A true limit cycle has many more zero crossings
+        AND a large time-average |error|; an isolated spike has the
+        crossings only at the recovery edges and a small mean_abs relative
+        to pk_pk.
+        """
+        engine = self._make()
+        # Isolated disturbance: huge pkpk (40 % span), minimal zc/reversals
+        # (PV went down, came back — 2 crossings at most), small mean_abs
+        # because the loop sat at SP most of the window.
+        stats = {
+            "recent_pk_pk_error": 40.0,
+            "pk_pk_error": 40.0,
+            "zero_crossings": 2,
+            "reversals": 2,
+            "mean_abs_error": 1.5,  # small — spike on quiet baseline
+            "tv_per_sample": 0.5,
+            "sample_count": 200,
+        }
+        d = engine.compute_adjustment_from_stats(
+            stats=stats, span=100.0,
+            ti_current=48.0, limit_min=0.1, limit_max=100.0,
+        )
+        # Must NOT fire the limit-cycle override for an isolated excursion.
+        assert "limit-cycle" not in d.reasoning, (
+            f"Isolated disturbance triggered limit-cycle override: "
+            f"reasoning={d.reasoning}"
+        )
+        assert d.delta_ti <= 0.0, (
+            f"Isolated disturbance must not increase Ti; got "
+            f"Δ_Ti={d.delta_ti}"
+        )
+
+    def test_stats_based_osc_accepts_sustained_oscillation(self):
+        """The opposite: real limit cycle with many zero crossings and a
+        mean_abs/pk_pk ratio close to the sinusoid value (~0.32). Must
+        still fire damping.
+        """
+        engine = self._make()
+        # Sustained ±20% oscillation → pkpk=40, sinusoid mean_abs ≈ 12.7
+        stats = {
+            "recent_pk_pk_error": 40.0,
+            "pk_pk_error": 40.0,
+            "zero_crossings": 10,
+            "reversals": 9,
+            "mean_abs_error": 12.7,
+            "tv_per_sample": 2.0,
+            "sample_count": 200,
+        }
+        d = engine.compute_adjustment_from_stats(
+            stats=stats, span=100.0,
+            ti_current=4.0, limit_min=0.1, limit_max=100.0,
+        )
+        assert d.delta_ti > 0.0, (
+            f"Sustained oscillation must damp; got Δ_Ti={d.delta_ti}"
+        )
+
     def test_stats_based_osc_holds_when_loop_is_quiet(self):
         """Conversely, if stats show no oscillation (small pkpk, low zc),
         DR should fall back to normal behaviour (event-path or hold)."""
