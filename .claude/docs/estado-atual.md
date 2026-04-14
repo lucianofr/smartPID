@@ -1,6 +1,46 @@
 # Estado atual — 2026-04-14
 
-## Tarefa concluída e mergeada: fix/fuzzy-dr-osc-false-positives (e8b4903)
+## Tarefa concluída e mergeada: fix/fuzzy-dr-no-reduce-on-stable (c87bd40)
+
+### Problema relatado
+Depois do fix de falsos-positivos, o Ti não mais estourava o guardrail,
+mas continuava sendo reduzido a cada distúrbio lento com OSC baixíssimo.
+Log: Ti 11.7 → 10.5 → 9.5 → 8.5 em três eventos com OSC=0.04 (100 %
+STABLE). Usuário queria Ti ~25.
+
+### Causa raiz
+Regra R1 (HIGH/SLOW/STABLE → RM=−0.10) disparava em TODO distúrbio
+lento, mesmo sem qualquer sinal de oscilação. Interpretação: "controle
+muito lento, reduz Ti". Mas uma malha conservadora pode ser lenta **sem
+oscilar** — é margem de segurança, não defeito de tuning. R1 puxava o
+Ti continuamente para a borda da estabilidade.
+
+### Correção
+Redefinido: reduções só acontecem quando há **sinal de oscilação**.
+- R1 HIGH/SLOW/STABLE → **M** (antes RM)
+- R1'' MED/SLOW/STABLE → **M** (antes R)
+- R1' HIGH/SLOW/MED → R (mantido: tem sinal de OSC mild)
+- R4 MED/MED/MED → R (mantido: tem OSC MED)
+- R5 (osc:HIGH → A) e AM (limit-cycle) inalteradas.
+
+### Replay do cenário do usuário
+Eventos 19:59 / 20:01 / 20:03 (OSC=0.04 STABLE):
+- Antes: Δ=−0.10 cada, Ti 11.7 → 10.5 → 9.5 → 8.5
+- Depois: **Δ=0 cada, Ti mantém em 11.72**
+
+E ainda:
+- Oscilação genuína (HIGH/FAST/HIGH): Δ=+0.15 ✓
+- Limit-cycle (LOW/FAST/HIGH): Δ=+0.275 ✓
+
+Ti agora mantém o valor que as correções de limit-cycle alcançaram —
+o equilíbrio fica acima da fronteira de oscilação, não em cima dela.
+
+### Verificação
+- 84/84 tests pass (fuzzy + AI worker). Ruff clean.
+
+---
+
+## Histórico anterior: fix/fuzzy-dr-osc-false-positives (e8b4903)
 
 ### Problema relatado
 Depois do fix que fez DR usar stats, Ti cresceu descontroladamente
