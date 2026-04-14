@@ -626,18 +626,36 @@ class FuzzyEngineV2DisturbanceRejection:
         delta = max(-0.5, min(0.5, delta))
         return delta, {**input_mfs, "output": output_strengths}
 
-    # Rolling-window OSC (same formula as SP_TRACKING) expressed as the
-    # normalised peak-to-peak error over the stats window, full-scale at
-    # 15 % of span. This is the most reliable oscillation measurement in the
-    # project and what the StatsWorker already ships to other subsystems.
+    # Rolling-window OSC expressed as the normalised peak-to-peak error over
+    # the stats window, full-scale at 15 % of span. Same amplitude term as
+    # SP_TRACKING, but DR overrides the whole decision tuple when this fires
+    # so the gate is stricter: we must distinguish "single big disturbance
+    # still in the window" from a true sustained oscillation.
     _OSC_PKPK_FULL_SCALE = 0.15
+    # Sustained-oscillation gate constants
+    _OSC_MIN_ZERO_CROSSINGS = 4   # ≥ 2 full half-cycles in the window
+    _OSC_MIN_REVERSALS      = 4   # ≥ 2 full direction changes
+    # For a pure sinusoid mean_abs/pk_pk ≈ 0.318. A narrow spike on a quiet
+    # baseline gives ratios ≪ 0.1. 0.20 cleanly separates the two regimes.
+    _OSC_MIN_MEAN_ABS_RATIO = 0.20
 
     def _osc_from_stats(self, stats: dict, span: float) -> float:
-        """Compute stats-based OSC identical to SP_TRACKING's algorithm.
+        """Compute stats-based OSC with a sustained-oscillation gate.
 
-        ``pk_pk_frac / 0.15`` gated by zero_crossings ≥ 2 AND reversals ≥ 2.
-        Both gates guard against mis-labelling a single ramp or one-shot
-        spike as oscillation.
+        Returns the normalised pk_pk amplitude only when **all** of the
+        following hold:
+
+        - ``zero_crossings >= _OSC_MIN_ZERO_CROSSINGS``
+        - ``reversals     >= _OSC_MIN_REVERSALS``
+        - ``mean_abs_error / pk_pk_error >= _OSC_MIN_MEAN_ABS_RATIO``
+
+        The first two gates reject single transients (a disturbance that
+        dips and recovers has at most 2 zero crossings). The ratio test
+        rejects an isolated big excursion still lingering in the window:
+        a sinusoid has mean_abs/pk_pk ≈ 0.32; a spike on a quiet baseline
+        is far below that. Without this test, a single step disturbance
+        with a slight overshoot on recovery (zc=2, rev=2, tiny mean_abs)
+        fires the limit-cycle override and Ti runs up to the guardrail.
         """
         if span <= 0.0:
             return 0.0
@@ -646,11 +664,14 @@ class FuzzyEngineV2DisturbanceRejection:
         ))
         reversals = int(stats.get("reversals", 0))
         zero_crossings = int(stats.get("zero_crossings", reversals))
-        pk_pk_frac = pk_pk_raw / span
-        amp_norm = min(1.0, pk_pk_frac / self._OSC_PKPK_FULL_SCALE)
-        if zero_crossings >= 2 and reversals >= 2:
-            return amp_norm
-        return 0.0
+        mean_abs = float(stats.get("mean_abs_error", 0.0))
+        if zero_crossings < self._OSC_MIN_ZERO_CROSSINGS:
+            return 0.0
+        if reversals < self._OSC_MIN_REVERSALS:
+            return 0.0
+        if pk_pk_raw > 0.0 and (mean_abs / pk_pk_raw) < self._OSC_MIN_MEAN_ABS_RATIO:
+            return 0.0
+        return min(1.0, (pk_pk_raw / span) / self._OSC_PKPK_FULL_SCALE)
 
     def compute_adjustment_from_stats(
         self,
