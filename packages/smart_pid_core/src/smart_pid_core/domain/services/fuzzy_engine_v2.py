@@ -450,6 +450,14 @@ class FuzzyEngineV2DisturbanceRejection:
     # same side of SP). Even one full half-cycle of oscillation already crosses
     # zero twice, so ≥ 2 is the tightest threshold that still safely rejects
     # lone recovery transients.
+    # After a limit-cycle firing the loop sits on the edge of stability:
+    # Ti was just raised because oscillation was detected. Allowing the event
+    # path to immediately prescribe a reduction (e.g. rule R1 firing on the
+    # first slow disturbance after damping) can tip the loop back into
+    # oscillation. This cooldown suppresses reductions for N AI cycles
+    # after every limit-cycle firing. N=5 is generous: at 3·TSS cadence it
+    # covers ~15·TSS of observation before allowing any retreat.
+    _LIMIT_CYCLE_COOLDOWN_CYCLES = 5
 
     def __init__(
         self,
@@ -470,6 +478,8 @@ class FuzzyEngineV2DisturbanceRejection:
         self._post_errors: list[float] = []
         self._decision_inputs: tuple[float, float, float] | None = None
         self._decision_source: str = "event"  # "event" or "limit_cycle"
+        # AI cycles still remaining in the post-LC cooldown (see class const).
+        self._cooldown_remaining: int = 0
         # Limit-cycle detection: track all errors seen during ACTIVE plus the
         # number of sign changes (zero crossings) of the error signal.
         self._active_errors: list[float] = []
@@ -632,6 +642,8 @@ class FuzzyEngineV2DisturbanceRejection:
         ):
             self._finalise_oscillation()
         if self._decision_inputs is None:
+            # Even on a hold, drain cooldown so it eventually expires.
+            self._cooldown_remaining = max(0, self._cooldown_remaining - 1)
             return AIDecisionV2(
                 delta_ti=0.0,
                 new_ti=ti_current,
@@ -644,8 +656,27 @@ class FuzzyEngineV2DisturbanceRejection:
         self._decision_inputs = None  # consume
         self._decision_source = "event"
         delta_ti, mfs = self.infer(e_max, t_rec, osc)
+
+        # Post-damping cooldown: right after a limit-cycle firing the loop
+        # sits on the edge of stability. Suppress event-path reductions until
+        # we've seen several AI cycles without any fresh oscillation. A
+        # limit-cycle firing re-arms the cooldown; any other cycle drains it.
+        suppressed = False
+        if source == "limit_cycle":
+            self._cooldown_remaining = self._LIMIT_CYCLE_COOLDOWN_CYCLES
+        else:
+            if delta_ti < 0.0 and self._cooldown_remaining > 0:
+                delta_ti = 0.0
+                suppressed = True
+            self._cooldown_remaining = max(0, self._cooldown_remaining - 1)
+
         new_ti = max(limit_min, min(limit_max, ti_current * (1.0 + delta_ti)))
-        tag = "DR/limit-cycle" if source == "limit_cycle" else "DR"
+        if source == "limit_cycle":
+            tag = "DR/limit-cycle"
+        elif suppressed:
+            tag = f"DR/cooldown={self._cooldown_remaining}"
+        else:
+            tag = "DR"
         return AIDecisionV2(
             delta_ti=delta_ti,
             new_ti=new_ti,
