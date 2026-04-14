@@ -785,6 +785,65 @@ class TestDisturbanceRejectionStateMachine:
             f"Sustained oscillation must damp; got Δ_Ti={d.delta_ti}"
         )
 
+    def test_event_with_overshoot_damps_not_holds(self):
+        """Regression: the user's chart shows PV dropping to 30 then
+        recovering past SP to 55 (overshoot), then settling to 50. Classic
+        "Ti too small". The post-event σ is tiny (PV is calm by the time
+        SETTLING collects samples), so the event path reads OSC≈0.04 and
+        rule R1 (now M) holds. But the overshoot DID happen — the error
+        changed sign once during ACTIVE. A single sign change on recovery
+        must redirect the finalisation to the limit-cycle path so Ti
+        goes up.
+        """
+        engine = self._make()
+        # Smooth one-crossing overshoot trajectory:
+        # +20 % sustained → gradual descent through zero → overshoot to
+        # −5 % → gradual recovery → in-band. Exactly 1 sign change.
+        for _ in range(60):
+            engine.update_sample(error_frac=0.20)
+        for e in [0.15, 0.10, 0.05, -0.02, -0.05, -0.05, -0.05, -0.05,
+                  -0.05, -0.05, -0.05, -0.05, -0.05, -0.04, -0.03]:
+            engine.update_sample(error_frac=e)
+        for _ in range(3):
+            engine.update_sample(error_frac=-0.005)
+        for _ in range(15):
+            engine.update_sample(error_frac=-0.002)
+        assert engine.decision_ready
+        d = engine.compute_adjustment(
+            ti_current=11.35, limit_min=0.1, limit_max=100.0,
+        )
+        assert d.delta_ti > 0.0, (
+            f"Overshoot on recovery must damp (Ti up), got Δ_Ti={d.delta_ti}; "
+            f"reasoning={d.reasoning}"
+        )
+
+    def test_event_without_overshoot_still_holds(self):
+        """Negative: a clean recovery (no sign change during ACTIVE)
+        must continue to hold Ti — the overshoot detector must not
+        fire on every slow recovery, only on those that cross SP
+        during the return.
+        """
+        engine = self._make()
+        # Clean recovery: error +20 → +10 → +5 → +1 (in-band).
+        for _ in range(30):
+            engine.update_sample(error_frac=0.20)
+        for _ in range(10):
+            engine.update_sample(error_frac=0.10)
+        for _ in range(5):
+            engine.update_sample(error_frac=0.05)
+        for _ in range(3):
+            engine.update_sample(error_frac=0.005)
+        for _ in range(15):
+            engine.update_sample(error_frac=0.002)
+        assert engine.decision_ready
+        d = engine.compute_adjustment(
+            ti_current=11.35, limit_min=0.1, limit_max=100.0,
+        )
+        assert d.delta_ti == 0.0, (
+            f"Clean slow recovery must hold; got Δ_Ti={d.delta_ti}; "
+            f"reasoning={d.reasoning}"
+        )
+
     def test_stable_slow_recovery_does_not_reduce_ti(self):
         """Regression: after limit-cycle firings pushed Ti up to a safe
         value, every subsequent slow disturbance kept nibbling Ti back
