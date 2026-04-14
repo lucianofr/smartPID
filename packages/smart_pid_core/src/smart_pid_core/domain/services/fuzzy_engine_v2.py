@@ -364,22 +364,30 @@ class FuzzyEngineV2:
 # Strategy 2 — Disturbance Rejection
 # ===========================================================================
 
+# Right-edge trapezoids extend their plateau (c=d) to a very large value
+# so any input past the upper shoulder stays fully-belonging — "very slow"
+# is still SLOW, "very big" is still HIGH. A finite shoulder would drop
+# membership back to 0 past the plateau and silence the rule base
+# exactly when the indicator is most severe (e.g. T_rec=13τ producing
+# Δ_Ti=0 in a real limit-cycle).
+_RIGHT_SAT = 1.0e9
+
 MF_E_MAX_DR: MFSet = {
     "LOW":  ("trap", (0.0, 0.0, 0.3, 0.5)),
     "MED":  ("tri",  (0.3, 0.6, 0.9)),
-    "HIGH": ("trap", (0.7, 1.0, 1.5, 1.5)),
+    "HIGH": ("trap", (0.7, 1.0, _RIGHT_SAT, _RIGHT_SAT)),
 }
 
 MF_T_REC_DR: MFSet = {
     "FAST": ("trap", (0.0, 0.0, 1.5, 3.0)),
     "MED":  ("tri",  (2.0, 4.0, 6.0)),
-    "SLOW": ("trap", (5.0, 7.0, 10.0, 10.0)),
+    "SLOW": ("trap", (5.0, 7.0, _RIGHT_SAT, _RIGHT_SAT)),
 }
 
 MF_OSC_DR: MFSet = {
     "STABLE": ("trap", (0.0, 0.0, 0.15, 0.3)),
     "MED":    ("tri",  (0.2, 0.4, 0.6)),
-    "HIGH":   ("trap", (0.5, 0.75, 1.0, 1.0)),
+    "HIGH":   ("trap", (0.5, 0.75, _RIGHT_SAT, _RIGHT_SAT)),
 }
 
 OUTPUT_CENTERS_DR: dict[str, float] = {
@@ -512,6 +520,12 @@ class FuzzyEngineV2DisturbanceRejection:
             if len(self._post_errors) >= self._post_event_window:
                 self._finalise_event()
 
+    # OSC threshold above which a finalised event is indistinguishable from a
+    # limit-cycle half-cycle and we must default to damping. Matches the onset
+    # of MED membership in MF_OSC_DR so any measurable residual oscillation
+    # reroutes to the limit-cycle path.
+    _EVENT_OSC_LIMIT_CYCLE_THR = 0.3
+
     def _finalise_event(self) -> None:
         t_rec_sec = self._event_sample_count * self._dt
         t_rec_norm = t_rec_sec / self._tau
@@ -521,6 +535,14 @@ class FuzzyEngineV2DisturbanceRejection:
         variance = sum((e - mean) ** 2 for e in self._post_errors) / n
         sigma = math.sqrt(variance)
         osc_norm = min(1.0, (2.0 * sigma) / self._OSC_FULL_SCALE)
+        # If residual oscillation is non-trivial, the event is likely a
+        # limit-cycle half-cycle mis-classified as a recovery. The normal
+        # rule base (e.g. HIGH/SLOW/MED → R) would then REDUCE Ti and
+        # feed the oscillation. Redirect to the limit-cycle finalisation
+        # so the prescription is damping (Ti up), not more action.
+        if osc_norm >= self._EVENT_OSC_LIMIT_CYCLE_THR:
+            self._finalise_oscillation()
+            return
         self._decision_inputs = (e_max_norm, t_rec_norm, osc_norm)
         self._decision_source = "event"
         self._reset_event_state()
