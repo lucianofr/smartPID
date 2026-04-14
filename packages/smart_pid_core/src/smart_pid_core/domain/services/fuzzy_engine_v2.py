@@ -547,7 +547,26 @@ class FuzzyEngineV2DisturbanceRejection:
     # reroutes to the limit-cycle path.
     _EVENT_OSC_LIMIT_CYCLE_THR = 0.3
 
+    # Minimum sign-changes of error during ACTIVE that qualify as
+    # "recovery overshoot". An ideal recovery asymptotes to SP with 0
+    # sign changes; a recovery that crosses SP and settles on the other
+    # side has exactly 1. Ringing recoveries have ≥ 2. Even a single
+    # overshoot is a tell-tale "Ti too small" signal that the post-event
+    # σ usually misses (the ringing has decayed by the time SETTLING
+    # starts sampling). Redirect those events to damping.
+    _EVENT_OVERSHOOT_MIN_CROSSINGS = 1
+
     def _finalise_event(self) -> None:
+        # Overshoot detection runs FIRST: if the error crossed zero at
+        # least once during ACTIVE the controller overshot on recovery —
+        # integral wound up and pushed PV past SP. That is a "Ti too
+        # small" symptom regardless of how calm the post-event window
+        # looks, so redirect to the limit-cycle path (Ti up) rather than
+        # letting the rule base see a "slow recovery, stable residual"
+        # and hold (R1 → M).
+        if self._active_zero_crossings >= self._EVENT_OVERSHOOT_MIN_CROSSINGS:
+            self._finalise_oscillation()
+            return
         t_rec_sec = self._event_sample_count * self._dt
         t_rec_norm = t_rec_sec / self._tau
         e_max_norm = min(1.5, self._e_max_observed / self._e_max_full)
