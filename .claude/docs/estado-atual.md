@@ -1,6 +1,41 @@
 # Estado atual — 2026-04-14
 
-## Tarefa concluída e mergeada: fix/fuzzy-dr-stats-based-osc (dde58bc)
+## Tarefa concluída e mergeada: fix/fuzzy-dr-osc-false-positives (e8b4903)
+
+### Problema relatado
+Depois do fix que fez DR usar stats, Ti cresceu descontroladamente
+até bater no guardrail de 100 (quando o ideal era ~15-20). Com Ti tão
+alto, PV nunca voltava ao SP (erro em regime).
+
+Log mostrava 3 firings consecutivos de limit-cycle com OSC=0.79, 1.00,
+0.97 enquanto o gráfico mostrava apenas um grande distúrbio isolado
+recuperando.
+
+### Causa raiz
+`_osc_from_stats` com gate frouxo (zc ≥ 2 AND reversals ≥ 2) não
+distinguia oscilação sustentada de um distúrbio isolado. O pk_pk de
+uma única excursão grande (PV caiu e voltou, overshoot no recovery)
+ficava na janela rolante de 200 amostras por ~3 minutos, inflando
+OSC enquanto o loop já tinha voltado à calmaria.
+
+### Correção
+Gate mais restrito no `_osc_from_stats`:
+
+1. `zero_crossings ≥ 4` (antes 2) — exige ≥ 2 ciclos completos.
+2. `reversals ≥ 4` (antes 2) — exige ≥ 2 reversões completas.
+3. `mean_abs / pk_pk ≥ 0.20` (novo) — senoide pura ≈ 0.32, spike
+   isolado sobre baseline quieto ≪ 0.1. Rejeita excursões isoladas.
+
+### Verificação
+- Scenario "real osc" (zc=10, rev=9, ratio=0.33): Ti cresce
+  4.44 → 5.67 → 7.23 → 9.22 → 11.75 ✓
+- Scenario "isolated disturbance" (zc=2, rev=2, ratio=0.04):
+  Ti hold em 48.77 ✓ (antes: runaway para 100)
+- 83/83 tests pass. Ruff clean.
+
+---
+
+## Histórico anterior: fix/fuzzy-dr-stats-based-osc (dde58bc)
 
 ### Problema relatado
 Usuário mostrou: `OSC:1.00 pkpk:46.59 rev:9 zc:10` na barra de status
