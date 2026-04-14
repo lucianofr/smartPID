@@ -507,6 +507,37 @@ class TestDisturbanceRejectionStateMachine:
             f"got {decisions[0].delta_ti}"
         )
 
+    def test_compute_adjustment_fires_per_ai_cycle_under_oscillation(self):
+        """Regression: in production the AI worker calls compute_adjustment
+        at its own cadence (AI period = 3·TSS), NOT on every sample. Before
+        the eager-check fix, the engine only emitted a limit-cycle decision
+        once per ≥3τ of ACTIVE samples — so most AI cycles returned "holding"
+        (Δ_Ti=0) and Ti barely moved. Every AI cycle that sees sustained
+        oscillation must now yield a damping decision.
+        """
+        import math as _math
+
+        engine = self._make()
+        # 20 AI cycles, each with 15 oscillation samples between calls.
+        # 15 samples is well below the 3τ threshold (30 samples at default
+        # τ=10s, dt=1s), so the time-based trigger would never fire and the
+        # original implementation returned Δ_Ti=0 for every single cycle.
+        non_zero = 0
+        for _ in range(20):
+            for k in range(15):
+                engine.update_sample(error_frac=0.2 * _math.sin(2 * _math.pi * k / 10))
+            d = engine.compute_adjustment(
+                ti_current=1.0, limit_min=0.1, limit_max=100.0,
+            )
+            if d.delta_ti > 0.0:
+                non_zero += 1
+        # Must get a damping decision on essentially every AI cycle after the
+        # first few (when zero-crossings start accumulating).
+        assert non_zero >= 15, (
+            f"Only {non_zero}/20 AI cycles emitted a damping decision; "
+            f"expected ≥ 15"
+        )
+
     def test_simulated_loop_actually_damps_under_decisions(self):
         """End-to-end: feeding repeated limit-cycle decisions back into Ti
         must drive the loop toward stability over a handful of cycles.
