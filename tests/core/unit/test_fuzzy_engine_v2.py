@@ -698,6 +698,60 @@ class TestDisturbanceRejectionStateMachine:
             f"suppressed; got Δ_Ti={d.delta_ti}, reasoning={d.reasoning}"
         )
 
+    def test_stats_based_osc_forces_damping_when_loop_oscillates(self):
+        """Regression: StatsWorker shows pkpk=46% span, zc=10, reversals=9
+        (loop is CLEARLY oscillating). Event-path post-event σ gives OSC≈0.18
+        because 15 samples undersample the cycle. With a stats-driven OSC
+        (same algorithm as SP_TRACKING: pkpk/span gated by zc+reversals),
+        the rule base must see OSC=HIGH and fire damping (Δ_Ti > 0).
+
+        The user's log at 15:17:38 — E_max=1.50 T_rec=17.00τ OSC=0.16
+        Δ_Ti=−0.10 — reduced Ti while the chart showed heavy oscillation.
+        Must instead damp.
+        """
+        engine = self._make()
+        # Stats snapshot matching the user's status bar
+        stats = {
+            "recent_pk_pk_error": 46.0,  # % span
+            "pk_pk_error": 46.0,
+            "zero_crossings": 10,
+            "reversals": 9,
+            "mean_abs_error": 10.0,
+            "tv_per_sample": 1.0,
+            "sample_count": 200,
+        }
+        span = 100.0
+        d = engine.compute_adjustment_from_stats(
+            stats=stats, span=span,
+            ti_current=4.44, limit_min=0.1, limit_max=100.0,
+        )
+        assert d.delta_ti > 0.0, (
+            f"Stats-confirmed oscillation must damp (Ti up); got "
+            f"Δ_Ti={d.delta_ti}, reasoning={d.reasoning}"
+        )
+
+    def test_stats_based_osc_holds_when_loop_is_quiet(self):
+        """Conversely, if stats show no oscillation (small pkpk, low zc),
+        DR should fall back to normal behaviour (event-path or hold)."""
+        engine = self._make()
+        stats = {
+            "recent_pk_pk_error": 2.0,  # 2% span — quiet
+            "pk_pk_error": 2.0,
+            "zero_crossings": 0,
+            "reversals": 0,
+            "mean_abs_error": 0.5,
+            "tv_per_sample": 0.1,
+            "sample_count": 200,
+        }
+        # No pending event either → must hold.
+        d = engine.compute_adjustment_from_stats(
+            stats=stats, span=100.0,
+            ti_current=4.44, limit_min=0.1, limit_max=100.0,
+        )
+        assert d.delta_ti == 0.0, (
+            f"Quiet loop must hold Ti; got Δ_Ti={d.delta_ti}"
+        )
+
     def test_simulated_loop_actually_damps_under_decisions(self):
         """End-to-end: feeding repeated limit-cycle decisions back into Ti
         must drive the loop toward stability over a handful of cycles.
