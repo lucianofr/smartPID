@@ -499,10 +499,38 @@ class TestDisturbanceRejectionStateMachine:
         assert len(decisions) >= 1, (
             "Engine never emitted a decision under sustained oscillation"
         )
-        # First decision should call for damping (Ti up → delta positive)
-        assert decisions[0].delta_ti > 0.0, (
-            f"Expected positive Δ_Ti to damp oscillation, "
+        # Decision must be a strong push to increase Ti — weak signals get
+        # cancelled by other rules (e.g. R1' "HIGH/SLOW/MED → R") and the
+        # loop never escapes the limit cycle. Require Δ_Ti ≥ +0.10.
+        assert decisions[0].delta_ti >= 0.10, (
+            f"Expected Δ_Ti ≥ +0.10 to break limit cycle quickly, "
             f"got {decisions[0].delta_ti}"
+        )
+
+    def test_simulated_loop_actually_damps_under_decisions(self):
+        """End-to-end: feeding repeated limit-cycle decisions back into Ti
+        must drive the loop toward stability over a handful of cycles.
+        """
+        import math as _math
+
+        engine = self._make()
+        ti = 1.0
+        # 12 AI cycles of 50 samples each (≥ 5τ per cycle at τ=10s, dt=1s)
+        ti_history = [ti]
+        for _ in range(12):
+            for k in range(50):
+                # Simulate that the loop is still oscillating with current Ti
+                engine.update_sample(error_frac=0.2 * _math.sin(2 * _math.pi * k / 20))
+            if engine.decision_ready:
+                d = engine.compute_adjustment(
+                    ti_current=ti, limit_min=0.1, limit_max=100.0,
+                )
+                ti = d.new_ti
+            ti_history.append(ti)
+        # After 12 cycles, Ti must have grown noticeably (≥ 2× initial)
+        assert ti >= 2.0 * ti_history[0], (
+            f"Ti did not grow enough to damp limit cycle: "
+            f"history={ti_history}"
         )
 
 
