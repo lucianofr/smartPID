@@ -401,17 +401,22 @@ OUTPUT_CENTERS_DR: dict[str, float] = {
 }
 
 RULES_DR: list[Rule] = [
-    # R1: controller slow and weak against the bump — boost integral
-    ({"e_max": "HIGH", "t_rec": "SLOW", "osc": "STABLE"}, "RM"),
+    # R1: slow recovery on a perfectly stable loop is NOT a call to reduce
+    # Ti. A conservative loop may take a long time to reject a disturbance
+    # without ever oscillating — that is not a bug, it is a safety margin.
+    # Reducing Ti here just grinds the loop toward the edge of stability
+    # and the user loses the margin. Only reduce Ti when SOME oscillation
+    # is present (R1' rule, OSC=MED below). Pure STABLE ⇒ hold.
+    ({"e_max": "HIGH", "t_rec": "SLOW", "osc": "STABLE"}, "M"),
     ({"e_max": "HIGH", "t_rec": "SLOW", "osc": "MED"},    "R"),
-    ({"e_max": "MED",  "t_rec": "SLOW", "osc": "STABLE"}, "R"),
+    ({"e_max": "MED",  "t_rec": "SLOW", "osc": "STABLE"}, "M"),
     # R2: disturbance rejected fast but generated instability — smooth it
     ({"e_max": "LOW",  "t_rec": "FAST", "osc": "HIGH"}, "AM"),
     ({"e_max": "MED",  "t_rec": "FAST", "osc": "HIGH"},  "A"),
     # R3: big impact but optimal recovery — physics, accept it
     ({"e_max": "HIGH", "t_rec": "FAST", "osc": "MED"},    "M"),
     ({"e_max": "HIGH", "t_rec": "FAST", "osc": "STABLE"}, "M"),
-    # R4: moderate everything but slow — slight push
+    # R4: moderate everything but slow — slight push (still has OSC=MED).
     ({"e_max": "MED", "t_rec": "MED", "osc": "MED"}, "R"),
     # R5: residual oscillation alone — damp it
     ({"osc": "HIGH"}, "A"),

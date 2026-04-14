@@ -595,27 +595,24 @@ class TestDisturbanceRejectionStateMachine:
         )
 
     def test_reducing_direction_is_weaker_than_increasing(self):
-        """Regression from a real log where Ti converged to 4.58 (stable)
-        then the engine retreated −0.30/−0.30/−0.19 over three consecutive
-        slow-recovery events and collapsed Ti to 1.82, destabilising the
-        loop again.
+        """Reducing Ti is high-risk; increasing is low-risk. The rule base
+        is asymmetric: the magnitude of any reducing prescription must not
+        exceed half the magnitude of the AM (limit-cycle) increase, so
+        the engine can't unwind a hard-won stable point.
 
-        Reducing Ti is high-risk (creates oscillation); increasing Ti is
-        low-risk (adds stability margin). The rule base must be
-        asymmetric: max reducing |Δ_Ti| per cycle must be substantially
-        smaller than max increasing Δ_Ti so the engine can't unwind a
-        hard-won stable point in a handful of events.
+        Note: pure STABLE events no longer reduce — a reduction requires
+        at least MED oscillation signal (rule R1' HIGH/SLOW/MED → R).
         """
         from smart_pid_core.domain.services.fuzzy_engine_v2 import (
             MF_E_MAX_DR, MF_T_REC_DR, MF_OSC_DR, RULES_DR, OUTPUT_CENTERS_DR,
             _fuzzify, _run_rules,
         )
 
-        # Extreme reducing case: R1 (HIGH / SLOW / STABLE → RM)
+        # Strongest reducing case today: R1' (HIGH / SLOW / MED → R)
         mfs = {
             "e_max": _fuzzify(1.50, MF_E_MAX_DR),
             "t_rec": _fuzzify(13.10, MF_T_REC_DR),
-            "osc":   _fuzzify(0.08, MF_OSC_DR),
+            "osc":   _fuzzify(0.40, MF_OSC_DR),  # MED peak
         }
         reduce_delta, _ = _run_rules(mfs, RULES_DR, OUTPUT_CENTERS_DR)
 
@@ -627,14 +624,11 @@ class TestDisturbanceRejectionStateMachine:
         }
         increase_delta, _ = _run_rules(mfs_up, RULES_DR, OUTPUT_CENTERS_DR)
 
-        assert reduce_delta < 0.0, f"R1 must prescribe reduction; got {reduce_delta}"
+        assert reduce_delta < 0.0, f"R1' must prescribe reduction; got {reduce_delta}"
         assert increase_delta > 0.0, f"AM must prescribe increase; got {increase_delta}"
-        # Reducing magnitude must be at most half of the increasing magnitude,
-        # so two reductions can't out-pace one increase.
         assert abs(reduce_delta) <= 0.5 * increase_delta, (
             f"Reducing |Δ_Ti|={abs(reduce_delta):.3f} must be ≤ 50% of "
-            f"increasing Δ_Ti={increase_delta:.3f}; otherwise the engine "
-            f"retreats faster than it can damp oscillation."
+            f"increasing Δ_Ti={increase_delta:.3f}"
         )
 
     def test_three_slow_events_do_not_collapse_ti(self):
@@ -791,6 +785,25 @@ class TestDisturbanceRejectionStateMachine:
             f"Sustained oscillation must damp; got Δ_Ti={d.delta_ti}"
         )
 
+    def test_stable_slow_recovery_does_not_reduce_ti(self):
+        """Regression: after limit-cycle firings pushed Ti up to a safe
+        value, every subsequent slow disturbance kept nibbling Ti back
+        down via rule R1 (HIGH/SLOW/STABLE → RM). The user's log showed
+        Ti 11.7 → 10.5 → 9.5 → 8.5 through three consecutive disturbances
+        with OSC=0.04 (fully stable). With no oscillation signal, the
+        engine must hold Ti — not grind it toward the edge of stability.
+        """
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
+            FuzzyEngineV2DisturbanceRejection,
+        )
+        engine = FuzzyEngineV2DisturbanceRejection()
+        # Exact indicators from the user's 2026-04-14 19:59:04 entry.
+        delta, _mfs = engine.infer(e_max=1.50, t_rec=16.80, osc=0.04)
+        assert delta >= 0.0, (
+            f"HIGH peak + SLOW recovery + STABLE residual must not reduce "
+            f"Ti (no oscillation signal); got Δ_Ti={delta}"
+        )
+
     def test_stats_based_osc_holds_when_loop_is_quiet(self):
         """Conversely, if stats show no oscillation (small pkpk, low zc),
         DR should fall back to normal behaviour (event-path or hold)."""
@@ -874,11 +887,13 @@ class TestDisturbanceRejectionRules:
         # residual 0 (STABLE)
         self._run_event(engine, peak_abs_err=0.05, duration_samples=80)
         d = engine.compute_adjustment(ti_current=10.0, limit_min=0.1, limit_max=100.0)
-        # Output centres were softened asymmetrically (RM=-0.10) to prevent
-        # the engine from unwinding a stable Ti in a few slow-recovery events.
-        # Direction is still reducing, just more cautious.
-        assert d.delta_ti < 0.0, f"Δ_Ti={d.delta_ti} should be negative"
-        assert d.new_ti < 10.0
+        # New semantics: a slow disturbance with STABLE residual no longer
+        # reduces Ti (that just grinds a conservative loop toward the edge
+        # of stability). Only MED+ oscillation residue triggers a cut.
+        # Outcome must be neutral (hold) or up.
+        assert d.delta_ti >= 0.0, (
+            f"Stable residual must not reduce Ti; got Δ_Ti={d.delta_ti}"
+        )
 
     def test_R2_fast_but_oscillatory_increases_ti(self):
         """Moderate peak, fast recovery, HIGH residual osc → Δ_Ti positive.
@@ -896,21 +911,19 @@ class TestDisturbanceRejectionRules:
         delta, _mfs = engine.infer(e_max=0.6, t_rec=1.0, osc=0.8)
         assert delta > 0.1, f"Δ_Ti={delta} should be positive (AM for MED+FAST+HIGH osc)"
 
-    def test_R1_via_infer_reduces_with_high_peak_slow_stable(self):
-        """Direct infer: HIGH peak + SLOW recovery + STABLE osc → RM.
+    def test_R1_via_infer_holds_with_high_peak_slow_stable(self):
+        """Direct infer: HIGH peak + SLOW recovery + STABLE osc → M (hold).
 
-        Direction is reducing; magnitude is deliberately modest (|Δ| ≤ 0.15)
-        because asymmetric centres prevent a single slow-recovery event from
-        unwinding a stable Ti.
+        A stable loop with a slow disturbance recovery is a conservative
+        loop, not a broken one. No oscillation signal ⇒ hold Ti; don't
+        grind it down toward the edge of stability.
         """
         from smart_pid_core.domain.services.fuzzy_engine_v2 import (
             FuzzyEngineV2DisturbanceRejection,
         )
         engine = FuzzyEngineV2DisturbanceRejection()
         delta, _mfs = engine.infer(e_max=1.0, t_rec=8.0, osc=0.05)
-        assert -0.15 <= delta < 0.0, (
-            f"Δ_Ti={delta} should be mildly negative (RM centre = -0.10)"
-        )
+        assert delta == 0.0, f"Stable slow recovery must hold; got Δ_Ti={delta}"
 
     def test_R3_big_peak_fast_recovery_maintains_ti(self):
         """Big impact handled quickly (physics-limited) → maintain."""
