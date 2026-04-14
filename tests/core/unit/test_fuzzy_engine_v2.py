@@ -538,6 +538,62 @@ class TestDisturbanceRejectionStateMachine:
             f"expected ≥ 15"
         )
 
+    def test_slow_recovery_above_ten_tau_still_fires(self):
+        """Regression from real log: E_max=1.50 T_rec=13.20τ OSC=0.42 Δ_Ti=0.
+
+        MF_T_REC_DR.SLOW was trap(5, 7, 10, 10), which returns 0 for any
+        x > 10. When a disturbance recovery takes longer than 10τ, ALL
+        three t_rec memberships (FAST, MED, SLOW) read 0, every rule that
+        mentions t_rec fails, and the engine emits Δ_Ti=0 — doing nothing
+        while the loop clearly needs Ti reduced. SLOW must saturate: any
+        recovery beyond the plateau is still definitively SLOW.
+        """
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
+            MF_E_MAX_DR, MF_T_REC_DR, MF_OSC_DR, RULES_DR, OUTPUT_CENTERS_DR,
+            _fuzzify, _run_rules,
+        )
+        mfs = {
+            "e_max": _fuzzify(1.50, MF_E_MAX_DR),
+            "t_rec": _fuzzify(13.20, MF_T_REC_DR),
+            "osc":   _fuzzify(0.42, MF_OSC_DR),
+        }
+        # SLOW must saturate — not drop back to zero past its plateau.
+        assert mfs["t_rec"]["SLOW"] == 1.0, (
+            f"MF_T_REC_DR.SLOW(13.20) must saturate to 1.0, got {mfs['t_rec']}"
+        )
+        delta, _ = _run_rules(mfs, RULES_DR, OUTPUT_CENTERS_DR)
+        assert delta != 0.0, (
+            f"Rule base must produce a non-zero decision; got Δ_Ti={delta}"
+        )
+
+    def test_event_path_with_residual_oscillation_damps_not_reduces(self):
+        """If a finalised event carries residual oscillation (OSC≥MED),
+        the situation is ambiguous between "real slow recovery" and
+        "limit-cycle half-cycle classified as an event". A real slow
+        recovery would call for reducing Ti (more action), but that
+        makes a limit cycle worse. The engine must default to damping
+        (Δ_Ti > 0) whenever residual oscillation is non-trivial.
+        """
+        engine = self._make()
+        # Drive an event that finalises via SETTLING with OSC≈MED
+        # (the exact indicator pattern from the reported log entry).
+        for _ in range(50):
+            engine.update_sample(error_frac=0.10)  # long excursion one-sided
+        for _ in range(3):
+            engine.update_sample(error_frac=0.005)  # dwell → SETTLING
+        # 15 post-event samples carrying oscillation residue
+        import math as _math
+        for k in range(15):
+            engine.update_sample(error_frac=0.12 * _math.sin(k))
+        assert engine.decision_ready
+        d = engine.compute_adjustment(
+            ti_current=1.0, limit_min=0.1, limit_max=100.0,
+        )
+        assert d.delta_ti > 0.0, (
+            f"Event with residual oscillation must damp (Ti up), not "
+            f"reduce; got Δ_Ti={d.delta_ti}, reasoning={d.reasoning}"
+        )
+
     def test_simulated_loop_actually_damps_under_decisions(self):
         """End-to-end: feeding repeated limit-cycle decisions back into Ti
         must drive the loop toward stability over a handful of cycles.
