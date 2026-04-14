@@ -121,3 +121,57 @@ class ProcessModel:
         if self._state is not None:
             self._state[:] = 0.0
         self._pv = 0.0
+
+    def update_parameters(
+        self,
+        gain: float,
+        tau1: float,
+        tau2: float | None,
+        dead_time: float,
+    ) -> None:
+        """Change TF parameters in place, preserving the current PV.
+
+        Re-discretizes at the current dt. If the state dimension changes
+        (e.g., FOPTD ↔ SOPTD or dead_time crossing zero), the new state
+        is seeded via least-squares so that `Cd @ x ≈ previous pv`,
+        avoiding a spurious jump to zero on the next step.
+        """
+        self._gain = gain
+        self._tau1 = tau1
+        self._tau2 = tau2
+        self._dead_time = dead_time
+        if self._dt <= 0.0:
+            # No discretization yet — first step() will build everything fresh.
+            self._Ad = None
+            return
+
+        prev_pv = self._pv
+        prev_state = self._state
+        prev_n = prev_state.shape[0] if prev_state is not None else 0
+
+        num, den = _build_tf(self._gain, self._tau1, self._tau2, self._dead_time)
+        sys_c = signal.tf2ss(num, den)
+        sys_d = signal.cont2discrete(sys_c, self._dt, method="zoh")
+        self._Ad, self._Bd, self._Cd, self._Dd = (
+            np.asarray(sys_d[0]),
+            np.asarray(sys_d[1]),
+            np.asarray(sys_d[2]),
+            np.asarray(sys_d[3]),
+        )
+        new_n = self._Ad.shape[0]
+        if prev_state is not None and prev_n == new_n:
+            # Same state dimension: reuse state. The basis may differ slightly
+            # from the previous TF, but for continuous parameter tweaks this
+            # preserves far more continuity than zeroing out.
+            self._state = prev_state
+        else:
+            # Dimension changed — seed with minimum-norm state whose output
+            # matches prev_pv: x = Cd^T (Cd Cd^T)^-1 prev_pv
+            self._state = np.zeros((new_n, 1))
+            try:
+                cct = self._Cd @ self._Cd.T
+                rhs = np.array([[prev_pv]]) - (self._Dd @ np.array([[0.0]]))
+                self._state = self._Cd.T @ np.linalg.solve(cct, rhs)
+            except np.linalg.LinAlgError:
+                pass
+        self._pv = prev_pv

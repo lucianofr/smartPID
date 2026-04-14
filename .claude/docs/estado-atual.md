@@ -1,37 +1,53 @@
-# Estado atual — 2026-04-12
+# Estado atual — 2026-04-13
 
-## Última tarefa
-Detecção mais rápida de oscilação + damping mais agressivo do Ti.
+## Tarefa concluída: fix/sim-param-change-preserves-pv
 
-## Branch (aguardando merge)
-`feat/fuzzy-faster-detection-stronger-damping`
+### Problema relatado
+Usuário reportou que alterações nos parâmetros do processo na tela
+Simulator Control (Gain K, Tau1, Tau2, Dead Time) "aparentemente não
+estão sendo aplicadas". Screenshot mostrava CUSTOM/K=5/τ1=120/τ2=40/L=30.
 
-## Mudanças em `fuzzy_engine.py`
-- `_OSC_WINDOW`: 12 → **10** (janela enche mais rápido)
-- `_OSC_THRESHOLD`: 3 → **2** (detecta na 3ª amostra com mudanças de sinal)
-- `_OSC_DAMPING_GAIN`: 1.5 → **3.0** (damping 2× mais forte por unidade de amplitude)
-- `_OSC_GAMMA_CAP`: 0.8 → **1.0** (permite damping magnitude total)
-- **Ganho adaptativo**: `effective_gain = _OSC_DAMPING_GAIN * max(1.0, trend)`. Quando a oscilação está crescendo (trend > 1), o gain é escalado pelo ratio → reação ainda mais rápida a divergência.
+### Causa raiz
+`SimulatorAdapter.set_parameters()` (e `set_preset()`) substituíam o
+`ctrl.model` por uma **nova** instância de `ProcessModel`, descartando o
+estado interno (`_state`, `_pv`). No próximo tick o novo modelo partia
+de estado zero, então a PV saltava de seu valor corrente (ex: 60) para
+~0 e, com τ1 grande (120s), demorava minutos para responder. Para o
+usuário dava a impressão de que os parâmetros não tinham efeito.
 
-Rejeição de ruído preservada via `_OSC_MIN_AMPLITUDE = 0.025` (2.5% RMS) e `_TREND_DAMPING_RATIO = 0.9` (oscilação amortecendo sozinha → gamma=0).
+Reprodução (confirmada via script):
+- Antes da troca: PV=60.00 (K=1.2, CO=50, regime permanente)
+- 1 tick após `set_parameters(K=5, τ1=120, τ2=40, L=30)`: PV=0.00
 
-## Exemplos de comportamento
-| amp | trend | gamma (antes) | gamma (agora) |
-|-----|-------|---------------|---------------|
-| 5%  | 1.0   | -0.075        | -0.15         |
-| 10% | 1.0   | -0.15         | -0.30         |
-| 10% | 1.3   | -0.15         | -0.39         |
-| 20% | 1.0   | -0.30         | -0.60         |
-| 30% | 1.2   | -0.45         | -1.00 (cap)   |
+### Correção
+1. Novo método `ProcessModel.update_parameters(gain, tau1, tau2, dead_time)`
+   em `packages/smart_pid_core/src/smart_pid_core/domain/services/process_models.py`:
+   re-discretiza preservando `_state` quando a dimensão não muda. Quando
+   muda (FOPTD↔SOPTD ou dead_time cruzando 0) inicializa novo estado via
+   mínimos quadrados para que `Cd @ x ≈ pv_prévio`.
+2. `SimulatorAdapter.set_parameters()` e `set_preset()` passam a chamar
+   `ctrl.model.update_parameters(...)` em vez de criar nova instância
+   (`packages/smart_pid_core/src/smart_pid_core/adapters/inbound/simulator_adapter.py`).
+3. Teste de regressão `test_set_parameters_preserves_pv_continuity`
+   adicionado em `tests/core/unit/test_simulator_adapter.py`.
 
-## Testes
-- `test_growing_oscillation_raises_ti_rapidly` (novo): oscilação crescente 5%→15% em 20 iter deve elevar Ti >30%.
-- 27/27 testes passam. Ruff limpo.
+### Verificação
+- `pytest tests/core/unit/test_simulator_adapter.py tests/core/unit/test_process_models.py`: **57/57 passaram**.
+- Script manual: PV=60 antes → PV=60 imediatamente após
+  `set_parameters` → evolui com a nova dinâmica (aos 5min chega a 96
+  rumo ao novo regime K*CO=250).
+- Falhas pré-existentes não relacionadas: `test_ai_e2e.py` flaky,
+  `test_config_users_db.py` e `test_opcua_server.py` (port/config).
 
-## Próximo passo
-Testar no simulador com processo oscilante — verificar se Ti sobe rapidamente e estabiliza próximo do ótimo sem overshooting.
+### Arquivos modificados
+- `packages/smart_pid_core/src/smart_pid_core/domain/services/process_models.py`
+- `packages/smart_pid_core/src/smart_pid_core/adapters/inbound/simulator_adapter.py`
+- `tests/core/unit/test_simulator_adapter.py`
 
-## Histórico recente
-1. `fix/fuzzy-no-ti-reversal-on-convergence` (MERGED, d5ee0fe) — suavizou regras.
-2. `fix/fuzzy-reject-noise-detect-damping-trend` (MERGED, c35d0bf) — rejeita ruído, detecta damping próprio.
-3. `feat/fuzzy-faster-detection-stronger-damping` (atual) — detecção rápida + damping agressivo.
+### Branch
+`fix/sim-param-change-preserves-pv` criada a partir de `main`.
+**Não commitado, não mergeado.** Aguardando aprovação do usuário.
+
+### Próximos passos
+1. Usuário revisa as mudanças na branch.
+2. Após aprovação: commit + merge para `main`.

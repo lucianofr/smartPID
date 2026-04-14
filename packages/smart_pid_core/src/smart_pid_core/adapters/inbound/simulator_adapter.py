@@ -266,7 +266,9 @@ class SimulatorAdapter:
         with self._lock:
             ctrl = self._controllers[controller_id]
             p = PRESETS[preset]
-            ctrl.model = ProcessModel.from_preset(p)
+            ctrl.model.update_parameters(
+                gain=p.gain, tau1=p.tau1, tau2=p.tau2, dead_time=p.dead_time,
+            )
             ctrl.preset_name = preset.value
             ctrl.gain = p.gain
             ctrl.tau1 = p.tau1
@@ -283,7 +285,11 @@ class SimulatorAdapter:
     ) -> None:
         with self._lock:
             ctrl = self._controllers[controller_id]
-            ctrl.model = ProcessModel(gain=gain, tau1=tau1, tau2=tau2, dead_time=dead_time)
+            # Update in place to preserve PV continuity; new TF takes effect
+            # on the next tick without snapping the output back to zero.
+            ctrl.model.update_parameters(
+                gain=gain, tau1=tau1, tau2=tau2, dead_time=dead_time,
+            )
             ctrl.preset_name = "CUSTOM"
             ctrl.gain = gain
             ctrl.tau1 = tau1
