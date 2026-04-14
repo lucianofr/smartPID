@@ -426,6 +426,12 @@ class FuzzyEngineV2DisturbanceRejection:
     _EVENT_EXIT_DWELL = 3           # samples in-band to end the event
     _DEFAULT_POST_EVENT_WINDOW = 15 # default residual-oscillation window
     _OSC_FULL_SCALE = 0.50          # same 2σ/span normalisation as SP
+    # Sustained-oscillation escape: a true disturbance event recovers within
+    # a few τ. If we are ACTIVE for longer than this *and* the error keeps
+    # crossing zero, the loop is in a limit cycle, not rejecting a
+    # transient. Force-finalise so the rules can prescribe damping (Ti up).
+    _OSC_LOCK_TAU_THRESHOLD = 5.0   # ACTIVE for ≥ 5τ → candidate for limit cycle
+    _OSC_LOCK_MIN_CROSSINGS = 3     # plus this many zero crossings → confirm
 
     def __init__(
         self,
@@ -445,6 +451,11 @@ class FuzzyEngineV2DisturbanceRejection:
         self._in_band_samples: int = 0
         self._post_errors: list[float] = []
         self._decision_inputs: tuple[float, float, float] | None = None
+        # Limit-cycle detection: track all errors seen during ACTIVE plus the
+        # number of sign changes (zero crossings) of the error signal.
+        self._active_errors: list[float] = []
+        self._active_zero_crossings: int = 0
+        self._active_last_sign: int = 0
 
     # ---- state transitions ----------------------------------------------
 
@@ -456,12 +467,27 @@ class FuzzyEngineV2DisturbanceRejection:
                 self._e_max_observed = abs_e
                 self._event_sample_count = 1
                 self._in_band_samples = 0
+                self._active_errors = [error_frac]
+                self._active_zero_crossings = 0
+                self._active_last_sign = 1 if error_frac > 0 else (
+                    -1 if error_frac < 0 else 0
+                )
             return
 
         if self._state == "ACTIVE":
             self._event_sample_count += 1
             if abs_e > self._e_max_observed:
                 self._e_max_observed = abs_e
+            self._active_errors.append(error_frac)
+            cur_sign = 1 if error_frac > 0 else (-1 if error_frac < 0 else 0)
+            if (
+                cur_sign != 0
+                and self._active_last_sign != 0
+                and cur_sign != self._active_last_sign
+            ):
+                self._active_zero_crossings += 1
+            if cur_sign != 0:
+                self._active_last_sign = cur_sign
             if abs_e <= self._EVENT_TRIGGER:
                 self._in_band_samples += 1
                 if self._in_band_samples >= self._EVENT_EXIT_DWELL:
@@ -469,6 +495,11 @@ class FuzzyEngineV2DisturbanceRejection:
                     self._post_errors = [error_frac]
             else:
                 self._in_band_samples = 0
+            # Limit-cycle escape: if we have been ACTIVE long enough and the
+            # error keeps crossing zero, this is not a transient disturbance
+            # — finalise as an oscillation event so the rule base can damp it.
+            if self._is_limit_cycle():
+                self._finalise_oscillation()
             return
 
         if self._state == "SETTLING":
@@ -486,12 +517,45 @@ class FuzzyEngineV2DisturbanceRejection:
         sigma = math.sqrt(variance)
         osc_norm = min(1.0, (2.0 * sigma) / self._OSC_FULL_SCALE)
         self._decision_inputs = (e_max_norm, t_rec_norm, osc_norm)
-        # Reset to IDLE for the next event
+        self._reset_event_state()
+
+    def _is_limit_cycle(self) -> bool:
+        """ACTIVE for ≥ 5τ with repeated zero crossings → sustained oscillation."""
+        min_samples = max(
+            int(self._OSC_LOCK_TAU_THRESHOLD * self._tau / self._dt), 4,
+        )
+        return (
+            self._event_sample_count >= min_samples
+            and self._active_zero_crossings >= self._OSC_LOCK_MIN_CROSSINGS
+        )
+
+    def _finalise_oscillation(self) -> None:
+        """Force-finalise a limit-cycle event without waiting for SETTLING.
+
+        Computes σ across the in-event errors so OSC reads HIGH and the
+        rule base prescribes damping (Ti up).
+        """
+        e_max_norm = min(1.5, self._e_max_observed / self._e_max_full)
+        # T_REC saturates SLOW: by definition recovery never completed.
+        t_rec_norm = max(10.0, self._event_sample_count * self._dt / self._tau)
+        n = len(self._active_errors)
+        mean = sum(self._active_errors) / n
+        variance = sum((e - mean) ** 2 for e in self._active_errors) / n
+        sigma = math.sqrt(variance)
+        osc_norm = min(1.0, (2.0 * sigma) / self._OSC_FULL_SCALE)
+        self._decision_inputs = (e_max_norm, t_rec_norm, osc_norm)
+        self._reset_event_state()
+
+    def _reset_event_state(self) -> None:
+        """Reset all per-event tracking back to IDLE."""
         self._state = "IDLE"
         self._e_max_observed = 0.0
         self._event_sample_count = 0
         self._in_band_samples = 0
         self._post_errors = []
+        self._active_errors = []
+        self._active_zero_crossings = 0
+        self._active_last_sign = 0
 
     @property
     def state(self) -> str:
