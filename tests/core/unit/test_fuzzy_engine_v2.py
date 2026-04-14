@@ -475,6 +475,36 @@ class TestDisturbanceRejectionStateMachine:
         assert "E_MAX" in d.inputs
         assert not engine.decision_ready  # consumed
 
+    def test_sustained_oscillation_breaks_active_lock_and_increases_ti(self):
+        """Limit-cycle oscillation must not lock the state machine in ACTIVE.
+
+        Sustained oscillation around SP rarely leaves the error inside the 2%
+        deadband for 3 consecutive samples, so the original implementation
+        stayed in ACTIVE forever and never emitted a decision. The engine
+        must detect this pattern (long ACTIVE + multiple zero crossings) and
+        emit an "increase Ti" decision to damp the oscillation.
+        """
+        import math as _math
+
+        engine = self._make()
+        # Push 400 samples of ±20% sinusoidal error, period = 20 samples
+        decisions: list = []
+        for k in range(400):
+            engine.update_sample(error_frac=0.2 * _math.sin(2 * _math.pi * k / 20))
+            if engine.decision_ready:
+                d = engine.compute_adjustment(
+                    ti_current=10.0, limit_min=0.1, limit_max=100.0,
+                )
+                decisions.append(d)
+        assert len(decisions) >= 1, (
+            "Engine never emitted a decision under sustained oscillation"
+        )
+        # First decision should call for damping (Ti up → delta positive)
+        assert decisions[0].delta_ti > 0.0, (
+            f"Expected positive Δ_Ti to damp oscillation, "
+            f"got {decisions[0].delta_ti}"
+        )
+
 
 class TestDisturbanceRejectionRules:
     def _run_event(
