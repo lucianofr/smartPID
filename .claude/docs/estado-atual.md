@@ -1,6 +1,50 @@
 # Estado atual — 2026-04-14
 
-## Tarefa concluída e mergeada: fix/fuzzy-dr-post-damp-cooldown (e9aca60)
+## Tarefa concluída e mergeada: fix/fuzzy-dr-stats-based-osc (dde58bc)
+
+### Problema relatado
+Usuário mostrou: `OSC:1.00 pkpk:46.59 rev:9 zc:10` na barra de status
+(StatsWorker detectava oscilação clara) mas o log fuzzy:
+```
+E_max=1.50 T_rec=17.00τ OSC=0.16 Δ_Ti=-0.100
+```
+— reduziu Ti apesar da oscilação. Ti nunca subia, loop oscilava sem fim.
+
+### Causa raiz
+DR calculava OSC como `2σ` sobre **15 amostras pós-evento**. Essa
+janela curta subamostra o ciclo de oscilação → σ subdimensionado →
+OSC ≈ 0.2 (interpretado como STABLE) enquanto pk_pk real = 46% span.
+
+SP_TRACKING não tem esse problema: usa `pk_pk_frac / 0.15` filtrado
+por `zc ≥ 2 AND reversals ≥ 2` — métricas que o StatsWorker já calcula
+sobre janela rolante.
+
+### Correção
+DR agora espelha SP_TRACKING:
+1. Novo método `FuzzyEngineV2DisturbanceRejection.compute_adjustment_from_stats()`
+   — computa `stats_osc` com **exatamente a mesma fórmula** do SP_TRACKING:
+   `min(1.0, pk_pk_frac / 0.15)` filtrado por `zc ≥ 2 AND reversals ≥ 2`.
+2. Se `stats_osc ≥ 0.3` (onset de MED), sobrescreve `_decision_inputs`
+   com `(LOW=0, FAST=0, stats_osc)` — a base de regras dispara R2 (AM)
+   e R5 (A) sem ambiguidade.
+3. `FuzzyEngineV2Dispatcher.compute_adjustment_from_stats` roteia
+   snapshots de stats para DR (antes só SP).
+4. `AIWorker` envia stats para DR também (antes só para SP).
+
+### Replay do cenário do usuário
+- Ti=4.4474, stats (pkpk=46.59, zc=10, rev=9):
+  - Cycle 1: Δ=+0.2750  Ti=5.6704 [DR/limit-cycle]
+  - Cycle 2: Δ=+0.2750  Ti=7.2298 [DR/limit-cycle]
+  - Cycles 3-10 (stats quiet): Δ=0 Ti=7.2298 [DR] — segura.
+
+### Verificação
+- 81/81 tests pass (fuzzy unit + AI worker integration).
+- Ruff clean.
+- Replay manual reproduz o comportamento desejado.
+
+---
+
+## Histórico anterior: fix/fuzzy-dr-post-damp-cooldown (e9aca60)
 
 ### Problema relatado
 Mesmo com os centros assimétricos, o log real mostrava:
