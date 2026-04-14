@@ -219,15 +219,19 @@ class AIWorker:
                 delta_error = error - self._prev_error
 
                 if self._ai_config.engine == AIEngine.FUZZY:
-                    # SP_TRACKING consumes the StatsWorker snapshot so the two
-                    # subsystems share a single rolling window. DR / Surge Level
-                    # still have their own per-sample state (fed in
-                    # _drain_telemetry) and fall back to the legacy path.
+                    # Both SP_TRACKING and DR consume the StatsWorker
+                    # snapshot when available: SP derives its three
+                    # indicators from the rolling window directly, and DR
+                    # overlays the stats-based OSC on top of its event
+                    # state machine (the post-event σ used to lie — see
+                    # fuzzy_engine_v2 docstring). Surge Level keeps its
+                    # per-sample PV/CO window and falls back.
                     from smart_pid_domain.enums import ControlObjective
-                    if (
-                        self._ai_config.objective == ControlObjective.SP_TRACKING
-                        and self._latest_stats is not None
-                    ):
+                    stats_aware = self._ai_config.objective in (
+                        ControlObjective.SP_TRACKING,
+                        ControlObjective.DISTURBANCE_REJECTION,
+                    )
+                    if stats_aware and self._latest_stats is not None:
                         decision = self._engine.compute_adjustment_from_stats(
                             stats=self._latest_stats,
                             span=self._controller.pv_scale.span,

@@ -626,6 +626,63 @@ class FuzzyEngineV2DisturbanceRejection:
         delta = max(-0.5, min(0.5, delta))
         return delta, {**input_mfs, "output": output_strengths}
 
+    # Rolling-window OSC (same formula as SP_TRACKING) expressed as the
+    # normalised peak-to-peak error over the stats window, full-scale at
+    # 15 % of span. This is the most reliable oscillation measurement in the
+    # project and what the StatsWorker already ships to other subsystems.
+    _OSC_PKPK_FULL_SCALE = 0.15
+
+    def _osc_from_stats(self, stats: dict, span: float) -> float:
+        """Compute stats-based OSC identical to SP_TRACKING's algorithm.
+
+        ``pk_pk_frac / 0.15`` gated by zero_crossings ≥ 2 AND reversals ≥ 2.
+        Both gates guard against mis-labelling a single ramp or one-shot
+        spike as oscillation.
+        """
+        if span <= 0.0:
+            return 0.0
+        pk_pk_raw = float(stats.get(
+            "recent_pk_pk_error", stats.get("pk_pk_error", 0.0),
+        ))
+        reversals = int(stats.get("reversals", 0))
+        zero_crossings = int(stats.get("zero_crossings", reversals))
+        pk_pk_frac = pk_pk_raw / span
+        amp_norm = min(1.0, pk_pk_frac / self._OSC_PKPK_FULL_SCALE)
+        if zero_crossings >= 2 and reversals >= 2:
+            return amp_norm
+        return 0.0
+
+    def compute_adjustment_from_stats(
+        self,
+        stats: dict,
+        span: float,
+        ti_current: float,
+        limit_min: float,
+        limit_max: float,
+    ) -> AIDecisionV2:
+        """Stats-driven path modelled on SP_TRACKING.
+
+        DR's original event-path OSC (2σ over 15 post-event samples)
+        systematically undersamples real oscillations — the user's log
+        reported OSC=0.18 while the StatsWorker saw pkpk=46 % span / zc=10
+        / reversals=9 (OSC=1.0). When the rolling metric confirms
+        oscillation (OSC ≥ onset of MED), override the pending decision
+        inputs with limit-cycle semantics so the rule base fires damping
+        (AM + A) instead of reducing Ti via a spurious "slow recovery"
+        classification.
+        """
+        stats_osc = self._osc_from_stats(stats, span)
+        if stats_osc >= self._EVENT_OSC_LIMIT_CYCLE_THR:
+            # Oscillation confirmed by rolling stats — feed the rule base
+            # limit-cycle inputs (LOW / FAST / stats_osc). Reset any
+            # ACTIVE event state so the next sample window starts clean.
+            self._decision_inputs = (0.0, 0.0, stats_osc)
+            self._decision_source = "limit_cycle"
+            self._reset_event_state()
+        # Fall through to the normal decision path (honours cooldown,
+        # consumes any pending event, returns hold if nothing to say).
+        return self.compute_adjustment(ti_current, limit_min, limit_max)
+
     def compute_adjustment(
         self, ti_current: float, limit_min: float, limit_max: float,
     ) -> AIDecisionV2:
@@ -912,14 +969,21 @@ class FuzzyEngineV2Dispatcher:
         limit_min: float,
         limit_max: float,
     ) -> AIDecisionV2:
-        """For SP_TRACKING, use pre-computed stats from StatsWorker.
+        """Use rolling stats from StatsWorker for SP_TRACKING and DR alike.
 
-        Other strategies (disturbance rejection, surge level) still rely
-        on per-sample state and fall back to the legacy window-based
-        compute_adjustment, so for them this method is equivalent to the
-        legacy path.
+        SP_TRACKING derives IAE/OSC/EFF directly from the snapshot. DR keeps
+        its event-driven state machine but overlays the stats-based OSC so
+        genuine oscillation (confirmed by pk_pk + zero_crossings + reversals)
+        reliably triggers damping — the post-event σ metric used to
+        undersample the cycle and leave Ti stuck during a visible limit
+        cycle. Surge Level still uses per-sample PV/CO state and falls back
+        to the legacy path.
         """
         if self._objective == ControlObjective.SP_TRACKING:
+            return self._engine.compute_adjustment_from_stats(
+                stats, span, ti_current, limit_min, limit_max,
+            )
+        if self._objective == ControlObjective.DISTURBANCE_REJECTION:
             return self._engine.compute_adjustment_from_stats(
                 stats, span, ti_current, limit_min, limit_max,
             )
