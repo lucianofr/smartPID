@@ -430,7 +430,7 @@ class FuzzyEngineV2DisturbanceRejection:
     # a few τ. If we are ACTIVE for longer than this *and* the error keeps
     # crossing zero, the loop is in a limit cycle, not rejecting a
     # transient. Force-finalise so the rules can prescribe damping (Ti up).
-    _OSC_LOCK_TAU_THRESHOLD = 5.0   # ACTIVE for ≥ 5τ → candidate for limit cycle
+    _OSC_LOCK_TAU_THRESHOLD = 3.0   # ACTIVE for ≥ 3τ → candidate for limit cycle
     _OSC_LOCK_MIN_CROSSINGS = 3     # plus this many zero crossings → confirm
 
     def __init__(
@@ -451,6 +451,7 @@ class FuzzyEngineV2DisturbanceRejection:
         self._in_band_samples: int = 0
         self._post_errors: list[float] = []
         self._decision_inputs: tuple[float, float, float] | None = None
+        self._decision_source: str = "event"  # "event" or "limit_cycle"
         # Limit-cycle detection: track all errors seen during ACTIVE plus the
         # number of sign changes (zero crossings) of the error signal.
         self._active_errors: list[float] = []
@@ -517,6 +518,7 @@ class FuzzyEngineV2DisturbanceRejection:
         sigma = math.sqrt(variance)
         osc_norm = min(1.0, (2.0 * sigma) / self._OSC_FULL_SCALE)
         self._decision_inputs = (e_max_norm, t_rec_norm, osc_norm)
+        self._decision_source = "event"
         self._reset_event_state()
 
     def _is_limit_cycle(self) -> bool:
@@ -532,18 +534,19 @@ class FuzzyEngineV2DisturbanceRejection:
     def _finalise_oscillation(self) -> None:
         """Force-finalise a limit-cycle event without waiting for SETTLING.
 
-        Computes σ across the in-event errors so OSC reads HIGH and the
-        rule base prescribes damping (Ti up).
+        A limit cycle is *not* a transient disturbance event, so feeding the
+        observed e_max/t_rec into the rule base mis-fires R1' (HIGH/SLOW/MED
+        → R) which prescribes a *more* aggressive Ti — exactly the wrong
+        direction. Instead, present the rule base with the physical truth
+        of a limit cycle: there is no transient excursion to track
+        (e_max=LOW, t_rec=FAST), only a residual oscillation that must be
+        damped (osc=HIGH). This matches rule R2 cleanly → AM (+0.4) plus
+        R5 (osc:HIGH → A, +0.15), giving an unambiguous Ti-up decision
+        of ~+0.275 per AI cycle, strong enough to escape within a handful
+        of cycles.
         """
-        e_max_norm = min(1.5, self._e_max_observed / self._e_max_full)
-        # T_REC saturates SLOW: by definition recovery never completed.
-        t_rec_norm = max(10.0, self._event_sample_count * self._dt / self._tau)
-        n = len(self._active_errors)
-        mean = sum(self._active_errors) / n
-        variance = sum((e - mean) ** 2 for e in self._active_errors) / n
-        sigma = math.sqrt(variance)
-        osc_norm = min(1.0, (2.0 * sigma) / self._OSC_FULL_SCALE)
-        self._decision_inputs = (e_max_norm, t_rec_norm, osc_norm)
+        self._decision_inputs = (0.0, 0.0, 1.0)
+        self._decision_source = "limit_cycle"
         self._reset_event_state()
 
     def _reset_event_state(self) -> None:
@@ -593,15 +596,18 @@ class FuzzyEngineV2DisturbanceRejection:
                 membership_values={},
             )
         e_max, t_rec, osc = self._decision_inputs
+        source = self._decision_source
         self._decision_inputs = None  # consume
+        self._decision_source = "event"
         delta_ti, mfs = self.infer(e_max, t_rec, osc)
         new_ti = max(limit_min, min(limit_max, ti_current * (1.0 + delta_ti)))
+        tag = "DR/limit-cycle" if source == "limit_cycle" else "DR"
         return AIDecisionV2(
             delta_ti=delta_ti,
             new_ti=new_ti,
             inputs={"E_MAX": e_max, "T_REC": t_rec, "OSC": osc},
             reasoning=(
-                f"FuzzyV2[DR]: E_max={e_max:.2f} T_rec={t_rec:.2f}τ OSC={osc:.2f} "
+                f"FuzzyV2[{tag}]: E_max={e_max:.2f} T_rec={t_rec:.2f}τ OSC={osc:.2f} "
                 f"Δ_Ti={delta_ti:+.3f} Ti: {ti_current:.4f} → {new_ti:.4f}"
             ),
             membership_values=mfs,
