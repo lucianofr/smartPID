@@ -92,6 +92,33 @@ class TestSimulatorAdapterPresets:
         assert status.tau2 == 8.0
         assert status.preset == "CUSTOM"
 
+    def test_set_parameters_preserves_pv_continuity(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        """PV must not snap to zero when parameters change while simulating.
+
+        Prevents the UX regression where the user sees PV reset on Apply
+        and concludes the parameter change had no effect.
+        """
+        adapter.register_controller(1)
+        ctrl = adapter._controllers[1]  # noqa: SLF001
+        ctrl.last_co = 50.0
+        # Drive to steady state with defaults (K=1.2, tau1=3s): PV -> 60
+        for _ in range(300):
+            adapter._tick(0.1)  # noqa: SLF001
+        pv_before = ctrl.live_pv
+        assert pv_before > 55.0  # confirm we reached near steady state
+
+        # Change process parameters (e.g., slow it way down)
+        adapter.set_parameters(1, gain=5.0, tau1=120.0, tau2=40.0, dead_time=30.0)
+        # One tick with new params: PV should stay close to previous value
+        adapter._tick(0.1)  # noqa: SLF001
+        pv_after = ctrl.live_pv
+        # Allow a small transient but no collapse to zero
+        assert abs(pv_after - pv_before) < 5.0, (
+            f"PV snapped from {pv_before:.2f} to {pv_after:.2f} on parameter change"
+        )
+
 
 class TestSimulatorAdapterDisturbances:
     def test_inject_step(self, adapter: SimulatorAdapter) -> None:
