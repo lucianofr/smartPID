@@ -663,6 +663,41 @@ class TestDisturbanceRejectionStateMachine:
             f"must stay ≥ 50% of starting value"
         )
 
+    def test_post_limit_cycle_cooldown_suppresses_reductions(self):
+        """After a limit-cycle firing, the loop is on the edge of stability.
+        Reducing Ti right after damping (even by a small amount) can tip it
+        back into oscillation. Event-path reductions must be suppressed for
+        a cooldown window after every limit-cycle firing.
+
+        Reproduces the user's scenario: Ti 2.64 → 3.37 (LC) → 4.30 (LC) →
+        4.30 (hold) → 3.87 (event reduction) → loop starts oscillating again.
+        """
+        engine = self._make()
+        ti = 2.64
+        # Two consecutive limit-cycle firings (engine stuck in oscillation)
+        import math as _math
+        for _cycle in range(2):
+            for k in range(50):
+                engine.update_sample(error_frac=0.2 * _math.sin(2 * _math.pi * k / 20))
+            d = engine.compute_adjustment(ti_current=ti, limit_min=0.1, limit_max=100.0)
+            assert "limit-cycle" in d.reasoning, f"Expected LC firing, got {d.reasoning}"
+            ti = d.new_ti
+        # Loop has stabilised. A slow-recovery event arrives immediately
+        # after (as in the user's log, 2 min after second LC firing).
+        for _s in range(150):
+            engine.update_sample(error_frac=0.10)  # big one-sided error
+        for _s in range(3):
+            engine.update_sample(error_frac=0.005)
+        for _s in range(15):
+            engine.update_sample(error_frac=0.003)  # low residual
+        assert engine.decision_ready
+        d = engine.compute_adjustment(ti_current=ti, limit_min=0.1, limit_max=100.0)
+        # Must NOT reduce Ti while still in cooldown from the recent LC firings.
+        assert d.delta_ti >= 0.0, (
+            f"Event reduction right after limit-cycle firings must be "
+            f"suppressed; got Δ_Ti={d.delta_ti}, reasoning={d.reasoning}"
+        )
+
     def test_simulated_loop_actually_damps_under_decisions(self):
         """End-to-end: feeding repeated limit-cycle decisions back into Ti
         must drive the loop toward stability over a handful of cycles.
