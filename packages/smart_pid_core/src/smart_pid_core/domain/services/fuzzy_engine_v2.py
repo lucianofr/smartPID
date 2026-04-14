@@ -390,8 +390,14 @@ MF_OSC_DR: MFSet = {
     "HIGH":   ("trap", (0.5, 0.75, _RIGHT_SAT, _RIGHT_SAT)),
 }
 
+# Asymmetric output centres: reducing Ti is high-risk (a single overshoot
+# destabilises a stable loop), increasing Ti is low-risk (only costs speed).
+# The reducing legs (RM/R) are capped so that two consecutive reductions
+# can't out-pace a single AM/A damping correction — without this the engine
+# "hunts": converges to a stable Ti, then a slow-recovery event fires R1
+# and unwinds the hard-won gain in three AI cycles.
 OUTPUT_CENTERS_DR: dict[str, float] = {
-    "RM": -0.3, "R": -0.1, "M": 0.0, "A": +0.15, "AM": +0.4,
+    "RM": -0.10, "R": -0.05, "M": 0.0, "A": +0.15, "AM": +0.40,
 }
 
 RULES_DR: list[Rule] = [
