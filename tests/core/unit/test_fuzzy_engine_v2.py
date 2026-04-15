@@ -785,6 +785,85 @@ class TestDisturbanceRejectionStateMachine:
             f"Sustained oscillation must damp; got Δ_Ti={d.delta_ti}"
         )
 
+    def test_inter_event_overshoot_is_detected(self):
+        """Regression from user log at Ti=8.9041: big disturbance event
+        finalises normally (state → IDLE), then a short time later a
+        second, opposite-sign event fires (the overshoot of the first).
+        Neither event alone triggers the in-event overshoot detector
+        (they both have 0 sign changes within their own ACTIVE phase).
+        Engine must detect the pattern across events.
+        """
+        engine = self._make()
+        # --- Event 1: big positive disturbance, clean recovery ---
+        for _ in range(80):
+            engine.update_sample(error_frac=0.20)
+        # exit dwell
+        for _ in range(3):
+            engine.update_sample(error_frac=0.005)
+        # post-event window: mostly quiet (no overshoot inside this window)
+        for _ in range(15):
+            engine.update_sample(error_frac=0.003)
+        # SETTLING completed → state IDLE, decision_inputs from _finalise_event
+        # Consume decision (would be Δ=0 via rule R1 → M) to clear the slot.
+        assert engine.decision_ready
+        d1 = engine.compute_adjustment(
+            ti_current=8.90, limit_min=0.1, limit_max=100.0,
+        )
+
+        # --- 20 quiet samples elapse (overshoot starts building) ---
+        for _ in range(20):
+            engine.update_sample(error_frac=0.01)  # in-band, quiet
+
+        # --- Event 2: overshoot surfaces as a new event of OPPOSITE sign ---
+        for _ in range(30):
+            engine.update_sample(error_frac=-0.05)  # PV above SP, error negative
+        for _ in range(3):
+            engine.update_sample(error_frac=-0.005)
+        for _ in range(15):
+            engine.update_sample(error_frac=-0.003)
+
+        assert engine.decision_ready
+        d2 = engine.compute_adjustment(
+            ti_current=8.90, limit_min=0.1, limit_max=100.0,
+        )
+        assert d2.delta_ti > 0.0, (
+            f"Second event of opposite sign IS the overshoot of the first — "
+            f"must damp (Ti up); got Δ_Ti={d2.delta_ti}, "
+            f"reasoning={d2.reasoning}"
+        )
+
+    def test_consecutive_same_sign_events_do_not_trigger_overshoot(self):
+        """Two successive disturbances on the SAME side of SP (e.g. two
+        load drops in a row) are not overshoot. Must go through the
+        normal path.
+        """
+        engine = self._make()
+        for _ in range(80):
+            engine.update_sample(error_frac=0.20)
+        for _ in range(3):
+            engine.update_sample(error_frac=0.005)
+        for _ in range(15):
+            engine.update_sample(error_frac=0.003)
+        engine.compute_adjustment(ti_current=8.90, limit_min=0.1, limit_max=100.0)
+
+        for _ in range(20):
+            engine.update_sample(error_frac=0.01)
+
+        # Another positive-side disturbance
+        for _ in range(30):
+            engine.update_sample(error_frac=0.20)
+        for _ in range(3):
+            engine.update_sample(error_frac=0.005)
+        for _ in range(15):
+            engine.update_sample(error_frac=0.003)
+
+        d = engine.compute_adjustment(ti_current=8.90, limit_min=0.1, limit_max=100.0)
+        # Same-sign events: must not trigger overshoot damping.
+        assert "overshoot" not in d.reasoning, (
+            f"Same-sign consecutive events wrongly flagged as overshoot: "
+            f"reasoning={d.reasoning}"
+        )
+
     def test_event_with_overshoot_damps_not_holds(self):
         """Regression: the user's chart shows PV dropping to 30 then
         recovering past SP to 55 (overshoot), then settling to 50. Classic
