@@ -1,6 +1,44 @@
 # Estado atual — 2026-04-14
 
-## Tarefa concluída e mergeada: fix/fuzzy-dr-inter-event-overshoot (b873aa9)
+## Tarefa concluída e mergeada: fix/fuzzy-dr-overshoot-in-settling (a611cdb)
+
+### Problema relatado
+Gráfico mostrava PV claramente cruzando SP na recuperação (overshoot
+abaixo do SP após distúrbio positivo), mas Ti permanecia em 8.9 —
+o motor não detectava o overshoot.
+
+### Causa raiz
+Três detectores existentes falharam neste padrão específico:
+1. `_active_zero_crossings` só conta durante ACTIVE. Se a recuperação
+   permanece no lado original do SP durante os 3 samples do dwell de
+   saída, SETTLING começa com zc=0.
+2. σ de 15 samples pós-evento dilui um pico breve de overshoot — um
+   pico de 8% span em 15 samples dá 2σ/0.5 ≈ 0.12, abaixo do MED
+   threshold de 0.3.
+3. Regra R1 (HIGH/SLOW/STABLE → M) segura Ti neste regime.
+
+### Correção
+Novo check em `_finalise_event`: olhar direto para o PICO em
+`_post_errors` de sinal OPOSTO ao sinal inicial da excursão. Se
+`peak_opposite >= _EVENT_TRIGGER` (2% span), PV cruzou SP na
+recuperação → `_finalise_oscillation` (Ti up +0.275, tag
+`[DR/limit-cycle]`).
+
+### Matriz de casos
+| Cenário                                | Comportamento     |
+|----------------------------------------|-------------------|
+| Overshoot dentro de ACTIVE             | damp ✓ (existente)|
+| **Overshoot dentro de SETTLING**       | **damp ✓ (novo)** |
+| Recuperação limpa (sem cruzamento)     | hold ✓            |
+| Overshoot inter-evento (novo evento)   | damp ✓ (existente)|
+
+### Verificação
+- 89/89 tests pass. Ruff clean.
+- Replay dos 3 casos: A, B, C produzem comportamento esperado.
+
+---
+
+## Histórico anterior: fix/fuzzy-dr-inter-event-overshoot (b873aa9)
 
 ### Problema relatado
 Ti estabilizou em 8.9, mas cada distúrbio ainda mostrava overshoot no
