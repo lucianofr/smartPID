@@ -463,6 +463,11 @@ class FuzzyEngineV2DisturbanceRejection:
     # after every limit-cycle firing. N=5 is generous: at 3·TSS cadence it
     # covers ~15·TSS of observation before allowing any retreat.
     _LIMIT_CYCLE_COOLDOWN_CYCLES = 5
+    # Inter-event overshoot detection: when an event finalises, remember the
+    # initial sign of its excursion. If a *new* event starts within this many
+    # τ with error of the OPPOSITE sign, the second event IS the overshoot
+    # of the first (PV crossed SP during recovery). Damping is prescribed.
+    _OVERSHOOT_GAP_TAU = 5.0
 
     def __init__(
         self,
@@ -490,22 +495,64 @@ class FuzzyEngineV2DisturbanceRejection:
         self._active_errors: list[float] = []
         self._active_zero_crossings: int = 0
         self._active_last_sign: int = 0
+        # Inter-event overshoot tracking.
+        self._active_initial_sign: int = 0   # sign at IDLE → ACTIVE transition
+        self._last_event_sign: int = 0       # sign of the previous event's excursion
+        self._samples_since_last_event: int = 0  # IDLE samples elapsed since then
+        # Source of the last finalised event. The overshoot detector only
+        # fires after a normal "event" finalisation, never after a
+        # "limit_cycle" or "overshoot" firing — otherwise a sustained
+        # sinusoidal oscillation's alternating half-cycles trigger spurious
+        # overshoot decisions.
+        self._last_event_source: str = ""
+        # Persistent flag: the update_sample code detects an overshoot pattern
+        # *between* events and sets this. It must survive subsequent event
+        # finalisations (which would otherwise overwrite _decision_inputs) and
+        # is cleared only when compute_adjustment consumes it.
+        self._overshoot_pending: bool = False
+        # Marks that the CURRENT in-flight event was itself flagged as the
+        # overshoot of the previous one. Its finalisation must NOT stamp
+        # _last_event_source / _last_event_sign, otherwise a subsequent
+        # legitimate disturbance of opposite sign would be wrongly classified
+        # as "overshoot of the overshoot".
+        self._current_event_is_overshoot: bool = False
 
     # ---- state transitions ----------------------------------------------
 
     def update_sample(self, error_frac: float) -> None:
         abs_e = abs(error_frac)
         if self._state == "IDLE":
+            self._samples_since_last_event += 1
             if abs_e > self._EVENT_TRIGGER:
+                initial_sign = 1 if error_frac > 0 else (
+                    -1 if error_frac < 0 else 0
+                )
+                # Inter-event overshoot: if the previous event finalised
+                # recently as a NORMAL event (not a limit-cycle or overshoot
+                # firing) AND this one starts on the opposite side of SP,
+                # the second event IS the first's overshoot. Flag it; the
+                # next compute_adjustment will emit damping regardless of
+                # whether this new event finalises first.
+                if (
+                    self._last_event_source == "event"
+                    and self._last_event_sign != 0
+                    and initial_sign != 0
+                    and initial_sign != self._last_event_sign
+                    and self._samples_since_last_event
+                    < int(self._OVERSHOOT_GAP_TAU * self._tau / self._dt)
+                ):
+                    self._overshoot_pending = True
+                    self._current_event_is_overshoot = True
+                    self._last_event_sign = 0
+                    self._last_event_source = ""
                 self._state = "ACTIVE"
                 self._e_max_observed = abs_e
                 self._event_sample_count = 1
                 self._in_band_samples = 0
                 self._active_errors = [error_frac]
                 self._active_zero_crossings = 0
-                self._active_last_sign = 1 if error_frac > 0 else (
-                    -1 if error_frac < 0 else 0
-                )
+                self._active_last_sign = initial_sign
+                self._active_initial_sign = initial_sign
             return
 
         if self._state == "ACTIVE":
@@ -585,6 +632,7 @@ class FuzzyEngineV2DisturbanceRejection:
             return
         self._decision_inputs = (e_max_norm, t_rec_norm, osc_norm)
         self._decision_source = "event"
+        self._stamp_last_event("event")
         self._reset_event_state()
 
     def _is_limit_cycle(self) -> bool:
@@ -613,10 +661,38 @@ class FuzzyEngineV2DisturbanceRejection:
         """
         self._decision_inputs = (0.0, 0.0, 1.0)
         self._decision_source = "limit_cycle"
+        self._stamp_last_event("limit_cycle")
         self._reset_event_state()
 
+    def _stamp_last_event(self, source: str) -> None:
+        """Record the initial sign/source of the just-finalised event for
+        the next IDLE→ACTIVE transition's overshoot comparison.
+
+        If the current event was itself detected as an overshoot, do NOT
+        stamp anything — the next event should be evaluated against the
+        ORIGINAL disturbance, not against this overshoot. Stamping here
+        would make a subsequent fresh disturbance look like "overshoot of
+        the overshoot", a spurious double-fire.
+        """
+        if self._current_event_is_overshoot:
+            self._last_event_sign = 0
+            self._last_event_source = ""
+            self._samples_since_last_event = 0
+            self._current_event_is_overshoot = False
+            return
+        if self._active_initial_sign != 0:
+            self._last_event_sign = self._active_initial_sign
+            self._last_event_source = source
+            self._samples_since_last_event = 0
+
     def _reset_event_state(self) -> None:
-        """Reset all per-event tracking back to IDLE."""
+        """Reset per-event tracking back to IDLE.
+
+        The inter-event tracker (`_last_event_sign` / `_last_event_source`
+        / `_samples_since_last_event`) is NOT touched here — it was
+        stamped by the finaliser via `_stamp_last_event()` so the next
+        IDLE→ACTIVE transition can evaluate overshoot.
+        """
         self._state = "IDLE"
         self._e_max_observed = 0.0
         self._event_sample_count = 0
@@ -625,6 +701,7 @@ class FuzzyEngineV2DisturbanceRejection:
         self._active_errors = []
         self._active_zero_crossings = 0
         self._active_last_sign = 0
+        self._active_initial_sign = 0
 
     @property
     def state(self) -> str:
@@ -731,6 +808,14 @@ class FuzzyEngineV2DisturbanceRejection:
     def compute_adjustment(
         self, ti_current: float, limit_min: float, limit_max: float,
     ) -> AIDecisionV2:
+        # Overshoot pending flag wins over any other pending decision.
+        # When update_sample saw an opposite-sign event immediately after
+        # a previous one, the second event IS the first's overshoot. That
+        # signal must not be drowned by the new event's own finalisation.
+        if self._overshoot_pending:
+            self._overshoot_pending = False
+            self._decision_inputs = (0.0, 0.0, 1.0)
+            self._decision_source = "overshoot"
         # Eager limit-cycle check at query time. Waiting for the time-based
         # threshold in update_sample (3τ at default τ=10 s) means most AI
         # cycles return "holding" even while the loop is clearly oscillating
@@ -762,9 +847,10 @@ class FuzzyEngineV2DisturbanceRejection:
         # Post-damping cooldown: right after a limit-cycle firing the loop
         # sits on the edge of stability. Suppress event-path reductions until
         # we've seen several AI cycles without any fresh oscillation. A
-        # limit-cycle firing re-arms the cooldown; any other cycle drains it.
+        # limit-cycle or overshoot firing re-arms the cooldown; any other
+        # cycle drains it.
         suppressed = False
-        if source == "limit_cycle":
+        if source in ("limit_cycle", "overshoot"):
             self._cooldown_remaining = self._LIMIT_CYCLE_COOLDOWN_CYCLES
         else:
             if delta_ti < 0.0 and self._cooldown_remaining > 0:
@@ -775,6 +861,8 @@ class FuzzyEngineV2DisturbanceRejection:
         new_ti = max(limit_min, min(limit_max, ti_current * (1.0 + delta_ti)))
         if source == "limit_cycle":
             tag = "DR/limit-cycle"
+        elif source == "overshoot":
+            tag = "DR/overshoot"
         elif suppressed:
             tag = f"DR/cooldown={self._cooldown_remaining}"
         else:
