@@ -864,6 +864,37 @@ class TestDisturbanceRejectionStateMachine:
             f"reasoning={d.reasoning}"
         )
 
+    def test_overshoot_in_settling_window_damps(self):
+        """Regression from the user chart: the disturbance drives error
+        negative, recovery stays on the negative side until it reaches
+        the deadband, SETTLING starts, and THEN the overshoot surfaces
+        (error crosses SP) during the post-event window. The old
+        `_active_zero_crossings` check (ACTIVE only) misses it, and the
+        15-sample σ metric reads only ~0.12 which is below the MED
+        threshold. Engine must still damp.
+        """
+        engine = self._make()
+        # Disturbance: error stays on the negative side
+        for _ in range(15):
+            engine.update_sample(error_frac=-0.15)
+        for e in [-0.10, -0.07, -0.04, -0.02, -0.01]:
+            engine.update_sample(error_frac=e)
+        # 3 in-band dwell samples — still on negative side
+        for _ in range(3):
+            engine.update_sample(error_frac=-0.005)
+        # SETTLING: overshoot surfaces HERE, crossing SP to positive side
+        for e in [0.01, 0.03, 0.06, 0.08, 0.07, 0.05, 0.03, 0.01, 0.0,
+                  -0.01, -0.005, 0.0, 0.0, 0.0, 0.0]:
+            engine.update_sample(error_frac=e)
+        assert engine.decision_ready
+        d = engine.compute_adjustment(
+            ti_current=8.9, limit_min=0.1, limit_max=100.0,
+        )
+        assert d.delta_ti > 0.0, (
+            f"Overshoot surfacing in SETTLING window must damp Ti; got "
+            f"Δ_Ti={d.delta_ti}, reasoning={d.reasoning}"
+        )
+
     def test_event_with_overshoot_damps_not_holds(self):
         """Regression: the user's chart shows PV dropping to 30 then
         recovering past SP to 55 (overshoot), then settling to 50. Classic

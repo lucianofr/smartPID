@@ -614,6 +614,22 @@ class FuzzyEngineV2DisturbanceRejection:
         if self._active_zero_crossings >= self._EVENT_OVERSHOOT_MIN_CROSSINGS:
             self._finalise_oscillation()
             return
+        # ALSO check for overshoot that surfaces DURING the SETTLING
+        # window: recovery dwelled on the original side long enough to
+        # trigger SETTLING, then PV crossed SP. This shows up as a
+        # post-event sample of opposite sign to the initial excursion
+        # with magnitude above the event trigger. The σ metric above
+        # can miss a brief overshoot on a mostly-quiet window, so we
+        # look at the peak opposite-sign magnitude directly.
+        if self._active_initial_sign != 0 and self._post_errors:
+            peak_opposite = max(
+                (abs(e) for e in self._post_errors
+                 if e * self._active_initial_sign < 0),
+                default=0.0,
+            )
+            if peak_opposite >= self._EVENT_TRIGGER:
+                self._finalise_oscillation()
+                return
         t_rec_sec = self._event_sample_count * self._dt
         t_rec_norm = t_rec_sec / self._tau
         e_max_norm = min(1.5, self._e_max_observed / self._e_max_full)
