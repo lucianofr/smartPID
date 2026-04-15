@@ -1,6 +1,62 @@
 # Estado atual — 2026-04-14
 
-## Tarefa concluída e mergeada: fix/fuzzy-dr-overshoot-triggers-damp (99ccfbb)
+## Tarefa concluída e mergeada: fix/fuzzy-dr-inter-event-overshoot (b873aa9)
+
+### Problema relatado
+Ti estabilizou em 8.9, mas cada distúrbio ainda mostrava overshoot no
+gráfico. O usuário pediu Ti ~20-25s e perguntou: "crie uma estratégia
+para medir o overshoot e corrigir o Ti".
+
+### Causa raiz
+O detector de overshoot existente (`_active_zero_crossings >= 1` em
+`_finalise_event`) só dispara se o erro cruzar zero DENTRO de um único
+evento (durante ACTIVE ou SETTLING). No processo do usuário o overshoot
+surge DEPOIS do evento original ter finalizado (state → IDLE): o
+recovery parece limpo, então um NOVO evento, de sinal oposto, dispara
+como sendo o próprio overshoot.
+
+O log mostrava o padrão alternado: `big pos / small neg / big pos /
+small neg / big pos...` — os eventos "small neg" eram na verdade os
+overshoots dos "big pos".
+
+### Correção — inter-event overshoot tracker
+Nova lógica em `FuzzyEngineV2DisturbanceRejection`:
+1. Em cada finalização (normal ou limit-cycle), `_stamp_last_event()`
+   registra o sinal inicial (`_last_event_sign`) e a fonte
+   (`_last_event_source = "event" | "limit_cycle" | "overshoot"`).
+2. Em cada transição IDLE → ACTIVE, compara o sinal do novo evento com
+   `_last_event_sign`. Se:
+   - `_last_event_source == "event"` (não "limit_cycle")
+   - sinais opostos
+   - gap `< 5τ`
+
+   então flag `_overshoot_pending = True` e marca o evento atual
+   (`_current_event_is_overshoot`) para não propagar seu sinal adiante.
+3. `compute_adjustment` consome `_overshoot_pending` PRIMEIRO (antes do
+   event-path habitual), emitindo Δ_Ti=+0.275 com tag `[DR/overshoot]`.
+4. O guard `_current_event_is_overshoot` impede "overshoot do overshoot"
+   em sequências `big + small + big + small + big + small`.
+
+### Replay do cenário do usuário (Ti=8.9041)
+```
+big pos disturbance:   Δ=0.0000   Ti=8.9041  [DR]
+small neg overshoot:   Δ=+0.2750  Ti=11.3527 [DR/overshoot]
+big pos disturbance:   Δ=0.0000   Ti=11.3527 [DR]
+small neg overshoot:   Δ=+0.2750  Ti=14.4747 [DR/overshoot]
+big pos disturbance:   Δ=0.0000   Ti=14.4747 [DR]
+(próximos ciclos:      Ti → 18.45 → 23.55 → ~30)
+```
+
+Após 3 overshoots detectados, Ti cresce de 8.9 para ~23.5, no alvo
+do usuário (20-25).
+
+### Verificação
+- 88/88 tests pass. Ruff clean.
+- Cooldown já existente é rearmado por overshoot também (previne hunting).
+
+---
+
+## Histórico anterior: fix/fuzzy-dr-overshoot-triggers-damp (99ccfbb)
 
 ### Problema relatado
 Com Ti estabilizado em ~11.35, cada recuperação de distúrbio mostrava
