@@ -125,7 +125,7 @@ Re-running the installer over an existing install:
 | Path                              | Contents                                                                |
 |-----------------------------------|-------------------------------------------------------------------------|
 | `C:\Program Files\SmartPID\HMI\`  | PyInstaller onedir output (PySide6 + Qt plugins)                        |
-| `%APPDATA%\SmartPID\hmi.env`      | Per-user config (backend host/ports). User-writable, no UAC needed.     |
+| `%APPDATA%\SmartPID\hmi.env`      | Per-user config (backend host/URL). User-writable, no UAC needed.       |
 | `%APPDATA%\SmartPID\logs\hmi.log` | Client logs                                                             |
 
 ### 5.2 Installer flow (UAC-elevated, one custom page)
@@ -134,17 +134,17 @@ Re-running the installer over an existing install:
 2. **Custom page "Backend connection"** (one Inno Setup custom page):
    - `Backend host` text field, placeholder `localhost`. Blank = `localhost`. Accepts hostname or IP.
    - `API port` numeric, default `8000`.
-   - `Telemetry port (ZMQ)` numeric, default `5555`.
+   - `Telemetry port (ZMQ)` numeric, default `5555` (the installer composes the full ZMQ URL `tcp://<host>:<port>` and writes it as `SPID_HMI_ZMQ_URL`).
 3. Destination directory page (default `C:\Program Files\SmartPID\HMI\`).
 4. Optional desktop shortcut checkbox (default unchecked; Start Menu shortcut is always created).
 5. File copy.
-6. Write `%APPDATA%\SmartPID\hmi.env` **only if it does not already exist** — preserves customizations on upgrade. Contents:
+6. Write `%APPDATA%\SmartPID\hmi.env` **only if it does not already exist** — preserves customizations on upgrade. Contents match the env var names already defined in `packages/smart_pid_hmi/src/smart_pid_hmi/config.py`:
    ```
-   SPID_HMI_BACKEND_HOST=<value or "localhost">
-   SPID_HMI_BACKEND_PORT=<value or 8000>
-   SPID_HMI_ZMQ_PORT=<value or 5555>
+   SPID_HMI_SERVER_HOST=<value or "localhost">
+   SPID_HMI_SERVER_PORT=<value or 8000>
+   SPID_HMI_ZMQ_URL=tcp://<host>:<zmq port>   # default tcp://localhost:5555
    ```
-   The HMI client reads these via pydantic-settings (prefix `SPID_HMI_`). If `hmi.env` is absent the client falls back to built-in defaults.
+   The HMI client reads these via pydantic-settings (prefix `SPID_HMI_`). The config module must be taught to look at `%APPDATA%\SmartPID\hmi.env` in addition to the packaged `hmi.env`, with the user-level file taking precedence (see task plan).
 7. Create Start Menu shortcut `Smart PID HMI` → `smart-pid-hmi.exe`. Create desktop shortcut if requested.
 
 ### 5.3 Uninstall flow
