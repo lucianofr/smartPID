@@ -1,4 +1,4 @@
-; Smart PID HMI — Windows desktop installer
+; Smart PID HMI - Windows desktop installer
 ; Produces: SmartPID-HMI-Setup-{AppVersion}.exe
 
 #ifndef AppVersion
@@ -107,7 +107,7 @@ begin
   if ZmqPort = '' then ZmqPort := '5555';
 
   Content :=
-    '# Smart PID HMI — user settings written by the installer.' + #13#10 +
+    '# Smart PID HMI - user settings written by the installer.' + #13#10 +
     '# Edit any line to override; restart the HMI after changes.' + #13#10 +
     'SPID_HMI_SERVER_HOST=' + Host + #13#10 +
     'SPID_HMI_SERVER_PORT=' + ApiPort + #13#10 +

@@ -1,4 +1,4 @@
-; Smart PID Backend — Windows service installer
+; Smart PID Backend - Windows service installer
 ; Produces: SmartPID-Backend-Setup-{AppVersion}.exe
 
 #ifndef AppVersion
@@ -125,7 +125,7 @@ begin
     'Remove data?',
     'Smart PID stores projects and user accounts under ProgramData\SmartPID.',
     'By default this data is preserved so you can reinstall without losing anything. ' +
-    'Tick the box below only if you really want to delete it — this cannot be undone.',
+    'Tick the box below only if you really want to delete it - this cannot be undone.',
     False, False);
   PurgeDataPage.Add('Also remove data and configuration (not reversible)');
   PurgeDataPage.Values[0] := False;
