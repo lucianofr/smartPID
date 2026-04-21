@@ -57,20 +57,10 @@ SPID_HMI_REFRESH_MS=33
 
 
 def ensure_config_file() -> Path:
-    """Create the packaged default config file if it does not exist yet.
-
-    Reads ``CONFIG_FILE`` from the module namespace at call time so tests can
-    monkeypatch it to a temp path. In production ``CONFIG_FILE`` points at
-    ``PACKAGE_CONFIG_FILE`` (the hmi.env shipped with the package).
-    """
-    # Re-resolve through the module so monkeypatched CONFIG_FILE is honoured.
-    import sys as _sys
-
-    target: Path = _sys.modules[__name__].CONFIG_FILE
-    if not target.exists():
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(_DEFAULT_CONFIG_CONTENT)
-    return target
+    """Create the packaged default config file if it does not exist yet."""
+    if not PACKAGE_CONFIG_FILE.exists():
+        PACKAGE_CONFIG_FILE.write_text(_DEFAULT_CONFIG_CONTENT)
+    return PACKAGE_CONFIG_FILE
 
 
 class HMISettings(BaseSettings):

@@ -1,5 +1,5 @@
 """Tests for HMI configuration."""
-from smart_pid_hmi.config import HMISettings, ensure_config_file
+from smart_pid_hmi.config import HMISettings
 
 
 def test_default_settings():
@@ -32,11 +32,15 @@ def test_ensure_config_file_creates_file(tmp_path, monkeypatch):
     import smart_pid_hmi.config as cfg
 
     fake_dir = tmp_path / "smart-pid"
+    fake_dir.mkdir()
     fake_file = fake_dir / "hmi.env"
     monkeypatch.setattr(cfg, "APP_DIR", fake_dir)
-    monkeypatch.setattr(cfg, "CONFIG_FILE", fake_file)
+    monkeypatch.setattr(cfg, "PACKAGE_CONFIG_FILE", fake_file)
 
-    result = ensure_config_file()
+    # Call via the module to honour monkeypatch even if another test
+    # reloaded smart_pid_hmi.config (module-level import bindings would
+    # otherwise reference the pre-reload function's __globals__).
+    result = cfg.ensure_config_file()
     assert result == fake_file
     assert fake_file.exists()
     content = fake_file.read_text()
@@ -53,7 +57,7 @@ def test_ensure_config_file_does_not_overwrite(tmp_path, monkeypatch):
     fake_file = fake_dir / "hmi.env"
     fake_file.write_text("SPID_HMI_SERVER_HOST=myserver\n")
     monkeypatch.setattr(cfg, "APP_DIR", fake_dir)
-    monkeypatch.setattr(cfg, "CONFIG_FILE", fake_file)
+    monkeypatch.setattr(cfg, "PACKAGE_CONFIG_FILE", fake_file)
 
-    ensure_config_file()
+    cfg.ensure_config_file()
     assert fake_file.read_text() == "SPID_HMI_SERVER_HOST=myserver\n"
