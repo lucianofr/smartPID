@@ -92,7 +92,7 @@ end;
 
 procedure WriteEnvFileIfMissing();
 var
-  Target, Template, Content: String;
+  Target, Template, Content, Line: String;
   Lines: TArrayOfString;
   i: Integer;
   Secret: String;
@@ -107,8 +107,13 @@ begin
 
   Secret := GenerateRandomJwtSecret();
   Content := '';
-  for i := 0 to GetArrayLength(Lines) - 1 do
-    Content := Content + StringChange(Lines[i], '{JWT_SECRET}', Secret) + #13#10;
+  for i := 0 to GetArrayLength(Lines) - 1 do begin
+    Line := Lines[i];
+    // StringChange is an Inno Setup PROCEDURE that edits Line in place
+    // and returns an Integer count; it cannot be used as a String value.
+    StringChange(Line, '{JWT_SECRET}', Secret);
+    Content := Content + Line + #13#10;
+  end;
 
   if not SaveStringToFile(Target, Content, False) then
     RaiseException('Failed to write ' + Target);
