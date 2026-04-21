@@ -23,6 +23,7 @@ dev = [
     "pytest-qt>=4.4",
     "mypy>=1.10",
     "ruff>=0.4",
+    "pyinstaller>=6.7",
 ]
 
 [project.scripts]

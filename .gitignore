@@ -31,3 +31,6 @@ Thumbs.db
 htmlcov/
 .coverage
 .worktrees/
+
+# Windows installers
+/dist/windows/
