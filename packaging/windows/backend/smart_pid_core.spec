@@ -25,6 +25,12 @@ hiddenimports = (
         # asyncua uses aiosqlite-style late imports
         "asyncua",
         "aiosqlite",
+        # FastAPI imports multipart only when a route uses File/Form/UploadFile
+        # (see ensure_multipart_is_installed); PyInstaller needs both names
+        # because older python-multipart ships as "multipart" and newer
+        # versions ship as "python_multipart".
+        "multipart",
+        "python_multipart",
     ]
 )
 
