@@ -120,6 +120,8 @@ CREATE TABLE IF NOT EXISTS Controladores (
     tempo_morto_l       REAL    NOT NULL DEFAULT 1.0,
     ai_limit_min        REAL    NOT NULL DEFAULT 0.1,
     ai_limit_max        REAL    NOT NULL DEFAULT 100.0,
+    -- ENABLE_OPTIMIZER: master enable for the online tuning optimizer
+    optimization_enabled INTEGER NOT NULL DEFAULT 1,
     -- Timestamps
     criado_em           TEXT    NOT NULL DEFAULT (datetime('now')),
     atualizado_em       TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -287,12 +289,13 @@ class SQLiteRepository:
                     f"ALTER TABLE Configuracao_Simulador ADD COLUMN {col_name} {col_def}",
                 )
 
-        # AIConfig RL-specific columns
+        # AIConfig RL-specific columns + ENABLE_OPTIMIZER master flag
         ai_new_columns = [
             ("rl_fallback_kp", "REAL NOT NULL DEFAULT 0.6"),
             ("rl_fallback_kd", "REAL NOT NULL DEFAULT 0.2"),
             ("rl_learning_rate", "REAL NOT NULL DEFAULT 0.0003"),
             ("rl_train_interval", "INTEGER NOT NULL DEFAULT 32"),
+            ("optimization_enabled", "INTEGER NOT NULL DEFAULT 1"),
         ]
         for col_name, col_def in ai_new_columns:
             with contextlib.suppress(Exception):
@@ -498,6 +501,7 @@ class SQLiteRepository:
             "rl_fallback_kd": c.ai_config.rl_fallback_kd,
             "rl_learning_rate": c.ai_config.rl_learning_rate,
             "rl_train_interval": c.ai_config.rl_train_interval,
+            "optimization_enabled": int(c.optimization_enabled),
         }
 
     def _row_to_controller(self, row: aiosqlite.Row) -> Controller:
@@ -617,6 +621,7 @@ class SQLiteRepository:
                 rl_learning_rate=row["rl_learning_rate"],
                 rl_train_interval=row["rl_train_interval"],
             ),
+            optimization_enabled=bool(row["optimization_enabled"]),
         )
 
     # ------------------------------------------------------------------

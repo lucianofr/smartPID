@@ -1,9 +1,11 @@
-"""Command router — setpoint, mode, and output changes."""
+"""Command router — setpoint, mode, output, and optimizer changes."""
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Annotated
 
+import msgpack  # type: ignore[import-untyped]
 from fastapi import APIRouter, Depends, HTTPException
 from starlette.requests import Request
 
@@ -11,13 +13,17 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
     audit_and_broadcast,
     controller_label,
     get_audit_repo,
+    get_event_bus,
     get_execution_mode,
     get_loop_manager,
+    get_repo,
     get_system_event_worker,
     require_operator,
     require_supervisor,
 )
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
+from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository  # noqa: TC001
+from smart_pid_core.application.event_bus import EventBus  # noqa: TC001
 from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.application.workers.system_event_worker import (  # noqa: TC001
     SystemEventWorker,
@@ -27,6 +33,7 @@ from smart_pid_domain.dtos.auth import UserClaims
 from smart_pid_domain.dtos.commands import (
     CommandResponse,
     ModeCommand,
+    OptimizationCommand,
     OutputCommand,
     SetpointCommand,
 )
@@ -137,6 +144,77 @@ async def set_output(
         ok=True,
         controller_id=body.controller_id,
         detail=f"Output set to {body.value}",
+    )
+
+
+@router.post("/optimization", response_model=CommandResponse)
+async def set_optimization(
+    body: OptimizationCommand,
+    request: Request,
+    user: Annotated[UserClaims, Depends(require_operator)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
+    lm: Annotated[LoopManager, Depends(get_loop_manager)],
+    bus: Annotated[EventBus, Depends(get_event_bus)],
+    audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+    sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
+) -> CommandResponse:
+    """Enable/disable the online tuning optimizer (ENABLE_OPTIMIZER) for a loop.
+
+    Persists the per-loop flag and notifies the running AI worker so the change
+    takes effect immediately. When disabled, SmartPID keeps monitoring and
+    publishing telemetry/stats but does NOT compute or write tuning back.
+    """
+    try:
+        controller = await repo.get(body.controller_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Controller {body.controller_id} not found",
+        ) from exc
+
+    # Persist the new state.
+    updated = replace(controller, optimization_enabled=body.enabled)
+    await repo.save(updated)
+
+    # Keep the in-memory loop context in sync (best-effort: a loop may not be
+    # registered yet, e.g. before the daemon started it).
+    ctx = lm.get_context(body.controller_id)
+    if ctx is not None:
+        ctx.controller = replace(ctx.controller, optimization_enabled=body.enabled)
+        if ctx.ai_worker is not None:
+            ctx.ai_worker.set_enabled(body.enabled)
+
+    # Notify the live AI worker via the existing command channel so it reacts
+    # without a restart.
+    pub = bus.create_publisher()
+    try:
+        cmd = {
+            "controller_id": body.controller_id,
+            "action": "start" if body.enabled else "stop",
+        }
+        pub.send(
+            f"CMD.AI.{body.controller_id}".encode(),
+            msgpack.packb(cmd),
+        )
+    finally:
+        pub.close()
+
+    state = "enabled" if body.enabled else "disabled"
+    await audit_and_broadcast(
+        audit_repo, sew,
+        user.user_id, user.username, AuditAction.CONFIG_AI,
+        f"controller:{body.controller_id}",
+        json.dumps({"optimization_enabled": body.enabled}),
+        message=(
+            f"{user.username} {state} optimizer on controller "
+            f"{controller_label(request, body.controller_id)}"
+        ),
+    )
+    return CommandResponse(
+        ok=True,
+        controller_id=body.controller_id,
+        enabled=body.enabled,
+        detail=f"Optimization {state}",
     )
 
 
