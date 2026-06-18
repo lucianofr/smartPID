@@ -2,6 +2,7 @@
 
 **Data:** 2026-06-18 · **Status:** Proposto
 **Parte de:** [guarda-chuva](2026-06-18-web-hmi-react-migration-design.md). Arquitetura, ponte WS, contrato JSON e stack: ver §2–3 do guarda-chuva.
+**Autoridade de UI/design:** [design-system](2026-06-18-web-frontend-design-system-design.md).
 
 ## Escopo
 Tendência multi-sinal/multi-loop ao vivo, estatísticas de performance por loop e exportação.
@@ -16,11 +17,15 @@ Nenhuma mudança — reusa `routers/stats`, `routers/history`, `routers/export`.
 - Export: geração + download do arquivo.
 
 ## REST/WS usados
-- REST: `routers/stats` (`GET /{controller_id}/stats`, `GET /stats`); `routers/history` (`GET /history`); `routers/export` (`GET /list`, `GET /{export_id}`, `GET /{export_id}/download`, criação de export).
-- WS: `telemetry` (alimenta o multi-trend ao vivo).
+- REST `routers/stats`: `GET /controllers/stats`, `GET /controllers/{controller_id}/stats`.
+- REST `routers/history`: `GET /history/{controller_id}` (path param **OBRIGATÓRIO**).
+- REST `routers/export`: usar rotas existentes `GET /export/{export_id}`, `GET /export/{export_id}/download` (+ criação de export). **GAP:** NÃO há `GET /export/list` (sem endpoint de listagem) → confirmar/criar mecanismo de listagem antes de expor histórico de exports.
+- WS: `status` (alimenta o multi-trend ao vivo).
 
 ## Aceitação
-- Multi-trend plota múltiplos sinais ao vivo sem travar (~60 fps).
+- Multi-trend plota múltiplos sinais ao vivo respeitando **frame-budget** (≤ 16 ms/frame),
+  **cap de janela** (N pontos/segundos configurável) e **decimação** quando excede o cap —
+  sem travar a UI.
 - Stats por loop exibidos e coerentes com o backend.
 - History consultável; export baixa arquivo válido.
 

@@ -2,6 +2,7 @@
 
 **Data:** 2026-06-18 · **Status:** Proposto
 **Parte de:** [guarda-chuva](2026-06-18-web-hmi-react-migration-design.md). Arquitetura, ponte WS, contrato JSON e stack: ver §2–3 do guarda-chuva.
+**Autoridade de UI/design:** [design-system](2026-06-18-web-frontend-design-system-design.md) — fonte de tokens, componentes e temas desta fatia.
 
 ## Escopo
 Paridade visual: temas de identidade e widget faceplate. Fecha a paridade total; após esta fatia a PySide6 pode ser aposentada.
@@ -20,8 +21,8 @@ Nenhuma mudança.
 
 ## Aceitação
 - Troca de tema aplica tokens em toda a app; persiste entre sessões.
-- Faceplate com paridade visual/funcional vs PySide6.
-- ISA-101 atende padrão industrial (contraste/semântica de cor).
+- Faceplate funcional: PV/SP/CO, modo, barra analógica e ações conferem com o quadro `status`/comandos; **AnalogBar instrumentado** (valor/escala/alarme refletem os dados, assert mensurável).
+- Cada tema atende **contraste WCAG** (AA ≥ 4.5:1 texto normal) e **semântica de cor ISA-101** (cor reservada a estados anormais/alarmes), verificados por checagem objetiva — não "paridade visual" subjetiva.
 
 ## Páginas PySide6 (paridade)
 `themes/*`, `faceplate`, `analog_bar`.

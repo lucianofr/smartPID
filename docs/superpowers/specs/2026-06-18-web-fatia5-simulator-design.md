@@ -2,6 +2,7 @@
 
 **Data:** 2026-06-18 · **Status:** Proposto
 **Parte de:** [guarda-chuva](2026-06-18-web-hmi-react-migration-design.md). Arquitetura, ponte WS, contrato JSON e stack: ver §2–3 do guarda-chuva.
+**Autoridade de UI/design:** [design-system](2026-06-18-web-frontend-design-system-design.md).
 
 ## Escopo
 UI do simulador (digital twin): preset, parâmetros de dinâmica, injeção de distúrbio, controle de output/modo. (SVG overlay e "Export Dynamics to Loop" ficam fora — diferidos pela spec do projeto.)
@@ -17,8 +18,12 @@ Nenhuma mudança — reusa `routers/simulator`.
 - Toggles auto-disturbance / auto-sp.
 
 ## REST/WS usados
-- REST: `routers/simulator` (`POST /preset`, `POST /disturbance`, `DELETE /disturbance/{controller_id}`, `POST /output`, `POST /mode`, `PUT /{controller_id}/auto-disturbance`, `PUT /{controller_id}/auto-sp`, start/stop).
-- WS: `telemetry` (resposta do twin ao vivo).
+- REST `routers/simulator`:
+  - output/modo: `POST /simulator/{controller_id}/co`, `POST /simulator/{controller_id}/pid/mode` (não `/simulator/output`, `/simulator/mode`).
+  - preset: `POST /simulator/preset`; start/stop.
+  - distúrbio: `POST /simulator/disturbance`, `DELETE /simulator/disturbance/{controller_id}`.
+  - auto: `PUT /simulator/{controller_id}/auto-disturbance`, `PUT /simulator/{controller_id}/auto-sp`.
+- WS: `status` (resposta do twin ao vivo).
 
 ## Aceitação
 - Preset aplicado altera a dinâmica visível na telemetria.

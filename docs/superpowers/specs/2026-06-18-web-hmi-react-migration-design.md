@@ -74,17 +74,32 @@ auth ou persistência.
 ### 2.3 Ponte WebSocket (RealtimeWS)
 
 - Endpoint `GET /ws/realtime` (FastAPI WebSocket) no mesmo app/processo do daemon.
-- Assina no `EventBus` os mesmos tópicos que alimentam a PySide6:
-  `TELEMETRY.{id}`, `STATUS.{id}`, `ACTION.CTRL.{id}`, `ACTION.AI.{id}`, `ALARM`, AI/stats.
+- Assina no `EventBus` os **tópicos realmente publicados** que alimentam o cliente:
+  `STATUS.{id}`, `ACTION.CTRL.{id}`, `ACTION.AI.{id}`, `EVENT.ALARM.*`, `EVENT.SYSTEM`, `STATS.{id}`.
+  - O quadro do **dashboard ao vivo** é o `STATUS.{id}` **enriquecido** pelo MonitorWorker
+    (pv/sp/co/mode/error/saturated/kp/ti/td), **não** o `TELEMETRY.{id}` (que é interno ao
+    backend, não bridgeado). O envelope mapeia `type: "status"` (ex-`telemetry`) → `STATUS.{id}`.
+  - **Não** assinar `TELEMETRY.{id}` nem um tópico genérico `ALARM` (não existem como fonte web).
+- **Consumidor não-bloqueante (CRÍTICO):** `BusSubscriber.recv()` é uma chamada ZMQ
+  **bloqueante** — um `await sub.recv()` ingênuo congela o event loop do daemon. Usar
+  `zmq.asyncio` (preferido) **ou** um único consumidor compartilhado em `run_in_executor`
+  (single-flight) que faz fan-out para todos os clientes. **Nunca** um loop `recv` por cliente;
+  **nunca** `recv` concorrente no mesmo socket.
 - Serializa o evento (msgpack interno → **JSON**) e faz broadcast aos WS conectados.
 - `ConnectionManager`: set de conexões ativas, lock async, remoção em desconexão, broadcast
   resiliente (falha de um socket não derruba os outros).
-- **Política de fila:** mantém só o **último valor por tópico** (coerente com "sem histórico"
-  e com a janela deslizante do gráfico). Sem backlog; consumidor lento perde quadros antigos,
-  nunca trava o produtor.
-- **Auth no handshake:** valida o JWT existente antes de aceitar a conexão (token via
-  query param `?token=` ou primeira mensagem). Reusa `auth.py`/`dependencies.py`. Rejeita
-  com close code `4401` se ausente/inválido/expirado.
+- **Política de fila (SEPARADA por classe de tópico):**
+  - **Coalescing de último-valor** apenas para `STATUS`/`STATS` (coerente com "sem histórico"
+    e com a janela deslizante do gráfico). Consumidor lento perde quadros antigos, nunca trava
+    o produtor.
+  - **Fila por-cliente limitada e sem perdas (lossless bounded)** para eventos discretos
+    `EVENT.ALARM`/`ACTION.AI`/`EVENT.SYSTEM` — coalescê-los perderia transições de alarme
+    (regressão de segurança). Em overflow da fila, **fecha o socket** para o cliente reconectar
+    e re-sincronizar via REST.
+- **Auth no handshake:** valida o JWT existente antes de aceitar a conexão. **Não** usar
+  `?token=` em query param (vaza em log/history): preferir **ws-ticket de curta duração** OU
+  **auth na primeira mensagem**. Reusa `auth.py`/`dependencies.py`. Rejeita com close code
+  `4401` se ausente/inválido/expirado. Validar o header `Origin` em `/ws/realtime`.
 
 ### 2.4 Frontend
 
@@ -98,6 +113,16 @@ auth ou persistência.
 - **Prod:** usuário abre o app no browser em localhost (build estático servido localmente).
   Sem launcher/installer dedicado (decisão "só browser").
 
+### 2.5 Empacotamento e serviço do SPA (precondições de backend)
+
+- O app **hoje não monta `StaticFiles` e não tem CORS**. Para servir o build do SPA,
+  montar `app.mount("/", StaticFiles(directory=dist, html=True))` **depois** dos routers
+  (fallback SPA single-origin → **sem necessidade de CORS**). Alternativa: CORS com
+  allow-list explícita. Recomenda-se **bind em `127.0.0.1`**.
+- Validar o header `Origin` no handshake de `/ws/realtime`.
+- **Precondição de OpenAPI tipado:** os routers devem declarar `response_model` (Pydantic)
+  para o frontend gerar tipos a partir do OpenAPI. Auditar nas Fatias 0+1 (e seguintes).
+
 ---
 
 ## 3. Contrato WebSocket
@@ -106,20 +131,24 @@ Envelope JSON único, derivado dos eventos frozen do domínio:
 
 ```jsonc
 {
-  "type": "telemetry" | "status" | "action" | "alarm" | "ai",
-  "loop_id": 12,        // null para eventos globais (ex.: alarme de sistema)
-  "ts": 1718743200.123, // epoch seconds
+  "type": "status" | "action" | "alarm" | "ai" | "stats",
+  "loop_id": 12,        // null para eventos globais (ex.: EVENT.SYSTEM)
+  "seq": 42,            // sequência por conexão, para detecção de gap
+  "ts": 1718743200.123, // epoch seconds — tempo do servidor
   "data": { /* payload por tipo */ }
 }
 ```
 
-- `telemetry.data` — campos do `TelemetryFrame` (pv, sp, co, mode, …).
-- `status.data` — conexão OPC, estado dos workers do loop (rodando/parado/erro).
-- `action.data` — `ControlActionComputed` (cv, delta).
-- `alarm.data` — alarm_id, severity, state.
-- `ai.data` — gamma, ki, strategy, métricas de sintonia.
+- `status.data` — quadro do dashboard ao vivo: `STATUS.{id}` **enriquecido** pelo MonitorWorker
+  (pv, sp, co, mode, error, saturated, kp, ti, td) + conexão OPC / estado de workers.
+- `action.data` — `ControlActionComputed` (`ACTION.CTRL.{id}`: cv, delta).
+- `alarm.data` — `EVENT.ALARM.*`: alarm_id, severity, state (lossless, sem coalescing).
+- `ai.data` — `ACTION.AI.{id}`: gamma, ki, strategy, métricas de sintonia.
+- `stats.data` — `STATS.{id}`: IAE/ITAE/ISE/MSE/sigma/TV/variabilidade.
 
-O cliente filtra por `loop_id`/`type`. O backend envia apenas o último valor por tópico.
+O cliente filtra por `loop_id`/`type` e usa `seq` para detectar gaps. Coalescing de
+último-valor só para `status`/`stats`; eventos discretos (`alarm`/`ai`/`EVENT.SYSTEM`) são
+entregues sem perdas (em overflow, o socket é fechado para re-sync via REST).
 
 ---
 
@@ -127,6 +156,10 @@ O cliente filtra por `loop_id`/`type`. O backend envia apenas o último valor po
 
 Paridade total decomposta. Cada fatia = **spec + plano de implementação próprios** e
 **branch dedicada nova** (a partir de `main`). A Fatia 0+1 é a fundação ponta-a-ponta.
+
+> **Autoridade de UI/design:** todas as fatias seguem
+> [2026-06-18-web-frontend-design-system-design.md](2026-06-18-web-frontend-design-system-design.md)
+> como fonte de tokens, componentes e temas.
 
 **Specs dedicados por fatia** (detalhe completo de cada uma):
 - Fatia 0+1 — [Foundation + Live Dashboard](2026-06-18-web-fatia01-foundation-dashboard-design.md)
