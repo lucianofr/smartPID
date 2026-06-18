@@ -128,6 +128,18 @@ O cliente filtra por `loop_id`/`type`. O backend envia apenas o último valor po
 Paridade total decomposta. Cada fatia = **spec + plano de implementação próprios** e
 **branch dedicada nova** (a partir de `main`). A Fatia 0+1 é a fundação ponta-a-ponta.
 
+**Specs dedicados por fatia** (detalhe completo de cada uma):
+- Fatia 0+1 — [Foundation + Live Dashboard](2026-06-18-web-fatia01-foundation-dashboard-design.md)
+- Fatia 2 — [Comandos + Config por Loop](2026-06-18-web-fatia2-commands-loop-config-design.md)
+- Fatia 3 — [Alarmes](2026-06-18-web-fatia3-alarms-design.md)
+- Fatia 4 — [Multi-trend + Stats + Export](2026-06-18-web-fatia4-multitrend-stats-export-design.md)
+- Fatia 5 — [Simulador](2026-06-18-web-fatia5-simulator-design.md)
+- Fatia 6 — [Executive Dashboard](2026-06-18-web-fatia6-executive-dashboard-design.md)
+- Fatia 7 — [Settings + Users + Conexão + Projetos](2026-06-18-web-fatia7-settings-users-projects-design.md)
+- Fatia 8 — [Temas + Faceplate](2026-06-18-web-fatia8-themes-faceplate-design.md)
+
+As subseções abaixo são o resumo; o detalhe vive nos specs dedicados.
+
 ### Fatia 0+1 — Foundation + Live Dashboard
 - **Backend:** RealtimeWS (`/ws/realtime`) + auth no handshake + testes.
 - **Frontend:** scaffold do pacote `smart_pid_web`; app shell (layout, rotas, tema base);
