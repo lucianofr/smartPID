@@ -676,14 +676,13 @@ Prioridade 1024 / 1440 / 1920 (estações de controle). Mobile é cortesia, não
 - **Beleza:** este é o único lugar com hierarquia "hero" — um número grande domina; cor só quando KPI
   fora de meta. Continua ISA-safe porque o significado de alarme não muda.
 
-### Fatia 7 — Settings + Users + Conexão + Projetos (`settings_page`, `user_management_page`, `connection_page`, welcome)
+### Fatia 7 — Settings + Conexão + Projetos (`settings_page`, `connection_page`, welcome)
 - **Settings:** form em duas colunas, seções com cabeçalho hairline; toggles e selects do design
-  system.
-- **Users (RBAC):** tabela densa (usuário, papel, permissões) + diálogo de criação/edição; ações
-  destrutivas (delete) com confirmação; gating de UI por permissão (esconder/disable conforme RBAC).
-- **Conexão OPC:** campo de endpoint + `[ Connect | Disconnect ]` + `[ Start | Stop ]` + **tag
-  browser** (árvore navegável `GET /browse` + busca) — árvore com indentação e ícones de nó; seleção
-  popula o controlador.
+  system. Inclui login do administrador único + troca de senha opcional (sistema
+  **single-user / sem RBAC** — sem gestão de usuários nem tiers de papel; ver Fatia 7 spec).
+- **Conexão OPC:** campo de endpoint + `[ Connect | Disconnect ]` + **tag browser** (árvore
+  navegável `GET /browse` + busca) — árvore com indentação e ícones de nó; seleção popula o
+  controlador. A **aquisição é contínua** — sem controle de start/stop de aquisição.
 - **Projetos `.spid`:** **Welcome pós-login** = lista de projetos do backend em cards/linhas (nome,
   data, nº de loops) + `[ Novo ] [ Importar (upload) ] [ Abrir ]`; ações download/delete por item.
   Upload com dropzone + barra de progresso. **Nunca** exibir credenciais (users vivem em `users.db`).

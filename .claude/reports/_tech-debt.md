@@ -8,19 +8,7 @@ Track technical debt explicitly like bugs. Review weekly.
 
 _Debt that prevents or significantly slows new development._
 
-- [ ] **TD-001**: `routers/project.py` sem auth/authz
-  - **Impact:** Critical - open/import/delete não-autenticado mexe na DCS viva; bloqueia Fatia 7 do web HMI
-  - **Source:** security/security-web-hmi-20260618.md
-  - **Effort:** TBD
-  - **Owner:** @unassigned
-  - **Created:** 2026-06-18
-
-- [ ] **TD-002**: Path traversal via `name` em `project_service`
-  - **Impact:** Critical - permite write/delete arbitrário no filesystem; bloqueia Fatia 7 do web HMI
-  - **Source:** security/security-web-hmi-20260618.md
-  - **Effort:** TBD
-  - **Owner:** @unassigned
-  - **Created:** 2026-06-18
+_No open Critical items. TD-001 and TD-002 resolved on 2026-06-18 (see Resolved)._
 
 <!-- Example:
 - [ ] **TD-001**: Legacy auth system needs migration
@@ -34,13 +22,6 @@ _Debt that prevents or significantly slows new development._
 
 _Debt that causes recurring problems or bugs._
 
-- [ ] **TD-003**: `/commands/tuning` fura guardrails
-  - **Impact:** High - sem `clamp_tuning_params`, só `require_operator`, body dict não-tipado; permite escrever sintonia fora dos limites no controlador. Pré-requisito antes de expor tuning cru no web (Fatia 2)
-  - **Source:** security/security-web-hmi-20260618.md
-  - **Effort:** TBD
-  - **Owner:** @unassigned
-  - **Created:** 2026-06-18
-
 - [ ] **TD-004**: Sem CORS/TrustedHost; API binda `0.0.0.0`
   - **Impact:** High - exposição a DNS-rebinding; recomenda-se bind `127.0.0.1` + allow-list/TrustedHost ou SPA single-origin
   - **Source:** security/security-web-hmi-20260618.md
@@ -48,9 +29,16 @@ _Debt that causes recurring problems or bugs._
   - **Owner:** @unassigned
   - **Created:** 2026-06-18
 
-- [ ] **TD-005**: Sem limite de tamanho no upload `.spid` (import)
-  - **Impact:** High - `await file.read()` carrega o arquivo inteiro em memória → OOM/DoS. Adicionar limite de tamanho + streaming
-  - **Source:** security/security-web-hmi-20260618.md
+- [ ] **TD-007**: Converter backend para single-admin / remover RBAC + users router
+  - **Impact:** High - decisão de produto (2026-06-18): o sistema passa a ser
+    **single-user (um administrador), sem RBAC (mono-usuário)**. Os gates por tier de papel
+    do security fix (operator/supervisor/admin) devem colapsar para uma única dependência
+    "exige administrador autenticado". A exigência de **auth permanece** (401 sem auth);
+    apenas os tiers de papel (403 por papel) são removidos. Concretamente: `routers/users`
+    (CRUD) deve ser descontinuado; `POST /commands/optimization` hoje usa `require_operator`
+    e deve passar a usar o gate de admin único; idem para os demais comandos/projetos que
+    hoje exigem operator/supervisor/admin.
+  - **Source:** reconciliação dos web specs / decisão de produto 2026-06-18
   - **Effort:** TBD
   - **Owner:** @unassigned
   - **Created:** 2026-06-18
@@ -100,6 +88,41 @@ _Known issues not currently prioritized._
 
 _Completed tech debt items. Keep for 90 days then archive._
 
+- [x] **TD-001**: `routers/project.py` sem auth/authz
+  - **Resolved:** 2026-06-18 — branch `fix/backend-security-hardening`
+  - **Resolution:** Added role dependencies to every `/project` route
+    (current/list → operator; new/open/import/download → supervisor; delete →
+    admin). Unauthenticated → 401, wrong role → 403. Tests in
+    `tests/core/integration/test_api_project.py`.
+    _Nota: com a decisão single-admin (TD-007), estes tiers de papel colapsam para um único
+    gate "exige administrador autenticado"; a exigência de auth (401) permanece._
+
+- [x] **TD-002**: Path traversal via `name` em `project_service`
+  - **Resolved:** 2026-06-18 — branch `fix/backend-security-hardening`
+  - **Resolution:** Added `ProjectService._safe_project_path()` — strict name
+    allow-list (`[A-Za-z0-9._\- ]`, ≤128 chars, no `..`/separators/absolute/NUL)
+    plus a resolved-path-inside-`projects_dir` assertion. Applied to
+    new/open/import/delete; import also re-validates the derived name from
+    `UploadFile.filename`. Router maps `ValueError` → 400. Tests in
+    `tests/core/unit/test_project_service.py` and `test_api_project.py`.
+
+- [x] **TD-003**: `/commands/tuning` fura guardrails
+  - **Resolved:** 2026-06-18 — branch `fix/backend-security-hardening`
+  - **Resolution:** Brought raw `/commands/tuning` to the `apply-tuning` bar:
+    typed `TuningCommand` Pydantic body, each supplied Kp/Ti/Td clamped to the
+    controller's `max_tuning_change_pct` via `clamp_tuning_change`, and gate
+    raised from `require_operator` to `require_supervisor`. Tests in
+    `tests/core/integration/test_api_commands.py::TestWriteTuningCommand`.
+    _Nota: com a decisão single-admin (TD-007), o gate `require_supervisor` colapsa para o
+    gate de admin único; o clamp e a tipagem permanecem._
+
+- [x] **TD-005**: Sem limite de tamanho no upload `.spid` (import)
+  - **Resolved:** 2026-06-18 — branch `fix/backend-security-hardening`
+  - **Resolution:** `/project/import` now reads the upload in 1 MB chunks with a
+    running byte cap (`CoreSettings.max_upload_bytes`, default 50 MB) and rejects
+    oversized uploads with HTTP 413 before buffering/writing. Tests in
+    `tests/core/integration/test_api_project.py::TestImportProject`.
+
 <!-- Example:
 - [x] **TD-000**: Migrated from callbacks to async/await
   - **Resolved:** 2025-01-15
@@ -112,11 +135,15 @@ _Completed tech debt items. Keep for 90 days then archive._
 
 | Category | Count | Oldest |
 |----------|-------|--------|
-| Critical | 2 | 2026-06-18 |
-| High | 3 | 2026-06-18 |
+| Critical | 0 | - |
+| High | 2 | 2026-06-18 |
 | Medium | 1 | 2026-06-18 |
 | Low | 0 | - |
-| **Total Open** | **6** | 2026-06-18 |
+| **Total Open** | **3** | 2026-06-18 |
+
+_Open remaining: TD-004 (CORS/bind, High), TD-007 (single-admin/no-RBAC backend migration,
+High), TD-006 (WS token, Medium). TD-004/TD-006 deferidos ao trabalho de packaging
+WS/StaticFiles (Fatia 0+1); TD-007 é a migração de produto para single-admin._
 
 _Last updated: 2026-06-18_
 

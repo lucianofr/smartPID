@@ -31,10 +31,17 @@ React/Vite**, reusando o backend v2 praticamente intacto.
 4. **Empacotamento:** só browser — usuário abre `localhost` manualmente; backend serve a API.
 5. **Spec:** este documento cobre **todas as 8 fatias** (cada fatia vira spec/plano de
    implementação próprios depois).
+6. **Acesso (decisão de produto 2026-06-18):** o sistema é **single-user (um administrador),
+   sem RBAC (mono-usuário)**. Não há tiers de papel (operator/supervisor/admin). O controle
+   de auth de cada rota é binário: **pública** (login) **ou** exige o **administrador
+   autenticado**. Ações de escrita de risco (apply-tuning, write-back de sintonia, toggle de
+   otimização) continuam exigindo **confirmação explícita + auditoria**, agora gated pelo
+   admin único em vez de tiers de papel.
 
 **Não-objetivos:** reescrever PID/fuzzy/RL/OPC; trocar o EventBus por outro barramento;
 mudar o modelo de persistência (historian + `.spid` + `users.db` permanecem); acesso remoto/
-multiusuário além do RBAC já existente; empacotar wrapper desktop (Tauri/Electron).
+multiusuário ou RBAC com tiers de papel (o sistema é **single-user / mono-usuário** — um
+administrador, sem RBAC); empacotar wrapper desktop (Tauri/Electron).
 
 ---
 
@@ -168,7 +175,7 @@ Paridade total decomposta. Cada fatia = **spec + plano de implementação própr
 - Fatia 4 — [Multi-trend + Stats + Export](2026-06-18-web-fatia4-multitrend-stats-export-design.md)
 - Fatia 5 — [Simulador](2026-06-18-web-fatia5-simulator-design.md)
 - Fatia 6 — [Executive Dashboard](2026-06-18-web-fatia6-executive-dashboard-design.md)
-- Fatia 7 — [Settings + Users + Conexão + Projetos](2026-06-18-web-fatia7-settings-users-projects-design.md)
+- Fatia 7 — [Settings + Conexão + Projetos](2026-06-18-web-fatia7-settings-users-projects-design.md)
 - Fatia 8 — [Temas + Faceplate](2026-06-18-web-fatia8-themes-faceplate-design.md)
 
 As subseções abaixo são o resumo; o detalhe vive nos specs dedicados.
@@ -185,12 +192,17 @@ As subseções abaixo são o resumo; o detalhe vive nos specs dedicados.
 - **Páginas PySide6 cobertas:** `dashboard_page`, `connection_page`.
 
 ### Fatia 2 — Comandos + configuração por loop
-- Diálogo de configuração do loop (params PID, fuzzy, RL); ações SP/modo/CO; enable PID;
-  apply-tuning; AI start/stop/pause.
-- **REST:** `commands` (`pid/mode`, `pid/sp`, `pid/params`, `co`, `pid/enable`),
-  `apply-tuning`, `ai` (start/stop/pause/status), `controllers` (CRUD).
+- Diálogo de configuração do loop (params PID, fuzzy, RL); ações SP/modo/CO; toggle de
+  otimização (enable/disable do optimizer Fuzzy/RL por loop); apply-tuning; AI start/stop/pause.
+- **REST:** `commands` (`mode`, `setpoint`, `output`, `tuning`, `optimization`),
+  `apply-tuning`, `ai` (start/stop/pause/status), `controllers` (CRUD). Toggle de otimização:
+  `POST /commands/optimization {controller_id, enabled}` (master switch persistido
+  `Controller.optimization_enabled`).
+- **Auth:** todas as ações exigem o **administrador autenticado** (sem tiers de papel).
+  apply-tuning e write-back de sintonia exigem **confirmação explícita + auditoria**.
 - **Aceitação:** alterar SP/modo/params reflete no backend e na telemetria; apply-tuning
-  escreve no controlador com confirmação explícita.
+  escreve no controlador com confirmação explícita; toggle de otimização persiste e reflete
+  no worker de IA.
 - **Páginas:** `controller_dialog`, parte de `dashboard_page`.
 
 ### Fatia 3 — Alarmes
@@ -220,14 +232,18 @@ As subseções abaixo são o resumo; o detalhe vive nos specs dedicados.
 - **Aceitação:** cards executivos refletem dados ao vivo, paridade visual com a versão PySide6.
 - **Páginas:** `executive_dashboard`.
 
-### Fatia 7 — Settings + Users (RBAC) + Conexão + Projetos `.spid`
-- Página de settings; gestão de usuários (RBAC fino existente); página de conexão OPC;
-  gestão de projetos `.spid` (list/new/open/import/download/delete) + welcome pós-login.
-- **REST:** `users` (CRUD), `auth` (register), `opcua` (connect/disconnect/endpoint/start/stop,
-  tag browse), `project` (list/new/open/import/download/delete), `system`.
-- **Aceitação:** CRUD de usuários respeitando RBAC; conexão OPC configurável; projetos
-  gerenciáveis; welcome lista projetos do backend.
-- **Páginas:** `settings_page`, `user_management_page`, `connection_page`, welcome/project.
+### Fatia 7 — Settings + Conexão + Projetos `.spid`
+- Página de settings; login do administrador único + troca de senha opcional (sem CRUD de
+  usuários / RBAC — sistema mono-usuário); página de conexão OPC; gestão de projetos `.spid`
+  (list/new/open/import/download/delete) + welcome pós-login.
+- **REST:** `auth` (login + troca de senha do admin), `opcua` (connect/disconnect/endpoint,
+  tag browse — **aquisição contínua**, sem start/stop de aquisição), `project`
+  (list/new/open/import/download/delete), `system`.
+- **Auth:** todas as rotas restritas exigem o **administrador autenticado** (401 sem auth vs
+  200 admin); sem tiers de papel / 403 por papel.
+- **Aceitação:** login do admin; conexão OPC configurável; projetos gerenciáveis; welcome
+  lista projetos do backend.
+- **Páginas:** `settings_page`, `connection_page`, welcome/project.
 
 ### Fatia 8 — Temas + Faceplate
 - Temas de identidade visual (Dark Room, ISA-101, MD3/Ocean) no web; widget faceplate.
