@@ -139,3 +139,83 @@ class TestOutputCommand:
             headers=user_headers,
         )
         assert resp.status_code == 400
+
+
+class _FakeOPCUA:
+    """Minimal OPC-UA stub that records the last write_pid_params call."""
+
+    is_connected = True
+
+    def __init__(self) -> None:
+        self.written: tuple[int, float | None, float | None, float | None] | None = None
+
+    def write_pid_params(
+        self, controller_id: int, kp: float | None, ti: float | None, td: float | None,
+    ) -> None:
+        self.written = (controller_id, kp, ti, td)
+
+    def read_actual_mode(self, controller_id: int):  # noqa: ANN201
+        from smart_pid_domain.enums import ControllerMode
+
+        return ControllerMode.AUTO
+
+
+class TestWriteTuningCommand:
+    @pytest.mark.asyncio
+    async def test_operator_forbidden(
+        self, client: AsyncClient, user_headers: dict[str, str], api_deps: dict
+    ) -> None:
+        """Raw tuning write must require supervisor, not operator."""
+        cid = await _create_and_start_controller(api_deps)
+        resp = await client.post(
+            "/commands/tuning",
+            json={"controller_id": cid, "kp": 5.0},
+            headers=user_headers,
+        )
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_no_auth_returns_401(self, client: AsyncClient) -> None:
+        resp = await client.post(
+            "/commands/tuning",
+            json={"controller_id": 1, "kp": 5.0},
+        )
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_out_of_range_params_clamped(
+        self,
+        client: AsyncClient,
+        supervisor_headers: dict[str, str],
+        api_deps: dict,
+        app,
+    ) -> None:
+        """A supervisor pushing a huge gain gets clamped to max_tuning_change_pct."""
+        cid = await _create_and_start_controller(api_deps)
+        fake = _FakeOPCUA()
+        app.state.opcua_adapter = fake
+        # Current gain is 1.0, max_tuning_change_pct defaults to 10% -> max 1.1
+        resp = await client.post(
+            "/commands/tuning",
+            json={"controller_id": cid, "kp": 100.0},
+            headers=supervisor_headers,
+        )
+        assert resp.status_code == 200
+        assert fake.written is not None
+        _id, written_kp, _ti, _td = fake.written
+        assert written_kp is not None
+        # Clamped to no more than +10% of current (1.0 -> 1.1)
+        assert written_kp <= 1.1 + 1e-9
+
+    @pytest.mark.asyncio
+    async def test_invalid_body_type_rejected(
+        self, client: AsyncClient, supervisor_headers: dict[str, str], api_deps: dict
+    ) -> None:
+        """A non-numeric kp must be rejected by Pydantic validation (422)."""
+        cid = await _create_and_start_controller(api_deps)
+        resp = await client.post(
+            "/commands/tuning",
+            json={"controller_id": cid, "kp": "not-a-number"},
+            headers=supervisor_headers,
+        )
+        assert resp.status_code == 422

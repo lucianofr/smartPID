@@ -22,13 +22,17 @@ from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.application.workers.system_event_worker import (  # noqa: TC001
     SystemEventWorker,
 )
-from smart_pid_core.domain.services.tuning_guardrails import clamp_tuning_params
+from smart_pid_core.domain.services.tuning_guardrails import (
+    clamp_tuning_change,
+    clamp_tuning_params,
+)
 from smart_pid_domain.dtos.auth import UserClaims
 from smart_pid_domain.dtos.commands import (
     CommandResponse,
     ModeCommand,
     OutputCommand,
     SetpointCommand,
+    TuningCommand,
 )
 from smart_pid_domain.enums import AuditAction, ControllerMode
 
@@ -142,17 +146,40 @@ async def set_output(
 
 @router.post("/tuning", response_model=CommandResponse)
 async def write_tuning(
+    body: TuningCommand,
     request: Request,
-    body: dict,
-    user: Annotated[UserClaims, Depends(require_operator)],
+    user: Annotated[UserClaims, Depends(require_supervisor)],
+    lm: Annotated[LoopManager, Depends(get_loop_manager)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
 ) -> CommandResponse:
-    """Write Kp/Ti/Td directly to OPC-UA."""
-    controller_id = body.get("controller_id", 0)
-    kp = body.get("kp")
-    ti = body.get("ti")
-    td = body.get("td")
+    """Write Kp/Ti/Td directly to OPC-UA.
+
+    Mirrors the safety bar of ``apply-tuning``: supervisor-only, typed body,
+    and each supplied parameter is clamped to the controller's
+    ``max_tuning_change_pct`` relative to its current value before write-back.
+    """
+    controller_id = body.controller_id
+    ctrl = lm.get_controller(controller_id)
+    max_pct = ctrl.max_tuning_change_pct
+    current = ctrl.pid_params
+
+    kp = (
+        clamp_tuning_change(current.gain, body.kp, max_pct)
+        if body.kp is not None
+        else None
+    )
+    ti = (
+        clamp_tuning_change(current.reset, body.ti, max_pct)
+        if body.ti is not None
+        else None
+    )
+    td = (
+        clamp_tuning_change(current.rate, body.td, max_pct)
+        if body.td is not None
+        else None
+    )
+
     opcua = getattr(request.app.state, "opcua_adapter", None)
     if opcua is None or not opcua.is_connected:
         raise HTTPException(status_code=409, detail="OPC-UA not connected")
