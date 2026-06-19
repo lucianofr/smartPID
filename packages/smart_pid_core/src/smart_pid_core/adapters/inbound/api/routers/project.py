@@ -17,9 +17,7 @@ from fastapi.responses import FileResponse
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_settings,
-    require_admin,
-    require_operator,
-    require_supervisor,
+    require_authenticated_admin,
 )
 from smart_pid_core.config import CoreSettings  # noqa: TC001
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
@@ -58,7 +56,7 @@ async def _read_upload_limited(file: UploadFile, max_bytes: int) -> bytes:
 @router.get("/current", response_model=ProjectResponse)
 async def get_current(
     request: Request,
-    user: Annotated[UserClaims, Depends(require_operator)],
+    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
 ) -> ProjectResponse:
     """Return metadata about the currently-open project."""
     svc = request.app.state.project_service
@@ -69,7 +67,7 @@ async def get_current(
 async def new_project(
     body: ProjectCreate,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_supervisor)],
+    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
 ) -> ProjectResponse:
     """Create a new project file."""
     svc = request.app.state.project_service
@@ -85,7 +83,7 @@ async def new_project(
 async def open_project(
     body: ProjectOpen,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_supervisor)],
+    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
 ) -> ProjectResponse:
     """Open an existing project by name."""
     svc = request.app.state.project_service
@@ -100,7 +98,7 @@ async def open_project(
 @router.get("/list", response_model=ProjectListResponse)
 async def list_projects(
     request: Request,
-    user: Annotated[UserClaims, Depends(require_operator)],
+    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
 ) -> ProjectListResponse:
     """List all available projects in the backend directory."""
     svc = request.app.state.project_service
@@ -112,7 +110,7 @@ async def list_projects(
 async def import_project(
     request: Request,
     file: UploadFile,
-    user: Annotated[UserClaims, Depends(require_supervisor)],
+    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     settings: Annotated[CoreSettings, Depends(get_settings)],
     name: str = Form(default=""),
 ) -> ProjectResponse:
@@ -133,7 +131,7 @@ async def import_project(
 @router.get("/download")
 async def download_project(
     request: Request,
-    user: Annotated[UserClaims, Depends(require_supervisor)],
+    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
 ) -> FileResponse:
     """Download the active project as a .spid file."""
     svc = request.app.state.project_service
@@ -149,7 +147,7 @@ async def download_project(
 async def delete_project(
     name: str,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_admin)],
+    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
 ) -> None:
     """Delete a project file from the backend directory."""
     svc = request.app.state.project_service

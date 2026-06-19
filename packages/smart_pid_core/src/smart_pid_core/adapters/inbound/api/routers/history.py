@@ -6,7 +6,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from smart_pid_core.adapters.inbound.api.dependencies import get_historian, require_operator
+from smart_pid_core.adapters.inbound.api.dependencies import (
+    get_historian,
+    require_authenticated_admin,
+)
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
 from smart_pid_domain.dtos.auth import UserClaims
 from smart_pid_domain.dtos.history import HistoryResponse, TelemetryFrameDTO
@@ -17,7 +20,7 @@ router = APIRouter()
 @router.get("/{controller_id}", response_model=HistoryResponse)
 async def query_history(
     controller_id: int,
-    _user: Annotated[UserClaims, Depends(require_operator)],
+    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     historian: Annotated[SQLiteHistorian, Depends(get_historian)],
     start: Annotated[datetime | None, Query()] = None,
     end: Annotated[datetime | None, Query()] = None,

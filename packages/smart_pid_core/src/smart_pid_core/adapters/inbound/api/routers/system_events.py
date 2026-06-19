@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_system_event_repo,
-    require_operator,
+    require_authenticated_admin,
 )
 from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository  # noqa: TC001
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
@@ -18,7 +18,7 @@ router = APIRouter()
 
 @router.get("")
 async def get_system_events(
-    _user: Annotated[UserClaims, Depends(require_operator)],
+    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     repo: Annotated[SystemEventRepository, Depends(get_system_event_repo)],
     start: str = Query(...),
     end: str = Query(...),

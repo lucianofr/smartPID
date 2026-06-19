@@ -342,7 +342,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         logger.warning(
             "seeded_default_admin",
             msg="SECURITY: Default admin account created with password 'admin'. "
-            "Change it immediately via the /users API or set SPID_ADMIN_PASSWORD env var.",
+            "Change it immediately.",
         )
 
     # Phase 5: AI Repository

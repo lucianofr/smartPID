@@ -23,7 +23,6 @@ from smart_pid_core.adapters.inbound.api.routers import (
     stats,
     system,
     system_events,
-    users,
 )
 
 if TYPE_CHECKING:
@@ -108,7 +107,6 @@ def create_app(
     app.include_router(simulator.router, prefix="/simulator", tags=["simulator"])
     app.include_router(opcua.router, prefix="/opcua", tags=["opcua"])
     app.include_router(alarms.router, prefix="/alarms", tags=["alarms"])
-    app.include_router(users.router, prefix="/users", tags=["users"])
     app.include_router(audit.router, prefix="/audit", tags=["audit"])
     app.include_router(system_events.router, prefix="/system-events", tags=["system-events"])
     app.include_router(export.router, prefix="/export", tags=["export"])
