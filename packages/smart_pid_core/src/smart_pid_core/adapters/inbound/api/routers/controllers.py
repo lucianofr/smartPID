@@ -174,6 +174,7 @@ def _to_response(c: Controller) -> ControllerResponse:
             rl_learning_rate=c.ai_config.rl_learning_rate,
             rl_train_interval=c.ai_config.rl_train_interval,
         ),
+        optimization_enabled=c.optimization_enabled,
         tuning_write_mode=str(c.tuning_write_mode),
         max_tuning_change_pct=c.max_tuning_change_pct,
         mode_normal=str(c.mode_normal),

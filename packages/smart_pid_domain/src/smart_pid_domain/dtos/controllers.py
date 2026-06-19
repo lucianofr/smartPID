@@ -226,6 +226,8 @@ class ControllerResponse(BaseModel):
     io_opts: IOOptsDTO = IOOptsDTO()
     ai_config: AIConfigDTO = AIConfigDTO()
 
+    optimization_enabled: bool = True
+
     tuning_write_mode: str = "approval_required"
     max_tuning_change_pct: float = 10.0
 
