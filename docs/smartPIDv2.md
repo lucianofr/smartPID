@@ -297,6 +297,41 @@ Grid 2x2 para instanciar até 4 controladores. Funcionalidade **Time-Sync**: Zoo
 * Configurar IP/Credenciais do servidor OPC-UA no Backend.
 * Botões para criar/manipular projetos: Novo, Abrir, Salvar, Salvar Como.
 
+### **8.6. Web HMI (React/Vite) — Fatia 0+1 (Foundation + Live Dashboard)**
+
+> O cliente web React/Vite/TS substitui a HMI PySide6 (a partir de 8.6 a UI corrente é a web;
+> as seções 8.0–8.5 descrevem a HMI desktop legada/congelada). A Fatia 0+1 entrega a fundação
+> ponta-a-ponta e o dashboard ao vivo.
+
+**Superfície entregue:**
+* **Login JWT:** `POST /auth/login`; o token de acesso é guardado em `sessionStorage`. Rotas
+  protegidas via `RequireAuth`.
+* **Dashboard ao vivo:** grade de `ControllerCard` (PV/SP/CO em `AnalogBar`, badge de modo) com
+  `RealtimeTrend`, alimentada pelo WebSocket `/ws/realtime`.
+* **Autenticação do WebSocket:** primeira mensagem do cliente `{type:"auth", token}` validada por
+  `decode_access_token`; header `Origin` validado contra allowlist; o socket fecha com código
+  `4401` em token/origin ausente ou inválido (nunca `?token=` na URL).
+* **Buffer por conexão (`ConnectionBuffer`):** coalescing de último-valor para `status`/`stats`;
+  entrega lossless (bounded) para `alarm`/`ai`/`system`. **Construído mas a ligação ao broadcast
+  ao vivo (e o fechar-no-overflow) está deferida** — ver deferrals abaixo.
+* **Status OPC-UA via REST poll:** `GET /opcua/status` consultado periodicamente; conexão
+  considerada online quando o estado é `ONLINE` (não trafega pelo WS).
+* **Serviço single-origin da SPA:** `StaticFiles(html=True)` montado **após** os routers; security
+  headers (herdados de P4); allowlist de CORS de desenvolvimento (`http://127.0.0.1:5173`). Bind em
+  `127.0.0.1`.
+* **Tema ISA-101** + contrato canônico de tokens (`tokens.css` + `themes.css`).
+
+**Correções de contrato registradas (vs. spec da fatia, confirmadas nos publish sites):**
+* `StatusData.timestamp` é **string ISO-8601** (não epoch). O `ts` do envelope WS permanece número
+  (epoch, carimbado pela ponte com `time.time()`).
+* `RealtimeType` inclui `'system'` (para `EVENT.SYSTEM`, `loop_id: null`): **6 tipos**
+  (`status`, `stats`, `action`, `alarm`, `ai`, `system`).
+
+**Deferrals conhecidos (fecham na Fatia 8):**
+* Ligação ao vivo do `ConnectionBuffer` ao broadcast + fechar-no-overflow para re-sync via REST.
+* Mapeamento real de unidade/range do `ControllerCard` a partir do backend
+  (`pv_scale.unit` / `eu_min` / `eu_max`; não há campo de casas decimais) — instrumentado na Fatia 8.
+
 ---
 
 ## **MÓDULO 9: Sistema de Alarmes e Eventos**
