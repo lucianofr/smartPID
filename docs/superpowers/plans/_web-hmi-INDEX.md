@@ -40,7 +40,7 @@ These are NOT fatia tasks; they land on `main` first (see `.claude/docs/handoff-
 |---|---|---|---|---|---|
 | 0+1 | [foundation-dashboard](./2026-06-18-web-fatia01-foundation-dashboard.md) | `feat/web-fatia01-foundation-dashboard` | — | 12 | ✅ merged `427b670` |
 | 2 | [commands-loop-config](./2026-06-18-web-fatia2-commands-loop-config.md) | `feat/web-fatia2-commands-loop-config` | 0+1 | 8 | ✅ merged `3a77ae5` |
-| 3 | [alarms](./2026-06-18-web-fatia3-alarms.md) | `feat/web-fatia3-alarms` | 0+1 | 8 | ⬜ |
+| 3 | [alarms](./2026-06-18-web-fatia3-alarms.md) | `feat/web-fatia3-alarms` | 0+1 | 8 | ✅ merged `4210142` |
 | 4 | [multitrend-stats-export](./2026-06-18-web-fatia4-multitrend-stats-export.md) | `feat/web-fatia4-multitrend-stats-export` | 0+1, (2) | 12 | ⬜ |
 | 5 | [simulator](./2026-06-18-web-fatia5-simulator.md) | `feat/web-fatia5-simulator` | 0+1, (2) | 12 | ⬜ |
 | 6 | [executive-dashboard](./2026-06-18-web-fatia6-executive-dashboard.md) | `feat/web-fatia6-executive-dashboard` | 0+1, (4),(2) | 10 | ⬜ |
@@ -79,17 +79,17 @@ Branch `feat/web-fatia2-commands-loop-config` · deps: 0+1 · final review READY
 - [x] Task 7 — Apply-tuning confirmation guard + AI panel `286a190` (+fix `8ecc104`)
 - [x] Task 8 — Wire into dashboard + Playwright e2e + specs `9abd81a`
 
-## Fatia 3 — Alarms  ⬜ DONE-when-all-checked
-Branch `feat/web-fatia3-alarms` · deps: 0+1
+## Fatia 3 — Alarms  ✅ DONE (merged main `4210142`, 2026-06-19)
+Branch `feat/web-fatia3-alarms` (forked main `3a77ae5`) merged `--no-ff` → `4210142` (parents `3a77ae5` + `05eb3a1`). 9 commits. Post-merge green: vitest 84/84 (19 files), e2e alarms 1/1, build clean. Final review 0 Critical/0 High. Digest: `_web-hmi-fatia3-digest.md`.
 
-- [ ] Task 0 — Investigate backend alarm surface & regenerate OpenAPI types
-- [ ] Task 1 — Alarm domain types + severity helpers (ISA-101 redundant coding)
-- [ ] Task 2 — Alarm data hooks (active query + ack mutations + WS trigger)
-- [ ] Task 3 — AlarmPanel (virtualized active list, dedupe, sort/filter, ack)
-- [ ] Task 4 — AlarmBar (persistent shell footer: counts, blink, ack-all)
-- [ ] Task 5 — Per-loop alarm-config form (limits/severities, persists + retriggers)
-- [ ] Task 6 — Playwright e2e: alarm fires → appears → ack → ACKNOWLEDGED (not removed); clear only after condition ceases
-- [ ] Task 7 — Specs upkeep + full-suite verification
+- [x] Task 0 — Investigate backend alarm surface (read-only, no commit; OpenAPI regen N/A — `src/api/generated/` gitignored, types hand-typed)
+- [x] Task 1 — Alarm domain types + severity helpers (ISA-101 redundant coding) `cc4c6c3`
+- [x] Task 2 — Alarm data hooks (active query + ack mutations + WS trigger) `4751ae6`
+- [x] Task 3 — AlarmPanel (virtualized active list, dedupe, sort/filter, ack) `af48e23` +fix `bf5b7d6`
+- [x] Task 4 — AlarmBar (persistent shell footer: counts, blink, ack-all) `fc7c6a1`
+- [x] Task 5 — Per-loop alarm-config form (limits/severities, persists + retriggers) `113bcb0`
+- [x] Task 6 — Playwright e2e: alarm fires → appears → ack → ACKNOWLEDGED (not removed); clear only after condition ceases `dccc3ef`
+- [x] Task 7 — Specs upkeep + full-suite verification `8d9aac6` (+final-review fix `05eb3a1`)
 
 ## Fatia 4 — Multi-trend + Stats + Export  ⬜ DONE-when-all-checked
 Branch `feat/web-fatia4-multitrend-stats-export` · deps: 0+1, (recommended after 2)

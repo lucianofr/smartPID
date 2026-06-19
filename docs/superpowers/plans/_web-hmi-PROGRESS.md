@@ -4,7 +4,7 @@
 > `_web-hmi-INDEX.md` (the checkbox tracker). Update this on every logical boundary.
 > User decision (2026-06-18): state lives **centralized here in the docs worktree**.
 
-_Last updated: 2026-06-18 — after preconditions P1+P2._
+_Last updated: 2026-06-19 — Fatia 3 (Alarms) merged to main `4210142`._
 
 ## Worktrees (durable, outside /tmp)
 - **Plans / state (this branch):** `.worktrees/web-hmi-plans` @ `docs/web-hmi-implementation-plans`
@@ -86,3 +86,23 @@ Digest: `_web-hmi-fatia2-digest.md`.
 **Key decisions:** engine selector ENABLED via PUT /controllers ai_config (contract premise was stale);
 optimization_enabled added to ControllerResponse; all routes require_authenticated_admin; no toast.
 **Next: Fatia 3 (Alarms)** — new branch from main.
+
+## Fatia 3 — Alarms — ✅ COMPLETE (8/8), MERGED to main `4210142` (2026-06-19)
+Branch `feat/web-fatia3-alarms` (forked main `3a77ae5`) merged `--no-ff` into main
+**`4210142`** (parents `3a77ae5` + `05eb3a1`). 9 commits. Post-merge green: vitest 84/84
+(19 files), e2e alarms 1/1, build clean (81.49 kB gzip). **Zero backend change** (verified
+`git diff main...HEAD -- '*.py'` empty). On-disk ledger: `.git/worktrees/main-web-hmi/sdd/progress.md`.
+Minors: `.../sdd/fatia3-minor-findings.md`. Digest: `_web-hmi-fatia3-digest.md`.
+
+- T0 investigation (read-only, NO commit) — confirmed live alarm contract; `src/api/generated/` gitignored → types hand-typed (Fatia 2 precedent). self.
+- T1 `cc4c6c3` types + ISA-101 severity helpers (icon shape+color+text). self.
+- T2 `4751ae6` data hooks (active query, ack/ack-all, WS trigger; onSettled revalidate, no optimistic). self.
+- T3 `af48e23` +fix `bf5b7d6` virtualized AlarmPanel. react-reviewer: 1 Important FIXED (inline-apiPost orphaned ack hooks → restored hooks + isPending + await waitFor). Installed `@tanstack/react-virtual`; jsdom ResizeObserver/offset shims.
+- T4 `fc7c6a1` AlarmBar in canonical AppShell footer. self.
+- T5 `113bcb0` AlarmConfigForm (full-array PUT replace-all) + `/alarms` route. self.
+- T6 `dccc3ef` e2e alarm lifecycle (ack≠clear; cleared+acked drops out). e2e 1/1.
+- T7 `8d9aac6` spec docs (smartPIDv2 §9.3 + identidade_visual_ISA101 §4.5). self.
+- FINAL REVIEW (code-reviewer opus): MERGE WITH FOLLOW-UPS — 0 Critical/0 High; all 9 binding constraints verified; 1 Important FIXED `05eb3a1` (advisory CSS token → `--alarm-diag` + added `--alarm-diag-bg`). 5 follow-ups (F1–F5) deferred non-blocking.
+
+**Key facts:** zero backend change (pure consume of routers/alarms + alarm-config + EVENT.ALARM/EVENT.SYSTEM WS). GAP-3a (3-state UNACK/ACK/CLEARED_UNACK; ack≠clear; cleared+acked leaves active list). GAP-3b (WS alarm frame = refetch trigger; backend = source of truth, no optimistic). ISA-101 redundant coding. Single-admin (no role gating; negative=401). NOTE: alarm routes still `require_operator/require_supervisor` on this branch (web unaffected — admin satisfies all guards) — flag vs P3/TD-007 "all-collapsed" claim; revisit at Fatia 7.
+**Next: Fatia 4 (Multi-trend + Stats + Export)** — new branch from main `4210142`.
