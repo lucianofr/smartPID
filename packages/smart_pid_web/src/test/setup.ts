@@ -33,6 +33,19 @@ if (typeof HTMLCanvasElement !== 'undefined') {
     })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
 }
 
+// jsdom lacks ResizeObserver; @tanstack/react-virtual instantiates one to track the
+// scroll element. A no-op stand-in keeps the virtualizer happy (size is fed via the
+// element's offsetWidth/offsetHeight, which AlarmPanel.test stubs to a real viewport).
+if (!('ResizeObserver' in globalThis)) {
+  class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  (globalThis as unknown as { ResizeObserver: typeof ResizeObserverStub }).ResizeObserver =
+    ResizeObserverStub;
+}
+
 // jsdom lacks matchMedia; ThemeProvider/reduced-motion checks need it.
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>
