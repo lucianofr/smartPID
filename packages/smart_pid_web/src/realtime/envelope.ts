@@ -39,7 +39,12 @@ export interface StatusData {
 export interface ActionData { cv: number; delta: number; } // ACTION.CTRL.{id}
 export interface AlarmData { alarm_id: string; severity: string; state: string; } // EVENT.ALARM.*
 export interface AiData { gamma: number; ki: number; strategy: string; } // ACTION.AI.{id}
+// STATS.{id}. Wire shape is identical for both sources (snake_case dict):
+//   - WS STATS.{id} payload (stats_worker.py:86 get_current_stats)
+//   - REST GET /controllers/stats -> StatsResponse (smart_pid_domain/dtos/ai.py StatsResponse)
 export interface StatsData {
+  controller_id?: number;
   iae: number; itae: number; ise: number; mse: number;
-  sigma: number; tv: number; var_range: number; var_sp: number;
-} // STATS.{id}
+  std_dev: number; total_variation: number;
+  variability_range: number; variability_sp: number;
+}
