@@ -19,10 +19,14 @@ _Last updated: 2026-06-18 — after preconditions P1+P2._
 ## Preconditions
 - [x] **P1** — `fix/backend-security-hardening` → main. Merge commit `1f90c2b` (parents d2d1565 + 6f72c43). Clean (forked off current main HEAD).
 - [x] **P2** — `feat/pid-optimization-enable-toggle` → main. Merge commit `903f7a6` (parents 1f90c2b + ac15e53). Conflict in `smart_pid_domain/dtos/commands.py` resolved by **keeping both** `TuningCommand` (P1) + `OptimizationCommand` (P2); router imports both directly (L156 / L227). `dtos/__init__.py` does NOT re-export these two — fine, direct module import.
-- [ ] **P3** — TD-007 single-admin collapse: replace `require_operator|supervisor|admin` with one `require_authenticated_admin`; **remove `routers/users`**; keep admin login + optional password change; negative-auth tests assert **401**. New branch from main → verify → merge.
-- [ ] **P4** — TD-004 CORS/bind/headers. Overlaps Fatia 0+1 Task 5 — implement here, then **Fatia 0+1 Task 5 must NOT re-do CORS/headers** (SPA mount + RealtimeWS wiring only).
+- [x] **P3** — TD-007 single-admin. Branch `fix/td-007-single-admin` → merge `cb8316d`. One `require_authenticated_admin` gate across all routers; `routers/users.py` + `POST /register` removed; admin bootstrap (`main.py:335-346`) + `UserRepository` kept; 401-not-403. Reviewed (fastapi-reviewer): SPEC ✅, QUALITY approved, 66 handlers enumerated, **no route left ungated**, no 403-by-role. Tests 70 passed + 3 known opcua env failures.
+- [ ] **P4** — TD-004 CORS/bind/headers. Overlaps Fatia 0+1 Task 5 — implement here, then **Fatia 0+1 Task 5 must NOT re-do CORS/headers** (SPA mount + RealtimeWS wiring only). NOTE: tech-debt itself defers TD-004 to the Fatia 0+1 single-origin SPA work → do a MINIMAL standalone version (bind 127.0.0.1 + TrustedHost + config-driven CORS allow-list), leave SPA single-origin mount to Fatia 0+1.
 
-main HEAD after P1+P2 = `903f7a6`.
+main HEAD after P1+P2+P3 = `cb8316d`.
+
+## Follow-ups raised by P3 review (not blocking; triage in final whole-branch review)
+- Minor: `AuthorizationError` + its 403 handler in `error_handlers.py` are now dead code (orphaned when role gating removed). Safe to delete in a later cleanup.
+- Operational: single admin has default password `admin` and NO change path (the only mutation, `PUT /users/{id}`, was removed). Recommend a follow-up `POST /auth/change-password` gated by `require_authenticated_admin`. Candidate for Fatia 7 (settings) or a small standalone fix.
 
 ## Verification status
 - P1/P2 affected-code tests GREEN: `test_api_commands.py` + `test_api_project.py` + `test_project_service.py` = **97 passed**; `test_api_optimization_toggle.py` = **6 passed**.
