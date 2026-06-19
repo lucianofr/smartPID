@@ -19,14 +19,14 @@
 .alarm-row.is-unacked { box-shadow: inset 3px 0 0 0 var(--alarm-stripe, currentColor); }
 .alarm-row.sev-critical.is-unacked { background: var(--alarm-critical-bg, transparent); --alarm-stripe: var(--alarm-critical); }
 .alarm-row.sev-warning.is-unacked  { background: var(--alarm-warning-bg, transparent);  --alarm-stripe: var(--alarm-warning); }
-.alarm-row.sev-advisory.is-unacked { background: var(--alarm-advisory-bg, transparent); --alarm-stripe: var(--alarm-advisory); }
+.alarm-row.sev-advisory.is-unacked { background: var(--alarm-diag-bg, transparent); --alarm-stripe: var(--alarm-diag); }
 .alarm-row__time { font-variant-numeric: tabular-nums; }
 .alarm-row__sev { display: inline-flex; align-items: center; gap: 6px; }
 /* ISA-101 §8.2 — geometric shape, never color alone. */
 .sev-icon { width: 10px; height: 10px; display: inline-block; background: currentColor; }
 .sev-icon--octagon  { clip-path: polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%); color: var(--alarm-critical); }
 .sev-icon--triangle { clip-path: polygon(50% 0,100% 100%,0 100%); color: var(--alarm-warning); }
-.sev-icon--diamond  { clip-path: polygon(50% 0,100% 50%,50% 100%,0 50%); color: var(--alarm-advisory); }
+.sev-icon--diamond  { clip-path: polygon(50% 0,100% 50%,50% 100%,0 50%); color: var(--alarm-diag); }
 .sev-icon--dot      { border-radius: 50%; color: var(--text-muted, currentColor); }
 /* §6.4 — blink ONLY the icon opacity on unacked; never the whole row. */
 .alarm-row.is-unacked .sev-icon { animation: alarm-blink 1s step-start infinite; }

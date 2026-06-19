@@ -7,7 +7,7 @@
   --focus-ring: #8A8A94;
   --alarm-critical: #D92525; --alarm-critical-bg: #2A0A0A;
   --alarm-warning: #D9A000; --alarm-warning-bg: #2A2000;
-  --alarm-diag: #8A6AD9; --alarm-info: #4A8AD9;
+  --alarm-diag: #8A6AD9; --alarm-diag-bg: #1A1430; --alarm-info: #4A8AD9;
   --on-alarm: #F2E6E6; --text-on-alarm: #F2E6E6;
   --state-running: #4A4A52; --state-stopped: #666670;
   --state-error: #D92525; --state-oos: #3A3A42;
@@ -25,7 +25,7 @@
   --focus-ring: #C8C8C8;
   --alarm-critical: #FF3333; --alarm-critical-bg: #3A0E0E;
   --alarm-warning: #FF8800; --alarm-warning-bg: #3A2200;
-  --alarm-diag: #AA55FF; --alarm-info: #33AAFF;
+  --alarm-diag: #AA55FF; --alarm-diag-bg: #260A3A; --alarm-info: #33AAFF;
   --on-alarm: #FFFFFF; --text-on-alarm: #1E1E1E;
   --state-running: #9A9A9A; --state-stopped: #ABABAB;
   --state-error: #FF3333; --state-oos: #666666;
