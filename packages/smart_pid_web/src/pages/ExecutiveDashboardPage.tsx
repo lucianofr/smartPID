@@ -100,7 +100,7 @@ export function ExecutiveDashboardPage(): JSX.Element {
 
   return (
     <AppShell opcDown={opcDown}>
-      <main data-testid="executive-dashboard">
+      <div className="exec-dash" data-testid="executive-dashboard">
         <header className="exec-dash__header">
           <h1>Executive Dashboard</h1>
           <PeriodSelector value={period} onChange={setPeriod} />
@@ -169,7 +169,7 @@ export function ExecutiveDashboardPage(): JSX.Element {
             <LoopTuningDetail key={c.id} loopId={c.id} loopName={c.name} />
           ))}
         </section>
-      </main>
+      </div>
     </AppShell>
   );
 }
