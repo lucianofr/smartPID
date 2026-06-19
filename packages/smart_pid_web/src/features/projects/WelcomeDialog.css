@@ -1,0 +1,99 @@
+.welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  background: color-mix(in oklab, var(--bg) 70%, transparent);
+}
+
+.welcome-dialog {
+  width: min(560px, 100%);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  background: var(--surface-container);
+  color: var(--text);
+  border: var(--border-w) solid var(--border-strong);
+  border-radius: var(--radius-card);
+}
+
+.welcome-dialog__header {
+  border-bottom: var(--border-w) solid var(--border);
+  padding-bottom: var(--sp-3);
+}
+
+.welcome-dialog__title {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.welcome-dialog__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  overflow-y: auto;
+}
+
+.welcome-dialog__item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  background: var(--surface);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+.welcome-dialog__name {
+  font-weight: 600;
+}
+
+.welcome-dialog__count {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+.welcome-dialog__loading,
+.welcome-dialog__empty {
+  color: var(--text-secondary);
+  padding: var(--sp-3);
+}
+
+.welcome-dialog__open,
+.welcome-dialog__secondary {
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  padding: var(--sp-1) var(--sp-4);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.welcome-dialog__open:hover,
+.welcome-dialog__secondary:hover {
+  border-color: var(--border-strong);
+}
+
+.welcome-dialog__error {
+  margin: 0;
+  color: var(--alarm-critical);
+  font-size: var(--text-sm);
+}
+
+.welcome-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  border-top: var(--border-w) solid var(--border);
+  padding-top: var(--sp-3);
+}

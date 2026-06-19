@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { queryClient } from './api/queryClient';
@@ -15,11 +16,20 @@ import { ConnectionPage } from './pages/ConnectionPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { AppShell } from './components/shell/AppShell';
 import { AlarmPanel } from './features/alarms/AlarmPanel';
+import { WelcomeDialog } from './features/projects/WelcomeDialog';
 import './theme/tokens.css';
 import './theme/themes.css';
 
 function Shell() {
   const { token } = useAuth();
+  const [welcomeSeen, setWelcomeSeen] = useState(
+    () => sessionStorage.getItem('spid.welcome-seen') === '1',
+  );
+  const showWelcome = token != null && !welcomeSeen;
+  const dismissWelcome = () => {
+    sessionStorage.setItem('spid.welcome-seen', '1');
+    setWelcomeSeen(true);
+  };
   return (
     <RealtimeProvider token={token}>
       <Routes>
@@ -92,6 +102,7 @@ function Shell() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      {showWelcome && <WelcomeDialog open onDismiss={dismissWelcome} />}
     </RealtimeProvider>
   );
 }
