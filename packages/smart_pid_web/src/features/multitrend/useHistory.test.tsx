@@ -3,13 +3,14 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-const apiGet = vi.fn((_path: string) =>
-  Promise.resolve({
+const apiGet = vi.fn((path: string) => {
+  void path; // arg recorded for the mock.calls path assertion; body returns canned data
+  return Promise.resolve({
     controller_id: 7,
     frames: [{ timestamp: '2026-06-18T00:00:00Z', pv: 1, sp: 2, co: 3, mode: 'AUTO', status: 'GOOD' }],
     count: 1,
-  }),
-);
+  });
+});
 vi.mock('../../api/client', () => ({ apiGet: (path: string) => apiGet(path) }));
 
 import { useHistory } from './useHistory';
