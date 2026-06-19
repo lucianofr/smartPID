@@ -11,6 +11,7 @@ interface NavItem {
 const ITEMS: ReadonlyArray<NavItem> = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/multitrend', label: 'Multi-trend' },
+  { to: '/simulator', label: 'Simulator' },
   { to: '/alarms', label: 'Alarms' },
 ];
 

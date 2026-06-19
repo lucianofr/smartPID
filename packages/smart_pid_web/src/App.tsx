@@ -8,6 +8,7 @@ import { RealtimeProvider } from './realtime/RealtimeProvider';
 import { ThemeProvider } from './theme/ThemeProvider';
 import { DashboardPage } from './pages/DashboardPage';
 import { MultiTrendPage } from './pages/MultiTrendPage';
+import { SimulatorPage } from './pages/SimulatorPage';
 import { AppShell } from './components/shell/AppShell';
 import { AlarmPanel } from './features/alarms/AlarmPanel';
 import './theme/tokens.css';
@@ -32,6 +33,14 @@ function Shell() {
           element={
             <RequireAuth>
               <MultiTrendPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/simulator"
+          element={
+            <RequireAuth>
+              <SimulatorPage />
             </RequireAuth>
           }
         />
