@@ -32,7 +32,7 @@ These are NOT fatia tasks; they land on `main` first (see `.claude/docs/handoff-
 - [x] **P1** — Merge `fix/backend-security-hardening` → `main` (TD-001/002/003/005: project auth, path sanitization, `/commands/tuning` guardrails, upload 413). *All fatias assume this.* — DONE merge `1f90c2b`
 - [x] **P2** — Merge `feat/pid-optimization-enable-toggle` → `main` (`Controller.optimization_enabled`, `POST /commands/optimization`, `AIWorker.set_enabled`). *Fatia 2 GAP-2b depends on this.* — DONE merge `903f7a6` (DTO conflict resolved: kept both TuningCommand + OptimizationCommand)
 - [x] **P3** — **TD-007** single-admin collapse: replace `require_operator|supervisor|admin` with one `require_authenticated_admin`; **remove `routers/users`** + `POST /register`; keep admin login + bootstrap. *Fatia 7 assumes this.* — DONE merge `cb8316d` (reviewed: 66 handlers, no route ungated, no 403-by-role)
-- [ ] **P4** — **TD-004** CORS/bind/headers (some overlaps Fatia 0+1 Task 5 — coordinate; do not double-implement).
+- [x] **P4** — **TD-004** CORS/bind/headers — DONE merge `cb7f16c`. CORS allow-list (no wildcard+creds), TrustedHostMiddleware, security headers (nosniff/DENY/Referrer/Permissions/CSP), `api_host` default `127.0.0.1`. **Fatia 0+1 Task 5 must NOT re-do CORS/headers** — only SPA single-origin mount + `/ws/realtime` Origin validation remain there.
 
 ## Progress summary
 
