@@ -40,22 +40,28 @@ subagent-driven (implementer → task review → fix loop), TDD, opus subagents,
 conventional commits no attribution. Frontend: context7 + frontend-design +
 karpathy-guidelines per the resume directive.
 
-## Fatia 0+1 — IN PROGRESS (3/12), T1-T3 MERGED to main `754cc00`
-Branch `feat/web-fatia01-foundation-dashboard` (tip `3b4bcf7`). T1-T3 incrementally merged to
-main `754cc00` (merge commit, parents `cb7f16c`+`3b4bcf7`) — purely additive island module
-`api/ws/realtime.py` + tests (19 pass on main), NOT yet wired (T5). Fatia NOT done.
-Worktree `.worktrees/main-web-hmi`. Orchestrator memory: `_web-hmi-fatia01-digest.md`
-(global constraints, 12 tasks, sequencing, resolutions). On-disk ledger:
-`.git/worktrees/main-web-hmi/sdd/progress.md`.
-**Resume T4+:** re-fork fresh from main `754cc00` (e.g. continue `feat/web-fatia01` after
-`git merge main`, or new branch) — main now contains T1-T3.
+## Fatia 0+1 — ✅ COMPLETE (12/12), MERGED to main `427b670` (2026-06-19)
+Branch `feat/web-fatia01-foundation-dashboard` (tip `7fad4b6`) merged `--no-ff` into main
+**`427b670`** (parents `754cc00` + `7fad4b6`). 14 commits. main green post-merge: backend WS
+22 passed, web 11 unit + build clean, e2e 1 passed, ruff clean.
+Worktree `.worktrees/main-web-hmi`. Orchestrator memory: `_web-hmi-fatia01-digest.md`.
+On-disk ledger (12/12 complete): `.git/worktrees/main-web-hmi/sdd/progress.md`.
+Accumulated minor/deferred findings: `.worktrees/main-web-hmi/.sdd/minor-findings.md`.
 
-- [x] T1 `51ae813` — response_model audit (no router edits; added OpenAPI contract test). self-review.
-- [x] T2 `631519c` — ConnectionManager (resilient async broadcast). self-review (concurrency PASS).
-- [x] T3 `3b4bcf7` — RealtimeBridge + map_topic_to_envelope (one task, poll-gated executor). self-review.
-- [ ] **T4 (NEXT)** — `/ws/realtime` endpoint: first-message auth `{type:auth,token}` + Origin validation + ConnectionBuffer (coalesce status/stats; lossless bounded alarm/ai/system; close 4401 on overflow). **Security-critical → full reviewer subagent.** Brief: re-extract `task-brief <fatia01 plan> 4` (git-sdd briefs are ephemeral).
-- [ ] T5 — wire create_app — **TRIMMED**: lifespan start/stop realtime_manager+bridge + SPA StaticFiles mount + config `web_dist_dir`,`allowed_ws_origins`. **Do NOT re-add CORS/SecurityHeaders (P4 cb7f16c did them).**
-- [ ] T6–T10 frontend (scaffold→theme→auth→realtime→components), T11 e2e, T12 verify+spec. See digest.
+- [x] T1 `51ae813` — response_model audit. self-review.
+- [x] T2 `631519c` — ConnectionManager (resilient async broadcast). self-review.
+- [x] T3 `3b4bcf7` — RealtimeBridge + map_topic_to_envelope. self-review.
+- [x] T4 `d891a87` — `/ws/realtime` first-msg auth + Origin + ConnectionBuffer. fastapi-reviewer (SPEC✅, gate-bypass clean).
+- [x] T5 `298c6fb` — wire create_app (bridge lifespan + SPA mount + config); brief stale, applied P4 trim. fastapi-reviewer (SPEC✅).
+- [x] T6 `6509bd0` — scaffold Vite/React/TS. self-review.
+- [x] T7 `80e6486` — theme tokens + ThemeProvider + format. self-review.
+- [x] T8 `bfcae54` — api client + AuthContext + RequireAuth + LoginPage. react-reviewer (SPEC✅).
+- [x] T9 `da84a60` +fix `3a894fc` — realtime envelope/provider/hook. react-reviewer: 1 Important (stale-render) FIXED.
+- [x] T10 `ce71bb8` +chore `dd9acbd` +fix `df00896` — components+shell+DashboardPage+App wiring. react-reviewer: 2 Important FIXED (eslint config, onResync deps) + opcDown ONLINE bug.
+- [x] T11 `8f9a5a4` — Playwright e2e login→status frame. e2e green.
+- [x] T12 `c78c69a` +gate-fix `e0b4d8a` — spec upkeep + full verify gate + state save; fixed uv-workspace exclude + vitest src scope.
+- [x] Final whole-branch review (code-reviewer opus): 1 blocking Important (StatusData nested wire-shape) FIXED `7fad4b6`; auth/WS security SOUND; 16 minors triaged OK-to-defer.
 
-**Resume:** cwd → `.worktrees/main-web-hmi`; `task-brief` for T4; dispatch backend/opus implementer; full reviewer; merge to main only at fatia end (with approval).
-Verification: full `uv run pytest` SIGABRTs (Py3.14 aiosqlite) → targeted paths; frontend = npm/playwright in `packages/smart_pid_web`.
+**Deferred to Fatia 8 / follow-ups:** ConnectionBuffer live-wiring + overflow-close; ControllerCard real unit/range mapping (`pv_scale.unit`/`eu_min`/`eu_max`, no decimals field); minor list in `.sdd/minor-findings.md`.
+
+**Next: Fatia 2** (commands + per-loop config) — new branch from main `427b670`.

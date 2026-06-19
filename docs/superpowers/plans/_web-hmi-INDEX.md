@@ -38,7 +38,7 @@ These are NOT fatia tasks; they land on `main` first (see `.claude/docs/handoff-
 
 | Fatia | Plan | Branch | Deps | Tasks | DONE |
 |---|---|---|---|---|---|
-| 0+1 | [foundation-dashboard](./2026-06-18-web-fatia01-foundation-dashboard.md) | `feat/web-fatia01-foundation-dashboard` | — | 12 | ⬜ |
+| 0+1 | [foundation-dashboard](./2026-06-18-web-fatia01-foundation-dashboard.md) | `feat/web-fatia01-foundation-dashboard` | — | 12 | ✅ merged `427b670` |
 | 2 | [commands-loop-config](./2026-06-18-web-fatia2-commands-loop-config.md) | `feat/web-fatia2-commands-loop-config` | 0+1 | 8 | ⬜ |
 | 3 | [alarms](./2026-06-18-web-fatia3-alarms.md) | `feat/web-fatia3-alarms` | 0+1 | 8 | ⬜ |
 | 4 | [multitrend-stats-export](./2026-06-18-web-fatia4-multitrend-stats-export.md) | `feat/web-fatia4-multitrend-stats-export` | 0+1, (2) | 12 | ⬜ |
@@ -51,21 +51,21 @@ These are NOT fatia tasks; they land on `main` first (see `.claude/docs/handoff-
 
 ---
 
-## Fatia 0+1 — Foundation + Live Dashboard  ⬜ DONE-when-all-checked
+## Fatia 0+1 — Foundation + Live Dashboard  ✅ DONE (merged main `427b670`, 2026-06-19)
 Branch `feat/web-fatia01-foundation-dashboard` · deps: none (linchpin — creates the canonical scaffold)
 
-- [ ] Task 1 — Branch + backend `response_model` audit for fatia-0+1 routers
-- [ ] Task 2 — `ConnectionManager` (resilient async broadcast)
-- [ ] Task 3 — `RealtimeBridge` — single non-blocking bus consumer + topic→envelope mapping
-- [ ] Task 4 — `/ws/realtime` endpoint — first-message auth, Origin validation, coalescing/lossless queue
-- [ ] Task 5 — Wire RealtimeWS, security headers, dev CORS, SPA mount into `create_app`
-- [ ] Task 6 — Frontend scaffold (`packages/smart_pid_web/`) — Vite/React/TS toolchain
-- [ ] Task 7 — Theme tokens + ThemeProvider (design-system §2.0 / §2.2)
-- [ ] Task 8 — API client + AuthContext + LoginPage (consumes `POST /auth/login`)
-- [ ] Task 9 — `envelope.ts` (CANONICAL) + `RealtimeProvider` + `useRealtime` (CANONICAL)
-- [ ] Task 10 — `AnalogBar`, `ControllerCard`, `RealtimeTrend`, shell, `DashboardPage`
-- [ ] Task 11 — Playwright e2e — login → dashboard receives a `status` frame
-- [ ] Task 12 — Spec upkeep + full verification + state save
+- [x] Task 1 — Branch + backend `response_model` audit for fatia-0+1 routers
+- [x] Task 2 — `ConnectionManager` (resilient async broadcast)
+- [x] Task 3 — `RealtimeBridge` — single non-blocking bus consumer + topic→envelope mapping
+- [x] Task 4 — `/ws/realtime` endpoint — first-message auth, Origin validation, coalescing/lossless queue
+- [x] Task 5 — Wire RealtimeWS, security headers, dev CORS, SPA mount into `create_app`
+- [x] Task 6 — Frontend scaffold (`packages/smart_pid_web/`) — Vite/React/TS toolchain
+- [x] Task 7 — Theme tokens + ThemeProvider (design-system §2.0 / §2.2)
+- [x] Task 8 — API client + AuthContext + LoginPage (consumes `POST /auth/login`)
+- [x] Task 9 — `envelope.ts` (CANONICAL) + `RealtimeProvider` + `useRealtime` (CANONICAL)
+- [x] Task 10 — `AnalogBar`, `ControllerCard`, `RealtimeTrend`, shell, `DashboardPage`
+- [x] Task 11 — Playwright e2e — login → dashboard receives a `status` frame
+- [x] Task 12 — Spec upkeep + full verification + state save
 
 ## Fatia 2 — Commands + Loop Config  ⬜ DONE-when-all-checked
 Branch `feat/web-fatia2-commands-loop-config` · deps: 0+1
