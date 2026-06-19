@@ -1,0 +1,93 @@
+/* Multi-trend selector + stats panel. Minimal, token-based styling only.
+   Full bento page layout is Task 10. No hardcoded palette. */
+
+.series-selector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--space-3, 12px);
+  background: var(--surface-container);
+}
+
+.series-selector legend {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  padding: 0 var(--space-1, 4px);
+}
+
+.series-selector__loop {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3, 12px);
+}
+
+.series-selector__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  font-size: var(--text-sm);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.series-selector__swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-pill);
+}
+
+.stats-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.stats-panel__empty {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.stats-panel__loop {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--space-3, 12px);
+  background: var(--surface-container);
+}
+
+.stats-panel__title {
+  margin: 0 0 var(--space-2, 8px);
+  font-size: var(--text-base);
+  color: var(--text);
+}
+
+.stats-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: var(--space-2, 8px);
+  margin: 0;
+}
+
+.stats-panel__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stats-panel__cell dt {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.stats-panel__cell dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.mono-tabular {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
