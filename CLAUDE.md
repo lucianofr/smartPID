@@ -6,11 +6,13 @@
 
 ## Stack e padroes
 - Python 3.13, uv workspace (hatchling), monorepo
-- PySide6 (HMI desktop), ZeroMQ (msgpack), aiosqlite (WAL mode)
-- FastAPI + httpx (REST para HMI->Backend, NAO e web frontend)
+- **HMI atual (web):** React + Vite + TypeScript, TanStack Query (REST), uPlot (trends), WebSocket realtime
+- **HMI legado (PySide6): CONGELADA** — sem features novas; mantida ate paridade web, depois removida do codigo
+- ZeroMQ (msgpack), aiosqlite (WAL mode)
+- FastAPI + httpx (REST + WebSocket `/ws/realtime` para Web->Backend)
 - pydantic v2 + pydantic-settings (prefixo SPID_)
 - PyJWT + bcrypt (auth, Phase 6)
-- Ruff (lint, line-length=100), mypy strict, pytest + pytest-asyncio
+- Ruff (lint, line-length=100), mypy strict, pytest + pytest-asyncio (backend); Vitest + Playwright (web)
 - Codigo, commits e nomes de variaveis em ingles; comunicacao com usuario em portugues e aceitavel
 
 ## Comandos principais
@@ -20,24 +22,33 @@
 - lint fix: `uv run --with ruff ruff check --fix .`
 - mypy: `uv run mypy packages/`
 - run backend: `uv run python -m smart_pid_core`
+- web dev: `npm run dev` em `packages/smart_pid_web/` (Vite em `127.0.0.1:5173`, proxy `/api` e `/ws` -> backend `:8000`)
+- web build: `npm run build` (build estatico servido pelo backend / aberto no browser em localhost)
+- web test: `npm run test` (Vitest); E2E: `npm run e2e` (Playwright)
 
 Nota: em ambientes Flatpak (VS Code) o binario uv pode estar em:
 `/home/luciano/.var/app/com.visualstudio.code/bin/uv`
 
 ## Arquitetura
 
-Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI desktop).
+Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI web React; HMI desktop PySide6 congelada/legada).
 
-### Monorepo (3 pacotes)
+### Monorepo (pacotes)
 - `packages/smart_pid_domain/` — Modelos, enums, eventos, excecoes (ZERO dependencias de infra)
-- `packages/smart_pid_core/` — Backend daemon (PID engine, workers, event bus, SQLite, API)
-- `packages/smart_pid_hmi/` — Cliente desktop PySide6 (stub em Phase 1)
+- `packages/smart_pid_core/` — Backend daemon (PID engine, workers, event bus, SQLite, API, RealtimeWS)
+- `packages/smart_pid_web/` — **Cliente HMI atual: React/Vite/TS** (toolchain Node, paralelo ao hmi)
+- `packages/smart_pid_hmi/` — **Cliente desktop PySide6: CONGELADO (legado)** — sem features novas, removido apos paridade web
+
+> Refatoracao 2026-06-18: o cliente web React substitui a HMI PySide6. Backend v2 reusado quase
+> intacto (unica adicao: ponte RealtimeWS). PySide6 congela ao lado ate a paridade total, depois e
+> removida. Ver `docs/superpowers/specs/2026-06-18-web-hmi-react-migration-design.md`.
 
 ### Estrutura do Backend (`smart_pid_core`)
 - `domain/services/` — PID engine (velocity form), mode manager (8 modos)
 - `domain/ports/` — Protocolos inbound/outbound (TelemetrySource, ControlWriter, etc.)
 - `application/` — Event bus (ZMQ XPUB/XSUB), loop manager, workers (PID, DB)
 - `adapters/outbound/` — SQLite repo (7 tabelas), historian (batch insert)
+- `adapters/inbound/api/ws/realtime.py` — **RealtimeWS** (`/ws/realtime`): 2o consumidor do EventBus + ConnectionManager + broadcast JSON ao cliente web (analogo ao TelemetryPublisher)
 - `config.py` — CoreSettings via pydantic-settings (SPID_ prefix)
 - `main.py` — Daemon entry point com signal handlers
 
@@ -49,11 +60,14 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 
 ### Comunicacao
 - ZeroMQ inproc:// — Bus interno entre threads do Backend (XPUB/XSUB proxy, msgpack)
-- ZeroMQ tcp://5555 — PUB/SUB Backend->HMI (telemetria em tempo real)
-- FastAPI REST — HMI->Backend (comandos, historico, CRUD, project upload/download)
+- **WebSocket `/ws/realtime` — Backend->Web (telemetria em tempo real, cliente atual)**; auth JWT no handshake (ws-ticket ou 1a msg, nunca `?token=`), valida header `Origin`, fecha com `4401` se invalido
+- ZeroMQ tcp://5555 — PUB/SUB Backend->PySide6 (**legado**, telemetria em tempo real)
+- FastAPI REST — Web/HMI->Backend (comandos, historico, CRUD, project upload/download)
 - Project management via REST: list, new, open (by name), import (multipart upload), download (FileResponse), delete
-- Welcome Dialog mostrado pos-login (precisa de auth para listar projetos do backend)
-- Topicos: TELEMETRY.{id}, ACTION.CTRL.{id}, ACTION.AI.{id}, STATUS.{id}
+- Welcome Dialog/page mostrado pos-login (precisa de auth para listar projetos do backend)
+- Topicos do bus (fonte do web): STATUS.{id} (enriquecido pelo MonitorWorker — pv/sp/co/mode/error/saturated/kp/ti/td), ACTION.CTRL.{id}, ACTION.AI.{id}, EVENT.ALARM.*, EVENT.SYSTEM, STATS.{id}. Tópico interno TELEMETRY.{id} **nao** e bridgeado ao web.
+- Envelope WS (JSON): `{ type: status|action|alarm|ai|stats, loop_id, seq, ts, data }`. Coalescing de ultimo-valor so para `status`/`stats`; `alarm`/`ai`/`EVENT.SYSTEM` lossless (overflow fecha socket → re-sync via REST)
+- Servir SPA single-origin: `app.mount("/", StaticFiles(dist, html=True))` apos os routers (sem CORS); bind em `127.0.0.1`. Routers devem declarar `response_model` (OpenAPI tipado p/ o frontend)
 
 ### PID Engine
 - Velocity form: delta_cv = Kp * [(e-e1) + dt/Ti*e - Td*(pv-2pv1+pv2)/dt]
@@ -102,6 +116,9 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 - `SPID_PROJECTS_DIR` — Default: ~/.smart-pid/projects/ (diretorio de projetos gerenciados pelo backend)
 
 ## Documentos de referencia
+- **Migracao Web HMI (umbrella):** `docs/superpowers/specs/2026-06-18-web-hmi-react-migration-design.md` — fonte de arquitetura do cliente web
+- **Design System Web:** `docs/superpowers/specs/2026-06-18-web-frontend-design-system-design.md` — tokens, componentes, temas (autoridade de UI das 8 fatias)
+- **Specs por fatia (web):** `docs/superpowers/specs/2026-06-18-web-fatia{01,2,3,4,5,6,7,8}-*-design.md`
 - Spec V2: `docs/superpowers/specs/2026-04-02-smart-pid-v2-architecture-design.md`
 - Plano Phase 1: `docs/superpowers/plans/2026-04-02-phase1-foundation-domain-pid-v2.md`
 - Plano Phase 2: `docs/superpowers/plans/2026-04-03-phase2-rest-api-auth-telemetry.md`
@@ -116,7 +133,7 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 ## Fases de implementacao (seguindo V2 Spec)
 1. **Phase 1 — Foundation + Domain + PID** ✅ (merged to main)
 2. **Phase 2 — REST API + Auth + Telemetry Publisher** ✅ (merged to main)
-3. **Phase 3a — PySide6 HMI Desktop** ✅ (merged to main, 73 tests)
+3. **Phase 3a — PySide6 HMI Desktop** ✅ (merged to main, 73 tests) — **CONGELADO/legado, sera removido apos paridade web**
 4. Phase 3b — OPC-UA I/O Worker (reads/writes reais)
 5. Phase 4 — Simulator (digital twin): backend (SimulatorAdapter + asyncua.Server) + UI basica no HMI (preset selector, param sliders, disturbance injection). SVG overlay e "Export Dynamics to Loop" deferidos para Phase 7.
 6. Phase 5 — AI (Fuzzy + RL) + Statistics
@@ -125,9 +142,27 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 
 Phases 4/5/6 sao paralelizaveis apos Phase 3a.
 
+## Migracao Web HMI (8 fatias — refatoracao 2026-06-18)
+
+Substituicao do cliente PySide6 por frontend web React/Vite, reusando o backend v2. Paridade
+total faseada. Cada fatia = spec + plano proprios + **branch dedicada nova a partir de `main`**.
+Ordem: `0+1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8` (Fatia 0+1 e a fundacao ponta-a-ponta).
+
+- **Fatia 0+1** — Foundation + Live Dashboard (RealtimeWS + scaffold `smart_pid_web` + login + dashboard ao vivo)
+- **Fatia 2** — Comandos + config por loop (PID/fuzzy/RL params, SP/modo/CO, apply-tuning, AI start/stop)
+- **Fatia 3** — Alarmes (painel + barra, ack/ack-all, alarm-config)
+- **Fatia 4** — Multi-trend + estatisticas + export
+- **Fatia 5** — Simulador (preset, sliders, distURbio, output/modo)
+- **Fatia 6** — Executive Dashboard (KPIs, saude de loops)
+- **Fatia 7** — Settings + Users (RBAC) + Conexao OPC + Projetos `.spid`
+- **Fatia 8** — Temas (Dark Room / ISA-101 / MD3 / Ocean) + Faceplate
+
+> Nao-objetivos: reescrever PID/fuzzy/RL/OPC, trocar EventBus, mudar persistencia, wrapper desktop
+> (Tauri/Electron). Empacotamento: so browser (localhost). PySide6 nao muda contrato REST/eventos.
+
 ## Convencoes
-- **Branching obrigatorio — REGRA INVIOLAVEL**: Toda e qualquer modificacao de codigo, correcao de bug, melhoria ou introducao de novo recurso DEVE ser feita em uma **nova branch dedicada** criada especificamente para aquela tarefa. **NUNCA utilize branches ja existentes** de outras tarefas. **NUNCA faca modificacoes diretamente na main.** O fluxo obrigatorio e: (1) criar branch nova a partir de main com nome descritivo (ex: `feat/controller-tooltips`, `fix/pid-gain-validation`), (2) fazer as modificacoes e commits nessa branch, (3) aguardar aprovacao explicita do usuario, (4) so entao executar o merge para main. **Esta regra se aplica a TODOS os agentes e subagentes sem excecao.**
-- **Specs obrigatorias ao alterar UI**: Toda modificacao na interface (widgets, layout, cards, paginas, temas) DEVE ser acompanhada da atualizacao dos documentos de especificacao em `docs/` que descrevem o componente alterado. Isso inclui: `docs/smartPID.md`, `docs/smartPIDv2.md`, `docs/identidade_visual_*.md`, e as specs em `docs/superpowers/specs/`. Nao commitar codigo de UI sem atualizar as specs correspondentes.
+- **PySide6 congelada:** NAO adicionar features novas em `smart_pid_hmi/`; toda UI nova vai no cliente web `smart_pid_web/`. PySide6 e mantida so ate a paridade web e depois removida.
+- **Specs obrigatorias ao alterar UI**: Toda modificacao na interface (widgets, layout, cards, paginas, temas) DEVE ser acompanhada da atualizacao dos documentos de especificacao em `docs/` que descrevem o componente alterado. Para a UI web, a autoridade de tokens/componentes/temas e `docs/superpowers/specs/2026-06-18-web-frontend-design-system-design.md` + a spec da fatia correspondente. Isso inclui ainda: `docs/smartPID.md`, `docs/smartPIDv2.md`, `docs/identidade_visual_*.md`, e as specs em `docs/superpowers/specs/`. Nao commitar codigo de UI sem atualizar as specs correspondentes.
 - TDD: write failing test -> implement -> green -> commit
 - Commits convencionais: feat(scope), fix(scope), chore(scope)
 - Hexagonal: domain NUNCA importa de adapters/application
@@ -138,8 +173,8 @@ Phases 4/5/6 sao paralelizaveis apos Phase 3a.
 
 ## Compact Instructions
 Ao compactar, preserve:
-- Fase atual e quais fases ja foram concluidas
-- Decisoes de arquitetura (hexagonal, PySide6 nao PyQt6, ZMQ dual bus, monorepo 3 pacotes)
+- Fase atual e quais fases/fatias ja foram concluidas (inclui fatia web em progresso)
+- Decisoes de arquitetura (hexagonal, monorepo, EventBus dual bus ZMQ + RealtimeWS WebSocket, **HMI web React substitui PySide6 congelada/a-remover**, backend v2 reusado intacto)
 - Estado das tarefas em progresso (task number, o que falta)
 - Variaveis de ambiente obrigatorias (SPID_*)
 - Caminho do uv em Flatpak se relevante
@@ -150,26 +185,67 @@ Ao compactar, preserve:
 
 **REGRA INVIOLÁVEL:** Ao concluir QUALQUER tarefa (step de um plano, feature, bugfix, etc.), o Claude DEVE:
 1. **Salvar o estado atual** em `.claude/docs/estado-atual.md` com: o que foi concluído, decisões tomadas, próximos passos, arquivos modificados
-2. **PARAR COMPLETAMENTE** e aguardar o usuário dar o próximo comando
 
-NÃO prossiga para a próxima tarefa automaticamente. NÃO encadeie tarefas. Cada tarefa é uma unidade isolada: terminou → salvou estado → parou.
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
-## Como passar o estado entre sessões (o "onde parou")
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
-Antes de dar `/clear`, peça ao Claude para salvar o contexto importante em um arquivo markdown. Crie um diretório `.claude/docs/` no projeto e peça para ele registrar: decisões de arquitetura, o que foi feito, o que falta fazer, e qualquer detalhe crítico da implementação atual. 
+## 1. Think Before Coding
 
-Fluxo prático:
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
 ```
-1. Antes de limpar:
-   "Salve o estado atual em .claude/docs/estado-atual.md:
-    - o que foi concluído
-    - decisões tomadas
-    - próximos passos
-    - arquivos modificados"
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
 
-2. /clear
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-3. Na nova sessão:
-   "Leia .claude/docs/estado-atual.md e continue de onde paramos."
-   
-4. **PARAR e aguardar o usuário iniciar uma nova janela de contexto.** NÃO prossiga para a próxima tarefa automaticamente.
+---
+
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
