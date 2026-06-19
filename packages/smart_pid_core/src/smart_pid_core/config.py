@@ -39,6 +39,10 @@ class CoreSettings(BaseSettings):
     # Project files directory (backend-managed)
     projects_dir: Path = Path.home() / ".smart-pid" / "projects"
 
+    # Maximum size (bytes) accepted for a .spid project import upload.
+    # Protects the single-process daemon from memory-exhaustion / disk-fill DoS.
+    max_upload_bytes: int = 50 * 1024 * 1024  # 50 MB
+
     # Simulator
     simulator_enabled: bool = False
     simulator_port: int = 4849

@@ -21,6 +21,16 @@ class OutputCommand(BaseModel):
     value: float
 
 
+class TuningCommand(BaseModel):
+    """Direct PID tuning write. Values are clamped server-side to the
+    controller's ``max_tuning_change_pct`` guardrail before being written."""
+
+    controller_id: int
+    kp: float | None = None
+    ti: float | None = None
+    td: float | None = None
+
+
 class CommandResponse(BaseModel):
     ok: bool
     controller_id: int | None = None

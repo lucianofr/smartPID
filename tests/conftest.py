@@ -45,6 +45,7 @@ async def api_deps(tmp_path):
     settings = CoreSettings(
         jwt_secret="test-secret-key-minimum-32-bytes!",
         execution_mode="execute",
+        max_upload_bytes=1 * 1024 * 1024,  # 1 MB cap for upload-size tests
     )  # type: ignore[call-arg]
 
     # Seed admin user

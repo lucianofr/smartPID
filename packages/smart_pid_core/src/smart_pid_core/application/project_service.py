@@ -1,6 +1,7 @@
 """Project lifecycle orchestration — new, open, import, download, delete."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -12,6 +13,13 @@ if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
     from smart_pid_core.application.daemon_state import DaemonState
     from smart_pid_core.application.loop_manager import LoopManager
+
+# Project names are restricted to a safe, portable character set. This blocks
+# path traversal (``..``, ``/``, ``\``), absolute paths, NUL bytes and other
+# non-portable characters before the name is ever used to build a filesystem
+# path. Length is capped to keep names well within filesystem limits.
+_MAX_PROJECT_NAME_LEN = 128
+_PROJECT_NAME_RE = re.compile(rf"^[A-Za-z0-9._\- ]{{1,{_MAX_PROJECT_NAME_LEN}}}$")
 
 
 class ProjectService:
@@ -36,6 +44,25 @@ class ProjectService:
     @property
     def projects_dir(self) -> Path:
         return self._projects_dir
+
+    def _safe_project_path(self, name: str) -> Path:
+        """Validate ``name`` and resolve it to a path inside ``projects_dir``.
+
+        Raises ``ValueError`` for any name that contains path separators,
+        traversal sequences, absolute paths, NUL bytes or other non-portable
+        characters, or whose resolved location would escape the projects
+        directory. This is the single choke point for all filesystem access
+        derived from caller-supplied project names.
+        """
+        if not isinstance(name, str) or not _PROJECT_NAME_RE.fullmatch(name):
+            raise ValueError(f"Invalid project name: {name!r}")
+        if name in {".", ".."} or name.strip() == "":
+            raise ValueError(f"Invalid project name: {name!r}")
+        base = self._projects_dir.resolve()
+        dest = (base / f"{name}.spid").resolve()
+        if dest.parent != base:
+            raise ValueError("Project name escapes the projects directory")
+        return dest
 
     async def get_current(self) -> ProjectResponse:
         """Return metadata about the currently-open project."""
@@ -70,7 +97,7 @@ class ProjectService:
 
     async def new_project(self, name: str) -> ProjectResponse:
         """Create a new empty project in the projects directory."""
-        dest = self._projects_dir / f"{name}.spid"
+        dest = self._safe_project_path(name)
         if dest.exists():
             raise FileExistsError(f"Project '{name}' already exists")
         self._loop_manager.stop_all()
@@ -88,7 +115,7 @@ class ProjectService:
 
     async def open_project(self, name: str) -> ProjectResponse:
         """Open an existing project by name."""
-        path = self._projects_dir / f"{name}.spid"
+        path = self._safe_project_path(name)
         if not path.exists():
             raise FileNotFoundError(f"Project '{name}' not found")
         self._loop_manager.stop_all()
@@ -103,7 +130,7 @@ class ProjectService:
 
     async def import_project(self, name: str, data: bytes) -> ProjectResponse:
         """Import an uploaded .spid file into the projects directory."""
-        dest = self._projects_dir / f"{name}.spid"
+        dest = self._safe_project_path(name)
         if dest.exists():
             raise FileExistsError(f"Project '{name}' already exists")
         dest.write_bytes(data)
@@ -123,7 +150,7 @@ class ProjectService:
 
     async def delete_project(self, name: str) -> None:
         """Delete a project file. Cannot delete the active project."""
-        path = self._projects_dir / f"{name}.spid"
+        path = self._safe_project_path(name)
         if not path.exists():
             raise FileNotFoundError(f"Project '{name}' not found")
         if path == self._repo._db_path:

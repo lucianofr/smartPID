@@ -168,6 +168,65 @@ async def test_delete_nonexistent(service):
         await service.delete_project("ghost")
 
 
+# --- Path traversal sanitization ---
+
+_MALICIOUS_NAMES = [
+    "../../etc/passwd",
+    "..",
+    ".",
+    "../escape",
+    "sub/dir/name",
+    "name/../../escape",
+    "/abs/path",
+    "name\x00.spid",
+    "a" * 200,  # too long
+    "",
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", _MALICIOUS_NAMES)
+async def test_new_project_rejects_unsafe_name(service, projects_dir, name):
+    with pytest.raises(ValueError):
+        await service.new_project(name)
+    # Nothing escaped the directory.
+    escaped = projects_dir.parent.parent / "etc" / "passwd.spid"
+    assert not escaped.exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", _MALICIOUS_NAMES)
+async def test_open_project_rejects_unsafe_name(service, name):
+    with pytest.raises(ValueError):
+        await service.open_project(name)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", _MALICIOUS_NAMES)
+async def test_import_project_rejects_unsafe_name(service, projects_dir, name):
+    with pytest.raises(ValueError):
+        await service.import_project(name, b"data")
+    escaped = projects_dir.parent.parent / "etc" / "passwd.spid"
+    assert not escaped.exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", _MALICIOUS_NAMES)
+async def test_delete_project_rejects_unsafe_name(service, projects_dir, name):
+    victim = projects_dir.parent / "victim.spid"
+    victim.write_bytes(b"keep me")
+    with pytest.raises(ValueError):
+        await service.delete_project(name)
+    assert victim.exists()
+
+
+@pytest.mark.asyncio
+async def test_safe_name_with_spaces_and_dots_allowed(service, projects_dir):
+    result = await service.new_project("My Project v1.2")
+    assert result.name == "My Project v1.2"
+    assert (projects_dir / "My Project v1.2.spid").exists()
+
+
 # --- DaemonState integration tests ---
 
 
