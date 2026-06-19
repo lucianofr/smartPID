@@ -54,4 +54,24 @@ describe('selectSeries', () => {
     expect(out.data).toEqual([[0, 1]]);
     expect(out.keys).toEqual([]);
   });
+
+  it('aligns differing-length buffers to the newest common window (no misalignment)', () => {
+    // Loops selected at different times diverge in length. uPlot indexes every
+    // series by position against data[0], so all rows MUST share one length.
+    const buffer = new Map([
+      [1, { t: [0, 1, 2], pv: [10, 11, 12], sp: [20, 20, 20], co: [50, 51, 52] }],
+      [2, { t: [1, 2], pv: [5, 6], sp: [8, 8], co: [40, 41] }],
+    ]);
+    const out = selectSeries(buffer, [
+      { loopId: 1, variable: 'pv' },
+      { loopId: 2, variable: 'co' },
+    ]);
+    // Every row (x + each series) reconciled to the min length (2), newest-aligned.
+    const lengths = out.data.map((row) => row.length);
+    expect(lengths).toEqual([2, 2, 2]);
+    expect(out.data[0]).toEqual([1, 2]); // newest x (oldest sample dropped)
+    expect(out.data[1]).toEqual([11, 12]); // loop 1 pv newest 2
+    expect(out.data[2]).toEqual([40, 41]); // loop 2 co (already len 2)
+    expect(out.keys).toHaveLength(2);
+  });
 });
