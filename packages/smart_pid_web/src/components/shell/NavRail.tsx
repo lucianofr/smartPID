@@ -10,6 +10,7 @@ interface NavItem {
 
 const ITEMS: ReadonlyArray<NavItem> = [
   { to: '/', label: 'Dashboard', end: true },
+  { to: '/executive', label: 'Executive' },
   { to: '/multitrend', label: 'Multi-trend' },
   { to: '/simulator', label: 'Simulator' },
   { to: '/alarms', label: 'Alarms' },

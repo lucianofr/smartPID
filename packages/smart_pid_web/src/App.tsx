@@ -7,6 +7,7 @@ import { RequireAuth } from './auth/RequireAuth';
 import { RealtimeProvider } from './realtime/RealtimeProvider';
 import { ThemeProvider } from './theme/ThemeProvider';
 import { DashboardPage } from './pages/DashboardPage';
+import { ExecutiveDashboardPage } from './pages/ExecutiveDashboardPage';
 import { MultiTrendPage } from './pages/MultiTrendPage';
 import { SimulatorPage } from './pages/SimulatorPage';
 import { AppShell } from './components/shell/AppShell';
@@ -25,6 +26,14 @@ function Shell() {
           element={
             <RequireAuth>
               <DashboardPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/executive"
+          element={
+            <RequireAuth>
+              <ExecutiveDashboardPage />
             </RequireAuth>
           }
         />

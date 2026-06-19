@@ -611,3 +611,72 @@ Cobertura: Vitest (preset selector, sliders, disturbance controls, auto-toggles,
 panel, status hook, rejeição não autenticada, `appendTwinSample`) e e2e Playwright
 `e2e/simulator.spec.ts` (aplicar-preset → resposta no trend; injetar distúrbio → degrau visível →
 remoção retorna ao normal).
+
+## 16. Web HMI — Executive Dashboard (Fatia 6, verificada 2026-06-19)
+
+Rota `/executive` (gated por `RequireAuth`; `ExecutiveDashboardPage`). **Backend: nenhuma mudança** —
+reusa **integralmente** as rotas REST já existentes e o canal `/ws/realtime`. Nenhum router/DTO é
+adicionado ou editado. Hooks de dados em `src/api/executive.ts` (wrappers finos de TanStack Query
+sobre o `apiGet` canônico, compartilhando o mesmo cache das fatias anteriores). Página single-admin:
+auth obrigatória, **sem** gating por papel.
+
+### Cartões de KPI agregado (bento)
+Cinco `ExecutiveKPICard` no topo, derivados de todos os loops via `aggregate(loopKpis, modesById)`
+(`lib/kpi.ts`):
+- **Loops in AUTO** — `autoPct` (% de loops em `AUTO|CAS|RCAS`).
+- **Avg variability 2σ/RANGE** — `avgVariabilityRange`; o delta fica fora-do-alvo
+  (`variabilityOutOfTarget`, alvo default 5% do RANGE) e só então pinta cor de alerta.
+- **Total valve travel (TV)** — `totalTv` (soma da Total Variation de todos os loops).
+- **Avg IAE** — `avgIae`.
+- **Loops** — `loopCount`.
+
+`ExecutiveKPICard` (`components/ExecutiveKPICard.css`, classes `exec-kpi-*`): valor grande mono-tabular
+(`--text-2xl` + `.numeric`), label, delta opcional de fora-do-alvo (neutro por default; cor de alerta
+apenas via `data-out-of-target`) e barra de range neutra opcional (`rangeBar`). Tokens reais; sem
+sparklines; cor usada só para tendência fora-do-alvo.
+
+### Saúde dos loops + pílula OPC
+`LoopHealthRow` por loop: estado `running | stopped | error` (`healthOf(mode, hasLiveStatus)` — `OOS`/
+`IMAN` = error; loop sem frame ao vivo e modo vazio/`BYPASS` = stopped; demais = running), o modo
+corrente e a pílula de estado OPC (`OFFLINE | CONNECTING | ONLINE | RECONNECTING`, de
+`GET /opcua/status`).
+
+### Janela de período configurável
+`PeriodSelector` + `lib/period.ts` com `PERIOD_OPTIONS` = `15m | 1h | 8h | 24h | 7d`; `periodRange(key)`
+devolve `{startIso, endIso, key}` usado nas consultas dependentes de janela (ex.: histórico de IA).
+
+### Recomendações de sintonia por loop + motor de IA
+`TuningRecommendationCard` por loop mostra `current_* → recommended_*` para Kp/Ti/Td + `reason`/`status`
+(ou "No tuning recommendation" quando vazio), de `GET /commands/tuning-recommendations/{id}` (404 →
+sem recomendação). O **motor de IA por loop** vem de `GET /controllers/{id}/ai/status`
+(`ControllerSummary` **não** carrega `ai_config`); o histórico de decisões usa `GET /alarms/ai-history`.
+
+### Overlay ao vivo (`useRealtime`)
+A página semeia os KPIs com o snapshot REST e depois sobrescreve por id com os frames ao vivo:
+`lastStats` (frames `stats` coalescidos) via `fromWsStats`, `lastStatus` (frames `status`) para o modo
+corrente. No reconectar, `onResync` dispara `invalidateQueries` (refetch REST de `controllers`/stats),
+re-sincronizando sem reload.
+
+### Endpoints REST reusados (todos verificados na fonte; nenhum inventado)
+- `GET /controllers` — lista de loops (`ControllerSummary`, subconjunto de id/name/mode/pv/sp/co).
+- `GET /controllers/stats` — snapshot de estatísticas de todos os loops.
+- `GET /controllers/{id}/ai/status` — motor de IA por loop (`getAiStatus`).
+- `GET /commands/tuning-recommendations/{id}` — recomendação de sintonia (404 quando não há;
+  **sem `response_model`** — reusado como está, não corrigido).
+- `GET /opcua/status` — estado da conexão OPC-UA.
+- `GET /alarms/ai-history` — histórico de decisões de IA; **sem `response_model`** (retorna
+  `list[dict]`) → tipado à mão como `AiHistoryEntry` no front-end, reusado como está (não corrigido).
+
+> **Reconciliação de campos (gotcha):** os nomes dos campos de estatística são **idênticos em
+> snake_case no REST e no WS** — `std_dev / total_variation / variability_sp / variability_range /
+> sample_count` (verificado em `StatsResponse` e em `realtime/envelope.ts StatsData`). **Não existe**
+> `sigma/tv/var_sp/var_range` no fio. `lib/kpi.ts` mapeia esses nomes snake_case para o `LoopKpis`
+> interno em camelCase (`sigma/tv/variabilitySp/variabilityRange`) via `fromRestStats`/`fromWsStats`.
+
+Componentes: `ExecutiveKPICard`, `LoopHealthRow`, `PeriodSelector`, `TuningRecommendationCard`. Libs:
+`lib/period.ts`, `lib/kpi.ts`. Hooks: `src/api/executive.ts`.
+
+Cobertura: Vitest (`kpi.test.ts` — mapeamento/agregação exatos; `period.test.ts`;
+`ExecutiveKPICard.test.tsx`; `ExecutiveDashboardPage.test.tsx` — números renderizados == REST mockado) e
+e2e Playwright `e2e/executive-dashboard.spec.ts` (KPIs/saúde a partir do REST stubado; um frame `stats`
+ao vivo atualiza o Avg IAE sem reload). Aceitação numérica (não paridade visual).
