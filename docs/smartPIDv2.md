@@ -565,3 +565,49 @@ Fluxo **create → poll → download**: `POST /export` → `ExportJob` (201); `G
 
 Cobertura: Vitest (agregação/seleção de séries, formatação de métricas + mapeamento de DTO, cap de
 decimação) e e2e Playwright `e2e/multitrend.spec.ts` (render multi-série + download de export).
+
+## 15. Web HMI — Simulador / Gêmeo Digital (Fatia 5, verificada 2026-06-19)
+
+Rota `/simulator` (gated por `RequireAuth`). **Backend: nenhuma mudança** — reusa **integralmente** as
+rotas REST `/simulator/*` já existentes (servidor OPC-UA local + `SimulatorAdapter` do MÓDULO 12) e os
+frames `status` do `/ws/realtime`. DTOs do front-end **hand-typed** em
+`features/simulator/types.ts`, espelhando os modelos Pydantic do backend (sem geração automática).
+Todas as rotas exigem autenticação de admin e devolvem `{detail}` em erro (→ `ApiError`); um teste
+negativo afirma o contrato single-admin (não autenticado → **401**, não 403 por papel).
+
+### Banner persistente de modo simulação
+No topo da página, `SimulationModeBanner` (`role="status"`) exibe "MODO SIMULAÇÃO — digital twin" de
+forma persistente, garantindo que o gêmeo **nunca seja confundido com o processo real** (ver
+`identidade_visual_ISA101.md §4.6`).
+
+### Painel de controle (`SimulatorControlPanel`, por loop selecionado)
+- **Preset selector** (`PresetSelector`): `POST /simulator/preset` (`{controller_id, preset}`) com os
+  presets `FLOW | PRESSURE | LEVEL | TEMPERATURE | CUSTOM` — troca a dinâmica do processo.
+- **Dynamics sliders** (`DynamicsSliders`): `PUT /simulator/parameters`
+  (`{controller_id, gain, tau1, tau2?, dead_time}`) — ganho, tempo morto **L**, constantes **τ1/τ2**.
+- **Disturbance** (`DisturbanceControls`): injeta via `POST /simulator/disturbance`
+  (`{controller_id, type: step|noise, amplitude}`) e remove via
+  `DELETE /simulator/disturbance/{controller_id}`; o botão **Remove** fica desabilitado quando não há
+  distúrbio ativo.
+- **Twin output + modo** (`TwinOutputModeControl`): CO% via `POST /simulator/{id}/co` (corpo
+  `SimulatorPIDSPRequest` — `sp` carrega o CO%) e MAN/AUTO via `POST /simulator/{id}/pid/mode`. A
+  entrada de CO% fica **desabilitada em AUTO** (o PID do twin escreve o CO).
+- **Auto-toggles** (`AutoToggles`): `PUT /simulator/{id}/auto-sp`
+  (`{enabled, sp_min_pct, sp_max_pct}`) e `PUT /simulator/{id}/auto-disturbance`
+  (`{enabled, max_amplitude_pct}`) — geração automática de SP / distúrbio com bounds default.
+- **Start/stop** (`StartStopControl`): `POST /simulator/start` | `POST /simulator/stop`.
+
+> Rotas inexistentes **não** são chamadas: não há `/simulator/output` nem `/simulator/mode` — saída e
+> modo usam `/simulator/{id}/co` e `/simulator/{id}/pid/mode`.
+
+### Trend ao vivo do gêmeo
+- **Snapshot de config:** `GET /simulator/status` → `SimulatorStatusResponse`
+  (`{enabled, running, controllers}`), via `useSimulatorStatus` (semente + lista de loops).
+- **Fonte ao vivo:** `useTwinTrend(controllerId)` lê o `StatusData` por-loop do mapa `live` do
+  RealtimeWS (frames `status` coalescidos, chaveados por loop id) e acumula PV/SP/CO num
+  `TrendData` (ring-buffer ~600 frames) alimentando `<RealtimeTrend>`; reseta ao trocar de loop.
+
+Cobertura: Vitest (preset selector, sliders, disturbance controls, auto-toggles, output/modo, control
+panel, status hook, rejeição não autenticada, `appendTwinSample`) e e2e Playwright
+`e2e/simulator.spec.ts` (aplicar-preset → resposta no trend; injetar distúrbio → degrau visível →
+remoção retorna ao normal).

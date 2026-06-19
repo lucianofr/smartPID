@@ -92,5 +92,16 @@ Uma barra fixada no rodapé da janela principal.
 > substituído por peso de fonte + sublinhado. Contadores por prioridade (CRIT/WARN/DIAG) e
 > `[ ACK ALL ]` à direita; o `AlarmPanel` adiciona `aria-live` para anunciar novos alarmes CRITICAL.
 
+### 4.6. SimulationModeBanner (Web HMI — Fatia 5)
+
+> **Web HMI (Fatia 5):** a página do Simulador / Gêmeo Digital (rota `/simulator`) exibe um banner
+> **persistente** no topo (`SimulationModeBanner`) com o texto "MODO SIMULAÇÃO — digital twin" e
+> `role="status"`. Ele usa a faixa **dessaturada** do token de diagnóstico `--alarm-diag` (a cor
+> "Diagnóstico / Comunicação" do §3, nunca o vermelho/amarelo de alarme) com texto em `--on-alarm`,
+> de modo que o gêmeo digital **nunca seja confundido com o processo real**: as cores saturadas de
+> alarme/saturação permanecem **reservadas para estados anormais do processo** (regra §2/§3). O
+> banner é puramente informativo (não pisca, não tem semântica de severidade) — sinaliza o contexto
+> de simulação, não uma condição anormal.
+
 ## 5. Instrução de Saída
 Com base nestas especificações, por favor escreva o código Python completo (ou em módulos) utilizando a biblioteca sugerida, garantindo que o design atenda fielmente a esta folha de estilo industrial. Comece criando os layouts e o componente base `AnalogBarWidget`.
