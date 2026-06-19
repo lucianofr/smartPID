@@ -128,7 +128,7 @@ On-disk ledger: `.git/worktrees/main-web-hmi/sdd/progress.md`. Minors: `.../sdd/
 - FINAL whole-branch review (code-reviewer opus): MERGE-WITH-FOLLOW-UP — 1 HIGH FIXED `9b34b24` (selectSeries cross-loop series/time MISALIGNMENT on staggered selection — silent chart corruption; per-task reviews missed it (equal-length tests) → common newest-aligned window, no nulls, decimate-safe; differing-length test RED→GREEN). 6 findings total; #2–#6 LOW all OK-to-defer.
 
 **Key facts:** frontend-only (backend untouched). STATS IS bridged to web (RealtimeWS subscribes the bus directly → `lastStats` live). Stats wire = snake_case (REST==WS); `StatsRow` is the camelCase UI alias. StatusData.timestamp is ISO (execute/pid_worker) OR numeric epoch (monitor_worker, primary path) → `string|number` + toEpochSeconds. Auth = Bearer header only (no cookie) → authenticated blob download via `apiDownload`. GAP-4a: no `/export/list`. NavRail now functional (Dashboard//Multi-trend//Alarms). Deferred LOW minors in `fatia4-minor-findings.md` (none merge-blocking).
-**Fatia 5 DONE.** **Next: Fatia 6 (Executive Dashboard)** — new branch from main `71e0ca7`.
+**Fatia 5 DONE.** **Fatia 6 DONE** (merged main `0961c7c`). **Next: Fatia 7 (Settings + Connection + Projects)** — new branch from main `0961c7c`.
 
 ---
 
@@ -153,3 +153,10 @@ On-disk ledger: `.git/worktrees/main-web-hmi/sdd/progress.md`. Minors: `.../sdd/
 - FINAL whole-branch review (code-reviewer opus): **MERGE** — 0 Crit/0 High/0 Medium. 2 Low FIXED `28bbee8` (SimulationModeBanner.css --space-N→--sp-N; panel loading role=status). All other minors triaged DEFER.
 
 **Key facts:** frontend-only (backend untouched). Reuses existing Phase-4 `/simulator/*` REST + `/ws/realtime` status. **CO carried in `sp`** (`POST /simulator/{id}/co` body SimulatorPIDSPRequest). DTOs HAND-TYPED (generated/ gitignored). **`--sp-N` is the real spacing token scale** (`--space-N` undefined). RealtimeTrend is presentational (`data:TrendData=[t,pv,sp,co]`, co scale [0,100]) — fed by `useTwinTrend` ring-buffer. Live twin = FFSignal `.value`. All sim routes `require_supervisor`; unauth→401.
+
+## Fatia 6 — Executive Dashboard  ✅ DONE (merged main `0961c7c`, 2026-06-19)
+Branch `feat/web-fatia6-executive-dashboard` (forked main `4a4472e`) → merged `--no-ff` `0961c7c`. 10 commits, frontend-only (empty `.py` diff).
+Delivered: `lib/period.ts`, `lib/kpi.ts`, `api/executive.ts` (6 hooks), `ExecutiveKPICard`, LoopHealthRow/PeriodSelector/TuningRecommendationCard, `ExecutiveDashboardPage` (+route /executive, NavRail), e2e, smartPIDv2 §16.
+Gates: vitest 183/183 (48 files), tsc -b 0, vite build OK, e2e 2/2, lint 0err/2 pre-existing warns. Final review (code-reviewer opus): MERGE, 0 Crit/0 Imp; 12 minors DEFER. Digest: `_web-hmi-fatia6-digest.md`.
+
+**Next: Fatia 7 (Settings + Connection + Projects)** — new branch from main `0961c7c`.

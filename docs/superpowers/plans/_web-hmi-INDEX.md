@@ -43,7 +43,7 @@ These are NOT fatia tasks; they land on `main` first (see `.claude/docs/handoff-
 | 3 | [alarms](./2026-06-18-web-fatia3-alarms.md) | `feat/web-fatia3-alarms` | 0+1 | 8 | ✅ merged `4210142` |
 | 4 | [multitrend-stats-export](./2026-06-18-web-fatia4-multitrend-stats-export.md) | `feat/web-fatia4-multitrend-stats-export` | 0+1, (2) | 12 | ✅ merged `4ea9df6` |
 | 5 | [simulator](./2026-06-18-web-fatia5-simulator.md) | `feat/web-fatia5-simulator` | 0+1, (2) | 12 | ✅ merged `71e0ca7` |
-| 6 | [executive-dashboard](./2026-06-18-web-fatia6-executive-dashboard.md) | `feat/web-fatia6-executive-dashboard` | 0+1, (4),(2) | 10 | ⬜ |
+| 6 | [executive-dashboard](./2026-06-18-web-fatia6-executive-dashboard.md) | `feat/web-fatia6-executive-dashboard` | 0+1, (4),(2) | 10 | ✅ merged `0961c7c` |
 | 7 | [settings-connection-projects](./2026-06-18-web-fatia7-settings-connection-projects.md) | `feat/web-fatia7-settings-connection-projects` | 0+1 | 11 | ⬜ |
 | 8 | [themes-faceplate](./2026-06-18-web-fatia8-themes-faceplate.md) | `feat/web-fatia8-themes-faceplate` | 0+1, 2 | 10 | ⬜ |
 
@@ -123,19 +123,20 @@ Branch `feat/web-fatia5-simulator` · deps: 0+1, (recommended after 2)
 - [x] Task 11 — Playwright e2e — preset → trend response; disturbance → visible step
 - [x] Task 12 — Negative-auth + full-suite + lint + spec docs
 
-## Fatia 6 — Executive Dashboard  ⬜ DONE-when-all-checked
+## Fatia 6 — Executive Dashboard  ✅ DONE (merged main `0961c7c`, 2026-06-19)
+Branch `feat/web-fatia6-executive-dashboard` (forked main `4a4472e`) merged `--no-ff` → `0961c7c` (parents `4a4472e` + `fd5847b`), 10 commits. Frontend-only (empty `.py` diff). Gates: vitest 183/183 (48 files), tsc 0, build OK, e2e 2/2. Digest: `_web-hmi-fatia6-digest.md`.
 Branch `feat/web-fatia6-executive-dashboard` · deps: 0+1, (recommended after 4 & 2)
 
-- [ ] Task 1 — Investigation + branch + types preflight
-- [ ] Task 2 — Period window (`src/lib/period.ts`)
-- [ ] Task 3 — KPI normalization, aggregation, formatting (`src/lib/kpi.ts`)
-- [ ] Task 4 — Data hooks (`src/api/executive.ts`)
-- [ ] Task 5 — `ExecutiveKPICard` (`src/components/ExecutiveKPICard.tsx`)
-- [ ] Task 6 — Presentational sub-components (health, period, tuning rec)
-- [ ] Task 7 — `ExecutiveDashboardPage` wiring
-- [ ] Task 8 — Page integration test: numeric assertion vs mocked REST (Vitest)
-- [ ] Task 9 — Playwright e2e: dashboard loads + updates live
-- [ ] Task 10 — Full suite, lint, build, spec docs
+- [x] Task 1 — Investigation + branch + types preflight
+- [x] Task 2 — Period window (`src/lib/period.ts`)
+- [x] Task 3 — KPI normalization, aggregation, formatting (`src/lib/kpi.ts`)
+- [x] Task 4 — Data hooks (`src/api/executive.ts`)
+- [x] Task 5 — `ExecutiveKPICard` (`src/components/ExecutiveKPICard.tsx`)
+- [x] Task 6 — Presentational sub-components (health, period, tuning rec)
+- [x] Task 7 — `ExecutiveDashboardPage` wiring
+- [x] Task 8 — Page integration test: numeric assertion vs mocked REST (Vitest)
+- [x] Task 9 — Playwright e2e: dashboard loads + updates live
+- [x] Task 10 — Full suite, lint, build, spec docs
 
 ## Fatia 7 — Settings + Connection + Projects  ⬜ DONE-when-all-checked
 Branch `feat/web-fatia7-settings-connection-projects` · deps: 0+1 · **mono-user: no users/RBAC**
@@ -174,10 +175,11 @@ The plan-writers grounded every reference in real code. These are the deltas bet
 idealized contract and the actual backend — already handled in the named plans, restated
 here so they are not lost during execution:
 
-- **Stats field naming (Fatia 4 + 6):** REST `StatsResponse` uses
-  `std_dev / total_variation / variability_sp / variability_range / sample_count`; the WS
-  `StatsData` uses `sigma / tv / var_sp / var_range`. Same metrics, different keys — unify in
-  `kpi.ts` (Fatia 6) and the stats hook (Fatia 4).
+- **Stats field naming (Fatia 4 + 6) — CORRECTED:** REST `StatsResponse` AND WS `StatsData` use the
+  **same** snake_case fields (`std_dev / total_variation / variability_sp / variability_range / sample_count`).
+  There is **NO** `sigma / tv / var_sp / var_range` on the wire (verified vs `dtos/ai.py` + `realtime/envelope.ts`).
+  `kpi.ts` (Fatia 6) is the single point mapping snake_case → internal camelCase `LoopKpis` via
+  `fromRestStats`/`fromWsStats`. (The earlier "different keys, unify" premise was wrong.)
 - **Alarm WS payload (Fatia 3, GAP-3b):** real `EVENT.ALARM.*` =
   `{controller_id, alarm_type, priority, transition, value, limit, timestamp}` (no `alarm_id`/`state`).
   Treat the WS `alarm` frame as a **refetch trigger** for `GET /alarms/active` (backend = truth).
