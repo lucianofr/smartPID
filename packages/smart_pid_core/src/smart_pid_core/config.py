@@ -29,6 +29,12 @@ class CoreSettings(BaseSettings):
     cors_allow_origins: list[str] = ["http://127.0.0.1:5173", "http://localhost:5173"]
     trusted_hosts: list[str] = ["127.0.0.1", "localhost"]
 
+    # Web HMI (single-origin SPA served by the backend). When set and the path
+    # exists, the built Vite bundle is mounted at "/" after all routers/WS.
+    web_dist_dir: str | None = None
+    # Origins accepted on the /ws/realtime handshake (Origin header allow-list).
+    allowed_ws_origins: tuple[str, ...] = ("http://127.0.0.1:5173",)
+
     # JWT
     jwt_secret: str
     jwt_expiry_hours: int = 8

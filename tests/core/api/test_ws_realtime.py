@@ -6,11 +6,17 @@ import json
 
 import msgpack
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
+from smart_pid_core.adapters.inbound.api.auth import create_access_token
 from smart_pid_core.adapters.inbound.api.ws.realtime import (
+    ConnectionBuffer,
     ConnectionManager,
     RealtimeBridge,
     map_topic_to_envelope,
+    register_realtime_ws,
 )
 
 
@@ -224,3 +230,163 @@ async def test_bridge_stop_is_idempotent() -> None:
     await bridge.start()
     await bridge.stop()
     await bridge.stop()  # second stop must not raise
+
+
+# ---------------------------------------------------------------------------
+# realtime_ws endpoint — first-message auth + Origin validation
+# ---------------------------------------------------------------------------
+
+_SECRET = "test-secret"
+_ALLOWED_ORIGIN = "http://127.0.0.1:5173"
+
+
+def _make_app() -> FastAPI:
+    app = FastAPI()
+
+    class _Settings:
+        jwt_secret = _SECRET
+        allowed_ws_origins = (_ALLOWED_ORIGIN,)
+
+    app.state.settings = _Settings()
+    app.state.realtime_manager = ConnectionManager()
+    register_realtime_ws(app)
+    return app
+
+
+def _good_token() -> str:
+    return create_access_token(
+        user_id=1, username="admin", role="ADMIN", secret=_SECRET
+    )
+
+
+def test_ws_rejects_missing_token() -> None:
+    app = _make_app()
+    client = TestClient(app)
+    with client.websocket_connect(
+        "/ws/realtime", headers={"origin": _ALLOWED_ORIGIN}
+    ) as ws:
+        ws.send_json({"type": "auth"})  # no token
+        with pytest.raises(WebSocketDisconnect) as exc:
+            ws.receive_text()
+    assert exc.value.code == 4401
+
+
+def test_ws_rejects_invalid_token() -> None:
+    app = _make_app()
+    client = TestClient(app)
+    with client.websocket_connect(
+        "/ws/realtime", headers={"origin": _ALLOWED_ORIGIN}
+    ) as ws:
+        ws.send_json({"type": "auth", "token": "garbage.jwt.value"})
+        with pytest.raises(WebSocketDisconnect) as exc:
+            ws.receive_text()
+    assert exc.value.code == 4401
+
+
+def test_ws_rejects_bad_origin() -> None:
+    app = _make_app()
+    client = TestClient(app)
+    with client.websocket_connect(
+        "/ws/realtime", headers={"origin": "http://evil.example"}
+    ) as ws:
+        ws.send_json({"type": "auth", "token": _good_token()})
+        with pytest.raises(WebSocketDisconnect) as exc:
+            ws.receive_text()
+    assert exc.value.code == 4401
+
+
+def test_ws_accepts_valid_token_and_broadcast_reaches_client() -> None:
+    app = _make_app()
+    client = TestClient(app)
+    with client.websocket_connect(
+        "/ws/realtime", headers={"origin": _ALLOWED_ORIGIN}
+    ) as ws:
+        ws.send_json({"type": "auth", "token": _good_token()})
+        # server acknowledges auth
+        ack = ws.receive_json()
+        assert ack["type"] == "auth_ok"
+
+
+# ---------------------------------------------------------------------------
+# ConnectionBuffer — coalesce status/stats, lossless alarm/ai/system
+# ---------------------------------------------------------------------------
+
+
+def test_status_coalesces_last_value_per_loop() -> None:
+    buf = ConnectionBuffer()
+    buf.offer({"type": "status", "loop_id": 1, "seq": 1, "ts": 0.0, "data": {"pv": 1}})
+    buf.offer({"type": "status", "loop_id": 1, "seq": 2, "ts": 1.0, "data": {"pv": 2}})
+    drained = buf.drain()
+    # only the latest status for loop 1 survives
+    statuses = [m for m in drained if m["type"] == "status" and m["loop_id"] == 1]
+    assert len(statuses) == 1
+    assert statuses[0]["data"]["pv"] == 2
+
+
+def test_alarm_is_lossless() -> None:
+    buf = ConnectionBuffer()
+    buf.offer({"type": "alarm", "loop_id": 9, "seq": 1, "ts": 0.0, "data": {"alarm_id": "a"}})
+    buf.offer({"type": "alarm", "loop_id": 9, "seq": 2, "ts": 1.0, "data": {"alarm_id": "b"}})
+    drained = buf.drain()
+    alarms = [m for m in drained if m["type"] == "alarm"]
+    assert [m["data"]["alarm_id"] for m in alarms] == ["a", "b"]
+
+
+def test_lossless_overflow_flags_for_close() -> None:
+    buf = ConnectionBuffer(lossless_max=2)
+    for i in range(3):
+        buf.offer(
+            {"type": "alarm", "loop_id": 1, "seq": i, "ts": 0.0, "data": {"alarm_id": str(i)}}
+        )
+    assert buf.overflowed is True
+
+
+# ---------------------------------------------------------------------------
+# create_app wiring — /ws/realtime route + OpenAPI exposed via the factory
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_app_registers_ws_route_and_openapi(tmp_path) -> None:
+    import uuid
+
+    from smart_pid_core.adapters.inbound.api.app import create_app
+    from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
+    from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+    from smart_pid_core.adapters.outbound.user_repo import UserRepository
+    from smart_pid_core.application.event_bus import EventBus
+    from smart_pid_core.application.loop_manager import LoopManager
+    from smart_pid_core.config import CoreSettings
+
+    repo = SQLiteRepository(tmp_path / "test.spid")
+    await repo.initialize()
+    historian = SQLiteHistorian(repo)
+    user_repo = UserRepository(tmp_path / "users.db")
+    await user_repo.initialize()
+    bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
+    bus.start()
+    loop_manager = LoopManager(bus=bus)
+    settings = CoreSettings(
+        _env_file=None,
+        jwt_secret="test-secret-key-minimum-32-bytes!",
+    )  # type: ignore[call-arg]
+
+    app = create_app(
+        repo=repo,
+        historian=historian,
+        user_repo=user_repo,
+        loop_manager=loop_manager,
+        settings=settings,
+        event_bus=bus,
+    )
+    try:
+        assert "/ws/realtime" in {r.path for r in app.routes}
+        assert app.state.realtime_bridge is not None
+        # base_url host must be a trusted host (TrustedHostMiddleware, TD-004).
+        client = TestClient(app, base_url="http://127.0.0.1")
+        assert client.get("/openapi.json").status_code == 200
+    finally:
+        loop_manager.stop_all()
+        bus.stop()
+        await user_repo.close()
+        await repo.db.close()

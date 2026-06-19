@@ -1,12 +1,14 @@
 """FastAPI application factory."""
 from __future__ import annotations
 
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from smart_pid_core.adapters.inbound.api.error_handlers import register_error_handlers
@@ -25,6 +27,11 @@ from smart_pid_core.adapters.inbound.api.routers import (
     stats,
     system,
     system_events,
+)
+from smart_pid_core.adapters.inbound.api.ws.realtime import (
+    ConnectionManager,
+    RealtimeBridge,
+    register_realtime_ws,
 )
 
 if TYPE_CHECKING:
@@ -61,7 +68,14 @@ _SECURITY_HEADERS = {
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.start_time = time.monotonic()
-    yield
+    bridge = getattr(app.state, "realtime_bridge", None)
+    if bridge is not None:
+        await bridge.start()
+    try:
+        yield
+    finally:
+        if bridge is not None:
+            await bridge.stop()
 
 
 def create_app(
@@ -104,6 +118,16 @@ def create_app(
     app.state.system_event_repo = system_event_repo
     app.state.event_bus = event_bus
     app.state.execution_mode = settings.execution_mode
+
+    # RealtimeWS fan-out: one ConnectionManager + one EventBus->WS bridge.
+    # The bridge only exists when there is a bus to drain; its start/stop is
+    # driven by _lifespan.
+    app.state.realtime_manager = ConnectionManager()
+    app.state.realtime_bridge = (
+        RealtimeBridge(event_bus, app.state.realtime_manager)
+        if event_bus is not None
+        else None
+    )
 
     # Network hardening (TD-004). Middleware added later wraps earlier ones, so
     # TrustedHost is registered last to run outermost — bad Host headers are
@@ -149,6 +173,18 @@ def create_app(
     app.include_router(system_events.router, prefix="/system-events", tags=["system-events"])
     app.include_router(export.router, prefix="/export", tags=["export"])
 
+    # WebSocket realtime route (Backend->Web telemetry fan-out).
+    register_realtime_ws(app)
+
     register_error_handlers(app)
+
+    # SPA last: mount the built web bundle at "/" so it does not shadow the API
+    # routers or the WS route. Only when configured and the directory exists.
+    if settings.web_dist_dir and os.path.isdir(settings.web_dist_dir):
+        app.mount(
+            "/",
+            StaticFiles(directory=settings.web_dist_dir, html=True),
+            name="spa",
+        )
 
     return app

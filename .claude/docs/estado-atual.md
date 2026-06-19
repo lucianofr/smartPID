@@ -1,4 +1,70 @@
-# Estado atual — 2026-04-14
+# Estado atual — 2026-06-19
+
+## Fatia 0+1 (Web HMI) — Foundation + Live Dashboard — CONCLUÍDA (branch `feat/web-fatia01-foundation-dashboard`, worktree `.worktrees/main-web-hmi`)
+
+### O que foi entregue (Tasks 1–12)
+- **Backend:** ponte `RealtimeBridge` (EventBus→WS, consumidor único não-bloqueante via
+  `run_in_executor`, espelhando `TelemetryPublisher`), endpoint `GET /ws/realtime`,
+  `ConnectionManager` resiliente, `ConnectionBuffer` (coalescing status/stats + lossless
+  alarm/ai/system), mapper topic→envelope `{type,loop_id,seq,ts,data}`. Subscreve
+  `STATUS.`, `ACTION.CTRL.`, `ACTION.AI.`, `EVENT.ALARM.`, `EVENT.SYSTEM`, `STATS.`.
+  `response_model` travado nos routers (auth login, controllers list/get, opcua status).
+  SPA single-origin (`StaticFiles(html=True)` após routers) + config `web_dist_dir`/
+  `allowed_ws_origins`.
+- **Frontend (`packages/smart_pid_web/`, React/Vite/TS):** scaffold (vitest jsdom + Playwright),
+  `tokens.css`/`themes.css` (ISA-101 + Dark Room) + `ThemeProvider`, `AuthContext`
+  (POST /auth/login, token em `sessionStorage`) + `RequireAuth` + `LoginPage`,
+  `envelope.ts` + `RealtimeProvider` (WS único, backoff, onResync) + `useRealtime`,
+  `AnalogBar`/`ControllerCard`/`RealtimeTrend`/app shell, `DashboardPage` ao vivo
+  (status via WS; OPC via REST poll `GET /opcua/status`, online quando `ONLINE`).
+- **e2e:** Playwright login→dashboard renderiza frame de status ao vivo (verde).
+
+### Decisões-chave
+- **Auth do WS:** primeira mensagem `{type:"auth", token}`; header `Origin` validado;
+  fecha com `4401` em token/origin ausente/inválido (nunca `?token=`).
+- **Correções de contrato:** `StatusData.timestamp` é **string ISO-8601** (envelope `ts`
+  permanece número/epoch, carimbado pela ponte). `RealtimeType` inclui `'system'` → **6 tipos**.
+- **Task 5 enxuta:** CORS dev allowlist + security headers são propriedade da Phase 4 (P4),
+  não reimplementados aqui.
+- **`.sdd/` gitignored** (relatórios de processo SDD não versionados).
+
+### Deferrals conhecidos (fecham na Fatia 8)
+- Ligação ao vivo do `ConnectionBuffer` ao broadcast + fechar-no-overflow (re-sync via REST).
+- Mapeamento real de unidade/range do `ControllerCard` (`pv_scale.unit`/`eu_min`/`eu_max`;
+  sem campo de casas decimais).
+
+### Verificação (Task 12)
+- `tests/core/api/`: 28 passed, 3 failed (apenas os 3 `TestProjectServiceOPCUA` pré-existentes
+  do Py3.14 — não relacionados a esta fatia).
+- `tests/core/api/test_ws_realtime.py`: 22 passed.
+- ruff nos arquivos da fatia (`adapters/inbound/api/`): clean. (8 E402 + 1 SIM118 residuais
+  são pré-existentes na `main`, em arquivos não tocados nesta branch.)
+- mypy: binário não instalado neste ambiente (não bloqueia).
+- web: lint exit 0 (2 warnings exhaustive-deps); 11 testes unitários pass; build emite `dist/`
+  (67 kB gzip JS).
+
+### CONCERNS abertos (defeitos do scaffold — NÃO corrigidos nesta task de docs)
+1. **`pyproject.toml`** `[tool.uv.workspace] members=["packages/*"]` inclui `smart_pid_web`
+   (sem `pyproject.toml`), o que quebra **todo** `uv run` nesta branch. Workaround usado para
+   rodar o gate: `exclude = ["packages/smart_pid_web"]` (revertido, não commitado). Precisa de
+   fix permanente (pertence ao scaffold/Task 6).
+2. **`npm run test` sai com código 1**: o vitest coleta o spec Playwright `e2e/login-dashboard.spec.ts`
+   (sem `test.exclude`/`include` no `vite.config.ts`), que lança na coleção. Os 11 testes
+   unitários passam; só o exit code está errado. Precisa de fix no config do vitest (Task 6).
+
+### Próximos passos
+- **next: Fatia 2** (comandos + config por loop). Antes: corrigir os 2 CONCERNS do scaffold.
+
+### Arquivos modificados nesta task (Task 12)
+- `docs/smartPIDv2.md` (nova subseção 8.6 — Web HMI Fatia 0+1)
+- `.claude/docs/estado-atual.md` (este arquivo)
+
+### Range de commits da fatia
+`d891a87..8f9a5a4` (11 commits ahead of `main`).
+
+---
+
+# Estado anterior — 2026-04-14
 
 ## Tarefa concluída e mergeada: fix/fuzzy-dr-overshoot-in-settling (a611cdb)
 

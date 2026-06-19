@@ -1,0 +1,13 @@
+node_modules/
+dist/
+src/api/generated/
+test-results/
+playwright-report/
+.vite/
+
+# tsc -b build artifacts (composite project emit)
+*.tsbuildinfo
+*.config.js
+*.config.d.ts
+# eslint v9 flat config is hand-authored ESM (.js), not a tsc emit artifact
+!eslint.config.js
