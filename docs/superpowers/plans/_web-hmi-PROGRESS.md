@@ -40,10 +40,15 @@ subagent-driven (implementer → task review → fix loop), TDD, opus subagents,
 conventional commits no attribution. Frontend: context7 + frontend-design +
 karpathy-guidelines per the resume directive.
 
-## Fatia 0+1 — IN PROGRESS (3/12) on branch `feat/web-fatia01-foundation-dashboard`
-Worktree `.worktrees/main-web-hmi` (forked from main `cb7f16c`). Orchestrator memory:
-`_web-hmi-fatia01-digest.md` (global constraints, all 12 tasks, sequencing, resolutions).
-Per-task on-disk ledger: `.git/worktrees/main-web-hmi/sdd/progress.md`. Branch tip after T3 = `3b4bcf7`.
+## Fatia 0+1 — IN PROGRESS (3/12), T1-T3 MERGED to main `754cc00`
+Branch `feat/web-fatia01-foundation-dashboard` (tip `3b4bcf7`). T1-T3 incrementally merged to
+main `754cc00` (merge commit, parents `cb7f16c`+`3b4bcf7`) — purely additive island module
+`api/ws/realtime.py` + tests (19 pass on main), NOT yet wired (T5). Fatia NOT done.
+Worktree `.worktrees/main-web-hmi`. Orchestrator memory: `_web-hmi-fatia01-digest.md`
+(global constraints, 12 tasks, sequencing, resolutions). On-disk ledger:
+`.git/worktrees/main-web-hmi/sdd/progress.md`.
+**Resume T4+:** re-fork fresh from main `754cc00` (e.g. continue `feat/web-fatia01` after
+`git merge main`, or new branch) — main now contains T1-T3.
 
 - [x] T1 `51ae813` — response_model audit (no router edits; added OpenAPI contract test). self-review.
 - [x] T2 `631519c` — ConnectionManager (resilient async broadcast). self-review (concurrency PASS).
