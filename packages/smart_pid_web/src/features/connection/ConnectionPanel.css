@@ -33,7 +33,6 @@
   border-radius: var(--radius-control);
   background: var(--surface);
   color: var(--text);
-  font-family: var(--font-mono, monospace);
   font-size: var(--text-sm);
 }
 

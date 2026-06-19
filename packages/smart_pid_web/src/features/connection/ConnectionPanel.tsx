@@ -39,7 +39,7 @@ export function ConnectionPanel() {
         </label>
         <input
           id="opc-endpoint"
-          className="connection-panel__input"
+          className="connection-panel__input numeric"
           type="text"
           placeholder="opc.tcp://host:4840"
           value={value}
