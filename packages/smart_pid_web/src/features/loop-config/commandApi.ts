@@ -50,6 +50,14 @@ export const writeTuning = (controller_id: number, kp: number, ti: number, td: n
 export const getTuningRecommendation = (controller_id: number) =>
   apiGet<TuningRecommendation>(`/commands/tuning-recommendations/${controller_id}`);
 
+export const getAiStatus = (controller_id: number) =>
+  apiGet<AiStatus>(`/controllers/${controller_id}/ai/status`);
+
+export type AiAction = 'start' | 'stop' | 'pause';
+
+export const sendAiAction = (controller_id: number, action: AiAction) =>
+  apiPost(`/controllers/${controller_id}/ai/${action}`, {});
+
 export const applyTuning = (controller_id: number) =>
   apiPost<{ ok: boolean; detail?: string }>(`/commands/apply-tuning/${controller_id}`, {});
 
