@@ -31,3 +31,7 @@ Thumbs.db
 htmlcov/
 .coverage
 .worktrees/
+
+# Web HMI (smart_pid_web)
+packages/smart_pid_web/node_modules/
+packages/smart_pid_web/dist/

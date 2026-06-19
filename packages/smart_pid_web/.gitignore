@@ -1,0 +1,11 @@
+node_modules/
+dist/
+src/api/generated/
+test-results/
+playwright-report/
+.vite/
+
+# tsc -b build artifacts (composite project emit)
+*.tsbuildinfo
+*.config.js
+*.config.d.ts
