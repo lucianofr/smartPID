@@ -411,3 +411,46 @@ A HMI não calcula a simulação, mas fornece a imersão visual.
 O Backend instancia um Servidor OPC-UA embarcado usando `asyncua`. A árvore simula uma planta real:
 * `Objects/SmartPID_Simul/Process_Flow/...` (Tags: PV, SP, CO, Mode)
 * O Backend conecta-se a si mesmo em `localhost`, enganando o barramento interno. Isso permite simular 100% da cadeia de rede e arquitetura de dados antes de plugar o software no CLP real da fábrica.
+
+---
+
+## 13. Web HMI — Superfície de comandos & config (Fatia 2, verificada 2026-06-19)
+
+Investigação Task 1 contra `main 427b670` (inclui P1/P2/P3/P4). Corpos e rotas reais que o
+cliente web consome. **Auth:** toda rota exige `require_authenticated_admin` (modelo single-admin
+P3 — NÃO `require_operator/supervisor`). Erros REST devolvem `{detail}` (→ `ApiError`).
+
+### Comandos (`/commands`, todos POST → `CommandResponse {ok, controller_id?, detail?, enabled?}`)
+- `POST /setpoint` — `SetpointCommand {controller_id, value}` (chave `value`, não `setpoint`).
+- `POST /mode` — `ModeCommand {controller_id, mode: ControllerMode}` (9 modos incl. BYPASS).
+- `POST /output` — `OutputCommand {controller_id, value}` (chave `value`, não `output`).
+- `POST /tuning` — `TuningCommand {controller_id, kp?, ti?, td?}` (GAP-2a). kp/ti/td opcionais;
+  clamp server-side por `max_tuning_change_pct`; **409** se OPC-UA desconectado. NÃO existe
+  `/commands/pid/params`.
+- `POST /optimization` — `OptimizationCommand {controller_id, enabled}` (GAP-2b) → resposta inclui
+  `enabled`. Rótulo de UI: **"Enable AI Optimization"** (otimizador, não bloco PID). 404 se loop
+  inexistente. O único `pid/enable` literal é `POST /simulator/{id}/pid/enable` — escopo simulador,
+  NUNCA produção.
+- `GET /tuning-recommendations/{controller_id}` — dict (sem response_model); **404 = sem
+  recomendação**.
+- `POST /apply-tuning/{controller_id}` — **sem corpo**; clamp server-side; devolve dict
+  `{controller_id, applied_kp, applied_ti, applied_td, clamped}`. **409** se PID externo não está em
+  AUTO; **404** se nenhuma recomendação pendente.
+
+### Controles de IA (`/controllers/{id}/ai/*`)
+- `POST .../ai/start | stop | pause` — **sem corpo**; fire-and-forget via ZMQ; devolve
+  `{ok, controller_id, detail}` (sem response_model). Verbos **POST** (não PATCH).
+- `GET .../ai/status` → `AIStatusResponse {controller_id, engine, objective, speed, current_ki,
+  last_gamma?, enabled}`. **404** se não há AI worker para o loop.
+- `GET .../ai/history` → `AIHistoryResponse {controller_id, entries[]}`.
+
+### Config por loop (LoopConfigDialog)
+- **PID params (Kp/Ti/Td) ao vivo:** `POST /commands/tuning` (GAP-2a, escreve no DCS via OPC-UA).
+- **Limites & policy persistidos:** `PUT /controllers/{id}` (`ControllerUpdate`, todos os campos
+  opcionais) → `ControllerResponse`. Inclui `sp_hi_lim/sp_lo_lim`, `out_hi_lim/out_lo_lim`,
+  `arw_hi_lim/arw_lo_lim`, `max_tuning_change_pct`, `mode_normal`, `permitted_modes`.
+- **Seletor de engine de IA (NONE/FUZZY/RL) — HABILITADO** (decisão do usuário 2026-06-19):
+  `PUT /controllers/{id}` **aceita e persiste** `ai_config {engine, objective, dead_time_l,
+  limit_min, limit_max, rl_*}` e **faz hot-reload do AI worker** (controllers.py:330-447).
+  Corrige a "AI-engine persistence GAP" do contrato (premissa desatualizada — `ai_config` existe
+  em `ControllerCreate` e `ControllerUpdate`). Sem rota dedicada `/ai/config`; usar o PUT.
