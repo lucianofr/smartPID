@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AlarmPanel } from '../AlarmPanel';
 import * as client from '../../../api/client';
@@ -90,6 +90,14 @@ describe('AlarmPanel', () => {
     renderPanel([mk({ id: 42, status: 'UNACKNOWLEDGED' })]);
     const row = await screen.findByTestId('alarm-row-42');
     fireEvent.click(within(row).getByRole('button', { name: /ack/i }));
-    expect(post).toHaveBeenCalledWith('/alarms/42/ack');
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/alarms/42/ack'));
+  });
+
+  it('acks all alarms → POST /alarms/ack-all', async () => {
+    const post = vi.spyOn(client, 'apiPost').mockResolvedValue({ status: 'acknowledged' });
+    renderPanel([mk({ id: 1, status: 'UNACKNOWLEDGED' })]);
+    await screen.findByTestId('alarm-row-1');
+    fireEvent.click(screen.getByRole('button', { name: /ack all/i }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/alarms/ack-all'));
   });
 });

@@ -1,8 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { apiPost } from '../../api/client';
-import { alarmsKeys, useActiveAlarms, useAlarmRealtimeSync } from './useAlarms';
+import { useActiveAlarms, useAlarmRealtimeSync, useAckAlarm, useAckAllAlarms } from './useAlarms';
 import { priorityRank, severityIcon, severityClass, isUnacked } from './severity';
 import type { ActiveAlarm, AlarmStatus } from './types';
 import './AlarmPanel.css';
@@ -18,22 +16,13 @@ type SortKey = 'severity' | 'time';
 
 export function AlarmPanel(): JSX.Element {
   useAlarmRealtimeSync();
-  const qc = useQueryClient();
   const { data, isLoading, isError } = useActiveAlarms();
 
-  // Backend is the source of truth: fire the ack POST immediately on click, then
-  // revalidate the active list (never optimistic-mutate state). Dispatching the
-  // request synchronously keeps the operator action latency-free on a dense panel.
-  const ackOne = (id: number): void => {
-    void apiPost(`/alarms/${id}/ack`).finally(() => {
-      void qc.invalidateQueries({ queryKey: alarmsKeys.active });
-    });
-  };
-  const ackAll = (): void => {
-    void apiPost('/alarms/ack-all').finally(() => {
-      void qc.invalidateQueries({ queryKey: alarmsKeys.active });
-    });
-  };
+  // Backend is the source of truth: the mutation hooks fire the ack POST and
+  // revalidate the active list via onSettled (never optimistic-mutate state).
+  // isPending gates the buttons to prevent double-click duplicate dispatches.
+  const ackOne = useAckAlarm();
+  const ackAll = useAckAllAlarms();
 
   const [sortKey, setSortKey] = useState<SortKey>('severity');
   const [stateFilter, setStateFilter] = useState<'ALL' | AlarmStatus>('ALL');
@@ -105,7 +94,7 @@ export function AlarmPanel(): JSX.Element {
           </select>
         </label>
         <button type="button" className="alarm-panel__ack-all"
-          onClick={() => ackAll()}>ACK ALL</button>
+          onClick={() => ackAll.mutate()} disabled={ackAll.isPending}>ACK ALL</button>
       </header>
 
       <div className="alarm-panel__live" role="status" aria-live="assertive">
@@ -141,7 +130,8 @@ export function AlarmPanel(): JSX.Element {
                 <span className="alarm-row__state">{a.status}</span>
                 <span className="alarm-row__time">{formatLocal(a.timestamp)}</span>
                 <span className="alarm-row__ack">
-                  <button type="button" onClick={() => ackOne(a.id)}>Ack</button>
+                  <button type="button" onClick={() => ackOne.mutate(a.id)}
+                    disabled={ackOne.isPending}>Ack</button>
                 </span>
               </div>
             );
