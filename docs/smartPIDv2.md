@@ -454,3 +454,26 @@ P3 — NÃO `require_operator/supervisor`). Erros REST devolvem `{detail}` (→ 
   limit_min, limit_max, rl_*}` e **faz hot-reload do AI worker** (controllers.py:330-447).
   Corrige a "AI-engine persistence GAP" do contrato (premissa desatualizada — `ai_config` existe
   em `ControllerCreate` e `ControllerUpdate`). Sem rota dedicada `/ai/config`; usar o PUT.
+
+### UI da superfície de comandos (Fatia 2 — montada no Live Dashboard, 2026-06-19)
+
+Os controles ficam embutidos em cada `ControllerCard` do dashboard (Fatia 0+1). A `DashboardPage`
+busca a lista completa de `ControllerResponse` via `GET /api/controllers` (uma única query — sem
+refetch por card) e deriva tudo a partir dela.
+
+- **`CardControls`** (slot `controls` do card): linha de Setpoint (input numérico + botão *Set*),
+  seletor de **Mode** (9 `ControllerMode`, incl. BYPASS), input de **Output** habilitado só em `MAN`,
+  e o toggle **"Enable AI Optimization"** (`POST /commands/optimization`). O `mode` vem **ao vivo** do
+  frame `status` do WS (`useRealtime().lastStatus`); `optimizationEnabled` vem de
+  `ControllerResponse.optimization_enabled`. Validação client-side (setpoint/output) antes de enviar.
+- **`LoopConfigDialog`** (aberto pelo botão ⚙ do card): seções colapsáveis **PID** (Kp/Ti/Td/alpha/
+  deadband + `pid_structure`), **Otimização IA** com **seletor de engine HABILITADO** (NONE/FUZZY/RL,
+  objective, dead_time_L, limites de Ki e campos RL) e **Limites** (out/arw hi-lo, filtros pv/sp).
+  O `initial` carrega o `ai_config` **completo** (9 campos) para round-trip sem clobber; salva via
+  `PUT /controllers/{id}`.
+- **`AiPanel`** (por loop): mostra engine/objective/enabled/strategy/Ki/gamma (status + frames `ai`
+  ao vivo), botões **Start/Pause/Stop** (`POST .../ai/{action}`) e **Apply tuning**.
+- **Guarda de apply-tuning:** "Apply tuning" só fica habilitado com recomendação `pending` e **não**
+  escreve no PID até o usuário confirmar em `ConfirmApplyTuningDialog` ("Confirm Write") →
+  `POST /commands/apply-tuning/{id}`. Coberto por Vitest e por e2e Playwright
+  (`e2e/fatia2-commands.spec.ts`, contagem de invocações de rota).
