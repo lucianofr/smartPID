@@ -15,9 +15,17 @@ import time
 from typing import TYPE_CHECKING, Any, Protocol
 
 import msgpack  # type: ignore[import-untyped]
+from fastapi import FastAPI, WebSocket
+from starlette.websockets import WebSocketDisconnect, WebSocketState
+
+from smart_pid_core.adapters.inbound.api.auth import decode_access_token
 
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import BusSubscriber, EventBus
+
+_ALLOWED_ORIGIN_DEFAULT = "http://127.0.0.1:5173"
+_WS_CLOSE_AUTH = 4401
+_LOSSLESS_QUEUE_MAX = 256
 
 
 class _Sendable(Protocol):
@@ -155,3 +163,74 @@ class RealtimeBridge:
         finally:
             for sub in subs:
                 sub.close()
+
+
+class ConnectionBuffer:
+    """Per-connection outbound policy: coalesce status/stats, lossless alarm/ai/system."""
+
+    def __init__(self, lossless_max: int = _LOSSLESS_QUEUE_MAX) -> None:
+        self._coalesced: dict[tuple[str, int | None], dict] = {}
+        self._lossless: list[dict] = []
+        self._lossless_max = lossless_max
+        self.overflowed = False
+
+    def offer(self, env: dict) -> None:
+        etype = env["type"]
+        if etype in ("status", "stats"):
+            self._coalesced[(etype, env["loop_id"])] = env
+        else:
+            if len(self._lossless) >= self._lossless_max:
+                self.overflowed = True
+                return
+            self._lossless.append(env)
+
+    def drain(self) -> list[dict]:
+        out = list(self._coalesced.values()) + self._lossless
+        self._coalesced.clear()
+        self._lossless.clear()
+        return out
+
+
+def _origin_allowed(origin: str | None, allowed: tuple[str, ...]) -> bool:
+    return origin is not None and origin in allowed
+
+
+def register_realtime_ws(app: FastAPI) -> None:
+    """Register GET /ws/realtime on the app."""
+
+    @app.websocket("/ws/realtime")
+    async def realtime_ws(websocket: WebSocket) -> None:
+        settings = websocket.app.state.settings
+        allowed = tuple(getattr(settings, "allowed_ws_origins", (_ALLOWED_ORIGIN_DEFAULT,)))
+        origin = websocket.headers.get("origin")
+        await websocket.accept()
+
+        # First-message auth: first frame MUST be {"type":"auth","token":"<JWT>"}.
+        try:
+            first = await websocket.receive_json()
+        except (WebSocketDisconnect, ValueError):
+            await websocket.close(code=_WS_CLOSE_AUTH)
+            return
+
+        token = first.get("token") if isinstance(first, dict) else None
+        if first.get("type") != "auth" or not token or not _origin_allowed(origin, allowed):
+            await websocket.close(code=_WS_CLOSE_AUTH)
+            return
+        try:
+            decode_access_token(token, secret=settings.jwt_secret)
+        except Exception:  # noqa: BLE001 — any JWT error => reject
+            await websocket.close(code=_WS_CLOSE_AUTH)
+            return
+
+        await websocket.send_json({"type": "auth_ok"})
+        manager: ConnectionManager = websocket.app.state.realtime_manager
+        await manager.connect(websocket)
+        try:
+            # The bridge drives outbound traffic via manager.broadcast(); this
+            # loop only watches for client close. No per-client bus recv.
+            while websocket.application_state == WebSocketState.CONNECTED:
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            pass
+        finally:
+            await manager.disconnect(websocket)
