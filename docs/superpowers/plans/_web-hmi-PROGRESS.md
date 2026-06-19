@@ -128,4 +128,28 @@ On-disk ledger: `.git/worktrees/main-web-hmi/sdd/progress.md`. Minors: `.../sdd/
 - FINAL whole-branch review (code-reviewer opus): MERGE-WITH-FOLLOW-UP — 1 HIGH FIXED `9b34b24` (selectSeries cross-loop series/time MISALIGNMENT on staggered selection — silent chart corruption; per-task reviews missed it (equal-length tests) → common newest-aligned window, no nulls, decimate-safe; differing-length test RED→GREEN). 6 findings total; #2–#6 LOW all OK-to-defer.
 
 **Key facts:** frontend-only (backend untouched). STATS IS bridged to web (RealtimeWS subscribes the bus directly → `lastStats` live). Stats wire = snake_case (REST==WS); `StatsRow` is the camelCase UI alias. StatusData.timestamp is ISO (execute/pid_worker) OR numeric epoch (monitor_worker, primary path) → `string|number` + toEpochSeconds. Auth = Bearer header only (no cookie) → authenticated blob download via `apiDownload`. GAP-4a: no `/export/list`. NavRail now functional (Dashboard//Multi-trend//Alarms). Deferred LOW minors in `fatia4-minor-findings.md` (none merge-blocking).
-**Next: Fatia 5 (Simulator)** — new branch from main `4ea9df6`.
+**Fatia 5 DONE.** **Next: Fatia 6 (Executive Dashboard)** — new branch from main `71e0ca7`.
+
+---
+
+## Fatia 5 — Simulator / Digital Twin  ✅ DONE (merged main `71e0ca7`, 2026-06-19)
+
+**`71e0ca7`** (parents `4ea9df6` + `28bbee8`). 13 commits. **Frontend-only** (verified `git diff main...HEAD -- '*.py'` empty).
+Final verify @ `28bbee8`: vitest **157/157** (44 files), tsc 0, vite build OK (337.9kB), e2e simulator **2/2**, lint 0 err (2 pre-existing warns).
+On-disk ledger: `.git/worktrees/main-web-hmi/sdd/progress.md`. Minors: `.../sdd/fatia5-minor-findings.md`. Digest: `_web-hmi-fatia5-digest.md`.
+
+- T1 `9290dd1` typed simulator API wrapper + HAND-TYPED DTOs (generated/ gitignored → no gen:api; verified vs dtos/simulator.py + CommandResponse). response_model audit: all 11 consumed routes already typed → no backend change. self/diff.
+- T2 `47639ad` SimulationModeBanner (role=status, `--alarm-diag` desat + `--on-alarm`). self/diff.
+- T3 `7a4af58` PresetSelector (controlled select). self/diff.
+- T4 `be73de1` DynamicsSliders (.numeric readouts, onCommit per change). self/diff. CARRY surfaced: real spacing tokens are `--sp-N` not `--space-N`.
+- T5 `d031253` DisturbanceControls (inject/remove, step|noise). self/diff.
+- T6 `72b0198` TwinOutputModeControl (CO clamp 0-100, MAN/AUTO, disabled in AUTO). self/diff.
+- T7 `000b614` AutoToggles (role=switch, defaults 30/70/10). self/diff.
+- T8 `8eb6490` status query + 10 mutation hooks (RQ v5, each invalidates ['simulator','status']; context7-confirmed). react-reviewer SPEC✅ 0/0.
+- T9 `96c16d6` SimulatorControlPanel + StartStop — composes all; **debounced params (250ms, cleanup)**; reads REST controllers[id]. react-reviewer SPEC✅ 0/0 (debounce no stale-closure verified).
+- T10 `ab24350` SimulatorPage (self-shell + opcua poll) + live twinTrend (appendTwinSample pure + useTwinTrend append-once-per-frame) + `/simulator` route + NavRail link. react-reviewer SPEC✅ 0/0. CORRECTIONS: RealtimeTrend is `data:TrendData` not loopId; pages self-shell; test MemoryRouter+api/client mock.
+- T11 `5c8de85` Playwright e2e (StubWS + STATEFUL /simulator/* route doubles; preset→trend-alive; disturbance inject→Remove-enabled→remove→disabled; no sleeps). 2/2 no flake.
+- T12 `936bbdd` negative-auth test (401 single-admin) + full gates + spec docs (smartPIDv2 §15, identidade_visual_ISA101 §4.6). Frontend-only proven (empty .py diff).
+- FINAL whole-branch review (code-reviewer opus): **MERGE** — 0 Crit/0 High/0 Medium. 2 Low FIXED `28bbee8` (SimulationModeBanner.css --space-N→--sp-N; panel loading role=status). All other minors triaged DEFER.
+
+**Key facts:** frontend-only (backend untouched). Reuses existing Phase-4 `/simulator/*` REST + `/ws/realtime` status. **CO carried in `sp`** (`POST /simulator/{id}/co` body SimulatorPIDSPRequest). DTOs HAND-TYPED (generated/ gitignored). **`--sp-N` is the real spacing token scale** (`--space-N` undefined). RealtimeTrend is presentational (`data:TrendData=[t,pv,sp,co]`, co scale [0,100]) — fed by `useTwinTrend` ring-buffer. Live twin = FFSignal `.value`. All sim routes `require_supervisor`; unauth→401.

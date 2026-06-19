@@ -41,8 +41,8 @@ These are NOT fatia tasks; they land on `main` first (see `.claude/docs/handoff-
 | 0+1 | [foundation-dashboard](./2026-06-18-web-fatia01-foundation-dashboard.md) | `feat/web-fatia01-foundation-dashboard` | — | 12 | ✅ merged `427b670` |
 | 2 | [commands-loop-config](./2026-06-18-web-fatia2-commands-loop-config.md) | `feat/web-fatia2-commands-loop-config` | 0+1 | 8 | ✅ merged `3a77ae5` |
 | 3 | [alarms](./2026-06-18-web-fatia3-alarms.md) | `feat/web-fatia3-alarms` | 0+1 | 8 | ✅ merged `4210142` |
-| 4 | [multitrend-stats-export](./2026-06-18-web-fatia4-multitrend-stats-export.md) | `feat/web-fatia4-multitrend-stats-export` | 0+1, (2) | 12 | ⬜ |
-| 5 | [simulator](./2026-06-18-web-fatia5-simulator.md) | `feat/web-fatia5-simulator` | 0+1, (2) | 12 | ⬜ |
+| 4 | [multitrend-stats-export](./2026-06-18-web-fatia4-multitrend-stats-export.md) | `feat/web-fatia4-multitrend-stats-export` | 0+1, (2) | 12 | ✅ merged `4ea9df6` |
+| 5 | [simulator](./2026-06-18-web-fatia5-simulator.md) | `feat/web-fatia5-simulator` | 0+1, (2) | 12 | ✅ merged `71e0ca7` |
 | 6 | [executive-dashboard](./2026-06-18-web-fatia6-executive-dashboard.md) | `feat/web-fatia6-executive-dashboard` | 0+1, (4),(2) | 10 | ⬜ |
 | 7 | [settings-connection-projects](./2026-06-18-web-fatia7-settings-connection-projects.md) | `feat/web-fatia7-settings-connection-projects` | 0+1 | 11 | ⬜ |
 | 8 | [themes-faceplate](./2026-06-18-web-fatia8-themes-faceplate.md) | `feat/web-fatia8-themes-faceplate` | 0+1, 2 | 10 | ⬜ |
@@ -107,21 +107,21 @@ Branch `feat/web-fatia4-multitrend-stats-export` (forked main `4210142`) merged 
 - [x] Task 11 — Playwright e2e (multiple live series + export download)
 - [x] Task 12 — Response-model audit + spec upkeep + final verification
 
-## Fatia 5 — Simulator  ⬜ DONE-when-all-checked
+## Fatia 5 — Simulator  ✅ DONE (merged main `71e0ca7`, 2026-06-19)
 Branch `feat/web-fatia5-simulator` · deps: 0+1, (recommended after 2)
 
-- [ ] Task 1 — OpenAPI audit + generated types + typed simulator API wrapper
-- [ ] Task 2 — SimulationModeBanner (never confuse twin with real process)
-- [ ] Task 3 — PresetSelector
-- [ ] Task 4 — DynamicsSliders (gain / dead-time L / tau1 / tau2)
-- [ ] Task 5 — DisturbanceControls (inject / remove)
-- [ ] Task 6 — TwinOutputModeControl (CO entry + MAN/AUTO mode)
-- [ ] Task 7 — AutoToggles (auto-SP and auto-disturbance)
-- [ ] Task 8 — Status query + mutations hooks
-- [ ] Task 9 — SimulatorControlPanel + StartStopControl (compose the left panel)
-- [ ] Task 10 — SimulatorPage + route + nav
-- [ ] Task 11 — Playwright e2e — preset → trend response; disturbance → visible step
-- [ ] Task 12 — Negative-auth + full-suite + lint + spec docs
+- [x] Task 1 — OpenAPI audit + generated types + typed simulator API wrapper
+- [x] Task 2 — SimulationModeBanner (never confuse twin with real process)
+- [x] Task 3 — PresetSelector
+- [x] Task 4 — DynamicsSliders (gain / dead-time L / tau1 / tau2)
+- [x] Task 5 — DisturbanceControls (inject / remove)
+- [x] Task 6 — TwinOutputModeControl (CO entry + MAN/AUTO mode)
+- [x] Task 7 — AutoToggles (auto-SP and auto-disturbance)
+- [x] Task 8 — Status query + mutations hooks
+- [x] Task 9 — SimulatorControlPanel + StartStopControl (compose the left panel)
+- [x] Task 10 — SimulatorPage + route + nav
+- [x] Task 11 — Playwright e2e — preset → trend response; disturbance → visible step
+- [x] Task 12 — Negative-auth + full-suite + lint + spec docs
 
 ## Fatia 6 — Executive Dashboard  ⬜ DONE-when-all-checked
 Branch `feat/web-fatia6-executive-dashboard` · deps: 0+1, (recommended after 4 & 2)
