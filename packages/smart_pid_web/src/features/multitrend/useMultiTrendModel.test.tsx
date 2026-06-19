@@ -17,7 +17,7 @@ vi.mock('../../realtime/useRealtime', () => ({
   }),
 }));
 
-import { useMultiTrendModel } from './useMultiTrendModel';
+import { useMultiTrendModel, toEpochSeconds } from './useMultiTrendModel';
 
 const sig = (value: number): FFSignal => ({
   value,
@@ -26,9 +26,10 @@ const sig = (value: number): FFSignal => ({
   sub_status: 'NON_SPECIFIC',
 });
 
-// pv/sp/co arrive as FFSignal objects; timestamp is an ISO-8601 string at the
-// publish site (see realtime/envelope.ts).
-const frame = (pv: number, iso: string): StatusData => ({
+// pv/sp/co arrive as FFSignal objects; timestamp is an ISO-8601 string in
+// execute mode (pid_worker) and a numeric epoch in monitor mode (monitor_worker)
+// — see realtime/envelope.ts.
+const frame = (pv: number, ts: string | number): StatusData => ({
   pv: sig(pv),
   sp: sig(pv + 1),
   co: sig(50),
@@ -39,10 +40,26 @@ const frame = (pv: number, iso: string): StatusData => ({
   ti: 1,
   td: 0,
   integral_val: 0,
-  timestamp: iso,
+  timestamp: ts,
 });
 
 const sec = (iso: string): number => Date.parse(iso) / 1000;
+
+describe('toEpochSeconds', () => {
+  it('returns a numeric epoch (monitor mode) unchanged', () => {
+    expect(toEpochSeconds(1_750_000_000)).toBe(1_750_000_000);
+  });
+
+  it('parses an ISO-8601 string (execute mode) to epoch seconds', () => {
+    expect(toEpochSeconds('2026-01-01T00:00:01Z')).toBe(
+      Date.parse('2026-01-01T00:00:01Z') / 1000,
+    );
+  });
+
+  it('returns NaN for unparseable input', () => {
+    expect(Number.isNaN(toEpochSeconds('not-a-date'))).toBe(true);
+  });
+});
 
 describe('useMultiTrendModel', () => {
   beforeEach(() => store.clear());
@@ -78,6 +95,22 @@ describe('useMultiTrendModel', () => {
     store.set(1, frame(99, '2026-01-01T00:00:02Z'));
     rerender();
 
+    expect(result.current.series.data[1]).toEqual([10]);
+  });
+
+  it('accumulates monitor-mode frames whose timestamp is a numeric epoch', () => {
+    const { result, rerender } = renderHook(() =>
+      useMultiTrendModel({ maxSeconds: 1e9, maxPoints: 1e9 }),
+    );
+    act(() => result.current.setSelection([{ loopId: 1, variable: 'pv' }]));
+    act(() => result.current.setPxWidth(1000));
+
+    // monitor_worker.py publishes time.time() -> a float epoch seconds NUMBER.
+    const epoch = 1_750_000_000;
+    store.set(1, frame(10, epoch));
+    rerender();
+
+    expect(result.current.series.data[0]).toEqual([epoch]);
     expect(result.current.series.data[1]).toEqual([10]);
   });
 

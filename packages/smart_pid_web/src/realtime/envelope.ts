@@ -18,7 +18,10 @@ export interface FFSignal {
 }
 
 // Live dashboard frame = STATUS.{id} (pid_worker.py:457 / monitor_worker.py:84).
-// Wire payload is a msgpack dict; `timestamp` is an ISO-8601 STRING at the publish site.
+// Wire payload is a msgpack dict; `timestamp` has two real publish sites:
+//   - execute mode: pid_worker stamps datetime.now(UTC).isoformat() -> ISO-8601 STRING.
+//   - monitor mode: monitor_worker:137 publishes telem's time.time() -> float epoch
+//     seconds NUMBER (msgpack->JSON number, kept numeric by RealtimeProvider's parse).
 export interface StatusData {
   pv: FFSignal;
   sp: FFSignal;
@@ -30,7 +33,7 @@ export interface StatusData {
   ti: number;
   td: number;
   integral_val: number;
-  timestamp: string; // ISO 8601 (publish-site format) — NOT epoch
+  timestamp: string | number; // ISO-8601 string (execute) or float epoch seconds (monitor)
 }
 // Derived client-side (NOT on the wire): error = sp.value - pv.value. OPC state via REST GET /opcua/status.
 export interface ActionData { cv: number; delta: number; } // ACTION.CTRL.{id}

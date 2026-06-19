@@ -17,11 +17,22 @@ export interface MultiTrendModel {
 const HARD_BUFFER = 36_000; // safety ceiling per buffer (matches PySide6 1h@100ms)
 
 /**
+ * Derive epoch SECONDS from a STATUS frame's `timestamp`, tolerant of both
+ * publish shapes (see realtime/envelope.ts):
+ *   - number: monitor mode (monitor_worker) already publishes epoch seconds.
+ *   - string: execute mode (pid_worker) publishes ISO-8601 -> Date.parse / 1000.
+ * Returns NaN for unparseable input so callers can skip the frame.
+ */
+export function toEpochSeconds(ts: string | number): number {
+  return typeof ts === 'number' ? ts : Date.parse(ts) / 1000;
+}
+
+/**
  * Accumulate per-loop ring buffers from the live `useRealtime().lastStatus`
  * map and expose a windowed + min/max-decimated `AlignedSeries` for uPlot.
  *
- * Time axis is epoch SECONDS (parsed from the ISO-8601 `status.timestamp`),
- * consistent with `applyWindow`/`DEFAULT_WINDOW.maxSeconds`.
+ * Time axis is epoch SECONDS (derived from `status.timestamp` via
+ * `toEpochSeconds`), consistent with `applyWindow`/`DEFAULT_WINDOW.maxSeconds`.
  */
 export function useMultiTrendModel(initial?: Partial<WindowConfig>): MultiTrendModel {
   const { lastStatus } = useRealtime();
@@ -40,8 +51,9 @@ export function useMultiTrendModel(initial?: Partial<WindowConfig>): MultiTrendM
     for (const loopId of loops) {
       const status = lastStatus.get(loopId);
       if (!status) continue;
-      // ISO-8601 string -> epoch seconds (matches applyWindow's unit).
-      const t = Date.parse(status.timestamp) / 1000;
+      // -> epoch seconds (matches applyWindow's unit); tolerant of ISO string
+      // (execute mode) and numeric epoch (monitor mode).
+      const t = toEpochSeconds(status.timestamp);
       if (Number.isNaN(t)) continue;
       let buf = buffers.current.get(loopId);
       if (!buf) {
