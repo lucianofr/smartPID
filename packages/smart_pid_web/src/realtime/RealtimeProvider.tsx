@@ -25,7 +25,7 @@ export function RealtimeProvider({ token, children }: { token: string | null; ch
   const wsRef = useRef<WebSocket | null>(null);
   const backoff = useRef(500);
   const hadConnection = useRef(false);
-  const [, forceRender] = useState(0);
+  const [version, forceRender] = useState(0);
 
   const subscribe = useCallback((type: RealtimeType, handler: Handler) => {
     const set = subs.current.get(type) ?? new Set<Handler>();
@@ -58,12 +58,17 @@ export function RealtimeProvider({ token, children }: { token: string | null; ch
         hadConnection.current = true;
       };
       ws.onmessage = (e) => {
-        const env = JSON.parse(e.data) as RealtimeEnvelope;
+        let env: RealtimeEnvelope;
+        try {
+          env = JSON.parse(e.data) as RealtimeEnvelope;
+        } catch {
+          return;
+        }
         if (env.type === 'status' && env.loop_id !== null) {
-          lastStatus.current.set(env.loop_id, env.data as StatusData);
+          lastStatus.current = new Map(lastStatus.current).set(env.loop_id, env.data as StatusData);
           forceRender((n) => n + 1);
         } else if (env.type === 'stats' && env.loop_id !== null) {
-          lastStats.current.set(env.loop_id, env.data as StatsData);
+          lastStats.current = new Map(lastStats.current).set(env.loop_id, env.data as StatsData);
           forceRender((n) => n + 1);
         } else {
           subs.current.get(env.type)?.forEach((h) => h(env));
@@ -92,7 +97,7 @@ export function RealtimeProvider({ token, children }: { token: string | null; ch
       subscribe,
       onResync,
     }),
-    [connected, subscribe, onResync],
+    [connected, version, subscribe, onResync],
   );
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;
 }
