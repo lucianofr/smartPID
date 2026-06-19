@@ -14,8 +14,12 @@ export function ProjectsPage(): JSX.Element {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    await create.mutateAsync(name.trim());
-    setName('');
+    try {
+      await create.mutateAsync(name.trim());
+      setName('');
+    } catch {
+      /* surfaced via create.isError */
+    }
   }
   return (
     <AppShell opcDown={opcDown}>
@@ -30,6 +34,11 @@ export function ProjectsPage(): JSX.Element {
             Create
           </button>
         </form>
+        {create.isError && (
+          <p role="alert" className="projects-page__error">
+            {create.error instanceof Error ? create.error.message : 'Create failed'}
+          </p>
+        )}
         <ProjectImportDropzone />
         <ProjectList />
       </div>

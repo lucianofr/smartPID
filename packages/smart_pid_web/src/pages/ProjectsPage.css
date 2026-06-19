@@ -54,3 +54,9 @@
   color: var(--text-disabled);
   cursor: not-allowed;
 }
+
+.projects-page__error {
+  margin: var(--sp-2) 0 0;
+  color: var(--alarm-critical);
+  font-size: var(--text-sm);
+}

@@ -4,10 +4,17 @@ import './ProjectImportDropzone.css';
 export function ProjectImportDropzone(): JSX.Element {
   const importProject = useImportProject();
 
-  async function handleFile(file: File | undefined): Promise<void> {
+  async function handleFile(input: HTMLInputElement): Promise<void> {
+    const file = input.files?.[0];
     if (!file) return;
     const name = file.name.replace(/\.spid$/i, '');
-    await importProject.mutateAsync({ file, name });
+    try {
+      await importProject.mutateAsync({ file, name });
+    } catch {
+      /* surfaced via importProject.isError */
+    } finally {
+      input.value = '';
+    }
   }
 
   return (
@@ -19,12 +26,13 @@ export function ProjectImportDropzone(): JSX.Element {
         id="import-input"
         type="file"
         accept=".spid"
-        onChange={(e) => handleFile(e.target.files?.[0])}
+        onChange={(e) => void handleFile(e.currentTarget)}
       />
       {importProject.isPending && <progress className="import-dropzone__progress" aria-label="Uploading" />}
       {importProject.isError && (
         <p className="import-dropzone__error" role="alert">
-          Upload failed: {(importProject.error as Error).message}
+          Upload failed:{' '}
+          {importProject.error instanceof Error ? importProject.error.message : 'Unknown error'}
         </p>
       )}
     </div>
