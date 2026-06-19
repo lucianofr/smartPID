@@ -1,0 +1,29 @@
+.dyn-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2, 8px);
+}
+
+.dyn-sliders__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3, 12px);
+}
+
+.dyn-sliders__label {
+  width: 6rem;
+  flex-shrink: 0;
+  font-size: var(--text-2xs, 0.6875rem);
+  color: var(--text-secondary);
+}
+
+.dyn-sliders__input {
+  flex: 1;
+}
+
+.dyn-sliders__readout {
+  width: 3.5rem;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: var(--text-xs, 0.75rem);
+}
