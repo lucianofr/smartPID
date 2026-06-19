@@ -37,4 +37,20 @@ describe('ExportButton', () => {
     fireEvent.click(button);
     await waitFor(() => expect(apiDownload).toHaveBeenCalledWith('/export/abc/download'));
   });
+
+  it('surfaces a retry affordance when the download fails', async () => {
+    vi.mocked(apiDownload).mockRejectedValue(new Error('boom'));
+    useExportMock.mockReturnValue({
+      phase: 'done',
+      downloadHref: '/api/export/abc/download',
+      start: vi.fn(),
+      job: { id: 'abc', format: 'csv' },
+    });
+    render(<ExportButton request={request} />);
+    fireEvent.click(screen.getByRole('button', { name: /download/i }));
+    // The rejection must be caught and surfaced as a recovery affordance,
+    // not discarded as an unhandled rejection.
+    const retry = await screen.findByRole('button', { name: /download failed|retry/i });
+    expect(retry).toBeInTheDocument();
+  });
 });
