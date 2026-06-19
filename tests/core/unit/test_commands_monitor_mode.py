@@ -92,7 +92,7 @@ async def monitor_app(monitor_deps):
 @pytest.fixture
 async def monitor_client(monitor_app):
     transport = ASGITransport(app=monitor_app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
+    async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as c:
         yield c
 
 
@@ -228,7 +228,7 @@ class TestApplyTuning:
             ),
         }
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
             resp = await client.post(
                 "/commands/apply-tuning/1", headers=headers,
             )
@@ -261,7 +261,7 @@ class TestApplyTuning:
             ),
         }
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
             resp = await client.post(
                 f"/commands/apply-tuning/{cid}", headers=headers,
             )
@@ -294,7 +294,7 @@ class TestApplyTuning:
             ),
         }
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
             resp = await client.post(
                 f"/commands/apply-tuning/{cid}", headers=headers,
             )

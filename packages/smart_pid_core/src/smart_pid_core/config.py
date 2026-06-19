@@ -20,7 +20,14 @@ class CoreSettings(BaseSettings):
 
     # FastAPI
     api_port: int = 8000
-    api_host: str = "0.0.0.0"
+    # Loopback by default: a control-plane daemon should not be reachable off-host
+    # unless explicitly opted in via SPID_API_HOST=0.0.0.0.
+    api_host: str = "127.0.0.1"
+
+    # Network hardening (TD-004). Env vars accept a JSON array, e.g.
+    # SPID_CORS_ALLOW_ORIGINS='["http://127.0.0.1:5173"]'.
+    cors_allow_origins: list[str] = ["http://127.0.0.1:5173", "http://localhost:5173"]
+    trusted_hosts: list[str] = ["127.0.0.1", "localhost"]
 
     # JWT
     jwt_secret: str

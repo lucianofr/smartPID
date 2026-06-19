@@ -56,7 +56,7 @@ async def stats_client(tmp_path, mock_stats_worker):
     )
     headers = {"Authorization": f"Bearer {token}"}
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1") as c:
         yield c, headers
     loop_manager.stop_all()
     bus.stop()

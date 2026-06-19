@@ -106,7 +106,7 @@ class TestGetTuningRecommendation:
         headers = _operator_headers(deps["settings"])
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
             resp = await client.get(
                 "/commands/tuning-recommendations/999", headers=headers,
             )
@@ -121,7 +121,7 @@ class TestGetTuningRecommendation:
         headers = _operator_headers(deps["settings"])
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
             resp = await client.get(
                 "/commands/tuning-recommendations/1", headers=headers,
             )
@@ -144,7 +144,7 @@ class TestGetTuningRecommendation:
         app.state.tuning_recommendations = {1: _FakeRec()}
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
             resp = await client.get("/commands/tuning-recommendations/1")
         assert resp.status_code == 401
 
@@ -156,7 +156,7 @@ class TestGetTuningRecommendation:
         headers = _operator_headers(deps["settings"])
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
             resp = await client.get(
                 "/commands/tuning-recommendations/1", headers=headers,
             )
@@ -170,7 +170,7 @@ class TestGetTuningRecommendation:
         headers = _operator_headers(deps["settings"])
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
             resp = await client.get(
                 "/commands/tuning-recommendations/1", headers=headers,
             )
@@ -185,7 +185,7 @@ class TestGetTuningRecommendation:
         headers = _operator_headers(deps["settings"])
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
             resp = await client.get(
                 "/commands/tuning-recommendations/1", headers=headers,
             )
@@ -199,7 +199,7 @@ class TestGetTuningRecommendation:
         headers = _operator_headers(deps["settings"])
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
             resp = await client.get(
                 "/commands/tuning-recommendations/1", headers=headers,
             )

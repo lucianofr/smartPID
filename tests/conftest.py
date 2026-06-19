@@ -97,9 +97,13 @@ async def app(api_deps):
 
 @pytest.fixture
 async def client(app):
-    """httpx AsyncClient with ASGI transport."""
+    """httpx AsyncClient with ASGI transport.
+
+    base_url host is 127.0.0.1 so requests satisfy TrustedHostMiddleware
+    (default trusted_hosts = 127.0.0.1, localhost).
+    """
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1") as c:
         yield c
 
 
@@ -200,7 +204,12 @@ async def app_with_simulator(sim_api_deps):
 
 @pytest.fixture
 async def client_with_simulator(app_with_simulator):
-    """httpx AsyncClient with simulator-enabled ASGI transport."""
+    """httpx AsyncClient with simulator-enabled ASGI transport.
+
+    base_url host is 127.0.0.1 to satisfy TrustedHostMiddleware.
+    """
     transport = httpx.ASGITransport(app=app_with_simulator)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://127.0.0.1"
+    ) as c:
         yield c

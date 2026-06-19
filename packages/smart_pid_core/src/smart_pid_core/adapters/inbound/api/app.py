@@ -5,7 +5,9 @@ import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from smart_pid_core.adapters.inbound.api.error_handlers import register_error_handlers
 from smart_pid_core.adapters.inbound.api.routers import (
@@ -26,7 +28,7 @@ from smart_pid_core.adapters.inbound.api.routers import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Awaitable, Callable
 
     from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
     from smart_pid_core.adapters.outbound.ai_repo import AIRepository
@@ -43,6 +45,17 @@ if TYPE_CHECKING:
     from smart_pid_core.application.workers.alarm_worker import AlarmWorker
     from smart_pid_core.application.workers.stats_worker import StatsWorker
     from smart_pid_core.config import CoreSettings
+
+
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Content-Security-Policy": (
+        "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+    ),
+}
 
 
 @asynccontextmanager
@@ -91,6 +104,31 @@ def create_app(
     app.state.system_event_repo = system_event_repo
     app.state.event_bus = event_bus
     app.state.execution_mode = settings.execution_mode
+
+    # Network hardening (TD-004). Middleware added later wraps earlier ones, so
+    # TrustedHost is registered last to run outermost — bad Host headers are
+    # rejected before any other processing.
+    @app.middleware("http")
+    async def _security_headers(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        for header, value in _SECURITY_HEADERS.items():
+            response.headers.setdefault(header, value)
+        return response
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allow_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=settings.trusted_hosts,
+    )
 
     # Register routers
     # Stats and AI routers share /controllers prefix but have literal sub-paths
