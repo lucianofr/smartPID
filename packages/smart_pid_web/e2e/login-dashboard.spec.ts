@@ -33,7 +33,12 @@ test('login then dashboard receives a status frame', async ({ page }) => {
             new MessageEvent('message', {
               data: JSON.stringify({
                 type: 'status', loop_id: 5, seq: 1, ts: 1,
-                data: { pv: 150.2, sp: 152, co: 64, mode: 'AUTO' },
+                data: {
+                  pv: { value: 150.2, severity: 'GOOD', limit_bits: 'NONE', sub_status: 'NON_SPECIFIC' },
+                  sp: { value: 152, severity: 'GOOD', limit_bits: 'NONE', sub_status: 'NON_SPECIFIC' },
+                  co: { value: 64, severity: 'GOOD', limit_bits: 'NONE', sub_status: 'NON_SPECIFIC' },
+                  mode: 'AUTO',
+                },
               }),
             }),
           );

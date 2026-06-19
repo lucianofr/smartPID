@@ -33,9 +33,9 @@ export function ControllerCard({
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{controller.description}</span>
           )}
         </div>
-        <AnalogBar label="PV" value={status?.pv} min={0} max={100} unit={controller.pv_unit} decimals={controller.pv_decimals} />
-        <AnalogBar label="SP" value={status?.sp} min={0} max={100} unit={controller.pv_unit} decimals={controller.pv_decimals} />
-        <AnalogBar label="CO" value={status?.co} min={0} max={100} unit="%" decimals={1} />
+        <AnalogBar label="PV" value={status?.pv?.value} min={0} max={100} unit={controller.pv_unit} decimals={controller.pv_decimals} />
+        <AnalogBar label="SP" value={status?.sp?.value} min={0} max={100} unit={controller.pv_unit} decimals={controller.pv_decimals} />
+        <AnalogBar label="CO" value={status?.co?.value} min={0} max={100} unit="%" decimals={1} />
         <div style={{ display: 'flex', gap: 'var(--sp-2)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
           <span className="numeric">{status?.mode ?? '—'}</span>
         </div>
