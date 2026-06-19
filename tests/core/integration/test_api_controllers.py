@@ -344,3 +344,42 @@ class TestModeBindingAPI:
         resp = await client.post("/controllers", json=payload, headers=admin_headers)
         assert resp.status_code == 201
         assert "node_id_mode" not in resp.json()["tag_bindings"]
+
+
+class TestOptimizationEnabledInResponse:
+    @pytest.mark.asyncio
+    async def test_response_defaults_optimization_enabled_true(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        resp = await client.post(
+            "/controllers", json={"name": "OPT-DEFAULT"}, headers=admin_headers
+        )
+        assert resp.status_code == 201
+        assert resp.json()["optimization_enabled"] is True
+
+    @pytest.mark.asyncio
+    async def test_get_reflects_saved_optimization_enabled_false(
+        self, client: AsyncClient, user_headers: dict[str, str], api_deps: dict
+    ) -> None:
+        from smart_pid_domain.models.controller import Controller
+
+        repo = api_deps["repo"]
+        saved = await repo.save(
+            Controller(id=0, name="OPT-OFF", optimization_enabled=False)
+        )
+        resp = await client.get(f"/controllers/{saved.id}", headers=user_headers)
+        assert resp.status_code == 200
+        assert resp.json()["optimization_enabled"] is False
+
+    @pytest.mark.asyncio
+    async def test_list_reflects_saved_optimization_enabled_false(
+        self, client: AsyncClient, user_headers: dict[str, str], api_deps: dict
+    ) -> None:
+        from smart_pid_domain.models.controller import Controller
+
+        repo = api_deps["repo"]
+        await repo.save(Controller(id=0, name="OPT-OFF-LIST", optimization_enabled=False))
+        resp = await client.get("/controllers", headers=user_headers)
+        assert resp.status_code == 200
+        match = next(c for c in resp.json() if c["name"] == "OPT-OFF-LIST")
+        assert match["optimization_enabled"] is False

@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { ControllerCard } from './ControllerCard';
 import type { StatusData } from '../realtime/envelope';
 
@@ -30,5 +30,18 @@ describe('ControllerCard', () => {
       />,
     );
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+  });
+
+  it('calls onOpenConfig when the config button is clicked', () => {
+    const onOpenConfig = vi.fn();
+    render(
+      <ControllerCard
+        controller={{ id: 5, name: 'PIC-005', description: 'Pressure', pv_decimals: 1, pv_unit: '°C' }}
+        status={status}
+        onOpenConfig={onOpenConfig}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /config/i }));
+    expect(onOpenConfig).toHaveBeenCalledTimes(1);
   });
 });

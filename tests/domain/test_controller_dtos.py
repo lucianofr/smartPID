@@ -210,6 +210,20 @@ class TestControllerResponse:
         assert r.pid_params == PIDParamsDTO()
         assert r.pv_scale == ScaleConfigDTO()
 
+    def test_optimization_enabled_defaults_true(self) -> None:
+        r = ControllerResponse(
+            id=1, name="TIC-100", description="", mode="AUTO",
+            pv=50.0, sp=55.0, co=42.0,
+        )
+        assert r.optimization_enabled is True
+
+    def test_optimization_enabled_can_be_false(self) -> None:
+        r = ControllerResponse(
+            id=1, name="TIC-100", description="", mode="AUTO",
+            pv=50.0, sp=55.0, co=42.0, optimization_enabled=False,
+        )
+        assert r.optimization_enabled is False
+
     def test_full_response(self) -> None:
         r = ControllerResponse(
             id=42,

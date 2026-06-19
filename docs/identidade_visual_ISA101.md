@@ -54,6 +54,14 @@ Painel lateral exibido quando um `ControllerCardWidget` é clicado.
 * Deve conter botões de Estado da IA: `[ RUN ] | [ PAUSE ] | [ STOP ]`.
 * Um campo numérico de entrada para edição de SP Local.
 
+> **Web HMI (Fatia 2):** no cliente React essas superfícies de controle vivem **inline no card**, sob
+> as barras analógicas, em vez de um painel lateral separado: `CardControls` (linha de Setpoint com
+> *Set*, seletor de Mode com os 9 modos, Output só habilitado em `MAN`, toggle *Enable AI
+> Optimization*) e `AiPanel` (Start/Pause/Stop + leituras de IA e *Apply tuning*). O botão ⚙ do
+> header abre o `LoopConfigDialog` (PID / Otimização IA com seletor de engine NONE/FUZZY/RL
+> habilitado / Limites). A escrita de tuning no PID externo é protegida por confirmação explícita
+> (*Confirm Write*). O modo segue ao vivo via WebSocket.
+
 ### 4.4. TrendChartWidget (Gráfico Histórico)
 Gráfico de alta performance (baseado em `pyqtgraph`).
 * Eixo Y Esquerdo: PV e SP (mesma escala).
