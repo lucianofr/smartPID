@@ -11,6 +11,7 @@ import { ExecutiveDashboardPage } from './pages/ExecutiveDashboardPage';
 import { MultiTrendPage } from './pages/MultiTrendPage';
 import { SimulatorPage } from './pages/SimulatorPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ConnectionPage } from './pages/ConnectionPage';
 import { AppShell } from './components/shell/AppShell';
 import { AlarmPanel } from './features/alarms/AlarmPanel';
 import './theme/tokens.css';
@@ -69,6 +70,14 @@ function Shell() {
           element={
             <RequireAuth>
               <SettingsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/connection"
+          element={
+            <RequireAuth>
+              <ConnectionPage />
             </RequireAuth>
           }
         />

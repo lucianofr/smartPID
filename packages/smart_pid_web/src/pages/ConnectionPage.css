@@ -1,0 +1,25 @@
+/* OPC connection page: vertical stack of the connection panel + tag browser,
+   with the selected-node readout pinned below. Token-based spacing only. */
+
+.connection-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 64rem;
+}
+
+.connection-page__header h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  color: var(--text);
+}
+
+.connection-page__selected {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.connection-page__selected code {
+  color: var(--text);
+}
