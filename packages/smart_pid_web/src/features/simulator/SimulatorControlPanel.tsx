@@ -34,7 +34,7 @@ export function SimulatorControlPanel({ controllerId }: Props): JSX.Element {
   );
   useEffect(() => () => clearTimeout(paramsTimer.current), []);
 
-  if (!c) return <div>Loading simulator…</div>;
+  if (!c) return <div role="status">Loading simulator…</div>;
 
   const disturbanceActive = Boolean(c.step_active || c.noise_active);
   const twinMode: TwinMode = c.pid_mode === 1 ? 'AUTO' : 'MAN';
