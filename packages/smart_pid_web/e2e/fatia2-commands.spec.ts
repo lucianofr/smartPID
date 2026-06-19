@@ -155,6 +155,9 @@ test('fatia 2 commands: setpoint, mode, guarded apply-tuning, AI actions', async
     window.WebSocket = StubWS;
   });
 
+  // Suppress the post-login WelcomeDialog so its overlay does not intercept clicks.
+  await page.addInitScript(() => sessionStorage.setItem('spid.welcome-seen', '1'));
+
   await page.goto('/login');
   await page.getByLabel('Usuário').fill('admin');
   await page.getByLabel('Senha').fill('pw');
