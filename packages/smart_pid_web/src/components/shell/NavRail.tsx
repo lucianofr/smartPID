@@ -14,6 +14,7 @@ const ITEMS: ReadonlyArray<NavItem> = [
   { to: '/multitrend', label: 'Multi-trend' },
   { to: '/simulator', label: 'Simulator' },
   { to: '/alarms', label: 'Alarms' },
+  { to: '/settings', label: 'Settings' },
 ];
 
 export function NavRail() {

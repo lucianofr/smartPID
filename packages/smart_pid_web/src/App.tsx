@@ -10,6 +10,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ExecutiveDashboardPage } from './pages/ExecutiveDashboardPage';
 import { MultiTrendPage } from './pages/MultiTrendPage';
 import { SimulatorPage } from './pages/SimulatorPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { AppShell } from './components/shell/AppShell';
 import { AlarmPanel } from './features/alarms/AlarmPanel';
 import './theme/tokens.css';
@@ -60,6 +61,14 @@ function Shell() {
               <AppShell opcDown={false}>
                 <AlarmPanel />
               </AppShell>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <RequireAuth>
+              <SettingsPage />
             </RequireAuth>
           }
         />

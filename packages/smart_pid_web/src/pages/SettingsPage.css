@@ -1,0 +1,15 @@
+/* Settings page (Fatia 7): page heading over the preferences form.
+   AppShell already renders the <main> landmark and outer padding. */
+
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.settings-page__header h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}

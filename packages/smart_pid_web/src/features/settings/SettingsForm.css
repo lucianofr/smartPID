@@ -1,0 +1,84 @@
+/* Application preferences form (Fatia 7, design-system §10): section header
+   with a hairline rule, two-column rows (label left, control right-aligned).
+   Token-based spacing/surfaces/colors only; no hardcoded palette. */
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  max-width: 32rem;
+}
+
+.settings-form__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.settings-form__section-title {
+  margin: 0 0 var(--sp-2);
+  padding-bottom: var(--sp-1);
+  border-bottom: var(--border-w) solid var(--border);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.settings-form__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--sp-4);
+  min-height: var(--sp-8);
+}
+
+.settings-form__label {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.settings-form__control {
+  width: 7rem;
+  justify-self: end;
+  padding: var(--sp-1) var(--sp-2);
+  border: var(--border-w) solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+  text-align: right;
+}
+
+.settings-form__control:focus-visible {
+  outline: 2px solid var(--border-strong);
+  outline-offset: 1px;
+}
+
+.settings-form__control--checkbox {
+  width: auto;
+  height: var(--sp-4);
+  padding: 0;
+}
+
+.settings-form__reset {
+  align-self: flex-start;
+  padding: var(--sp-2) var(--sp-4);
+  border: var(--border-w) solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-container);
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.settings-form__reset:hover {
+  background: var(--surface-container-high);
+}
+
+.settings-form__reset:focus-visible {
+  outline: 2px solid var(--border-strong);
+  outline-offset: 1px;
+}
