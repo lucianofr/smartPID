@@ -1,0 +1,8 @@
+.sim-mode-banner {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--alarm-diag);
+  color: var(--on-alarm, #fff);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
