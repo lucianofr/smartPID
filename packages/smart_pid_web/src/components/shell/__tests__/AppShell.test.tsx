@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { AppShell } from '../AppShell';
 import * as client from '../../../api/client';
 
@@ -20,9 +21,11 @@ describe('AppShell', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
-        <AppShell opcDown={false}>
-          <div>page</div>
-        </AppShell>
+        <MemoryRouter>
+          <AppShell opcDown={false}>
+            <div>page</div>
+          </AppShell>
+        </MemoryRouter>
       </QueryClientProvider>,
     );
     expect(screen.getByLabelText('Alarm summary')).toBeInTheDocument();

@@ -7,6 +7,7 @@ import { RequireAuth } from './auth/RequireAuth';
 import { RealtimeProvider } from './realtime/RealtimeProvider';
 import { ThemeProvider } from './theme/ThemeProvider';
 import { DashboardPage } from './pages/DashboardPage';
+import { MultiTrendPage } from './pages/MultiTrendPage';
 import { AppShell } from './components/shell/AppShell';
 import { AlarmPanel } from './features/alarms/AlarmPanel';
 import './theme/tokens.css';
@@ -23,6 +24,14 @@ function Shell() {
           element={
             <RequireAuth>
               <DashboardPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/multitrend"
+          element={
+            <RequireAuth>
+              <MultiTrendPage />
             </RequireAuth>
           }
         />

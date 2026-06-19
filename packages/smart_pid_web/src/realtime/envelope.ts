@@ -18,7 +18,10 @@ export interface FFSignal {
 }
 
 // Live dashboard frame = STATUS.{id} (pid_worker.py:457 / monitor_worker.py:84).
-// Wire payload is a msgpack dict; `timestamp` is an ISO-8601 STRING at the publish site.
+// Wire payload is a msgpack dict; `timestamp` has two real publish sites:
+//   - execute mode: pid_worker stamps datetime.now(UTC).isoformat() -> ISO-8601 STRING.
+//   - monitor mode: monitor_worker:137 publishes telem's time.time() -> float epoch
+//     seconds NUMBER (msgpack->JSON number, kept numeric by RealtimeProvider's parse).
 export interface StatusData {
   pv: FFSignal;
   sp: FFSignal;
@@ -30,13 +33,18 @@ export interface StatusData {
   ti: number;
   td: number;
   integral_val: number;
-  timestamp: string; // ISO 8601 (publish-site format) — NOT epoch
+  timestamp: string | number; // ISO-8601 string (execute) or float epoch seconds (monitor)
 }
 // Derived client-side (NOT on the wire): error = sp.value - pv.value. OPC state via REST GET /opcua/status.
 export interface ActionData { cv: number; delta: number; } // ACTION.CTRL.{id}
 export interface AlarmData { alarm_id: string; severity: string; state: string; } // EVENT.ALARM.*
 export interface AiData { gamma: number; ki: number; strategy: string; } // ACTION.AI.{id}
+// STATS.{id}. Wire shape is identical for both sources (snake_case dict):
+//   - WS STATS.{id} payload (stats_worker.py:86 get_current_stats)
+//   - REST GET /controllers/stats -> StatsResponse (smart_pid_domain/dtos/ai.py StatsResponse)
 export interface StatsData {
+  controller_id?: number;
   iae: number; itae: number; ise: number; mse: number;
-  sigma: number; tv: number; var_range: number; var_sp: number;
-} // STATS.{id}
+  std_dev: number; total_variation: number;
+  variability_range: number; variability_sp: number;
+}

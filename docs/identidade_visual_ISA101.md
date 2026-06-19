@@ -68,6 +68,14 @@ Gráfico de alta performance (baseado em `pyqtgraph`).
 * Eixo Y Direito: CO (0 a 100%).
 * Sem preenchimento de área sob a curva, linhas contínuas de espessura 1.5 a 2.0.
 
+> **Web HMI (Fatia 4) — regra de distinção de séries no MultiTrend:** no cliente React o gráfico é o
+> `MultiTrend` (rota `/multitrend`, baseado em uPlot). PV/SP/CO **herdam os tokens de tema**
+> (`--trend-pv` / `--trend-sp` / `--trend-co`); quando várias malhas são plotadas juntas, cada loop
+> recebe **variação tonal** dentro do mesmo matiz (claro→escuro via `color-mix`), de modo que a
+> identidade de variável (cor) e a identidade de loop (tom) são separáveis. SP permanece **tracejado**.
+> **Sem cores novas** e **sem preenchimento de área** (regra §4.4 preservada). Eixos e grade usam
+> `--trend-axis` / `--trend-grid` e o contêiner usa `--trend-bg`.
+
 ### 4.5. AlarmFooterWidget (Barra Global de Alarmes)
 Uma barra fixada no rodapé da janela principal.
 * Fundo escuro, texto exibindo os últimos eventos em rolagem ou lista.

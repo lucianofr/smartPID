@@ -40,3 +40,15 @@ export const apiGet = <T>(path: string) => request<T>('GET', path);
 export const apiPost = <T>(path: string, body?: unknown) => request<T>('POST', path, body);
 export const apiPut = <T>(path: string, body?: unknown) => request<T>('PUT', path, body);
 export const apiDelete = <T>(path: string) => request<T>('DELETE', path);
+
+// Authenticated binary GET: the Bearer token is sent as a header (there is no auth
+// cookie), so a plain <a href> navigation would lose it and 401. Use this to fetch
+// protected file responses (e.g. export downloads) as a Blob.
+export async function apiDownload(path: string): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  const token = tokenGetter();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`/api${path}`, { headers });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  return res.blob();
+}
