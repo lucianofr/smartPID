@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavRail } from './NavRail';
 import { TopBar } from './TopBar';
+import { AlarmBar } from '../../features/alarms/AlarmBar';
 
 export function AppShell({ opcDown, children }: { opcDown: boolean; children: ReactNode }) {
   return (
@@ -10,6 +11,7 @@ export function AppShell({ opcDown, children }: { opcDown: boolean; children: Re
         <NavRail />
         <main style={{ flex: 1, overflow: 'auto', padding: 'clamp(var(--sp-4), 2vw, var(--sp-8))' }}>{children}</main>
       </div>
+      <AlarmBar />
     </div>
   );
 }

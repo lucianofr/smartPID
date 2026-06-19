@@ -349,6 +349,49 @@ A matemática do alarme roda no Backend. Quando acionado, o Backend dispara o `E
 * **Persistência:** Máximo de 30 dias de alarmes armazenados no SQLite pelo Backend.
 * **Reconhecimento (ACK):** O operador clica "ACK" na HMI, que envia um `PUT /alarms/ack` para o Backend registrar no banco.
 
+### **9.3. Web HMI (React/Vite) — Fatia 3 (Superfície de Alarmes)**
+
+> A superfície de alarmes do cliente web React substitui os widgets `alarm_panel` /
+> `alarm_bar` da HMI PySide6 (paridade funcional). Backend **inalterado**: a fatia consome
+> apenas `routers/alarms` (`GET /alarms/active`, `POST /alarms/{id}/ack`, `POST /alarms/ack-all`),
+> o alarm-config dos `routers/controllers` e os streams WS `EVENT.ALARM` / `EVENT.SYSTEM`.
+
+**`AlarmBar` (rodapé persistente no `AppShell`):**
+* Barra de 36px fixada no rodapé do shell canônico (`AppShell`), visível em todas as telas
+  (análoga ao `AlarmFooterWidget` PySide6).
+* Contadores agregados por `AlarmPriority`: **CRIT** (CRITICAL), **WARN** (WARNING),
+  **DIAG** (ADVISORY). Cada bucket pisca (blink) quando há ao menos um alarme não reconhecido.
+* Mostra o último alarme ativo e um botão **ACK ALL**.
+
+**`AlarmPanel` (rota `/alarms`):**
+* Lista de alarmes ativos **virtualizada** (`@tanstack/react-virtual`) — sobrevive a flood de
+  eventos; deduplicação por `id` (last-write-wins).
+* Ordenação por severidade (rank CRITICAL→LOG) ou por tempo; filtros por estado e por malha.
+* **Ack por linha** + **ACK ALL**. `aria-live="assertive"` anuncia novos alarmes CRITICAL.
+
+**`AlarmConfigForm` (por malha):**
+* Edita os 6 tipos de limite (`HIHI`, `HI`, `LO`, `LOLO`, `DV_HI`, `DV_LO`) com `enabled`,
+  `limit` e `priority`.
+* O `PUT` envia o array `thresholds[]` **completo** (o backend substitui tudo — replace-all) e
+  recarrega a quente o `AlarmWorker` em execução.
+
+**Modelo de estado de 3 estados (GAP-3a):** apenas `UNACKNOWLEDGED`, `ACKNOWLEDGED` e
+`CLEARED_UNACK` existem. **Ack ≠ clear:** reconhecer apenas muda `UNACKNOWLEDGED → ACKNOWLEDGED`
+e mantém a linha. O caso *cleared + acked* não é um 4º estado — é representado pela linha
+**saindo da lista ativa** (filtro `get_active` do backend); o "clear" é dirigido só pela condição
+de campo cessar no backend.
+
+**WS é gatilho, fonte da verdade é o backend (GAP-3b):** o handler do envelope `alarm`
+**não** lê `id`/`status` do payload — ele apenas invalida `['alarms','active']` e refaz o fetch
+(o `onResync` faz o mesmo). As mutações de ack também invalidam a query em `onSettled`, sem
+cirurgia otimista de estado (evita ack dessincronizado).
+
+**ISA-101 — codificação redundante (§8.2):** a severidade é sempre **forma geométrica + cor +
+texto**, nunca cor isolada — glifos octógono (CRITICAL), triângulo (WARNING), losango (ADVISORY)
+e ponto (LOG), nas classes `sev-critical` / `sev-warning` / `sev-advisory` / `sev-log`.
+**Blink + reduced-motion (§6.4):** linhas/buckets não reconhecidos piscam; sob
+`prefers-reduced-motion: reduce` o blink é substituído por peso de fonte + sublinhado.
+
 ---
 
 ## **MÓDULO 10: Segurança, RBAC e Gestão de Arquivos (.spid)**

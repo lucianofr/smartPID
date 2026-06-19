@@ -1,0 +1,7 @@
+.alarm-config { display: flex; flex-direction: column; gap: var(--space-2, 8px); }
+.alarm-config__row {
+  display: grid; grid-template-columns: 5rem repeat(3, 1fr); align-items: center;
+  gap: var(--space-2, 8px); border: 1px solid var(--divider); padding: var(--space-2, 8px);
+}
+.alarm-config__row legend { font-weight: 600; }
+.alarm-config__row label { display: flex; flex-direction: column; font-size: 0.75rem; gap: 2px; }
