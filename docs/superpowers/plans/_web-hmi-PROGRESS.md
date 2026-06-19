@@ -65,3 +65,24 @@ Accumulated minor/deferred findings: `.worktrees/main-web-hmi/.sdd/minor-finding
 **Deferred to Fatia 8 / follow-ups:** ConnectionBuffer live-wiring + overflow-close; ControllerCard real unit/range mapping (`pv_scale.unit`/`eu_min`/`eu_max`, no decimals field); minor list in `.sdd/minor-findings.md`.
 
 **Next: Fatia 2** (commands + per-loop config) — new branch from main `427b670`.
+
+## Fatia 2 — ✅ COMPLETE (8/8), MERGED to main `3a77ae5` (2026-06-19)
+Branch `feat/web-fatia2-commands-loop-config` (forked main `427b670`) merged `--no-ff` into main
+**`3a77ae5`** (parents `427b670` + `e2442f5`). 10 commits. Post-merge green: web vitest 63/63,
+e2e fatia2-commands 1/1, build clean, ruff 25 baseline (0 new), mypy 541 baseline.
+On-disk ledger: `.git/worktrees/main-web-hmi/sdd/progress.md`. Minors: `.../sdd/fatia2-minor-findings.md`.
+Digest: `_web-hmi-fatia2-digest.md`.
+
+- T1 `b3d8836` investigation (GAP-2a/2b confirmed; ai_config-persist discovery → engine selector ENABLED per user). self.
+- T2 `2bc72fb` types+validation. self.
+- T3 `e76ce8e` command wrappers + mutation hooks (+apiPut/apiDelete). self.
+- T4 `48f0aaa` AI hooks (retry:false on 404 queries). self.
+- T5 `c9d3dbb` CardControls + ControllerCard extend; backend `a1665c4` optimization_enabled (+5 tests). self.
+- T6 `f1977c0` Dialog primitive + LoopConfigDialog (engine ENABLED, full ai_config round-trip clobber-safe). self.
+- T7 `286a190` AiPanel + ConfirmApplyTuningDialog; +fix `8ecc104` (1 Important: apply-tuning silent failure → mutation). self+fix.
+- T8 `9abd81a` dashboard wiring + e2e + specs. self.
+- FINAL REVIEW (code-reviewer opus): READY TO MERGE — 9/9 binding constraints MET, 0 Critical/0 Important, 6 minors deferred.
+
+**Key decisions:** engine selector ENABLED via PUT /controllers ai_config (contract premise was stale);
+optimization_enabled added to ControllerResponse; all routes require_authenticated_admin; no toast.
+**Next: Fatia 3 (Alarms)** — new branch from main.

@@ -39,7 +39,7 @@ These are NOT fatia tasks; they land on `main` first (see `.claude/docs/handoff-
 | Fatia | Plan | Branch | Deps | Tasks | DONE |
 |---|---|---|---|---|---|
 | 0+1 | [foundation-dashboard](./2026-06-18-web-fatia01-foundation-dashboard.md) | `feat/web-fatia01-foundation-dashboard` | — | 12 | ✅ merged `427b670` |
-| 2 | [commands-loop-config](./2026-06-18-web-fatia2-commands-loop-config.md) | `feat/web-fatia2-commands-loop-config` | 0+1 | 8 | ⬜ |
+| 2 | [commands-loop-config](./2026-06-18-web-fatia2-commands-loop-config.md) | `feat/web-fatia2-commands-loop-config` | 0+1 | 8 | ✅ merged `3a77ae5` |
 | 3 | [alarms](./2026-06-18-web-fatia3-alarms.md) | `feat/web-fatia3-alarms` | 0+1 | 8 | ⬜ |
 | 4 | [multitrend-stats-export](./2026-06-18-web-fatia4-multitrend-stats-export.md) | `feat/web-fatia4-multitrend-stats-export` | 0+1, (2) | 12 | ⬜ |
 | 5 | [simulator](./2026-06-18-web-fatia5-simulator.md) | `feat/web-fatia5-simulator` | 0+1, (2) | 12 | ⬜ |
@@ -67,17 +67,17 @@ Branch `feat/web-fatia01-foundation-dashboard` · deps: none (linchpin — creat
 - [x] Task 11 — Playwright e2e — login → dashboard receives a `status` frame
 - [x] Task 12 — Spec upkeep + full verification + state save
 
-## Fatia 2 — Commands + Loop Config  ⬜ DONE-when-all-checked
-Branch `feat/web-fatia2-commands-loop-config` · deps: 0+1
+## Fatia 2 — Commands + Loop Config  ✅ DONE (merged main `3a77ae5`, 2026-06-19)
+Branch `feat/web-fatia2-commands-loop-config` · deps: 0+1 · final review READY TO MERGE (0 Critical/0 Important)
 
-- [ ] Task 1 — Investigation: confirm real command/AI mechanism (GAP-2a, GAP-2b)
-- [ ] Task 2 — Types + validation (pure, fully unit-tested)
-- [ ] Task 3 — Command API wrappers + mutation hooks
-- [ ] Task 4 — AI controls hooks (start/stop/pause/status + recommendation)
-- [ ] Task 5 — `CardControls` inline row + extend canonical `ControllerCard`
-- [ ] Task 6 — `LoopConfigDialog` (PID / IA / Limites)
-- [ ] Task 7 — Apply-tuning confirmation guard + AI panel
-- [ ] Task 8 — Wire into dashboard + Playwright e2e + specs
+- [x] Task 1 — Investigation: confirm real command/AI mechanism (GAP-2a, GAP-2b) `b3d8836`
+- [x] Task 2 — Types + validation (pure, fully unit-tested) `2bc72fb`
+- [x] Task 3 — Command API wrappers + mutation hooks `e76ce8e`
+- [x] Task 4 — AI controls hooks (start/stop/pause/status + recommendation) `48f0aaa`
+- [x] Task 5 — `CardControls` inline row + extend canonical `ControllerCard` `c9d3dbb` (+backend `a1665c4` optimization_enabled)
+- [x] Task 6 — `LoopConfigDialog` (PID / IA / Limites) — engine selector ENABLED `f1977c0`
+- [x] Task 7 — Apply-tuning confirmation guard + AI panel `286a190` (+fix `8ecc104`)
+- [x] Task 8 — Wire into dashboard + Playwright e2e + specs `9abd81a`
 
 ## Fatia 3 — Alarms  ⬜ DONE-when-all-checked
 Branch `feat/web-fatia3-alarms` · deps: 0+1
