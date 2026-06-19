@@ -52,7 +52,7 @@ def test_get_audit_supervisor(app_fixture):
     asyncio.get_event_loop().run_until_complete(
         audit_repo.record(1, "admin", AuditAction.LOGIN, None, None)
     )
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1")
     token = create_access_token(
         user_id=1, username="sup1", role="SUPERVISOR",
         secret=settings.jwt_secret, expiry_hours=1,
@@ -73,7 +73,7 @@ def test_get_audit_supervisor(app_fixture):
 def test_get_audit_any_authenticated_user_allowed(app_fixture):
     # Single-admin deployment: any authenticated user may read the audit trail.
     app, audit_repo, settings = app_fixture
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1")
     token = create_access_token(
         user_id=1, username="op1", role="OPERATOR",
         secret=settings.jwt_secret, expiry_hours=1,
@@ -92,7 +92,7 @@ def test_get_audit_any_authenticated_user_allowed(app_fixture):
 
 def test_get_audit_requires_auth(app_fixture):
     app, _audit_repo, _settings = app_fixture
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1")
     now = datetime.now(tz=UTC)
     resp = client.get(
         "/audit",

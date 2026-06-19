@@ -59,7 +59,7 @@ def client():
             secret=settings.jwt_secret,
         )
         headers = {"Authorization": f"Bearer {token}"}
-        with TestClient(app) as c:
+        with TestClient(app, base_url="http://127.0.0.1") as c:
             yield c, adapter, headers
 
 

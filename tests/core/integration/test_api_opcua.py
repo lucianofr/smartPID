@@ -74,7 +74,7 @@ async def opcua_api_deps(tmp_path, mock_opcua_adapter):
 async def opcua_client(opcua_api_deps):
     app, headers, _ = opcua_api_deps
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1") as c:
         yield c, headers
 
 
