@@ -91,21 +91,21 @@ Branch `feat/web-fatia3-alarms` (forked main `3a77ae5`) merged `--no-ff` → `42
 - [x] Task 6 — Playwright e2e: alarm fires → appears → ack → ACKNOWLEDGED (not removed); clear only after condition ceases `dccc3ef`
 - [x] Task 7 — Specs upkeep + full-suite verification `8d9aac6` (+final-review fix `05eb3a1`)
 
-## Fatia 4 — Multi-trend + Stats + Export  ⬜ DONE-when-all-checked
-Branch `feat/web-fatia4-multitrend-stats-export` · deps: 0+1, (recommended after 2)
+## Fatia 4 — Multi-trend + Stats + Export  ✅ DONE (merged main `4ea9df6`, 2026-06-19)
+Branch `feat/web-fatia4-multitrend-stats-export` (forked main `4210142`) merged `--no-ff` → `4ea9df6` (parents `4210142` + `9b34b24`), 17 commits. Frontend-only (empty `.py` diff). Gates: vitest 123/123, tsc 0, build OK, e2e 2/2. Digest: `_web-hmi-fatia4-digest.md`.
 
-- [ ] Task 1 — View types + signal catalog (pure, no I/O)
-- [ ] Task 2 — Series aggregation + selection (pure)
-- [ ] Task 3 — Min/max decimation with window cap (pure, performance-critical)
-- [ ] Task 4 — Live model hook (ring buffers from `useRealtime.lastStatus`)
-- [ ] Task 5 — Stats hooks + formatting (REST `/controllers/stats` + live `lastStats`)
-- [ ] Task 6 — History query hook (`GET /history/{controller_id}`)
-- [ ] Task 7 — Export hook — create → poll → download (GAP-4a handled)
-- [ ] Task 8 — Chart + selector + stats panel components
-- [ ] Task 9 — History + Export UI components
-- [ ] Task 10 — MultiTrendPage + route wiring (bento layout)
-- [ ] Task 11 — Playwright e2e (multiple live series + export download)
-- [ ] Task 12 — Response-model audit + spec upkeep + final verification
+- [x] Task 1 — View types + signal catalog (pure, no I/O)
+- [x] Task 2 — Series aggregation + selection (pure)
+- [x] Task 3 — Min/max decimation with window cap (pure, performance-critical)
+- [x] Task 4 — Live model hook (ring buffers from `useRealtime.lastStatus`)
+- [x] Task 5 — Stats hooks + formatting (REST `/controllers/stats` + live `lastStats`)
+- [x] Task 6 — History query hook (`GET /history/{controller_id}`)
+- [x] Task 7 — Export hook — create → poll → download (GAP-4a handled)
+- [x] Task 8 — Chart + selector + stats panel components
+- [x] Task 9 — History + Export UI components
+- [x] Task 10 — MultiTrendPage + route wiring (bento layout)
+- [x] Task 11 — Playwright e2e (multiple live series + export download)
+- [x] Task 12 — Response-model audit + spec upkeep + final verification
 
 ## Fatia 5 — Simulator  ⬜ DONE-when-all-checked
 Branch `feat/web-fatia5-simulator` · deps: 0+1, (recommended after 2)

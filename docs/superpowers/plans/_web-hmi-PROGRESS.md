@@ -106,3 +106,26 @@ Minors: `.../sdd/fatia3-minor-findings.md`. Digest: `_web-hmi-fatia3-digest.md`.
 
 **Key facts:** zero backend change (pure consume of routers/alarms + alarm-config + EVENT.ALARM/EVENT.SYSTEM WS). GAP-3a (3-state UNACK/ACK/CLEARED_UNACK; ack≠clear; cleared+acked leaves active list). GAP-3b (WS alarm frame = refetch trigger; backend = source of truth, no optimistic). ISA-101 redundant coding. Single-admin (no role gating; negative=401). NOTE: alarm routes still `require_operator/require_supervisor` on this branch (web unaffected — admin satisfies all guards) — flag vs P3/TD-007 "all-collapsed" claim; revisit at Fatia 7.
 **Next: Fatia 4 (Multi-trend + Stats + Export)** — new branch from main `4210142`.
+
+## Fatia 4 — Multi-trend + Stats + Export — ✅ COMPLETE (12/12), MERGED to main `4ea9df6` (2026-06-19)
+Branch `feat/web-fatia4-multitrend-stats-export` (forked main `4210142`) merged `--no-ff` into main
+**`4ea9df6`** (parents `4210142` + `9b34b24`). 17 commits. **Frontend-only** (verified `git diff main...HEAD -- '*.py'` empty).
+Final verify @ `9b34b24`: vitest **123/123** (32 files), tsc 0, vite build OK, e2e multitrend **2/2**, lint 0 err (2 pre-existing warns).
+On-disk ledger: `.git/worktrees/main-web-hmi/sdd/progress.md`. Minors: `.../sdd/fatia4-minor-findings.md`. Digest: `_web-hmi-fatia4-digest.md`.
+
+- T1 `a7317e3` types+signal catalog (tonal per-loop colors). self/diff.
+- T2 `8bb3375` selectSeries/valueAt. self/diff (+stale-StatusData fix: valueAt→.value, FFSignal).
+- T3 `3c52185` min/max decimation + window cap (≤pxWidth*2, peak-preserving). self/diff.
+- T4 `7450e12` +fix `ecf118b` live model hook. react-reviewer SPEC✅; 1 Important FIXED (monitor-mode NUMERIC timestamp dropped by Date.parse → tolerant toEpochSeconds; envelope.ts timestamp `string|number`).
+- T5 `cb8fdb8` stats hooks. react-reviewer SPEC✅. CRITICAL field-name correction: REST StatsResponse == WS get_current_stats == snake_case `std_dev/total_variation/variability_sp/variability_range` (NO sigma/tv/var_range/var_sp on the wire); envelope.ts StatsData was fiction → fixed.
+- T6 `f3f36a8` history hook (controller_id PATH). self/diff. (+build-gate fixes `3ff41fa`/`db94585`: T6 test had tsc/lint slips — vitest/eslint don't typecheck.)
+- T7 `94f9d4c` export create→poll→download (GAP-4a, no /export/list). react-reviewer SPEC✅, poll-stop+phase empirically verified.
+- T8 `a60fd3b` chart+selector+stats panel. react-reviewer SPEC✅ (chart aligned to canonical RealtimeTrend: theme axes, jsdom try/catch, --trend-bg).
+- T9 `182d16a` +fix `b6701d8` history+export UI. react-reviewer; MANDATORY auth correction (brief plain `<a href>` would 401 → `apiDownload` Bearer-blob in client.ts) + 1 Important FIXED (silent download error → try/catch/finally + retry affordance + revoke-on-throw).
+- T10 `2f59e26` MultiTrendPage (self-shell+real opcDown) + `/multitrend` route + functional NavRail (folds Fatia3 F3); MemoryRouter wrap on DashboardPage.test+AppShell.test (router ripple). react-reviewer SPEC✅.
+- T11 `7fcf934` Playwright e2e (StubWS loops 1&2 ISO-ts; auth seed; export=button). 2/2 pass.
+- T12 `a7ff3ce` response_model audit (all consumed typed; download legit FileResponse) + spec docs (smartPIDv2 + identidade_visual_ISA101) + full verify.
+- FINAL whole-branch review (code-reviewer opus): MERGE-WITH-FOLLOW-UP — 1 HIGH FIXED `9b34b24` (selectSeries cross-loop series/time MISALIGNMENT on staggered selection — silent chart corruption; per-task reviews missed it (equal-length tests) → common newest-aligned window, no nulls, decimate-safe; differing-length test RED→GREEN). 6 findings total; #2–#6 LOW all OK-to-defer.
+
+**Key facts:** frontend-only (backend untouched). STATS IS bridged to web (RealtimeWS subscribes the bus directly → `lastStats` live). Stats wire = snake_case (REST==WS); `StatsRow` is the camelCase UI alias. StatusData.timestamp is ISO (execute/pid_worker) OR numeric epoch (monitor_worker, primary path) → `string|number` + toEpochSeconds. Auth = Bearer header only (no cookie) → authenticated blob download via `apiDownload`. GAP-4a: no `/export/list`. NavRail now functional (Dashboard//Multi-trend//Alarms). Deferred LOW minors in `fatia4-minor-findings.md` (none merge-blocking).
+**Next: Fatia 5 (Simulator)** — new branch from main `4ea9df6`.
