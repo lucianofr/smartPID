@@ -520,3 +520,48 @@ refetch por card) e deriva tudo a partir dela.
   escreve no PID até o usuário confirmar em `ConfirmApplyTuningDialog` ("Confirm Write") →
   `POST /commands/apply-tuning/{id}`. Coberto por Vitest e por e2e Playwright
   (`e2e/fatia2-commands.spec.ts`, contagem de invocações de rota).
+
+## 14. Web HMI — Multi-trend + Stats + Export (Fatia 4, verificada 2026-06-19)
+
+Rota `/multitrend` (gated por `RequireAuth`). **Backend: nenhuma mudança** — só consumo de rotas já
+existentes (auditoria Task 12: todas declaram `response_model`; só `download_export` é `FileResponse`
+stream, legitimamente sem modelo). Todas as rotas exigem `require_authenticated_admin` e devolvem
+`{detail}` em erro (→ `ApiError`).
+
+### Layout (bento)
+Composição bento (não grade uniforme): a coluna do **trend ocupa ~8 colunas** e a **lateral ~4**
+(seletor de séries em cima, grade de estatísticas embaixo, painel de export/histórico no rodapé da
+lateral). Hierarquia por contraste de escala e densidade, não por padding uniforme.
+
+### Multi-trend (multi-série ao vivo)
+- **Fonte ao vivo:** `useRealtime().lastStatus` (frames `status` do `/ws/realtime`). Os buffers só
+  acumulam frames das malhas **atualmente selecionadas**; cada série é PV/SP/CO de um loop.
+- **Cores:** PV/SP/CO **herdam os tokens de tema** (`--trend-pv/-sp/-co`); malhas distintas recebem
+  **variação tonal** dentro do mesmo matiz (claro→escuro via `color-mix`), SP permanece tracejado.
+  Sem cores novas e sem preenchimento de área (ver `identidade_visual_ISA101.md §4.4`).
+- **Performance:** decimação **min/max por coluna de pixel** + cap de janela deslizante
+  (default **600 pts / 60 s**, configurável), com orçamento **≤16 ms/frame** (largura em px dimensiona
+  o rAF). O teste de decimação (Vitest) afirma saída ≤ `pxWidth*2` e preservação de picos.
+
+### Grade de estatísticas por loop
+Seed via REST `GET /controllers/stats` → `list[StatsResponse]` (e `GET /controllers/{id}/stats` →
+`StatsResponse`), sobreposto ao vivo pelos frames `STATS` do bus (`useRealtime().lastStats`; `stats`
+**é** bridgeado pelo RealtimeWS). Métricas: **IAE / ITAE / ISE / MSE / σ / TV** + variabilidade
+renderizada como **2σ/RANGE** e **2σ/SP** (ver MÓDULO 7).
+- **Reconciliação de campos (verificada Task 12):** REST `StatsResponse` e o frame WS `STATS`
+  compartilham os nomes **snake_case** `std_dev` / `total_variation` / `variability_sp` /
+  `variability_range`; o `StatsRow` do front-end é apenas o alias camelCase desses campos.
+
+### Historiador (consulta sob demanda)
+`GET /history/{controller_id}` → `HistoryResponse`. `controller_id` é **path** (obrigatório);
+parâmetros de query `start` / `end` / `limit`.
+
+### Export (não bloqueante, autenticado)
+Fluxo **create → poll → download**: `POST /export` → `ExportJob` (201); `GET /export/{export_id}` →
+`ExportJob` (poll de progresso/status); `GET /export/{export_id}/download` → **`FileResponse`**
+(blob autenticado; o estado "done" é um `<button>` que baixa via fetch+Authorization, não um link).
+- **GAP-4a (decisão registrada):** listagem de histórico de exports está **FORA** de escopo — não
+  existe rota `GET /export/list`. Apenas o ciclo create→poll→download é exposto.
+
+Cobertura: Vitest (agregação/seleção de séries, formatação de métricas + mapeamento de DTO, cap de
+decimação) e e2e Playwright `e2e/multitrend.spec.ts` (render multi-série + download de export).

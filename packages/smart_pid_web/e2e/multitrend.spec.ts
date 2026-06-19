@@ -9,13 +9,6 @@ import { expect, test, type Page } from '@playwright/test';
 //  1. Multiple live series render after selecting signals for two distinct loops.
 //  2. Export reaches an authenticated blob download (the done state is a <button>, not a link).
 
-const FFSIGNAL = (value: number) => ({
-  value,
-  severity: 'GOOD',
-  limit_bits: 'NONE',
-  sub_status: 'NON_SPECIFIC',
-});
-
 // Real StatsResponse field names (smart_pid_domain/dtos/ai.py StatsResponse): the selector
 // loop list derives from these controller_id values.
 const STATS_ROW = (controllerId: number) => ({
