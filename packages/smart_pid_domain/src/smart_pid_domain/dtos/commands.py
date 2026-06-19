@@ -31,7 +31,16 @@ class TuningCommand(BaseModel):
     td: float | None = None
 
 
+class OptimizationCommand(BaseModel):
+    """Enable/disable the online tuning optimizer (ENABLE_OPTIMIZER) for a loop."""
+
+    controller_id: int
+    enabled: bool
+
+
 class CommandResponse(BaseModel):
     ok: bool
     controller_id: int | None = None
     detail: str | None = None
+    # Present on optimization toggle responses; reports the resulting state.
+    enabled: bool | None = None

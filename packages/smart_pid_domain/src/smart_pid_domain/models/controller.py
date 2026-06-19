@@ -153,6 +153,10 @@ class Controller:
     io_opts: IOOpts = field(default_factory=IOOpts)
     status_opts: StatusOpts = field(default_factory=StatusOpts)
     ai_config: AIConfig = field(default_factory=AIConfig)
+    # ENABLE_OPTIMIZER (bloco_pid.md): master enable/disable for the online
+    # tuning optimizer on this loop. When False, SmartPID keeps monitoring and
+    # publishing telemetry/stats but does NOT compute or write tuning back.
+    optimization_enabled: bool = True
     tuning_write_mode: TuningWriteMode = TuningWriteMode.APPROVAL_REQUIRED
     max_tuning_change_pct: float = 10.0
     track_opt: TrackOpt = TrackOpt.ALWAYS_USE_VALUE

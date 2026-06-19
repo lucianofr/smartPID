@@ -68,7 +68,9 @@ class AIWorker:
         self._has_telemetry = False
         self._latest_stats: dict | None = None  # most recent STATS.{cid} snapshot
         self._engine = self._create_engine()
-        self._enabled = True  # controlled via CMD.AI start/stop
+        # Master optimizer enable (ENABLE_OPTIMIZER). Seeded from the persisted
+        # per-loop flag and toggled at runtime via CMD.AI start/stop.
+        self._enabled = controller.optimization_enabled
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -138,6 +140,14 @@ class AIWorker:
     @property
     def is_enabled(self) -> bool:
         return self._enabled
+
+    def set_enabled(self, enabled: bool) -> None:
+        """Toggle the optimizer enable flag directly (thread-safe via GIL).
+
+        Used by the REST optimization command for an immediate effect even when
+        the worker thread is not draining its command queue.
+        """
+        self._enabled = enabled
 
     def update_process_speed(self, process_speed) -> None:
         """Hot-reload AI period when process speed changes. Thread-safe via GIL."""
