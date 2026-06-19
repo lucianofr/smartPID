@@ -339,3 +339,54 @@ def test_lossless_overflow_flags_for_close() -> None:
             {"type": "alarm", "loop_id": 1, "seq": i, "ts": 0.0, "data": {"alarm_id": str(i)}}
         )
     assert buf.overflowed is True
+
+
+# ---------------------------------------------------------------------------
+# create_app wiring — /ws/realtime route + OpenAPI exposed via the factory
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_app_registers_ws_route_and_openapi(tmp_path) -> None:
+    import uuid
+
+    from smart_pid_core.adapters.inbound.api.app import create_app
+    from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
+    from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+    from smart_pid_core.adapters.outbound.user_repo import UserRepository
+    from smart_pid_core.application.event_bus import EventBus
+    from smart_pid_core.application.loop_manager import LoopManager
+    from smart_pid_core.config import CoreSettings
+
+    repo = SQLiteRepository(tmp_path / "test.spid")
+    await repo.initialize()
+    historian = SQLiteHistorian(repo)
+    user_repo = UserRepository(tmp_path / "users.db")
+    await user_repo.initialize()
+    bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
+    bus.start()
+    loop_manager = LoopManager(bus=bus)
+    settings = CoreSettings(
+        _env_file=None,
+        jwt_secret="test-secret-key-minimum-32-bytes!",
+    )  # type: ignore[call-arg]
+
+    app = create_app(
+        repo=repo,
+        historian=historian,
+        user_repo=user_repo,
+        loop_manager=loop_manager,
+        settings=settings,
+        event_bus=bus,
+    )
+    try:
+        assert "/ws/realtime" in {r.path for r in app.routes}
+        assert app.state.realtime_bridge is not None
+        # base_url host must be a trusted host (TrustedHostMiddleware, TD-004).
+        client = TestClient(app, base_url="http://127.0.0.1")
+        assert client.get("/openapi.json").status_code == 200
+    finally:
+        loop_manager.stop_all()
+        bus.stop()
+        await user_repo.close()
+        await repo.db.close()
