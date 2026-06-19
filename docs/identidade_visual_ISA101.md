@@ -74,5 +74,15 @@ Uma barra fixada no rodapé da janela principal.
 * Ícones geométricos precedendo o texto do alarme.
 * Botão `[ ACK ALL ]` (Reconhecer Tudo) alinhado à extrema direita.
 
+> **Web HMI (Fatia 3):** no cliente React esta barra é o `AlarmBar` (rodapé de 36px do `AppShell`,
+> presente em todas as telas) e a aba dedicada é o `AlarmPanel` (rota `/alarms`). A severidade segue
+> a **codificação redundante ISA-101 §8.2** — forma geométrica + cor + texto, nunca cor isolada —
+> com glifos `octagon` (CRITICAL), `triangle` (WARNING), `diamond` (ADVISORY) e `dot` (LOG) e as
+> classes de cor `sev-critical` / `sev-warning` / `sev-advisory` / `sev-log` (resolvidas para os
+> tokens `--alarm-*` em `themes.css`). **Movimento (§6.4):** buckets/linhas não reconhecidos piscam
+> (animação de opacidade do ícone/contador); sob `prefers-reduced-motion: reduce` o blink é
+> substituído por peso de fonte + sublinhado. Contadores por prioridade (CRIT/WARN/DIAG) e
+> `[ ACK ALL ]` à direita; o `AlarmPanel` adiciona `aria-live` para anunciar novos alarmes CRITICAL.
+
 ## 5. Instrução de Saída
 Com base nestas especificações, por favor escreva o código Python completo (ou em módulos) utilizando a biblioteca sugerida, garantindo que o design atenda fielmente a esta folha de estilo industrial. Comece criando os layouts e o componente base `AnalogBarWidget`.
