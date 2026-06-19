@@ -12,6 +12,7 @@ import { MultiTrendPage } from './pages/MultiTrendPage';
 import { SimulatorPage } from './pages/SimulatorPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ConnectionPage } from './pages/ConnectionPage';
+import { ProjectsPage } from './pages/ProjectsPage';
 import { AppShell } from './components/shell/AppShell';
 import { AlarmPanel } from './features/alarms/AlarmPanel';
 import './theme/tokens.css';
@@ -78,6 +79,14 @@ function Shell() {
           element={
             <RequireAuth>
               <ConnectionPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/projects"
+          element={
+            <RequireAuth>
+              <ProjectsPage />
             </RequireAuth>
           }
         />

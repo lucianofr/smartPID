@@ -16,6 +16,7 @@ const ITEMS: ReadonlyArray<NavItem> = [
   { to: '/alarms', label: 'Alarms' },
   { to: '/settings', label: 'Settings' },
   { to: '/connection', label: 'Connection' },
+  { to: '/projects', label: 'Projects' },
 ];
 
 export function NavRail() {
