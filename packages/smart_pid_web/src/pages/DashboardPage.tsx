@@ -24,13 +24,13 @@ export function DashboardPage() {
   useEffect(
     () =>
       onResync(() => {
-        controllers.refetch();
-        opcua.refetch();
+        void controllers.refetch();
+        void opcua.refetch();
       }),
-    [onResync, controllers, opcua],
+    [onResync, controllers.refetch, opcua.refetch],
   );
 
-  const opcDown = opcua.data ? opcua.data.state !== 'CONNECTED' : false;
+  const opcDown = opcua.data ? opcua.data.state !== 'ONLINE' : false;
 
   return (
     <AppShell opcDown={opcDown}>

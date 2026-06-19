@@ -36,6 +36,8 @@ export function RealtimeTrend({ data }: { data: TrendData }) {
       /* jsdom has no canvas measure; ignore in tests */
     }
     return () => plot.current?.destroy();
+    // init-once: create plot on mount; data updates handled by setData effect below
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
