@@ -8,8 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_opcua_adapter,
     get_repo,
-    require_admin,
-    require_operator,
+    require_authenticated_admin,
 )
 from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter  # noqa: TC001
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository  # noqa: TC001
@@ -29,7 +28,7 @@ router = APIRouter()
 
 @router.get("/status", response_model=OPCUAStatusResponse)
 async def get_status(
-    _user: Annotated[UserClaims, Depends(require_operator)],
+    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     adapter: Annotated[OPCUAAdapter, Depends(get_opcua_adapter)],
 ) -> OPCUAStatusResponse:
     return OPCUAStatusResponse(state=adapter.state, endpoint=adapter.endpoint)
@@ -38,7 +37,7 @@ async def get_status(
 @router.get("/browse/{node_id:path}", response_model=OPCUABrowseResponse)
 async def browse_children(
     node_id: str,
-    _user: Annotated[UserClaims, Depends(require_operator)],
+    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     adapter: Annotated[OPCUAAdapter, Depends(get_opcua_adapter)],
 ) -> OPCUABrowseResponse:
     try:
@@ -56,7 +55,7 @@ async def browse_children(
 @router.get("/search", response_model=OPCUASearchResponse)
 async def search_tags(
     q: Annotated[str, Query(min_length=1, max_length=200)],
-    _user: Annotated[UserClaims, Depends(require_operator)],
+    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     adapter: Annotated[OPCUAAdapter, Depends(get_opcua_adapter)],
 ) -> OPCUASearchResponse:
     try:
@@ -74,7 +73,7 @@ async def search_tags(
 @router.put("/endpoint", response_model=OPCUAStatusResponse)
 async def save_endpoint(
     body: OPCUAEndpointRequest,
-    _user: Annotated[UserClaims, Depends(require_admin)],
+    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     adapter: Annotated[OPCUAAdapter, Depends(get_opcua_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> OPCUAStatusResponse:
@@ -90,7 +89,7 @@ async def save_endpoint(
 
 @router.post("/connect")
 async def force_connect(
-    _user: Annotated[UserClaims, Depends(require_admin)],
+    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     adapter: Annotated[OPCUAAdapter, Depends(get_opcua_adapter)],
     body: OPCUAConnectRequest | None = None,
 ) -> OPCUAStatusResponse:
@@ -107,7 +106,7 @@ async def force_connect(
 
 @router.post("/disconnect")
 async def force_disconnect(
-    _user: Annotated[UserClaims, Depends(require_admin)],
+    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     adapter: Annotated[OPCUAAdapter, Depends(get_opcua_adapter)],
 ) -> OPCUAStatusResponse:
     adapter.stop()

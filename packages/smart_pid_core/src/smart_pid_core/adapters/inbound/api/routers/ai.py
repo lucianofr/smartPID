@@ -15,7 +15,7 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
     get_audit_repo,
     get_event_bus,
     get_system_event_worker,
-    require_operator,
+    require_authenticated_admin,
 )
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository  # noqa: TC001
 from smart_pid_core.application.event_bus import EventBus  # noqa: TC001
@@ -32,7 +32,7 @@ router = APIRouter()
 @router.get("/{controller_id}/ai/status", response_model=AIStatusResponse)
 async def get_ai_status(
     controller_id: int,
-    _user: Annotated[UserClaims, Depends(require_operator)],
+    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     ai_workers: Annotated[dict, Depends(get_ai_workers)],
 ) -> AIStatusResponse:
     worker = ai_workers.get(controller_id)
@@ -54,7 +54,7 @@ async def get_ai_status(
 @router.get("/{controller_id}/ai/history", response_model=AIHistoryResponse)
 async def get_ai_history(
     controller_id: int,
-    _user: Annotated[UserClaims, Depends(require_operator)],
+    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     ai_repo: Annotated[object, Depends(get_ai_repo)],
 ) -> AIHistoryResponse:
     entries = await ai_repo.get_tuning_history(controller_id=controller_id, limit=50)
@@ -68,7 +68,7 @@ async def get_ai_history(
 async def start_ai(
     controller_id: int,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_operator)],
+    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     bus: Annotated[EventBus, Depends(get_event_bus)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
@@ -99,7 +99,7 @@ async def start_ai(
 async def stop_ai(
     controller_id: int,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_operator)],
+    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     bus: Annotated[EventBus, Depends(get_event_bus)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
@@ -130,7 +130,7 @@ async def stop_ai(
 async def pause_ai(
     controller_id: int,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_operator)],
+    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     bus: Annotated[EventBus, Depends(get_event_bus)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],

@@ -70,7 +70,8 @@ def test_get_audit_supervisor(app_fixture):
     assert len(resp.json()) >= 1
 
 
-def test_get_audit_operator_forbidden(app_fixture):
+def test_get_audit_any_authenticated_user_allowed(app_fixture):
+    # Single-admin deployment: any authenticated user may read the audit trail.
     app, audit_repo, settings = app_fixture
     client = TestClient(app)
     token = create_access_token(
@@ -86,4 +87,18 @@ def test_get_audit_operator_forbidden(app_fixture):
         },
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 200
+
+
+def test_get_audit_requires_auth(app_fixture):
+    app, _audit_repo, _settings = app_fixture
+    client = TestClient(app)
+    now = datetime.now(tz=UTC)
+    resp = client.get(
+        "/audit",
+        params={
+            "start": (now - timedelta(hours=1)).isoformat(),
+            "end": (now + timedelta(hours=1)).isoformat(),
+        },
+    )
+    assert resp.status_code == 401

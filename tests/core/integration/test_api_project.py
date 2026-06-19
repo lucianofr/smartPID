@@ -1,10 +1,9 @@
 """Integration tests for /project REST API routes.
 
-Security note: every route requires authentication and a minimum role:
-- current / list        -> operator
-- new / open / import / download -> supervisor
-- delete                -> admin
-Project names are sanitized to prevent path traversal outside projects_dir.
+Security note: this is a single-admin deployment. Every route requires
+authentication (401 when missing/invalid); there are no role tiers, so any
+authenticated user may call every route. Project names are sanitized to
+prevent path traversal outside projects_dir.
 """
 from __future__ import annotations
 
@@ -55,13 +54,13 @@ class TestNewProject:
         resp = await client.post("/project/new", json={"name": "x"})
         assert resp.status_code == 401
 
-    async def test_operator_forbidden(
+    async def test_any_authenticated_user_allowed(
         self, client: httpx.AsyncClient, user_headers: dict[str, str],
     ) -> None:
         resp = await client.post(
             "/project/new", json={"name": "x"}, headers=user_headers,
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 200
 
     async def test_path_traversal_rejected(
         self,
@@ -121,13 +120,15 @@ class TestOpenProject:
         )
         assert resp.status_code == 404
 
-    async def test_operator_forbidden(
+    async def test_any_authenticated_user_allowed(
         self, client: httpx.AsyncClient, user_headers: dict[str, str],
     ) -> None:
+        # Any authenticated user reaches the handler; a missing project is 404,
+        # never a role-based 403.
         resp = await client.post(
             "/project/open", json={"name": "x"}, headers=user_headers,
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
     async def test_path_traversal_rejected(
         self, client: httpx.AsyncClient, supervisor_headers: dict[str, str],
@@ -200,16 +201,28 @@ class TestImportProject:
         assert resp.status_code == 200
         assert resp.json()["name"] == "uploaded"
 
-    async def test_operator_forbidden(
-        self, client: httpx.AsyncClient, user_headers: dict[str, str],
+    async def test_any_authenticated_user_allowed(
+        self, client: httpx.AsyncClient, user_headers: dict[str, str], tmp_path,
     ) -> None:
+        # Single-admin deployment: any authenticated user may import.
+        import aiosqlite
+
+        src = tmp_path / "upload.spid"
+        async with aiosqlite.connect(src) as db:
+            await db.execute(
+                "CREATE TABLE IF NOT EXISTS Controladores "
+                "(id INTEGER PRIMARY KEY, nome TEXT NOT NULL)"
+            )
+            await db.commit()
+        file_bytes = src.read_bytes()
+
         resp = await client.post(
             "/project/import",
-            files={"file": ("upload.spid", b"data", "application/octet-stream")},
-            data={"name": "x"},
+            files={"file": ("upload.spid", file_bytes, "application/octet-stream")},
+            data={"name": "uploaded_by_user"},
             headers=user_headers,
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 200
 
     async def test_path_traversal_via_name_rejected(
         self,
@@ -282,11 +295,15 @@ class TestDownloadProject:
         resp = await client.get("/project/download")
         assert resp.status_code == 401
 
-    async def test_operator_forbidden(
+    async def test_any_authenticated_user_allowed(
         self, client: httpx.AsyncClient, user_headers: dict[str, str],
     ) -> None:
+        # Single-admin deployment: any authenticated user may download.
+        await client.post(
+            "/project/new", json={"name": "dluser"}, headers=user_headers,
+        )
         resp = await client.get("/project/download", headers=user_headers)
-        assert resp.status_code == 403
+        assert resp.status_code == 200
 
 
 class TestDeleteProject:
@@ -309,11 +326,13 @@ class TestDeleteProject:
         resp = await client.delete("/project/nodelete", headers=admin_headers)
         assert resp.status_code == 409
 
-    async def test_supervisor_forbidden(
+    async def test_any_authenticated_user_allowed(
         self, client: httpx.AsyncClient, supervisor_headers: dict[str, str],
     ) -> None:
+        # Any authenticated user reaches the handler; a missing project is 404,
+        # never a role-based 403.
         resp = await client.delete("/project/x", headers=supervisor_headers)
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
     async def test_no_auth_returns_401(self, client: httpx.AsyncClient) -> None:
         resp = await client.delete("/project/x")

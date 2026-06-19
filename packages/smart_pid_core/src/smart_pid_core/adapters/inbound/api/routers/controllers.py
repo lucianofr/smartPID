@@ -12,9 +12,7 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
     get_alarm_worker,
     get_audit_repo,
     get_repo,
-    require_admin,
-    require_operator,
-    require_supervisor,
+    require_authenticated_admin,
 )
 from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository  # noqa: TC001
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
@@ -352,7 +350,7 @@ _ENUM_FIELDS: dict[str, type] = {
 
 @router.get("", response_model=list[ControllerResponse])
 async def list_controllers(
-    _user: Annotated[UserClaims, Depends(require_operator)],
+    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> list[ControllerResponse]:
     controllers = await repo.list_all()
@@ -362,7 +360,7 @@ async def list_controllers(
 @router.post("", response_model=ControllerResponse, status_code=status.HTTP_201_CREATED)
 async def create_controller(
     body: ControllerCreate,
-    user: Annotated[UserClaims, Depends(require_supervisor)],
+    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> ControllerResponse:
@@ -378,7 +376,7 @@ async def create_controller(
 @router.get("/{controller_id}", response_model=ControllerResponse)
 async def get_controller(
     controller_id: int,
-    _user: Annotated[UserClaims, Depends(require_operator)],
+    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> ControllerResponse:
     try:
@@ -393,7 +391,7 @@ async def update_controller(
     controller_id: int,
     body: ControllerUpdate,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_supervisor)],
+    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> ControllerResponse:
@@ -500,7 +498,7 @@ def _reregister_opcua(request: Request, controller: Controller) -> None:
 @router.delete("/{controller_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_controller(
     controller_id: int,
-    user: Annotated[UserClaims, Depends(require_admin)],
+    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> Response:
@@ -518,7 +516,7 @@ async def delete_controller(
 @router.get("/{controller_id}/alarm-config", response_model=AlarmConfigResponse)
 async def get_alarm_config(
     controller_id: int,
-    _user: Annotated[UserClaims, Depends(require_operator)],
+    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
     alarm_repo: Annotated[AlarmRepository, Depends(get_alarm_repo)],
 ) -> AlarmConfigResponse:
@@ -547,7 +545,7 @@ async def get_alarm_config(
 async def update_alarm_config(
     controller_id: int,
     body: AlarmConfigUpdate,
-    user: Annotated[UserClaims, Depends(require_supervisor)],
+    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
     alarm_repo: Annotated[AlarmRepository, Depends(get_alarm_repo)],
     alarm_wkr: Annotated[AlarmWorker | None, Depends(get_alarm_worker)],

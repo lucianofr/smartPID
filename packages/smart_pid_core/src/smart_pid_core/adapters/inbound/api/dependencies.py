@@ -72,42 +72,15 @@ def get_current_user(request: Request) -> UserClaims:
     )
 
 
-_ROLE_LEVEL = {"OPERATOR": 0, "SUPERVISOR": 1, "ADMIN": 2}
-
-
-def require_operator(
+def require_authenticated_admin(
     user: Annotated[UserClaims, Depends(get_current_user)],
 ) -> UserClaims:
-    """Verify the current user has at least operator role."""
-    if _ROLE_LEVEL.get(user.role.upper(), -1) < _ROLE_LEVEL["OPERATOR"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Operator access required",
-        )
-    return user
+    """Authentication gate for the single-admin deployment.
 
-
-def require_supervisor(
-    user: Annotated[UserClaims, Depends(get_current_user)],
-) -> UserClaims:
-    """Verify the current user has at least supervisor role."""
-    if _ROLE_LEVEL.get(user.role.upper(), -1) < _ROLE_LEVEL["SUPERVISOR"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Supervisor access required",
-        )
-    return user
-
-
-def require_admin(
-    user: Annotated[UserClaims, Depends(get_current_user)],
-) -> UserClaims:
-    """Verify the current user has admin role."""
-    if _ROLE_LEVEL.get(user.role.upper(), -1) < _ROLE_LEVEL["ADMIN"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
+    This platform is single-user: there is exactly one admin account and no
+    role tiers. Every protected endpoint requires a valid token (401 when
+    missing/invalid via ``get_current_user``); there are no role-based 403s.
+    """
     return user
 
 

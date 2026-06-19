@@ -21,7 +21,7 @@ async def test_get_system_events_requires_auth(client):
         "/system-events",
         params={"start": "2026-01-01T00:00:00", "end": "2026-12-31T23:59:59"},
     )
-    assert resp.status_code in (401, 403)
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
