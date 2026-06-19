@@ -40,13 +40,17 @@ subagent-driven (implementer → task review → fix loop), TDD, opus subagents,
 conventional commits no attribution. Frontend: context7 + frontend-design +
 karpathy-guidelines per the resume directive.
 
-## NEXT STEP — Fatia 0+1 (the linchpin)
-Preconditions done. Start Fatia 0+1 `feat/web-fatia01-foundation-dashboard` from `main`
-(`cb7f16c`) — dedicated worktree forked from main. Plan:
-`2026-06-18-web-fatia01-foundation-dashboard.md` (12 tasks). Shared anchors first:
-`_web-hmi-foundation-contract.md` + `_web-hmi-backend-surface.md`. Subagent-driven, opus,
-TDD; frontend uses context7 + frontend-design + karpathy-guidelines.
-**Carry forward:** Task 5 must NOT re-do CORS/headers (P4 did them) — only `/ws/realtime`
-Origin validation + SPA single-origin static mount remain. Verification: full `uv run pytest`
-SIGABRTs on Py3.14 — use targeted paths (decision still open: fix teardown vs main-repo venv).
-Recommend `/compact` before starting (fatias are a large body of work).
+## Fatia 0+1 — IN PROGRESS (3/12) on branch `feat/web-fatia01-foundation-dashboard`
+Worktree `.worktrees/main-web-hmi` (forked from main `cb7f16c`). Orchestrator memory:
+`_web-hmi-fatia01-digest.md` (global constraints, all 12 tasks, sequencing, resolutions).
+Per-task on-disk ledger: `.git/worktrees/main-web-hmi/sdd/progress.md`. Branch tip after T3 = `3b4bcf7`.
+
+- [x] T1 `51ae813` — response_model audit (no router edits; added OpenAPI contract test). self-review.
+- [x] T2 `631519c` — ConnectionManager (resilient async broadcast). self-review (concurrency PASS).
+- [x] T3 `3b4bcf7` — RealtimeBridge + map_topic_to_envelope (one task, poll-gated executor). self-review.
+- [ ] **T4 (NEXT)** — `/ws/realtime` endpoint: first-message auth `{type:auth,token}` + Origin validation + ConnectionBuffer (coalesce status/stats; lossless bounded alarm/ai/system; close 4401 on overflow). **Security-critical → full reviewer subagent.** Brief: re-extract `task-brief <fatia01 plan> 4` (git-sdd briefs are ephemeral).
+- [ ] T5 — wire create_app — **TRIMMED**: lifespan start/stop realtime_manager+bridge + SPA StaticFiles mount + config `web_dist_dir`,`allowed_ws_origins`. **Do NOT re-add CORS/SecurityHeaders (P4 cb7f16c did them).**
+- [ ] T6–T10 frontend (scaffold→theme→auth→realtime→components), T11 e2e, T12 verify+spec. See digest.
+
+**Resume:** cwd → `.worktrees/main-web-hmi`; `task-brief` for T4; dispatch backend/opus implementer; full reviewer; merge to main only at fatia end (with approval).
+Verification: full `uv run pytest` SIGABRTs (Py3.14 aiosqlite) → targeted paths; frontend = npm/playwright in `packages/smart_pid_web`.
