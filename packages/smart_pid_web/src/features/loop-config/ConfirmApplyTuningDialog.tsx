@@ -7,6 +7,8 @@ export interface ConfirmApplyTuningDialogProps {
   open: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Surfaced when the write to the external PID is rejected; keeps the dialog open. */
+  error?: string;
 }
 
 const gridStyle: React.CSSProperties = {
@@ -43,6 +45,14 @@ const warningStyle: React.CSSProperties = {
   padding: 'var(--sp-2) var(--sp-3)',
 };
 
+const errorStyle: React.CSSProperties = {
+  fontSize: 'var(--text-sm)',
+  color: 'var(--alarm-critical, #d04a4a)',
+  border: '1px solid var(--alarm-critical, #d04a4a)',
+  borderRadius: 'var(--radius-control)',
+  padding: 'var(--sp-2) var(--sp-3)',
+};
+
 const confirmButtonStyle: React.CSSProperties = {
   border: '2px solid var(--alarm-warning, #d08a3a)',
   borderRadius: 'var(--radius-control)',
@@ -69,6 +79,7 @@ export function ConfirmApplyTuningDialog({
   open,
   onConfirm,
   onCancel,
+  error,
 }: ConfirmApplyTuningDialogProps) {
   const { recommended_kp, recommended_ti, recommended_td } = recommendation;
 
@@ -98,6 +109,11 @@ export function ConfirmApplyTuningDialog({
         <Row label="Td" current={recommendation.current_td} recommended={recommended_td} />
       </div>
       <p style={reasonStyle}>{recommendation.reason}</p>
+      {error ? (
+        <p style={errorStyle} role="alert">
+          {error}
+        </p>
+      ) : null}
     </Dialog>
   );
 }

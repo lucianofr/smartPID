@@ -1,4 +1,6 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import type { ApiError } from '../../api/client';
 import { useRealtime } from '../../realtime/useRealtime';
 import type { AiData, RealtimeEnvelope } from '../../realtime/envelope';
 import { ConfirmApplyTuningDialog } from './ConfirmApplyTuningDialog';
@@ -56,9 +58,22 @@ export function AiPanel({ controllerId }: AiPanelProps) {
   const recommendation = useTuningRecommendation(controllerId);
   const aiAction = useAiAction();
   const { subscribe } = useRealtime();
+  const queryClient = useQueryClient();
 
   const [live, setLive] = useState<AiData | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Writing a recommendation to the external PID can fail (e.g. 409 if the loop is
+  // not in AUTO, 404 if the recommendation was consumed). Run it through a mutation so
+  // the rejection surfaces to the operator instead of being swallowed.
+  const applyMut = useMutation<unknown, ApiError, void>({
+    mutationFn: () => applyTuning(controllerId),
+    onSuccess: () => {
+      setConfirmOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ['tuning', 'rec', controllerId] });
+      void queryClient.invalidateQueries({ queryKey: ['ai', 'status', controllerId] });
+    },
+  });
 
   useEffect(() => {
     const unsubscribe = subscribe<AiData>('ai', (env: RealtimeEnvelope<AiData>) => {
@@ -77,7 +92,11 @@ export function AiPanel({ controllerId }: AiPanelProps) {
   const canApply = rec?.status === 'pending';
 
   const handleConfirm = () => {
-    void applyTuning(controllerId);
+    applyMut.mutate();
+  };
+
+  const handleCancel = () => {
+    applyMut.reset();
     setConfirmOpen(false);
   };
 
@@ -126,7 +145,8 @@ export function AiPanel({ controllerId }: AiPanelProps) {
           recommendation={rec}
           open={confirmOpen}
           onConfirm={handleConfirm}
-          onCancel={() => setConfirmOpen(false)}
+          onCancel={handleCancel}
+          error={applyMut.error?.detail}
         />
       ) : null}
     </div>
