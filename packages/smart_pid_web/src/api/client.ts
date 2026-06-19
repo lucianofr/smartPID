@@ -52,3 +52,24 @@ export async function apiDownload(path: string): Promise<Blob> {
   if (!res.ok) throw new ApiError(res.status, res.statusText);
   return res.blob();
 }
+
+// Authenticated multipart POST: omit Content-Type so the browser sets the multipart
+// boundary; Bearer goes in the header (no auth cookie). Mirrors apiDownload's auth.
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = tokenGetter();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`/api${path}`, { method: 'POST', headers, body: form });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const j = await res.json();
+      if (j?.detail) detail = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail);
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
