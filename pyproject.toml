@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 
 [tool.uv.workspace]
 members = ["packages/*"]
+exclude = ["packages/smart_pid_web"]
 
 [tool.uv.sources]
 smart-pid-domain = { workspace = true }
