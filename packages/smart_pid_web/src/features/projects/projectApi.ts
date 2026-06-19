@@ -14,7 +14,6 @@ export interface ProjectMeta {
 
 export const projectApi = {
   list: (): Promise<{ projects: ProjectItem[] }> => apiGet('/project/list'),
-  current: (): Promise<ProjectMeta> => apiGet('/project/current'),
   create: (name: string): Promise<ProjectMeta> => apiPost('/project/new', { name }),
   open: (name: string): Promise<ProjectMeta> => apiPost('/project/open', { name }),
   import: (file: File, name?: string): Promise<ProjectMeta> => {

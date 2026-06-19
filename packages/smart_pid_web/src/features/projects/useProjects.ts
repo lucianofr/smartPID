@@ -2,20 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { projectApi } from './projectApi';
 
 const LIST_KEY = ['projects', 'list'] as const;
-const CURRENT_KEY = ['projects', 'current'] as const;
 
 export function useProjectList() {
   return useQuery({ queryKey: LIST_KEY, queryFn: projectApi.list });
 }
 
-export function useCurrentProject() {
-  return useQuery({ queryKey: CURRENT_KEY, queryFn: projectApi.current });
-}
-
 function invalidating(qc: ReturnType<typeof useQueryClient>) {
   return () => {
     void qc.invalidateQueries({ queryKey: LIST_KEY });
-    void qc.invalidateQueries({ queryKey: CURRENT_KEY });
   };
 }
 
