@@ -3,7 +3,7 @@
 **Documento:** Frontend Design System / Spec (additive — não altera as 8 specs de fatia)
 **Data:** 2026-06-18
 **Autor:** UI Designer (frontend-design) — para LFR Automação
-**Status:** Proposto (aguardando revisão)
+**Status:** Implementado (refactor Tailwind+shadcn — branch `refactor/web-tailwind-shadcn-isa101`, Fase 9 concluída)
 **Pré-requisitos lidos:** umbrella `web-hmi-react-migration-design.md`, fatias 01–08, `identidade_visual_Dark.md`, `identidade_visual_ISA101.md`, `identidade_visual_MD3.md`.
 
 > Este documento é a **camada visual** que falta às 8 specs de fatia. As fatias dizem *o que*
@@ -13,6 +13,44 @@
 > React + Vite + TS · TanStack Query (REST) · uPlot (trends) · WebSocket envelope
 > `{type, loop_id, ts, data}` · temas Dark Room / ISA-101 / MD3 dark / MD3 light / Ocean ·
 > substitui a HMI PySide6 · browser-only, localhost, admin único.
+
+---
+
+## Estado de implementação (engine real — refactor Fase 9)
+
+> Esta seção registra **como** o design system foi implementado. Os tokens (§2), a tipografia
+> (§3) e os estados (§6) abaixo permanecem a autoridade visual; o que mudou é o motor de UI.
+
+- **Engine de UI:** **Tailwind v4 (CSS-first, `@theme inline`)** + **shadcn** (primitivas **Radix**,
+  React 18) **re-estilizadas flat**. Não há mais `.css` por componente: as 13 folhas de estilo
+  periféricas foram removidas e dobradas em utilitários de token. Os tokens semânticos do §2 são
+  declarados em `src/index.css` como CSS custom properties por tema (`[data-theme=…]`) e
+  **ponte-de-token** (`token-bridge`) para o Tailwind via `@theme inline` — ou seja, as cores do
+  Tailwind resolvem para `var(--bg)`, `var(--surface)`, `var(--alarm-critical)`, etc. Trocar de
+  tema continua sendo trocar `data-theme` no `<html>`; nenhum componente carrega cor literal.
+- **Magic UI: rejeitado.** Avaliado e descartado — seus efeitos (gradientes, shimmer, brilho,
+  motion decorativo) violam a ISA-101. Ausência verificada no gate (`grep magicui|magic-ui` vazio).
+- **Latitude em dois níveis (§6b):** telas de **operador** (dashboard, faceplate, cards, alarmes)
+  são **estritas** — monocromático em normal, cor só para anormalidade. **Login** e **Executive
+  Dashboard** têm latitude controlada (hero de número grande, composição) sem violar flat/cor.
+- **Enforcement — guard ISA-101 em Vitest.** A regra foi especificada como duas regras
+  `no-restricted-syntax` em `eslint.config.js`, mas esse arquivo é **protegido por hook de
+  config** e não pode ser editado. A mesma intenção é aplicada como source-guard auto-contido em
+  `src/__tests__/isa101-guard.test.ts` (`ENFORCED_FILES` / `ENFORCED_DIRS`), que lê o fonte e
+  falha se as superfícies migradas contiverem cores cruas / utilitários de cor não-token / box-shadow
+  / gradiente. **Deferimento:** portar para ESLint se/quando a config-protection for liberada.
+- **Gate de contraste endurecido (§8.4):** `src/theme/themeContrast.test.ts` +
+  `src/theme/tokenResolve.test.ts` cobrem os 5 temas; focus ring ≥3:1 e ≥2px; alvos ≥44×44
+  (`e2e/target-size.spec.ts`). Estados obrigatórios **§6a** (loading/empty/error-WS-disconnect,
+  flat e token-only, sem shimmer) implementados.
+- **Exceções de elemento nativo (contratos de teste congelados):** `CardControls`,
+  `DynamicsSliders` (`<input type="range">`) e o `ThemeSwitcher` permanecem com elementos nativos
+  re-estilizados flat para preservar testes congelados (`toHaveValue` / `fireEvent.change`). O
+  `WelcomeDialog` segue overlay não-portal (não-Radix) com o **scrim** `bg-black/70` sancionado —
+  a única sobreposição translúcida permitida (a par do scrim do `dialog.tsx` shadcn).
+- **Baselines visuais:** 21 snapshots Playwright (5 temas × {320,768,1024,1440} + faceplate)
+  re-abençoados contra o build flat/responsivo desta branch. Gate completo (§12) verde: lint 0
+  erros · build · Vitest 410/410 · perf budget · Playwright 39/39.
 
 ---
 
