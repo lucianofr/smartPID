@@ -1,43 +1,54 @@
-# Estado atual — Web HMI Fatia 2 (Commands + Loop Config)
+# Estado atual — Web HMI
 
-_Atualizado: 2026-06-19 — Fatia 2 COMPLETA, READY TO MERGE (aguardando aprovação do usuário)._
+## 🧪 TestSprite frontend run + fix TC003 (2026-06-20)
 
-## Situação
-- Branch `feat/web-fatia2-commands-loop-config` (forked de main `427b670`), worktree `.worktrees/main-web-hmi`.
-- 8/8 tasks concluídas via subagent-driven-development (opus). HEAD = `9abd81a` (+ commit de state save).
-- Final whole-branch review (code-reviewer opus): **READY TO MERGE** — 9/9 binding constraints MET,
-  0 Critical / 0 Important, 6 Minors não-bloqueantes (ver `.git/.../sdd/fatia2-minor-findings.md`).
-- **Merge para main NÃO feito** — exige aprovação explícita do usuário (regra inviolável).
+**Ambiente de teste (não óbvio — registrar):**
+- Web Vite dev `:5173` (worktree) + backend `:8000`.
+- Backend correto = **código do worktree (main)** rodado em **py3.13** via venv principal:
+  `PYTHONPATH=<wt>/packages/smart_pid_core/src:<wt>/packages/smart_pid_domain/src SPID_JWT_SECRET=... SPID_API_PORT=8000 SPID_SIMULATOR_ENABLED=true .venv/bin/python -m smart_pid_core`
+  (venv do worktree é py3.14 → `issubclass()` quebra asyncua/OPC; py3.13 resolve).
+- Login: `admin` / `admin` (`~/.smart-pid/users.db`).
+- Fix de proxy (dev): `vite.config.js` proxy `/api` ganhou `rewrite: /^\/api/ -> ''` (backend serve `/auth`, sem prefixo `/api`).
 
-## Commits da fatia (main..HEAD)
-- b3d8836 docs(web): investigation GAP-2a/2b + ai_config persist discovery
-- 2bc72fb feat(web): loop-config types + validation
-- e76ce8e feat(web): command REST wrappers + mutation hooks (+ apiPut/apiDelete em client.ts)
-- 48f0aaa feat(web): AI control hooks (start/stop/pause/status, recommendation)
-- a1665c4 feat(core): expose optimization_enabled in ControllerResponse  [único toque backend, aditivo]
-- c9d3dbb feat(web): inline card controls (SP/mode/CO/optimizer toggle) + card ⚙
-- f1977c0 feat(web): LoopConfigDialog (PID/IA/Limites) + Dialog primitive
-- 286a190 feat(web): AI panel + apply-tuning confirmation guard
-- 8ecc104 fix(web): surface apply-tuning errors (mutation; dialog stays open on fail)
-- 9abd81a feat(web): wire dashboard + e2e fatia2-commands + specs (smartPIDv2 §13, ISA101 §4.3)
+**Resultado TestSprite (dev mode, 15 de 33 high-priority): 11 pass / 4 not-pass.**
+- **TC003 (bug real)** — abrir projeto pela lista `/projects` não dava feedback. **FIXED** + re-testado PASSED.
+  - Fix: `src/features/projects/ProjectList.tsx` — `useNavigate` + `navigate('/')` no sucesso do open (espelha `WelcomeDialog`). Branch: `fix/projects-open-feedback` (criada de main, **não commitada**).
+- TC007 / TC012 / TC014 — artefatos (faceplate sem Kp/Ki/Kd by design; sandbox rejeita `.spid`; sem alarme não-ack semeado). Sem mudança de código.
 
-## Decisões tomadas (não re-litigar)
-- **Seletor de engine de IA HABILITADO** (decisão do usuário 2026-06-19): persiste via
-  PUT /controllers/{id} ai_config (controllers.py:330-447 aceita+persiste+hot-reload). Corrige a
-  "AI-engine persistence GAP" do contrato (premissa desatualizada).
-- **ai_config round-trip clobber-safe**: LoopConfigDialog envia os 9 campos completos (merge sobre
-  initial.ai) — update_controller reconstrói o AIConfig inteiro; parcial resetaria rl_*/defaults.
-- **optimization_enabled** adicionado ao ControllerResponse (+_to_response +5 testes) para o card
-  ler o estado do toggle numa única query GET /controllers.
-- Todas as rotas de comando/IA gated por `require_authenticated_admin` (P3 single-admin), NÃO
-  operator/supervisor. Sem toast (erros via mutation.error.detail inline). Sem endpoints inventados.
+**Follow-ups antes de commitar o fix:**
+- Atualizar spec fatia7 (`docs/superpowers/specs/2026-06-18-web-fatia7-*`) com "open na lista → navega p/ dashboard" (regra UI do CLAUDE.md). Spec fica no repo principal, não no worktree.
+- WS `/ws/realtime` 403 era backend errado (sem RealtimeWS) — resolvido pareando backend main; não é bug de código.
 
-## Verificação
-- Vitest 63/63; Playwright e2e fatia2-commands 1/1 (REST mockado + WS stub, confirm-gate por
-  contagem de rota); build limpo; ruff 0 novos (25 pré-existentes); mypy 541 (baseline, sem regressão).
+---
 
-## Próximos passos
-1. **Aguardar aprovação de merge.** Ao aprovar: merge --no-ff em main, marcar Fatia 2 DONE no
-   INDEX/PROGRESS (docs branch), salvar digest, deletar branch.
-2. Minors M1-M6 → follow-up (não bloqueiam). M1 (casing AiStatus) e M2 (prop morto) os mais úteis.
-3. Próxima: Fatia 3 (Alarmes) — nova branch de main.
+## ✅ FATIA 8 (Themes + Faceplate) COMPLETA — merge main `814f902` (2026-06-20)
+**TODAS AS 8 FATIAS DA MIGRAÇÃO WEB ESTÃO COMPLETAS.** Paridade visual + funcional total atingida.
+A HMI PySide6 (`packages/smart_pid_hmi/`) pode ser aposentada (trabalho separado, ver follow-up abaixo).
+
+### O que foi concluído (Fatia 8)
+- 5 temas como blocos `[data-theme]` (Dark Room, ISA-101, MD3 dark, MD3 light, Ocean) + `ThemeSwitcher` persistido (`localStorage['spid.theme']`) no TopBar.
+- `AnalogBar` instrumentado (valor/escala/alarme reais, `role=meter`, null-safe, `pv_decimals` por loop).
+- Gate de contraste por tema (`themeContrast.ts`): texto ≥4.5:1; alarme não-textual ≥3:1 (WCAG 1.4.11; §8.4 reconciliado).
+- uPlot tematizado por paleta (RealtimeTrend + MultiTrendChart re-init em troca de tema via MutationObserver).
+- `Faceplate` (PV/SP/CO, modos, barras, SP stepper, CO manual gated MAN, apply-tuning) montado via Dialog no Dashboard (botão ⤢ no ControllerCard), reusando comandos da Fatia 2.
+- 21 snapshots Playwright (5 temas × 4 breakpoints + faceplate).
+
+### Merge / gates
+- main HEAD = `814f902` (parents `2a17c78` + `95d4806`). **Frontend-only** (diff `*.py` vazio).
+- Gates (HEAD `95d4806`): vitest 274/274, tsc -b 0, build OK (119.9 kB gz), e2e 21/21, lint 0 err (2 warns pré-existentes).
+- Final review (code-reviewer opus): MERGE, 0 Crit/0 High. 1 MEDIUM (regressão pv_decimals) corrigido `95d4806`. 1 LOW (botão BYPASS) deferido.
+
+### Decisões-chave
+1. Contraste de alarme = 3:1 (não-textual WCAG 1.4.11), não 4.5/5:1 — cores de identidade preservadas; segurança daltônica via forma (ISA-101 §8.2).
+2. Faceplate montado via Dialog (entry point definido nesta fatia; spec/plano eram silentes).
+3. CO manual = input numérico validado (não slider).
+4. `pv_decimals` por loop preservado (CO sempre %@1).
+
+### Branch
+- `feat/web-fatia8-themes-faceplate` merjado e **deletado**. Trabalho na worktree `.worktrees/main-web-hmi` (agora em `main`).
+- Docs/trackers no branch `docs/web-hmi-implementation-plans` (commit `3c6ea8f`): INDEX/PROGRESS ✅, `_web-hmi-fatia8-digest.md`, specs reconciliadas (§8.4 `c1a1230`).
+
+## Próximo (trabalho SEPARADO — não desta fatia)
+**Aposentadoria da PySide6:** remover `packages/smart_pid_hmi/` do workspace e o caminho do publisher ZMQ tcp://5555 (se web-only).
+Planejar + aprovar em branch dedicada. Follow-ups do spec owner em `.git/worktrees/main-web-hmi/sdd/fatia8-minor-findings.md`
+(principal: adicionar `pv_scale {eu_min,eu_max,unit,decimals}` ao `ControllerResponse` — fecha a escala hardcoded 0-100 + decimals).

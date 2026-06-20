@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { projectApi } from './projectApi';
 import { useDeleteProject, useOpenProject, useProjectList } from './useProjects';
 import { useSettings } from '../settings/useSettings';
@@ -15,11 +16,13 @@ export function ProjectList(): JSX.Element {
   const del = useDeleteProject();
   const open = useOpenProject();
   const { preferences } = useSettings();
+  const navigate = useNavigate();
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   async function handleOpen(name: string): Promise<void> {
     try {
       await open.mutateAsync(name);
+      navigate('/');
     } catch {
       /* surfaced via open.isError */
     }
