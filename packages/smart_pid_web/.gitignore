@@ -11,3 +11,5 @@ playwright-report/
 *.config.d.ts
 # eslint v9 flat config is hand-authored ESM (.js), not a tsc emit artifact
 !eslint.config.js
+
+testsprite_tests/
