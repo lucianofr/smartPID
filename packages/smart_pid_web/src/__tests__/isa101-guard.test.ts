@@ -44,12 +44,24 @@ export const ENFORCED_DIRS: readonly string[] = [
  * Phase 2 (Task 2.1): AnalogBar — the ISA-101 "boldness budget" signature bar.
  * Phase 2 (Task 2.2): ControllerCard + LoopHealthRow — flat token-utility cards.
  * Phase 3 (Task 3.1): Faceplate — the design-system "vitrine".
+ * Phase 5 (Task 5.1): Trends — RealtimeTrend + PeriodSelector + uplotTheme and the
+ *   multitrend DOM chrome (chart wrapper, selector, history, export, stats). Enforced
+ *   file-by-file (not the whole `features/multitrend` dir) because `signals.ts` emits a
+ *   sanctioned `color-mix(in oklch, …)` data-viz stroke that must stay outside the guard.
  */
 export const ENFORCED_FILES: readonly string[] = [
   'components/AnalogBar.tsx',
   'components/ControllerCard.tsx',
   'components/LoopHealthRow.tsx',
   'components/Faceplate.tsx',
+  'components/RealtimeTrend.tsx',
+  'components/PeriodSelector.tsx',
+  'lib/uplotTheme.ts',
+  'features/multitrend/MultiTrendChart.tsx',
+  'features/multitrend/SeriesSelector.tsx',
+  'features/multitrend/StatsPanel.tsx',
+  'features/multitrend/HistoryQuery.tsx',
+  'features/multitrend/ExportButton.tsx',
 ];
 
 /**

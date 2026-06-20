@@ -24,6 +24,9 @@
   --dur-fast: 120ms; --dur-normal: 200ms; --dur-slow: 320ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Trend line weights (§7.1) — theme-agnostic; data-viz stroke widths in CSS px. */
+  --trend-pv-width: 1.5; --trend-sp-width: 1.5; --trend-co-width: 1.5;
 }
 
 .numeric {
