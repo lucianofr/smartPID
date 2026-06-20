@@ -37,9 +37,12 @@ export const ENFORCED_DIRS: readonly string[] = [
  * file-by-file as each is migrated rather than as a whole directory.
  *
  * Phase 2 (Task 2.1): AnalogBar — the ISA-101 "boldness budget" signature bar.
+ * Phase 2 (Task 2.2): ControllerCard + LoopHealthRow — flat token-utility cards.
  */
 export const ENFORCED_FILES: readonly string[] = [
   'components/AnalogBar.tsx',
+  'components/ControllerCard.tsx',
+  'components/LoopHealthRow.tsx',
 ];
 
 /**
