@@ -6,7 +6,6 @@ import { AppShell } from '../components/shell/AppShell';
 import { ConnectionPanel } from '../features/connection/ConnectionPanel';
 import { TagBrowser } from '../features/connection/TagBrowser';
 import type { OpcuaNode } from '../features/connection/opcuaApi';
-import './ConnectionPage.css';
 
 export function ConnectionPage(): JSX.Element {
   const opcua = useQuery({
@@ -18,15 +17,17 @@ export function ConnectionPage(): JSX.Element {
   const [selected, setSelected] = useState<OpcuaNode | null>(null);
   return (
     <AppShell opcDown={opcDown}>
-      <div className="connection-page">
-        <header className="connection-page__header">
-          <h1>OPC Connection</h1>
+      <div className="flex flex-col gap-4 max-w-[64rem]">
+        <header>
+          <h1 className="m-0 text-text" style={{ fontSize: 'var(--text-xl)' }}>
+            OPC Connection
+          </h1>
         </header>
         <ConnectionPanel />
         <TagBrowser onSelect={setSelected} />
         {selected && (
-          <p className="connection-page__selected">
-            Selected: <code className="numeric">{selected.node_id}</code>
+          <p className="m-0 text-text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
+            Selected: <code className="numeric text-text">{selected.node_id}</code>
           </p>
         )}
       </div>

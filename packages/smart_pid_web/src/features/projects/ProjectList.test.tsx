@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 const remove = vi.fn().mockResolvedValue(undefined);
@@ -17,21 +18,29 @@ vi.mock('../settings/useSettings', () => ({
 
 import { ProjectList } from './ProjectList';
 
+function renderList() {
+  return render(
+    <MemoryRouter>
+      <ProjectList />
+    </MemoryRouter>,
+  );
+}
+
 describe('ProjectList', () => {
   it('lists projects with loop count and size', () => {
-    render(<ProjectList />);
+    renderList();
     expect(screen.getByText('p1')).toBeInTheDocument();
     expect(screen.getByText(/3/)).toBeInTheDocument();
   });
 
   it('deletes a project (no confirm when confirmDestructive is off)', async () => {
-    render(<ProjectList />);
+    renderList();
     fireEvent.click(screen.getByRole('button', { name: /delete/i }));
     expect(remove).toHaveBeenCalledWith('p1');
   });
 
   it('opens a project', async () => {
-    render(<ProjectList />);
+    renderList();
     fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
     expect(open).toHaveBeenCalledWith('p1');
   });

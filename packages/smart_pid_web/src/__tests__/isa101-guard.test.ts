@@ -60,6 +60,17 @@ export const ENFORCED_DIRS: readonly string[] = [
  *   Inline-style blocks migrated to flat token utilities. Native mode `<select>`, the
  *   NONE/FUZZY/RL radios, and the Structure/Objective selects stay native (frozen tests)
  *   but restyled flat; error text uses the `--alarm-warning` token via `text-alarm-warning`.
+ * Phase 8 (Task 8.3): peripheral surfaces — connection (ConnectionPanel, TagBrowser),
+ *   settings (SettingsForm), projects (ProjectImportDropzone, ProjectList, WelcomeDialog),
+ *   simulator (DynamicsSliders, SimulationModeBanner, SimulatorControlPanel) and their
+ *   pages (Connection/Projects/Settings/Simulator). The 13 sibling `.css` files were
+ *   deleted and folded into flat token utilities. Sanctioned color uses: the destructive
+ *   Delete button + error text via the `--alarm-critical` token, the simulation banner via
+ *   `--alarm-diag` + its paired `--on-alarm` contrast, and the data-driven OPC state dot /
+ *   tag glyph via inline `var(--state-running)/--alarm-*` (state-dependent, not literals).
+ *   WelcomeDialog stays a non-portal overlay (NOT the Radix Dialog) with the sanctioned
+ *   `bg-black/70` scrim; DynamicsSliders keeps a native `<input type="range">` (frozen
+ *   `toHaveValue`/`fireEvent.change` test) restyled flat.
  */
 export const ENFORCED_FILES: readonly string[] = [
   'auth/LoginPage.tsx',
@@ -81,6 +92,20 @@ export const ENFORCED_FILES: readonly string[] = [
   'features/loop-config/LoopConfigDialog.tsx',
   'features/loop-config/AiPanel.tsx',
   'features/loop-config/CardControls.tsx',
+  // Phase 8 (Task 8.3): peripheral surfaces (connection / settings / projects / simulator).
+  'features/connection/ConnectionPanel.tsx',
+  'features/connection/TagBrowser.tsx',
+  'features/settings/SettingsForm.tsx',
+  'features/projects/ProjectImportDropzone.tsx',
+  'features/projects/ProjectList.tsx',
+  'features/projects/WelcomeDialog.tsx',
+  'features/simulator/DynamicsSliders.tsx',
+  'features/simulator/SimulationModeBanner.tsx',
+  'features/simulator/SimulatorControlPanel.tsx',
+  'pages/ConnectionPage.tsx',
+  'pages/ProjectsPage.tsx',
+  'pages/SettingsPage.tsx',
+  'pages/SimulatorPage.tsx',
 ];
 
 /**

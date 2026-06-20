@@ -7,7 +7,6 @@ import { SimulationModeBanner } from '../features/simulator/SimulationModeBanner
 import { SimulatorControlPanel } from '../features/simulator/SimulatorControlPanel';
 import { useSimulatorStatus } from '../features/simulator/useSimulatorStatus';
 import { useTwinTrend } from '../features/simulator/twinTrend';
-import './SimulatorPage.css';
 
 interface OpcuaStatus {
   state: string;
@@ -36,12 +35,14 @@ export function SimulatorPage(): JSX.Element {
   return (
     <AppShell opcDown={opcDown}>
       <SimulationModeBanner />
-      <div className="simulator-page">
-        <div className="simulator-page__controls">
+      <div className="grid grid-cols-12 gap-4 items-start">
+        <div className="col-span-12 [@media(min-width:960px)]:col-span-4 flex flex-col gap-4 min-w-0">
           {ids.length > 1 && (
-            <label className="simulator-page__loop-select">
+            <label className="flex flex-col gap-1">
               <span>Loop</span>
               <select
+                className="bg-surface text-text border border-border rounded-control px-2 py-1"
+                style={{ fontSize: 'var(--text-sm)' }}
                 aria-label="Simulator loop"
                 value={controllerId ?? ''}
                 onChange={(e) => setSelected(Number(e.target.value))}
@@ -57,12 +58,15 @@ export function SimulatorPage(): JSX.Element {
           {controllerId != null ? (
             <SimulatorControlPanel controllerId={controllerId} />
           ) : (
-            <p className="simulator-page__empty">
+            <p className="text-text-secondary">
               No simulator loops available. Start the simulator to begin.
             </p>
           )}
         </div>
-        <section className="simulator-page__trend" aria-label="Twin response trend">
+        <section
+          className="col-span-12 [@media(min-width:960px)]:col-span-8 flex flex-col gap-3 min-w-0 border border-border rounded-card bg-surface-container p-4"
+          aria-label="Twin response trend"
+        >
           <RealtimeTrend data={trend} />
         </section>
       </div>
