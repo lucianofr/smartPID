@@ -27,6 +27,7 @@ const srcRoot = resolve(here, '..'); // .../src
  */
 export const ENFORCED_DIRS: readonly string[] = [
   'components/ui',
+  'components/shell',
 ];
 
 /**
