@@ -44,7 +44,7 @@ These are NOT fatia tasks; they land on `main` first (see `.claude/docs/handoff-
 | 4 | [multitrend-stats-export](./2026-06-18-web-fatia4-multitrend-stats-export.md) | `feat/web-fatia4-multitrend-stats-export` | 0+1, (2) | 12 | ✅ merged `4ea9df6` |
 | 5 | [simulator](./2026-06-18-web-fatia5-simulator.md) | `feat/web-fatia5-simulator` | 0+1, (2) | 12 | ✅ merged `71e0ca7` |
 | 6 | [executive-dashboard](./2026-06-18-web-fatia6-executive-dashboard.md) | `feat/web-fatia6-executive-dashboard` | 0+1, (4),(2) | 10 | ✅ merged `0961c7c` |
-| 7 | [settings-connection-projects](./2026-06-18-web-fatia7-settings-connection-projects.md) | `feat/web-fatia7-settings-connection-projects` | 0+1 | 11 | ⬜ |
+| 7 | [settings-connection-projects](./2026-06-18-web-fatia7-settings-connection-projects.md) | `feat/web-fatia7-settings-connection-projects` | 0+1 | 11 | ✅ |
 | 8 | [themes-faceplate](./2026-06-18-web-fatia8-themes-faceplate.md) | `feat/web-fatia8-themes-faceplate` | 0+1, 2 | 10 | ⬜ |
 
 **Total: 83 tasks across 8 fatias.**
@@ -138,20 +138,20 @@ Branch `feat/web-fatia6-executive-dashboard` · deps: 0+1, (recommended after 4 
 - [x] Task 9 — Playwright e2e: dashboard loads + updates live
 - [x] Task 10 — Full suite, lint, build, spec docs
 
-## Fatia 7 — Settings + Connection + Projects  ⬜ DONE-when-all-checked
+## Fatia 7 — Settings + Connection + Projects  ✅ DONE (merged main 2a17c78, 2026-06-20)
 Branch `feat/web-fatia7-settings-connection-projects` · deps: 0+1 · **mono-user: no users/RBAC**
 
-- [ ] Task 0 — Branch, precondition check, OpenAPI types refresh
-- [ ] Task 1 — App preferences model + `useSettings` hook
-- [ ] Task 2 — SettingsForm + SettingsPage
-- [ ] Task 3 — OPC connection data layer — `opcuaApi.ts` + `useOpcua.ts`
-- [ ] Task 4 — ConnectionPanel + TagBrowser + ConnectionPage
-- [ ] Task 5 — Project data layer — `projectApi.ts` + `useProjects.ts`
-- [ ] Task 6 — Backend contract tests — auth required + credential boundary
-- [ ] Task 7 — ProjectList + ProjectImportDropzone + ProjectsPage
-- [ ] Task 8 — WelcomeDialog (post-login project picker)
-- [ ] Task 9 — End-to-end (Playwright) — connection, projects, negative auth
-- [ ] Task 10 — Specs upkeep + final verification
+- [x] Task 0 — Branch, precondition check, OpenAPI types refresh
+- [x] Task 1 — App preferences model + `useSettings` hook
+- [x] Task 2 — SettingsForm + SettingsPage
+- [x] Task 3 — OPC connection data layer — `opcuaApi.ts` + `useOpcua.ts`
+- [x] Task 4 — ConnectionPanel + TagBrowser + ConnectionPage
+- [x] Task 5 — Project data layer — `projectApi.ts` + `useProjects.ts`
+- [x] Task 6 — Backend contract tests — auth required + credential boundary
+- [x] Task 7 — ProjectList + ProjectImportDropzone + ProjectsPage
+- [x] Task 8 — WelcomeDialog (post-login project picker)
+- [x] Task 9 — End-to-end (Playwright) — connection, projects, negative auth
+- [x] Task 10 — Specs upkeep + final verification
 
 ## Fatia 8 — Themes + Faceplate  ⬜ DONE-when-all-checked
 Branch `feat/web-fatia8-themes-faceplate` · deps: 0+1, 2 · **closes total parity → PySide6 retires**

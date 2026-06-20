@@ -128,7 +128,7 @@ On-disk ledger: `.git/worktrees/main-web-hmi/sdd/progress.md`. Minors: `.../sdd/
 - FINAL whole-branch review (code-reviewer opus): MERGE-WITH-FOLLOW-UP — 1 HIGH FIXED `9b34b24` (selectSeries cross-loop series/time MISALIGNMENT on staggered selection — silent chart corruption; per-task reviews missed it (equal-length tests) → common newest-aligned window, no nulls, decimate-safe; differing-length test RED→GREEN). 6 findings total; #2–#6 LOW all OK-to-defer.
 
 **Key facts:** frontend-only (backend untouched). STATS IS bridged to web (RealtimeWS subscribes the bus directly → `lastStats` live). Stats wire = snake_case (REST==WS); `StatsRow` is the camelCase UI alias. StatusData.timestamp is ISO (execute/pid_worker) OR numeric epoch (monitor_worker, primary path) → `string|number` + toEpochSeconds. Auth = Bearer header only (no cookie) → authenticated blob download via `apiDownload`. GAP-4a: no `/export/list`. NavRail now functional (Dashboard//Multi-trend//Alarms). Deferred LOW minors in `fatia4-minor-findings.md` (none merge-blocking).
-**Fatia 5 DONE.** **Fatia 6 DONE** (merged main `0961c7c`). **Next: Fatia 7 (Settings + Connection + Projects)** — new branch from main `0961c7c`.
+**Fatia 5 DONE.** **Fatia 6 DONE** (merged main `0961c7c`). Fatia 7 ✅ complete (see section below).
 
 ---
 
@@ -159,4 +159,16 @@ Branch `feat/web-fatia6-executive-dashboard` (forked main `4a4472e`) → merged 
 Delivered: `lib/period.ts`, `lib/kpi.ts`, `api/executive.ts` (6 hooks), `ExecutiveKPICard`, LoopHealthRow/PeriodSelector/TuningRecommendationCard, `ExecutiveDashboardPage` (+route /executive, NavRail), e2e, smartPIDv2 §16.
 Gates: vitest 183/183 (48 files), tsc -b 0, vite build OK, e2e 2/2, lint 0err/2 pre-existing warns. Final review (code-reviewer opus): MERGE, 0 Crit/0 Imp; 12 minors DEFER. Digest: `_web-hmi-fatia6-digest.md`.
 
-**Next: Fatia 7 (Settings + Connection + Projects)** — new branch from main `0961c7c`.
+Fatia 7 ✅ complete (see section below).
+
+## Fatia 7 — Settings + Connection + Projects  ✅ DONE (merged main `2a17c78`, 2026-06-20)
+Branch `feat/web-fatia7-settings-connection-projects` (forked main `0961c7c`) → merged `--no-ff` `2a17c78`. 13 commits.
+Delivered: `features/{settings,connection,projects}/` (useSettings localStorage prefs; opcuaApi+useOpcua; projectApi+useProjects),
+SettingsForm/ConnectionPanel/TagBrowser/ProjectList/ProjectImportDropzone/WelcomeDialog, pages Settings/Connection/Projects
+(+3 RequireAuth routes, 3 NavRail items, post-login WelcomeDialog mount), `apiUpload` (authed multipart) in `api/client.ts`,
+2 pytest contract tests (auth 401 + credential boundary), smartPIDv2 §17 + identidade_visual_ISA101.
+Gates: Vitest 212, tsc -b 0, build OK, full e2e 12 tests/9 specs (4 legacy specs seeded `spid.welcome-seen`), pytest 7, ruff 0.
+Final review (code-reviewer opus): MERGE, 0 Crit/0 High/0 Med; 1 Low (dead useCurrentProject) fixed `a1176a2`. Frontend + tests-only.
+Digest: `_web-hmi-fatia7-digest.md`. Minors: `.git/worktrees/main-web-hmi/sdd/fatia7-minor-findings.md`.
+
+**Next: Fatia 8 (Themes + Faceplate)** — new branch from main `2a17c78`. Closes total parity → PySide6 retires.
