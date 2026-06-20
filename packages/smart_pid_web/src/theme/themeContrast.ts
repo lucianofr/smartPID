@@ -3,6 +3,19 @@ export type { ThemeId };
 
 // Canonical per-theme token VALUE map used for build-time contrast assertions.
 // Mirrors themes.css exactly; the test asserts the pairs designers committed to.
+//
+// Field -> contract token mapping (each row below links to a [data-theme] block in themes.css):
+//   bg            -> --bg
+//   surface       -> --surface
+//   surfaceHigh   -> --surface-container-high
+//   text          -> --text
+//   textSecondary -> --text-secondary
+//   alarmCritical -> --alarm-critical
+//   alarmWarning  -> --alarm-warning
+//   alarmDiag     -> --alarm-diag
+//   onAlarm       -> --on-alarm
+// Keep hex values in sync with themes.css; the hardened gate in themeContrast.test.ts
+// (wcag-contrast source of truth + APCA cross-check) fails the build on regression.
 export interface ThemePalette {
   bg: string;
   surface: string;
