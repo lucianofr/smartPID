@@ -680,3 +680,56 @@ Cobertura: Vitest (`kpi.test.ts` — mapeamento/agregação exatos; `period.test
 `ExecutiveKPICard.test.tsx`; `ExecutiveDashboardPage.test.tsx` — números renderizados == REST mockado) e
 e2e Playwright `e2e/executive-dashboard.spec.ts` (KPIs/saúde a partir do REST stubado; um frame `stats`
 ao vivo atualiza o Avg IAE sem reload). Aceitação numérica (não paridade visual).
+
+## 17. Web HMI — Settings + Conexão OPC + Projetos (Fatia 7, verificada 2026-06-19)
+
+Três páginas de administração/configuração, mais o `WelcomeDialog` pós-login. **Mono-usuário:** o
+backend opera com um único admin — **não há** página de gestão de usuários, **nem** CRUD de usuários,
+**nem** gating por perfil/role na UI. As rotas de projeto exigem auth: sem JWT a UI redireciona para
+`/login` e o backend responde **401** (não 403). **Fronteira de credenciais:** as credenciais do admin
+vivem em `users.db` (fora do projeto) e **nunca** são gravadas no arquivo `.spid` (exportação sem
+tabelas de credenciais — verificado em `test_project_export_no_credentials.py`). Nenhuma superfície da
+Fatia 7 renderiza credenciais.
+
+### `/settings` — Preferências da aplicação (somente cliente)
+`SettingsPage` monta `SettingsForm` (`features/settings/`). Preferências persistidas **apenas no
+cliente** em `localStorage` sob a chave `spid.preferences` (hook `useSettings`, tipos em
+`settingsTypes.ts`): janela do trend (`trendWindowSeconds`, default 120), casas decimais numéricas
+(`decimals`) e confirmação de ações destrutivas (`confirmDestructive`, default `true`). **Sem tema**
+(Dark Room / ISA-101 / MD3 / Ocean ficam para a Fatia 8) e **sem** troca de senha do admin nem gestão
+de usuários — não existe endpoint `/auth/change-password`. Nenhuma chamada REST: a página é puramente
+local. Cobertura: Vitest (`useSettings.test.ts`, `SettingsForm.test.tsx`).
+
+### `/connection` — Configuração e estado da conexão OPC-UA
+`ConnectionPage` monta `ConnectionPanel` + `TagBrowser` (`features/connection/`, API em `opcuaApi.ts`,
+hook `useOpcua`). Permite configurar o endpoint OPC, conectar/desconectar e navegar/pesquisar tags.
+**Não há** controle de start/stop de aquisição — a aquisição é contínua; a página apenas configura a
+conexão. Endpoints REST reusados (todos verificados na fonte; nenhum inventado): `GET /opcua/status`,
+`POST /opcua/endpoint`, `POST /opcua/connect`, `POST /opcua/disconnect`, `GET /opcua/browse/{node_id}`,
+`GET /opcua/search`. Cobertura: Vitest (`opcuaApi.test.ts`, `ConnectionPanel.test.tsx`,
+`TagBrowser.test.tsx`) e e2e `e2e/fatia7-connection.spec.ts` (configurar endpoint, conectar, browse/
+search de tags).
+
+### `/projects` — Ciclo de vida de projetos `.spid` remotos
+`ProjectsPage` monta `ProjectList` + `ProjectImportDropzone` (`features/projects/`, API em
+`projectApi.ts`, hook `useProjects`). Lista, cria, importa (upload multipart de `.spid`), abre e exclui
+projetos gerenciados pelo backend. **Download = apenas o projeto ativo**, via blob autenticado
+(`apiUpload`/blob autenticado sobre o cliente canônico — nenhuma função existente foi alterada).
+Exclusão por linha é **confirmada quando `confirmDestructive`** estiver ligado nas preferências.
+Endpoints REST reusados: `GET /project/list`, `GET /project/current`, `POST /project/new`,
+`POST /project/open`, `POST /project/import` (multipart), `GET /project/download` (apenas ativo),
+`DELETE /project/{name}`. Cobertura: Vitest (`projectApi.test.ts`, `ProjectList.test.tsx`,
+`ProjectImportDropzone.test.tsx`) e e2e `e2e/fatia7-projects.spec.ts` (criar, importar, abrir, excluir).
+
+### `WelcomeDialog` (pós-login)
+Modal mostrado após o login quando há token e `sessionStorage['spid.welcome-seen']` não está setado
+(montado no `Shell()` de `App.tsx`; o overlay é descartado ao escolher/abrir um projeto, gravando
+`spid.welcome-seen='1'`). Lista os projetos do backend (`useProjectList` → `GET /project/list`) e permite
+abrir um deles direto. Cobertura: Vitest (`WelcomeDialog.test.tsx`).
+
+### Contrato de auth negativa
+- Backend (pytest paramétrico `test_project_auth_required.py`): `GET /project/list`, `GET /project/current`,
+  `POST /project/new`, `POST /project/open`, `GET /project/download`, `DELETE /project/{name}` retornam
+  **401** sem JWT (7 casos, incluindo o teste de exportação sem credenciais).
+- E2E (`e2e/fatia7-auth-negative.spec.ts`): a UI não autenticada é redirecionada para `/login` (o e2e roda
+  sem backend, portanto valida o redirect da UI, não o status HTTP).

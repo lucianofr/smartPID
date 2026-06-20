@@ -1,0 +1,99 @@
+/* OPC-UA connection panel: endpoint field + Connect/Disconnect + live state dot.
+   Token-based surfaces/spacing only; no hardcoded palette (design-system §10). */
+
+.connection-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-container);
+  padding: var(--sp-4);
+}
+
+.connection-panel__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.connection-panel__label {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.connection-panel__input {
+  flex: 1 1 18rem;
+  min-width: 12rem;
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--border-w) solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.connection-panel__input:focus-visible {
+  outline: 2px solid var(--state-running);
+  outline-offset: 1px;
+}
+
+.connection-panel__state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.connection-panel__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-disabled);
+}
+
+.connection-panel__dot--online {
+  background: var(--state-running);
+}
+
+.connection-panel__dot--pending {
+  background: var(--alarm-warning);
+}
+
+.connection-panel__dot--offline {
+  background: var(--alarm-critical);
+}
+
+.connection-panel__actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.connection-panel__btn {
+  padding: var(--sp-2) var(--sp-4);
+  border: var(--border-w) solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.connection-panel__btn:hover:not(:disabled) {
+  background: var(--surface-container-high);
+}
+
+.connection-panel__btn--primary {
+  border-color: var(--state-running);
+  color: var(--state-running);
+}
+
+.connection-panel__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

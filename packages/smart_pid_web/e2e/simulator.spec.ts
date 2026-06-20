@@ -17,6 +17,8 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 async function stubWebSocket(page: Page): Promise<void> {
   await page.addInitScript(() => {
     sessionStorage.setItem('smart-pid-token', 'jwt-e2e');
+    // Suppress the post-login WelcomeDialog so its overlay does not intercept clicks.
+    sessionStorage.setItem('spid.welcome-seen', '1');
 
     const statusFrame = (loopId: number, pv: number, sp: number, co: number, isoTs: string) =>
       JSON.stringify({

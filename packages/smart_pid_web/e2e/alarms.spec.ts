@@ -63,6 +63,8 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(
     ({ key }) => {
       sessionStorage.setItem(key, 'jwt-e2e');
+      // Suppress the post-login WelcomeDialog so its overlay does not intercept clicks.
+      sessionStorage.setItem('spid.welcome-seen', '1');
     },
     { key: STORAGE_KEY },
   );

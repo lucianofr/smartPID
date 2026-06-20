@@ -103,5 +103,19 @@ Uma barra fixada no rodapé da janela principal.
 > banner é puramente informativo (não pisca, não tem semântica de severidade) — sinaliza o contexto
 > de simulação, não uma condição anormal.
 
+### 4.7. Superfícies de administração/configuração (Web HMI — Fatia 7)
+
+> **Web HMI (Fatia 7):** as três páginas de admin/config (`/settings`, `/connection`, `/projects`) e o
+> `WelcomeDialog` pós-login seguem a grade e a tipografia do design system, sem introduzir cores novas
+> nem decoração. **`/settings`** é um **formulário de duas colunas** com cabeçalhos de seção em régua
+> fina (hairline) — preferências apenas do cliente (janela do trend, casas decimais, confirmar ações
+> destrutivas); **não há** seletor de tema (Fatia 8) nem troca de senha/gestão de usuários.
+> **`/connection`** combina um **painel de conexão OPC** (endpoint + conectar/desconectar) com uma
+> **árvore de tags** (browse/search), sem controle de start/stop de aquisição. **`/projects`** usa uma
+> **tabela de projetos** com ações de download (apenas o projeto ativo) e exclusão por linha (confirmada
+> quando `confirmDestructive`). **Regra invariável:** nenhuma dessas superfícies **renderiza
+> credenciais** — login/senha do admin vivem em `users.db`, jamais no `.spid`. Mono-usuário: sem
+> elementos de UI de perfil/role.
+
 ## 5. Instrução de Saída
 Com base nestas especificações, por favor escreva o código Python completo (ou em módulos) utilizando a biblioteca sugerida, garantindo que o design atenda fielmente a esta folha de estilo industrial. Comece criando os layouts e o componente base `AnalogBarWidget`.
