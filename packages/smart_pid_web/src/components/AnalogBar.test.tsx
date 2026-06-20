@@ -60,4 +60,14 @@ describe('AnalogBar instrumentation', () => {
     expect(meter).not.toHaveAttribute('aria-valuenow');
     expect(screen.getByTestId('bar-value')).toHaveTextContent('—');
   });
+
+  it('honors the decimals prop in the value readout', () => {
+    render(<AnalogBar label="PV" value={12.345} scale={scale} decimals={2} />);
+    expect(screen.getByTestId('bar-value')).toHaveTextContent('12.35');
+  });
+
+  it('defaults to 1 decimal when decimals prop is omitted', () => {
+    render(<AnalogBar label="PV" value={12.345} scale={scale} />);
+    expect(screen.getByTestId('bar-value')).toHaveTextContent('12.3');
+  });
 });

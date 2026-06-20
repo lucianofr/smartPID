@@ -69,9 +69,9 @@ export function ControllerCard({
             )}
           </div>
         </div>
-        <AnalogBar label="PV" value={status?.pv?.value} scale={{ euMin: 0, euMax: 100, unit: controller.pv_unit }} />
-        <AnalogBar label="SP" value={status?.sp?.value} scale={{ euMin: 0, euMax: 100, unit: controller.pv_unit }} />
-        <AnalogBar label="CO" value={status?.co?.value} scale={{ euMin: 0, euMax: 100, unit: '%' }} />
+        <AnalogBar label="PV" value={status?.pv?.value} scale={{ euMin: 0, euMax: 100, unit: controller.pv_unit }} decimals={controller.pv_decimals} />
+        <AnalogBar label="SP" value={status?.sp?.value} scale={{ euMin: 0, euMax: 100, unit: controller.pv_unit }} decimals={controller.pv_decimals} />
+        <AnalogBar label="CO" value={status?.co?.value} scale={{ euMin: 0, euMax: 100, unit: '%' }} decimals={1} />
         <div style={{ display: 'flex', gap: 'var(--sp-2)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
           <span className="numeric">{status?.mode ?? '—'}</span>
         </div>

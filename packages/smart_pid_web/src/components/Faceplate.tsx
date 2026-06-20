@@ -20,6 +20,7 @@ export interface FaceplateProps {
   tag: string;
   description?: string;
   scale: Scale;
+  decimals?: number;
 }
 
 const CO_SCALE: Scale = { euMin: 0, euMax: 100, unit: '%' };
@@ -146,24 +147,26 @@ function Readout({
   value,
   unit,
   primary = false,
+  decimals = 1,
 }: {
   label: string;
   value: number;
   unit: string;
   primary?: boolean;
+  decimals?: number;
 }) {
   return (
     <div style={readoutStyle}>
       <span style={readoutLabelStyle}>{label}</span>
       <span style={primary ? readoutValuePrimaryStyle : readoutValueStyle}>
-        {value.toFixed(1)}
+        {value.toFixed(decimals)}
         <span style={descStyle}> {unit}</span>
       </span>
     </div>
   );
 }
 
-export function Faceplate({ controllerId, tag, description, scale }: FaceplateProps) {
+export function Faceplate({ controllerId, tag, description, scale, decimals = 1 }: FaceplateProps) {
   const { lastStatus } = useRealtime();
   const status = lastStatus.get(controllerId);
 
@@ -227,15 +230,15 @@ export function Faceplate({ controllerId, tag, description, scale }: FaceplatePr
       </header>
 
       <div style={readoutRowStyle}>
-        <Readout label="PV" value={pv} unit={scale.unit} primary />
-        <Readout label="SP" value={sp} unit={scale.unit} />
+        <Readout label="PV" value={pv} unit={scale.unit} primary decimals={decimals} />
+        <Readout label="SP" value={sp} unit={scale.unit} decimals={decimals} />
         <Readout label="CO" value={co} unit={CO_SCALE.unit} />
       </div>
 
       <div style={barsStyle}>
-        <AnalogBar label="PV" value={pv} scale={scale} spValue={sp} size="faceplate" />
-        <AnalogBar label="SP" value={sp} scale={scale} size="faceplate" />
-        <AnalogBar label="CO" value={co} scale={CO_SCALE} size="faceplate" />
+        <AnalogBar label="PV" value={pv} scale={scale} spValue={sp} size="faceplate" decimals={decimals} />
+        <AnalogBar label="SP" value={sp} scale={scale} size="faceplate" decimals={decimals} />
+        <AnalogBar label="CO" value={co} scale={CO_SCALE} size="faceplate" decimals={1} />
       </div>
 
       <div role="group" aria-label="Controller mode" style={modeGridStyle}>

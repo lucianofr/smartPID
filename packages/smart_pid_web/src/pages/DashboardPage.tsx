@@ -108,6 +108,7 @@ export function DashboardPage() {
             tag={faceplateController.name}
             description={faceplateController.description}
             scale={{ euMin: 0, euMax: 100, unit: faceplateController.pv_unit }}
+            decimals={faceplateController.pv_decimals}
           />
         </Dialog>
       ) : null}

@@ -9,6 +9,7 @@ export interface AnalogBarProps {
   spValue?: number;
   alarm?: AlarmLevel;
   size?: 'card' | 'faceplate';
+  decimals?: number;
 }
 
 const ALARM_FILL: Record<AlarmLevel, string> = {
@@ -24,13 +25,14 @@ export function AnalogBar({
   spValue,
   alarm = 'normal',
   size = 'card',
+  decimals = 1,
 }: AnalogBarProps) {
   const finite = typeof value === 'number' && Number.isFinite(value);
   const pct = (finite ? valueToFraction(value, scale) * 100 : 0).toFixed(2);
   const spPct = spValue !== undefined ? (valueToFraction(spValue, scale) * 100).toFixed(2) : null;
   const trackHeight = size === 'faceplate' ? 14 : 8;
   const showSp = label === 'PV' && spPct !== null;
-  const display = finite ? value.toFixed(1) : '—';
+  const display = finite ? value.toFixed(decimals) : '—';
 
   return (
     <div
