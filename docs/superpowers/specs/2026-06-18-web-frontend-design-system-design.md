@@ -593,18 +593,28 @@ ISA-101 de não depender de cor.
   para WARN. Escala de texto do browser até 200% sem quebra (layout em rem/clamp).
 
 ### 8.4 Matriz de verificação de alarme cross-tema (gate de aceitação)
-Para cada tema, confirmar que CRIT e WARN são distinguíveis entre si e do fundo:
+Para cada tema, confirmar que CRIT/WARN/DIAG são legíveis sobre o fundo e que CRIT e WARN são
+distinguíveis entre si. **A cor de alarme é um indicador NÃO-TEXTUAL** (faixa lateral de 3px +
+ícone geométrico de 10px — octógono/triângulo/losango), logo o alvo correto é **≥ 3:1 (WCAG
+1.4.11)**, consistente com §8.1 — não o limiar de texto. A independência de cor vem da **forma**
+(§8.2), não da luminância. Valores medidos (contraste CRIT vs `--surface`):
 
-| Tema | CRIT | WARN | DIAG | CRIT vs fundo | CRIT vs WARN (ΔL) |
+| Tema | CRIT | WARN | DIAG | CRIT vs fundo (alvo ≥ 3:1) | CRIT vs WARN |
 |---|---|---|---|---|---|
-| Dark Room | `#D92525` | `#D9A000` | `#8A6AD9` | ≥ 4.5:1 vs `#0D0D11` | matiz+lum distintos |
-| ISA-101 | `#FF3333` | `#FF8800` | `#AA55FF` | ≥ 5:1 vs `#2D2D30` | matiz+lum distintos |
-| MD3 dark | `#F2B8B5` | `#FFDC99` | `#D0BCFF` | ≥ 4.5:1 vs `#211F26` | matiz+lum distintos |
-| MD3 light | `#B3261E` | `#8A5000` | `#6750A4` | ≥ 4.5:1 vs `#F7F2FA` | matiz+lum distintos |
-| Ocean | `#FF4D4D` | `#FFB020` | `#9B6BFF` | ≥ 4.5:1 vs `#0F2030` | matiz+lum distintos |
+| Dark Room | `#D92525` | `#D9A000` | `#8A6AD9` | 3.92:1 vs `#0D0D11` ✓ | matiz OU lum distintos + forma |
+| ISA-101 | `#FF3333` | `#FF8800` | `#AA55FF` | 3.77:1 vs `#2D2D30` ✓ | matiz OU lum distintos + forma |
+| MD3 dark | `#F2B8B5` | `#FFDC99` | `#D0BCFF` | 9.54:1 vs `#211F26` ✓ | matiz OU lum distintos + forma |
+| MD3 light | `#B3261E` | `#8A5000` | `#6750A4` | 5.93:1 vs `#F7F2FA` ✓ | matiz OU lum distintos + forma |
+| Ocean | `#FF4D4D` | `#FFB020` | `#9B6BFF` | 5.06:1 vs `#0F2030` ✓ | matiz OU lum distintos + forma |
 
-> Implementação: teste de snapshot + checagem de contraste programática (ex. `wcag-contrast`) por
-> tema na suíte Vitest/Playwright (Fatia 8) — falha o build se um par cair abaixo do alvo.
+> **Reconciliação (Fatia 8, 2026-06-20):** a tabela original exigia ≥ 4.5/5:1 para CRIT vs fundo,
+> conflitando com §8.1 (não-textual = 3:1) e inatingível para os vermelhos de identidade ISA-101
+> (`#FF3333`) / Dark Room (`#D92525`) sobre superfícies escuras. Decisão do owner: alinhar o gate a
+> **3:1 (WCAG 1.4.11)** sem alterar as cores de identidade. CRIT vs WARN é validado por **matiz OU
+> luminância distintos** (MD3-light é distinto por matiz, ΔL≈0; os demais por ambos) + redundância de
+> forma (§8.2). `--text` sobre `--surface`/`--bg` permanece estrito em **≥ 4.5:1** (todos passam).
+> Implementação: `src/theme/themeContrast.test.ts` (Vitest) com contraste calculado localmente
+> (fórmula WCAG, sem dependência externa) — falha o build se um par cair abaixo do alvo.
 
 ---
 
