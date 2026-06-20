@@ -52,8 +52,13 @@ export const ENFORCED_DIRS: readonly string[] = [
  *   hero), TuningRecommendationCard, and the ExecutiveDashboardPage. §6b latitude is
  *   layout/typography only; the screen stays flat token-colored and motion-only (the
  *   guard forbids raw colors + box-shadow/gradient, not opacity/transform motion).
+ * Phase 7 (Task 7.1): Login — LoginPage. §6b latitude (refined central card, modern
+ *   type scale, ONE compositor-only entrance via the `.login-card-enter` class folded
+ *   into index.css). Flat token-colored; error state uses the desaturated `--alarm-diag`
+ *   token (via the `text-alarm-diag`/`border-alarm-diag` utilities), never critical red.
  */
 export const ENFORCED_FILES: readonly string[] = [
+  'auth/LoginPage.tsx',
   'components/AnalogBar.tsx',
   'components/ControllerCard.tsx',
   'components/LoopHealthRow.tsx',
