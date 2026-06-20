@@ -73,6 +73,22 @@
  * --surface-2, --text-muted) are remapped to real contract tokens.
  */
 @layer components {
+  /* §6b latitude — executive KPI hero entrance. The ONE restrained motion
+     affordance on the exec screen: a compositor-only fade + rise (opacity +
+     transform), disabled under prefers-reduced-motion. No shadow/gradient. */
+  .exec-kpi-enter {
+    animation: exec-kpi-rise var(--dur-normal) var(--ease-out) both;
+  }
+  @keyframes exec-kpi-rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .exec-kpi-enter {
+      animation: none;
+    }
+  }
+
   /* ISA-101 §8.2 — geometric SHAPE, never color alone (shared by bar + panel). */
   .sev-icon {
     width: 10px;

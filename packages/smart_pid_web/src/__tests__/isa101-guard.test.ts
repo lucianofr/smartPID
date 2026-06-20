@@ -48,6 +48,10 @@ export const ENFORCED_DIRS: readonly string[] = [
  *   multitrend DOM chrome (chart wrapper, selector, history, export, stats). Enforced
  *   file-by-file (not the whole `features/multitrend` dir) because `signals.ts` emits a
  *   sanctioned `color-mix(in oklch, …)` data-viz stroke that must stay outside the guard.
+ * Phase 6 (Task 6.1): Executive dashboard — ExecutiveKPICard (the sanctioned big-number
+ *   hero), TuningRecommendationCard, and the ExecutiveDashboardPage. §6b latitude is
+ *   layout/typography only; the screen stays flat token-colored and motion-only (the
+ *   guard forbids raw colors + box-shadow/gradient, not opacity/transform motion).
  */
 export const ENFORCED_FILES: readonly string[] = [
   'components/AnalogBar.tsx',
@@ -62,6 +66,9 @@ export const ENFORCED_FILES: readonly string[] = [
   'features/multitrend/StatsPanel.tsx',
   'features/multitrend/HistoryQuery.tsx',
   'features/multitrend/ExportButton.tsx',
+  'components/ExecutiveKPICard.tsx',
+  'components/TuningRecommendationCard.tsx',
+  'pages/ExecutiveDashboardPage.tsx',
 ];
 
 /**

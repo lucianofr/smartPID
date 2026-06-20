@@ -23,7 +23,6 @@ import { ExecutiveKPICard } from '../components/ExecutiveKPICard';
 import { LoopHealthRow, type LoopHealth } from '../components/LoopHealthRow';
 import { PeriodSelector } from '../components/PeriodSelector';
 import { TuningRecommendationCard } from '../components/TuningRecommendationCard';
-import './ExecutiveDashboardPage.css';
 
 type OpcState = 'OFFLINE' | 'CONNECTING' | 'ONLINE' | 'RECONNECTING';
 
@@ -42,8 +41,15 @@ function LoopTuningDetail({ loopId, loopName }: { loopId: number; loopName: stri
   const recQ = useTuningRecommendation(loopId);
   const aiQ = useAiStatus(loopId);
   return (
-    <div className="exec-dash__detail" data-testid={`loop-detail-${loopId}`}>
-      <span className="exec-dash__ai-engine" data-testid={`ai-engine-${loopId}`}>
+    <div
+      className="flex flex-col gap-2 border border-border bg-surface-container px-4 py-4 rounded-card"
+      data-testid={`loop-detail-${loopId}`}
+    >
+      <span
+        className="text-text-secondary"
+        data-testid={`ai-engine-${loopId}`}
+        style={{ fontSize: 'var(--text-sm)' }}
+      >
         {aiQ.data?.engine ?? '—'}
       </span>
       <TuningRecommendationCard loopName={loopName} rec={recQ.data ?? null} />
@@ -100,14 +106,23 @@ export function ExecutiveDashboardPage(): JSX.Element {
 
   return (
     <AppShell opcDown={opcDown}>
-      <div className="exec-dash" data-testid="executive-dashboard">
-        <header className="exec-dash__header">
-          <h1>Executive Dashboard</h1>
+      <div data-testid="executive-dashboard">
+        <header className="flex items-center justify-between gap-4 mb-6">
+          <h1
+            className="text-text"
+            style={{
+              fontSize: 'var(--text-xl)',
+              lineHeight: 'var(--lh-tight)',
+              fontWeight: 'var(--fw-semibold)',
+            }}
+          >
+            Executive Dashboard
+          </h1>
           <PeriodSelector value={period} onChange={setPeriod} />
         </header>
 
         <section
-          className="exec-dash__kpis"
+          className="grid gap-4 mb-8 [grid-template-columns:repeat(auto-fill,minmax(180px,1fr))]"
           aria-label="Aggregate KPIs"
           data-testid="aggregate-kpis"
         >
@@ -143,7 +158,11 @@ export function ExecutiveDashboardPage(): JSX.Element {
           />
         </section>
 
-        <section className="exec-dash__health" aria-label="Loop health" data-testid="loop-health">
+        <section
+          className="flex flex-col gap-3 mb-8"
+          aria-label="Loop health"
+          data-testid="loop-health"
+        >
           {controllers.map((c) => {
             const live = lastStatus.get(c.id);
             const mode = live?.mode ?? c.mode;
@@ -160,11 +179,17 @@ export function ExecutiveDashboardPage(): JSX.Element {
         </section>
 
         <section
-          className="exec-dash__tuning"
+          className="flex flex-col gap-3 mb-8"
           aria-label="Per-loop tuning"
           data-testid="loop-tuning"
         >
-          <p data-testid="tuning-events-count">{tuningEvents} tuning events in period</p>
+          <p
+            data-testid="tuning-events-count"
+            className="text-text-secondary"
+            style={{ fontSize: 'var(--text-sm)' }}
+          >
+            {tuningEvents} tuning events in period
+          </p>
           {controllers.map((c) => (
             <LoopTuningDetail key={c.id} loopId={c.id} loopName={c.name} />
           ))}
