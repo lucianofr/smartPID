@@ -293,3 +293,10 @@ As subseções abaixo são o resumo; o detalhe vive nos specs dedicados.
 Após aprovação deste design, criar o **plano de implementação da Fatia 0+1**
 (Foundation + Live Dashboard) via skill `writing-plans`, em branch dedicada nova.
 As demais fatias seguem o mesmo ciclo spec/plano/implementação, uma a uma.
+
+## Fatia 8 — parity complete (2026-06-20)
+Fatia 8 complete — all 5 themes shipped (Dark Room / ISA-101 / MD3 dark / MD3 light / Ocean), theme
+switcher persisted, AnalogBar instrumented, Faceplate functional (mounted via dashboard Dialog).
+Per-theme WCAG gate (text ≥4.5:1; alarm non-text ≥3:1 per §8.4-reconciled), uPlot themed per palette,
+21 visual-regression baselines. **Total visual + functional parity reached; the PySide6 HMI can be retired.**
+Merged to main `814f902` (frontend-only, no backend change).

@@ -37,3 +37,17 @@ Nenhuma mudança.
 
 ## Dependências
 Fatia 0+1 (shell) e Fatia 2 (comandos do faceplate).
+
+---
+
+## Implementação (Fatia 8 — entregue 2026-06-20, merge `814f902`)
+Reconciliações de spec aplicadas durante a execução (regra: spec acompanha a UI):
+- **Contraste (§8.4):** gate alinhado a **3:1 (WCAG 1.4.11, não-textual)** para cores de alarme vs superfície
+  (faixa 3px + ícone geométrico 10px); texto permanece ≥4.5:1. Detalhe e tabela medida no design-system §8.4
+  (reconciliado em `c1a1230`). Cores de identidade ISA-101/Dark Room inalteradas.
+- **Ponto de entrada do faceplate:** o `Faceplate` é aberto a partir do `ControllerCard` (botão "Open faceplate", ⤢)
+  num `Dialog` no Dashboard (decisão do owner; a spec/plano não definiam o ponto de entrada). PV em `--text-3xl`
+  (primário), SP/CO em `--text-xl`.
+- **CO manual = entrada numérica validada** (não slider) — melhor acessibilidade/precisão de teclado; gated em MAN.
+- **Modos:** o segmented control reusa `CONTROLLER_MODES` de `loop-config/types` (9 incl. BYPASS, paridade com `CardControls`).
+- **Precisão por loop:** `pv_decimals` honrado em AnalogBar/Faceplate (CO sempre %@1 decimal).

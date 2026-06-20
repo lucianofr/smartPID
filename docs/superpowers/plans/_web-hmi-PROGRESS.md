@@ -4,7 +4,7 @@
 > `_web-hmi-INDEX.md` (the checkbox tracker). Update this on every logical boundary.
 > User decision (2026-06-18): state lives **centralized here in the docs worktree**.
 
-_Last updated: 2026-06-19 — Fatia 3 (Alarms) merged to main `4210142`._
+_Last updated: 2026-06-20 — Fatia 8 (Themes + Faceplate) merged to main `814f902`; **ALL 8 FATIAS COMPLETE → PySide6 retires.**_
 
 ## Worktrees (durable, outside /tmp)
 - **Plans / state (this branch):** `.worktrees/web-hmi-plans` @ `docs/web-hmi-implementation-plans`
@@ -171,4 +171,26 @@ Gates: Vitest 212, tsc -b 0, build OK, full e2e 12 tests/9 specs (4 legacy specs
 Final review (code-reviewer opus): MERGE, 0 Crit/0 High/0 Med; 1 Low (dead useCurrentProject) fixed `a1176a2`. Frontend + tests-only.
 Digest: `_web-hmi-fatia7-digest.md`. Minors: `.git/worktrees/main-web-hmi/sdd/fatia7-minor-findings.md`.
 
-**Next: Fatia 8 (Themes + Faceplate)** — new branch from main `2a17c78`. Closes total parity → PySide6 retires.
+**ALL 8 FATIAS COMPLETE.** Fatia 8 merged main `814f902` (2026-06-20). Total visual+functional parity reached → PySide6 HMI can be retired.
+
+## Fatia 8 — Themes + Faceplate — ✅ DONE (merged main `814f902`, 2026-06-20) — CLOSES TOTAL PARITY
+Branch `feat/web-fatia8-themes-faceplate` (forked main `2a17c78`) merged `--no-ff` into main
+**`814f902`** (parents `2a17c78` + `95d4806`). 11 commits (10 tasks + 1 final-review fix). **Frontend-only**
+(verified `git diff main...HEAD -- '*.py'` EMPTY). Final verify @ `95d4806`: vitest **274/274** (65 files),
+tsc -b 0, vite build OK (119.9 kB gz), Playwright e2e **21/21** (5 themes × 4 bp + faceplate), lint 0 err
+(2 pre-existing warns). On-disk ledger: `.git/worktrees/main-web-hmi/sdd/progress.md`.
+Minors: `.../sdd/fatia8-minor-findings.md`. Digest: `_web-hmi-fatia8-digest.md`.
+
+- T1 `13fcc9d` theme registry (`ThemeProvider` 5 `ThemeId` + `THEMES` + `themes`; `localStorage['spid.theme']`+`data-theme`; default isa101). self/diff.
+- T2 `1cc2488` `ThemeSwitcher` (token-styled `<select aria-label=Theme>`) in TopBar; persistence tests. react-reviewer ✅.
+- T3 `36fe4ae` md3-dark/md3-light/ocean token blocks (dark-room/isa101 already shipped — NOT re-added). self/diff.
+- T4 `71d037c` per-theme contrast gate (`themeContrast.ts`). **OWNER DECISION**: text vs surface/bg ≥4.5:1; alarm vs surface ≥**3:1** (WCAG 1.4.11 non-text; spec §8.4 reconciled `c1a1230`); CRIT/WARN hue-OR-lum distinct. No dep (hand-rolled). self/diff.
+- T5 `882c4d6` `valueToFraction` scale helper. self/diff.
+- T6 `87bc742` instrumented `AnalogBar` (new API {scale,alarm,spValue,size}, role=meter, null-safe) + migrated ControllerCard. react-reviewer ✅.
+- T7 `0721482` `uplotTheme` helper + RealtimeTrend/MultiTrendChart re-init on `data-theme` via MutationObserver (NO useTheme — charts render bare). react-reviewer ✅.
+- T8 `b5e72132` `Faceplate` reusing REAL Fatia 2 contracts (`useModeMutation/useSetpointMutation/useOutputMutation` `{id,...}`; `CONTROLLER_MODES` from loop-config/types; apply-tuning mirrors AiPanel; status `.value`). react-reviewer ✅.
+- T9a `36dd9c4` mounted Faceplate (ControllerCard "Open faceplate" → DashboardPage `Dialog`) + PV readout `--text-3xl`. react-reviewer ✅. **(faceplate mount = owner-approved; spec/plan were silent)**.
+- T9b `8f58b8a` 21 Playwright visual baselines (full stub harness: token+spid.welcome-seen, WS auto-push STATUS frames, mockRest). self/diff.
+- FINAL review (code-reviewer opus): **MERGE** 0 Crit/0 High. 1 MEDIUM = `pv_decimals` regression → FIXED `95d4806` (decimals plumbing restored; CO stays %@1). 1 LOW (Faceplate BYPASS 9th button = pre-existing parity w/ CardControls) deferred. Token completeness clean in all 5 themes.
+
+**Key decisions:** (1) contrast gate aligned to WCAG 1.4.11 **3:1** for non-text alarm indicators (spec §8.4 had unachievable 4.5/5:1 vs identity reds) — colorblind safety via ISA-101 §8.2 shape; (2) Faceplate **mounted** via dashboard Dialog (owner-approved; entry point added to spec); (3) manual CO = validated numeric input (not slider) — better a11y; (4) `pv_decimals` per-loop precision preserved (regression caught at final review, fixed). **Recurring STALE corrections held every task:** generated/ gitignored (hand-type DTOs); domain folders not fatiaN/; named `apiGet/...`; real tokens `--sp-N`/`--font-data`; tests colocated; e2e `npm run test:e2e` + StubWS seeding token+welcome-seen; `npx tsc -b` each UI task.

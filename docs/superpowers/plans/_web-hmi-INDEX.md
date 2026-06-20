@@ -45,7 +45,7 @@ These are NOT fatia tasks; they land on `main` first (see `.claude/docs/handoff-
 | 5 | [simulator](./2026-06-18-web-fatia5-simulator.md) | `feat/web-fatia5-simulator` | 0+1, (2) | 12 | ✅ merged `71e0ca7` |
 | 6 | [executive-dashboard](./2026-06-18-web-fatia6-executive-dashboard.md) | `feat/web-fatia6-executive-dashboard` | 0+1, (4),(2) | 10 | ✅ merged `0961c7c` |
 | 7 | [settings-connection-projects](./2026-06-18-web-fatia7-settings-connection-projects.md) | `feat/web-fatia7-settings-connection-projects` | 0+1 | 11 | ✅ |
-| 8 | [themes-faceplate](./2026-06-18-web-fatia8-themes-faceplate.md) | `feat/web-fatia8-themes-faceplate` | 0+1, 2 | 10 | ⬜ |
+| 8 | [themes-faceplate](./2026-06-18-web-fatia8-themes-faceplate.md) | `feat/web-fatia8-themes-faceplate` | 0+1, 2 | 10 | ✅ merged `814f902` |
 
 **Total: 83 tasks across 8 fatias.**
 
@@ -153,19 +153,19 @@ Branch `feat/web-fatia7-settings-connection-projects` · deps: 0+1 · **mono-use
 - [x] Task 9 — End-to-end (Playwright) — connection, projects, negative auth
 - [x] Task 10 — Specs upkeep + final verification
 
-## Fatia 8 — Themes + Faceplate  ⬜ DONE-when-all-checked
+## Fatia 8 — Themes + Faceplate  ✅ DONE (merged main `814f902`, 2026-06-20) — total parity → PySide6 retires
 Branch `feat/web-fatia8-themes-faceplate` · deps: 0+1, 2 · **closes total parity → PySide6 retires**
 
-- [ ] Task 1 — Branch + theme registry scaffolding
-- [ ] Task 2 — Persistence test + ThemeSwitcher
-- [ ] Task 3 — Complete the 4 remaining theme token blocks
-- [ ] Task 4 — Per-theme contrast gate (WCAG AA + alarm matrix)
-- [ ] Task 5 — Pure scale-mapping helper (PV → bar fraction)
-- [ ] Task 6 — Instrument AnalogBar (value/scale/alarm reflect real data)
-- [ ] Task 7 — uPlot per-palette theming
-- [ ] Task 8 — Faceplate widget — render by mode/state
-- [ ] Task 9 — Visual regression snapshots per theme + faceplate (Playwright)
-- [ ] Task 10 — Full suite, lint, build, parity note, PR
+- [x] Task 1 — Branch + theme registry scaffolding
+- [x] Task 2 — Persistence test + ThemeSwitcher
+- [x] Task 3 — Complete the 4 remaining theme token blocks
+- [x] Task 4 — Per-theme contrast gate (WCAG AA + alarm matrix)
+- [x] Task 5 — Pure scale-mapping helper (PV → bar fraction)
+- [x] Task 6 — Instrument AnalogBar (value/scale/alarm reflect real data)
+- [x] Task 7 — uPlot per-palette theming
+- [x] Task 8 — Faceplate widget — render by mode/state
+- [x] Task 9 — Visual regression snapshots per theme + faceplate (Playwright)
+- [x] Task 10 — Full suite, lint, build, parity note, PR
 
 ---
 
