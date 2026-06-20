@@ -1,44 +1,109 @@
-import { formatNumber } from '../lib/format';
+import { valueToFraction, type Scale } from '../lib/scale';
+
+export type AlarmLevel = 'normal' | 'warning' | 'critical';
 
 export interface AnalogBarProps {
   label: string;
   value: number | null | undefined;
-  min: number;
-  max: number;
-  unit: string;
-  decimals: number;
-  state?: 'normal' | 'critical' | 'warning';
+  scale: Scale;
+  spValue?: number;
+  alarm?: AlarmLevel;
+  size?: 'card' | 'faceplate';
+  decimals?: number;
 }
 
-export function AnalogBar({ label, value, min, max, unit, decimals, state = 'normal' }: AnalogBarProps) {
-  const pct =
-    value === null || value === undefined || Number.isNaN(value)
-      ? 0
-      : Math.max(0, Math.min(1, (value - min) / (max - min)));
-  const fill =
-    state === 'critical' ? 'var(--alarm-critical)' : state === 'warning' ? 'var(--alarm-warning)' : 'var(--bar-fill)';
+const ALARM_FILL: Record<AlarmLevel, string> = {
+  normal: 'var(--bar-fill)',
+  warning: 'var(--alarm-warning)',
+  critical: 'var(--alarm-critical)',
+};
+
+export function AnalogBar({
+  label,
+  value,
+  scale,
+  spValue,
+  alarm = 'normal',
+  size = 'card',
+  decimals = 1,
+}: AnalogBarProps) {
+  const finite = typeof value === 'number' && Number.isFinite(value);
+  const pct = (finite ? valueToFraction(value, scale) * 100 : 0).toFixed(2);
+  const spPct = spValue !== undefined ? (valueToFraction(spValue, scale) * 100).toFixed(2) : null;
+  const trackHeight = size === 'faceplate' ? 14 : 8;
+  const showSp = label === 'PV' && spPct !== null;
+  const display = finite ? value.toFixed(decimals) : '—';
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', fontSize: 'var(--text-xs)' }}>
-      <span style={{ width: 24, color: 'var(--text-secondary)' }}>{label}</span>
+    <div
+      className="analog-bar"
+      data-size={size}
+      style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+    >
+      <span className="analog-bar__label" style={{ width: 24, color: 'var(--text-secondary)' }}>
+        {label}
+      </span>
       <div
+        className="analog-bar__track"
         role="meter"
-        aria-label={`${label} ${formatNumber(value, decimals)} ${unit}`}
-        aria-valuemin={min}
-        aria-valuemax={max}
-        aria-valuenow={value ?? undefined}
-        style={{ position: 'relative', flex: 1, height: 8, background: 'var(--bar-track)', overflow: 'hidden' }}
+        aria-label={`${label} ${display} ${scale.unit}`}
+        aria-valuemin={scale.euMin}
+        aria-valuemax={scale.euMax}
+        aria-valuenow={finite ? value : undefined}
+        style={{
+          position: 'relative',
+          flex: 1,
+          height: trackHeight,
+          background: 'var(--bar-track)',
+          borderRadius: 'var(--radius-pill, 0)',
+          overflow: 'hidden',
+        }}
       >
         <div
+          data-testid="bar-fill"
+          data-alarm={alarm}
           style={{
-            position: 'absolute', inset: 0, background: fill,
-            transform: `scaleX(${pct})`, transformOrigin: 'left',
-            transition: 'transform var(--dur-fast) linear',
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: `${pct}%`,
+            background: ALARM_FILL[alarm],
           }}
         />
+        {showSp && (
+          <span
+            data-testid="sp-marker"
+            aria-hidden
+            style={{
+              position: 'absolute',
+              top: -3,
+              left: `${spPct}%`,
+              width: 0,
+              height: 0,
+              borderLeft: '4px solid transparent',
+              borderRight: '4px solid transparent',
+              borderTop: '5px solid var(--bar-marker)',
+              transform: 'translateX(-50%)',
+            }}
+          />
+        )}
       </div>
-      <span className="numeric" style={{ minWidth: 64, textAlign: 'right', color: 'var(--text)', fontWeight: state === 'normal' ? 400 : 600 }}>
-        {formatNumber(value, decimals)}
-        <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-secondary)', marginLeft: 2 }}>{unit}</span>
+      <span
+        data-testid="bar-value"
+        className="analog-bar__value numeric"
+        style={{
+          minWidth: 64,
+          textAlign: 'right',
+          color: 'var(--text)',
+          fontVariantNumeric: 'tabular-nums',
+          fontWeight: alarm === 'normal' ? 400 : 600,
+        }}
+      >
+        {display}{' '}
+        <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-secondary)' }}>
+          {scale.unit}
+        </span>
       </span>
     </div>
   );

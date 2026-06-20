@@ -4,6 +4,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardPage } from './DashboardPage';
+import { ThemeProvider } from '../theme/ThemeProvider';
 import type { ControllerResponse } from '../api/controllers';
 import type { StatusData } from '../realtime/envelope';
 
@@ -99,7 +100,9 @@ function renderDashboard(): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
-      <MemoryRouter>{children}</MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter>{children}</MemoryRouter>
+      </ThemeProvider>
     </QueryClientProvider>
   );
   render(<DashboardPage />, { wrapper });
@@ -139,5 +142,17 @@ describe('DashboardPage wiring (Fatia 2)', () => {
     // Full ai_config round-trips into the dialog: the FUZZY engine radio is checked.
     const fuzzyRadio = within(dialog).getByRole('radio', { name: 'FUZZY' }) as HTMLInputElement;
     expect(fuzzyRadio.checked).toBe(true);
+  });
+
+  it('opens the Faceplate dialog for the right controller when the ⤢ is clicked', async () => {
+    renderDashboard();
+    await screen.findByText('TIC-009');
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /open faceplate/i }));
+
+    const dialog = await screen.findByRole('dialog');
+    // The faceplate surface renders inside the dialog, labelled by the controller tag.
+    expect(within(dialog).getByRole('complementary', { name: /faceplate TIC-009/i })).toBeInTheDocument();
   });
 });

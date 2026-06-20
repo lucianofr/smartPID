@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import type { AlignedSeries } from './multiTrendData';
@@ -16,6 +16,13 @@ interface Props {
 export function MultiTrendChart({ series, onPxWidth }: Props): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   const plot = useRef<uPlot | null>(null);
+  const [themeKey, setThemeKey] = useState(0);
+
+  useEffect(() => {
+    const obs = new MutationObserver(() => setThemeKey((k) => k + 1));
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!ref.current) return;
@@ -59,9 +66,9 @@ export function MultiTrendChart({ series, onPxWidth }: Props): JSX.Element {
       plot.current?.destroy();
       plot.current = null;
     };
-    // Re-create only on series-shape change; data updates handled below.
+    // Re-create on series-shape change OR theme change (themeKey); data updates handled below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [series.keys.map((k) => `${k.loopId}:${k.variable}`).join(',')]);
+  }, [series.keys.map((k) => `${k.loopId}:${k.variable}`).join(','), themeKey]);
 
   useEffect(() => {
     plot.current?.setData(series.data as uPlot.AlignedData);

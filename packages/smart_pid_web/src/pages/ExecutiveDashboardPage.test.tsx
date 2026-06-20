@@ -45,12 +45,15 @@ vi.mock('../api/client', () => ({
 }));
 
 import { ExecutiveDashboardPage } from './ExecutiveDashboardPage';
+import { ThemeProvider } from '../theme/ThemeProvider';
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={qc}>
-      <MemoryRouter>{children}</MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter>{children}</MemoryRouter>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

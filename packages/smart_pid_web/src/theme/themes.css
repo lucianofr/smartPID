@@ -33,3 +33,77 @@
   --trend-grid: #3A3A3D; --trend-axis: #57575B; --trend-bg: #252526;
   --bar-track: #252526; --bar-fill: #9A9A9A; --bar-marker: #CCCCCC;
 }
+
+[data-theme='md3-dark'] {
+  --bg: #141218;
+  --surface: #211F26;
+  --surface-container: #1D1B20;
+  --surface-container-high: #2B2930;
+  --field-bg: #1D1B20;
+  --border: #49454F;
+  --border-strong: #938F99;
+  --divider: #36343B;
+  --text: #E6E0E9;
+  --text-secondary: #CAC4D0;
+  --text-disabled: #605D66;
+  --focus-ring: #CAC4D0;
+  --alarm-critical: #F2B8B5; --alarm-critical-bg: #8C1D18;
+  --alarm-warning:  #FFDC99; --alarm-warning-bg:  #4D3300;
+  --alarm-diag:     #D0BCFF; --alarm-info:        #99CBFF;
+  --on-alarm: #F9DEDC;       --text-on-alarm: #601410;
+  --state-running: #938F99;  --state-stopped: #CAC4D0;
+  --state-error: #F2B8B5;    --state-oos: #605D66;
+  --trend-pv: #E6E0E9;       --trend-sp: #99CBFF;  --trend-co: #FFD8A8;
+  --trend-grid: #36343B;     --trend-axis: #49454F; --trend-bg: #141218;
+  --bar-track: #2B2930;      --bar-fill: #938F99;  --bar-marker: #CAC4D0;
+  --radius-card: 12px; --radius-control: 8px; --radius-pill: 999px;
+}
+
+[data-theme='md3-light'] {
+  --bg: #FDF8FD;
+  --surface: #F7F2FA;
+  --surface-container: #F2ECF4;
+  --surface-container-high: #ECE6F0;
+  --field-bg: #FFFFFF;
+  --border: #CAC4D0;
+  --border-strong: #79747E;
+  --divider: #E0DAE4;
+  --text: #1D1B20;
+  --text-secondary: #49454F;
+  --text-disabled: #9A949F;
+  --focus-ring: #49454F;
+  --alarm-critical: #B3261E; --alarm-critical-bg: #F9DEDC;
+  --alarm-warning:  #8A5000; --alarm-warning-bg:  #FFE2BC;
+  --alarm-diag:     #6750A4; --alarm-info:        #1E5D9E;
+  --on-alarm: #FFFFFF;       --text-on-alarm: #FFFFFF;
+  --state-running: #79747E;  --state-stopped: #49454F;
+  --state-error: #B3261E;    --state-oos: #9A949F;
+  --trend-pv: #1D1B20;       --trend-sp: #1E5D9E;  --trend-co: #9A5B00;
+  --trend-grid: #E0DAE4;     --trend-axis: #CAC4D0; --trend-bg: #FFFFFF;
+  --bar-track: #ECE6F0;      --bar-fill: #79747E;  --bar-marker: #49454F;
+  --radius-card: 12px; --radius-control: 8px; --radius-pill: 999px;
+}
+
+[data-theme='ocean'] {
+  --bg: #0A1620;
+  --surface: #0F2030;
+  --surface-container: #0F2030;
+  --surface-container-high: #16304A;
+  --field-bg: #081019;
+  --border: #1E3A52;
+  --border-strong: #2A4E6E;
+  --divider: #16283A;
+  --text: #D6E2EC;
+  --text-secondary: #7E97AC;
+  --text-disabled: #44586A;
+  --focus-ring: #8FB6D6;
+  --alarm-critical: #FF4D4D; --alarm-critical-bg: #3A0E0E;
+  --alarm-warning:  #FFB020; --alarm-warning-bg:  #3A2A00;
+  --alarm-diag:     #9B6BFF; --alarm-info:        #45B0FF;
+  --on-alarm: #FFFFFF;       --text-on-alarm: #081019;
+  --state-running: #5E7E96;  --state-stopped: #7E97AC;
+  --state-error: #FF4D4D;    --state-oos: #44586A;
+  --trend-pv: #CFE0EC;       --trend-sp: #45B0FF;  --trend-co: #FFB020;
+  --trend-grid: #16283A;     --trend-axis: #1E3A52; --trend-bg: #081019;
+  --bar-track: #081019;      --bar-fill: #5E7E96;  --bar-marker: #8FB6D6;
+}

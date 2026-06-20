@@ -13,11 +13,13 @@ export function ControllerCard({
   controller,
   status,
   onOpenConfig,
+  onOpenFaceplate,
   controls,
 }: {
   controller: ControllerSummary;
   status: StatusData | undefined;
   onOpenConfig?: () => void;
+  onOpenFaceplate?: () => void;
   controls?: React.ReactNode;
 }) {
   return (
@@ -37,6 +39,20 @@ export function ControllerCard({
             {controller.description && (
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{controller.description}</span>
             )}
+            {onOpenFaceplate && (
+              <button
+                type="button"
+                aria-label="Open faceplate"
+                title="Open faceplate"
+                onClick={onOpenFaceplate}
+                style={{
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: 'var(--text-secondary)', fontSize: 'var(--text-base)', lineHeight: 1, padding: 0,
+                }}
+              >
+                ⤢
+              </button>
+            )}
             {onOpenConfig && (
               <button
                 type="button"
@@ -53,9 +69,9 @@ export function ControllerCard({
             )}
           </div>
         </div>
-        <AnalogBar label="PV" value={status?.pv?.value} min={0} max={100} unit={controller.pv_unit} decimals={controller.pv_decimals} />
-        <AnalogBar label="SP" value={status?.sp?.value} min={0} max={100} unit={controller.pv_unit} decimals={controller.pv_decimals} />
-        <AnalogBar label="CO" value={status?.co?.value} min={0} max={100} unit="%" decimals={1} />
+        <AnalogBar label="PV" value={status?.pv?.value} scale={{ euMin: 0, euMax: 100, unit: controller.pv_unit }} decimals={controller.pv_decimals} />
+        <AnalogBar label="SP" value={status?.sp?.value} scale={{ euMin: 0, euMax: 100, unit: controller.pv_unit }} decimals={controller.pv_decimals} />
+        <AnalogBar label="CO" value={status?.co?.value} scale={{ euMin: 0, euMax: 100, unit: '%' }} decimals={1} />
         <div style={{ display: 'flex', gap: 'var(--sp-2)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
           <span className="numeric">{status?.mode ?? '—'}</span>
         </div>

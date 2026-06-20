@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { AppShell } from '../AppShell';
+import { ThemeProvider } from '../../../theme/ThemeProvider';
 import * as client from '../../../api/client';
 
 // AppShell now mounts <AlarmBar/>, which uses useActiveAlarms (QueryClientProvider)
@@ -21,11 +22,13 @@ describe('AppShell', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
-        <MemoryRouter>
-          <AppShell opcDown={false}>
-            <div>page</div>
-          </AppShell>
-        </MemoryRouter>
+        <ThemeProvider>
+          <MemoryRouter>
+            <AppShell opcDown={false}>
+              <div>page</div>
+            </AppShell>
+          </MemoryRouter>
+        </ThemeProvider>
       </QueryClientProvider>,
     );
     expect(screen.getByLabelText('Alarm summary')).toBeInTheDocument();
