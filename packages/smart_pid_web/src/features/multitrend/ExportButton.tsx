@@ -12,7 +12,10 @@ export function ExportButton({ request }: Props): JSX.Element {
 
   if (phase === 'generating') {
     return (
-      <span className="export-btn export-btn--busy" aria-live="polite">
+      <span
+        className="export-btn export-btn--busy inline-flex items-center text-text-secondary"
+        aria-live="polite"
+      >
         Gerando…
       </span>
     );
@@ -42,7 +45,11 @@ export function ExportButton({ request }: Props): JSX.Element {
     return (
       <button
         type="button"
-        className={downloadError ? 'export-btn export-btn--error' : 'export-btn export-btn--ready'}
+        className={
+          downloadError
+            ? 'export-btn export-btn--error border border-border-strong font-semibold'
+            : 'export-btn export-btn--ready'
+        }
         onClick={() => void handleDownload()}
       >
         {downloadError ? 'Download failed — retry' : 'Download'}

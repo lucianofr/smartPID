@@ -2,14 +2,16 @@ import type { ReactNode } from 'react';
 import { NavRail } from './NavRail';
 import { TopBar } from './TopBar';
 import { AlarmBar } from '../../features/alarms/AlarmBar';
+import { WsConnectionBanner } from '../WsConnectionBanner';
 
 export function AppShell({ opcDown, children }: { opcDown: boolean; children: ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
+    <div className="flex h-screen flex-col bg-bg">
       <TopBar opcDown={opcDown} />
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      <WsConnectionBanner />
+      <div className="flex min-h-0 flex-1">
         <NavRail />
-        <main style={{ flex: 1, overflow: 'auto', padding: 'clamp(var(--sp-4), 2vw, var(--sp-8))' }}>{children}</main>
+        <main className="flex-1 overflow-auto p-[clamp(var(--sp-4),2vw,var(--sp-8))]">{children}</main>
       </div>
       <AlarmBar />
     </div>

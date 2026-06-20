@@ -8,7 +8,6 @@ import { StartStopControl } from './StartStopControl';
 import { useSimulatorStatus } from './useSimulatorStatus';
 import { useSimulatorMutations } from './useSimulatorMutations';
 import type { ProcessPresetName, TwinMode } from './types';
-import './SimulatorControlPanel.css';
 
 interface Props {
   controllerId: number;
@@ -40,7 +39,7 @@ export function SimulatorControlPanel({ controllerId }: Props): JSX.Element {
   const twinMode: TwinMode = c.pid_mode === 1 ? 'AUTO' : 'MAN';
 
   return (
-    <section aria-label="Simulator controls" className="simulator-control-panel">
+    <section aria-label="Simulator controls" className="grid gap-4">
       <StartStopControl
         running={Boolean(data?.running)}
         onStart={() => m.start.mutate()}

@@ -3,9 +3,9 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useActiveAlarms, useAlarmRealtimeSync, useAckAlarm, useAckAllAlarms } from './useAlarms';
 import { priorityRank, severityIcon, severityClass, isUnacked } from './severity';
 import type { ActiveAlarm, AlarmStatus } from './types';
-import './AlarmPanel.css';
 
 const ROW_HEIGHT = 32;
+const GRID_COLS = '9rem 8rem 1fr 9rem 12rem 4rem';
 
 function formatLocal(iso: string): string {
   const d = new Date(iso);
@@ -61,20 +61,20 @@ export function AlarmPanel(): JSX.Element {
     overscan: 12,
   });
 
-  if (isLoading) return <p className="alarm-panel__status">Loading alarms…</p>;
-  if (isError) return <p className="alarm-panel__status" role="alert">Failed to load alarms.</p>;
+  if (isLoading) return <p className="alarm-panel__status p-2 text-text-secondary">Loading alarms…</p>;
+  if (isError) return <p className="alarm-panel__status p-2 text-alarm-critical" role="alert">Failed to load alarms.</p>;
 
   return (
-    <section className="alarm-panel" aria-label="Active alarms">
-      <header className="alarm-panel__toolbar">
-        <label>
+    <section className="alarm-panel flex flex-col h-full min-h-0" aria-label="Active alarms">
+      <header className="alarm-panel__toolbar flex gap-3 items-end p-2 border-b border-divider">
+        <label className="flex flex-col gap-0.5" style={{ fontSize: 'var(--text-xs)' }}>
           Sort
           <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)}>
             <option value="severity">Severity</option>
             <option value="time">Time</option>
           </select>
         </label>
-        <label>
+        <label className="flex flex-col gap-0.5" style={{ fontSize: 'var(--text-xs)' }}>
           Filter by state
           <select value={stateFilter} onChange={(e) => setStateFilter(e.target.value as 'ALL' | AlarmStatus)}>
             <option value="ALL">All</option>
@@ -83,7 +83,7 @@ export function AlarmPanel(): JSX.Element {
             <option value="CLEARED_UNACK">Cleared (unacked)</option>
           </select>
         </label>
-        <label>
+        <label className="flex flex-col gap-0.5" style={{ fontSize: 'var(--text-xs)' }}>
           Filter by loop
           <select
             value={loopFilter}
@@ -93,19 +93,32 @@ export function AlarmPanel(): JSX.Element {
             {loopIds.map((id) => <option key={id} value={id}>{id}</option>)}
           </select>
         </label>
-        <button type="button" className="alarm-panel__ack-all"
+        <button type="button" className="alarm-panel__ack-all ml-auto"
           onClick={() => ackAll.mutate()} disabled={ackAll.isPending}>ACK ALL</button>
       </header>
 
-      <div className="alarm-panel__live" role="status" aria-live="assertive">
+      <div className="alarm-panel__live sr-only" role="status" aria-live="assertive">
         {newCritical > 0 ? `${newCritical} new critical alarm(s)` : ''}
       </div>
 
-      <div className="alarm-panel__head" role="row">
+      <div
+        className="alarm-panel__head grid items-center gap-2 px-2 uppercase border-b border-divider text-text-secondary"
+        role="row"
+        style={{ gridTemplateColumns: GRID_COLS, height: 28, fontSize: 'var(--text-2xs)' }}
+      >
         <span>Sev</span><span>Tag</span><span>Message</span><span>State</span><span>Time</span><span>Ack</span>
       </div>
 
-      <div ref={parentRef} className="alarm-panel__scroll" data-testid="alarm-scroll">
+      <div ref={parentRef} className="alarm-panel__scroll flex-1 min-h-0 overflow-auto" data-testid="alarm-scroll">
+        {rows.length === 0 ? (
+          <p
+            data-testid="alarm-panel-empty"
+            role="status"
+            className="alarm-panel__empty p-4 text-center text-text-secondary"
+          >
+            No active alarms.
+          </p>
+        ) : null}
         <div style={{ height: virt.getTotalSize(), position: 'relative' }}>
           {virt.getVirtualItems().map((vi) => {
             const a = rows[vi.index];
@@ -115,11 +128,12 @@ export function AlarmPanel(): JSX.Element {
                 key={a.id}
                 role="row"
                 data-testid={`alarm-row-${a.id}`}
-                className={`alarm-row ${severityClass(a.priority)} ${unacked ? 'is-unacked' : ''}`}
+                className={`alarm-row grid items-center gap-2 px-2 border-b border-divider ${severityClass(a.priority)} ${unacked ? 'is-unacked' : ''}`}
                 style={{ position: 'absolute', top: 0, left: 0, width: '100%',
-                  height: ROW_HEIGHT, transform: `translateY(${vi.start}px)` }}
+                  height: ROW_HEIGHT, transform: `translateY(${vi.start}px)`,
+                  gridTemplateColumns: GRID_COLS, fontSize: 'var(--text-sm)' }}
               >
-                <span className="alarm-row__sev">
+                <span className="alarm-row__sev inline-flex items-center gap-1.5">
                   <span className={`sev-icon sev-icon--${severityIcon(a.priority)}`} aria-hidden="true" />
                   {a.priority}
                 </span>
@@ -128,7 +142,7 @@ export function AlarmPanel(): JSX.Element {
                   <span className="alarm-row__type">{a.alarm_type}</span> {a.value} (lim {a.limit})
                 </span>
                 <span className="alarm-row__state">{a.status}</span>
-                <span className="alarm-row__time">{formatLocal(a.timestamp)}</span>
+                <span className="alarm-row__time numeric">{formatLocal(a.timestamp)}</span>
                 <span className="alarm-row__ack">
                   <button type="button" onClick={() => ackOne.mutate(a.id)}
                     disabled={ackOne.isPending}>Ack</button>

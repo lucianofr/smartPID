@@ -1,6 +1,5 @@
 import type { SignalKey, Variable } from './types';
 import { seriesColor, seriesStroke, signalId } from './signals';
-import './MultiTrend.css';
 
 const VARIABLES: Variable[] = ['pv', 'sp', 'co'];
 
@@ -22,15 +21,21 @@ export function SeriesSelector({ loops, selected, onChange }: Props): JSX.Elemen
   };
 
   return (
-    <fieldset className="series-selector">
-      <legend>Séries</legend>
+    <fieldset className="series-selector flex flex-col gap-2 border border-border bg-surface-container p-3">
+      <legend className="px-1 text-text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
+        Séries
+      </legend>
       {loops.map((loopId) => (
-        <div key={loopId} className="series-selector__loop">
+        <div key={loopId} className="series-selector__loop flex flex-wrap gap-3">
           {VARIABLES.map((variable) => {
             const key: SignalKey = { loopId, variable };
             const label = `Loop ${loopId} · ${variable.toUpperCase()}`;
             return (
-              <label key={signalId(key)} className="series-selector__item">
+              <label
+                key={signalId(key)}
+                className="series-selector__item inline-flex cursor-pointer items-center gap-1 text-text"
+                style={{ fontSize: 'var(--text-sm)' }}
+              >
                 <input
                   type="checkbox"
                   aria-label={label}
@@ -38,8 +43,8 @@ export function SeriesSelector({ loops, selected, onChange }: Props): JSX.Elemen
                   onChange={() => toggle(key)}
                 />
                 <span
-                  className="series-selector__swatch"
-                  style={{ background: seriesStroke(seriesColor(key)) }}
+                  className="series-selector__swatch inline-block h-3 w-3"
+                  style={{ background: seriesStroke(seriesColor(key)), borderRadius: 'var(--radius-pill)' }}
                   aria-hidden
                 />
                 {label}

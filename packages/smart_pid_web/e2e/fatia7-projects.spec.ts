@@ -113,10 +113,16 @@ test.describe('Projects page', () => {
       .setInputFiles(path.join(here, 'fixtures', 'sample.spid'));
     await expect(page.getByRole('cell', { name: 'sample' })).toBeVisible();
 
-    // Open the imported project's Open button (POST /project/open). Assert no crash: the row stays.
+    // Open the imported project's Open button (POST /project/open). ProjectList.tsx navigates to
+    // the dashboard (`/`) on success (commit 48c816d — mirrors WelcomeDialog), so the projects
+    // table unmounts. Assert the navigation landed on the dashboard, then return to /projects.
     const sampleRow = page.getByRole('row', { name: /sample/i });
     await sampleRow.getByRole('button', { name: /^open$/i }).click();
-    await expect(page.getByRole('cell', { name: 'sample' })).toBeVisible();
+    await expect(page).toHaveURL(/\/$/);
+
+    // Back to the projects list to delete the temp project.
+    await page.goto('/projects');
+    await expect(page.getByRole('cell', { name: 'e2e-temp' })).toBeVisible();
 
     // Delete the created project: DELETE /project/e2e-temp -> filtered out -> refetch drops the row.
     const tempRow = page.getByRole('row', { name: /e2e-temp/i });

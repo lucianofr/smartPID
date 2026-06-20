@@ -1,8 +1,21 @@
+import { fileURLToPath, URL } from 'node:url';
+
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [tailwindcss(), react()],
+  // Emit dist/.vite/manifest.json so the perf-budget gate (scripts/check-bundle.mjs)
+  // can reliably resolve the app-page entry chunk + its CSS.
+  build: {
+    manifest: true,
+  },
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
   server: {
     host: '127.0.0.1',
     port: 5173,

@@ -11,7 +11,6 @@ import { StatsPanel } from '../features/multitrend/StatsPanel';
 import { HistoryQuery } from '../features/multitrend/HistoryQuery';
 import { ExportButton } from '../features/multitrend/ExportButton';
 import type { SignalKey } from '../features/multitrend/types';
-import './MultiTrendPage.css';
 
 const ONE_HOUR_MS = 3_600_000;
 
@@ -52,19 +51,21 @@ export function MultiTrendPage(): JSX.Element {
 
   return (
     <AppShell opcDown={opcDown}>
-      <div className="multitrend-page">
-        <section className="multitrend-page__trend">
-          <div className="multitrend-page__trend-toolbar">
+      {/* Bento layout (design-system §10): trend ~8 cols, side ~4 cols; single-column
+          stack below 960px. Flat token utilities only — no hardcoded palette. */}
+      <div className="grid grid-cols-12 gap-4 items-start">
+        <section className="col-span-12 [@media(min-width:960px)]:col-span-8 flex flex-col gap-3 min-w-0 border border-border rounded-card bg-surface-container p-4">
+          <div className="flex justify-end gap-2">
             <button type="button" onClick={() => model.setPaused(!model.paused)}>
               {model.paused ? 'Resume' : 'Pause'}
             </button>
           </div>
-          <div className="multitrend-page__chart">
+          <div className="w-full min-w-0 h-[clamp(280px,48vh,540px)]">
             <MultiTrendChart series={model.series} onPxWidth={model.setPxWidth} />
           </div>
         </section>
 
-        <aside className="multitrend-page__side">
+        <aside className="col-span-12 [@media(min-width:960px)]:col-span-4 flex flex-col gap-4 min-w-0">
           <SeriesSelector loops={loops} selected={selection} onChange={onSelectionChange} />
           <StatsPanel rows={rows} />
           <HistoryQuery
@@ -73,6 +74,7 @@ export function MultiTrendPage(): JSX.Element {
             frames={history.frames}
             count={history.count}
             isLoading={history.isLoading}
+            hasQueried={historyParams !== null}
           />
           <ExportButton request={exportRequest} />
         </aside>

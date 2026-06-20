@@ -1,0 +1,180 @@
+@import "tailwindcss";
+@import "./theme/tokens.css";
+@import "./theme/themes.css";
+
+/*
+ * Token bridge (Tailwind v4, CSS-first).
+ *
+ * `@theme inline` maps Tailwind utility namespaces onto the EXISTING token-contract
+ * CSS variables defined in `theme/tokens.css` (:root) and `theme/themes.css`
+ * ([data-theme='…']). Because `inline` makes each utility emit `var(--…)` instead of
+ * snapshotting a value, every utility re-resolves at runtime when `data-theme` flips —
+ * keeping all 5 themes working without rebuilding.
+ *
+ * This block ONLY references contract variables; it never redefines them.
+ */
+@theme inline {
+  /* Colors → var(--…) from themes.css ([data-theme]) */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-field-bg: var(--field-bg);
+  --color-text: var(--text);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-disabled: var(--text-disabled);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-divider: var(--divider);
+  --color-alarm-critical: var(--alarm-critical);
+  --color-alarm-warning: var(--alarm-warning);
+  --color-alarm-diag: var(--alarm-diag);
+  --color-bar-fill: var(--bar-fill);
+  --color-bar-track: var(--bar-track);
+
+  /* Radius → var(--…) from tokens.css (overridden per-theme in themes.css) */
+  --radius-card: var(--radius-card);
+  --radius-control: var(--radius-control);
+  --radius-pill: var(--radius-pill);
+
+  /* Fonts → var(--…) from tokens.css */
+  --font-ui: var(--font-ui);
+  --font-data: var(--font-data);
+
+  /* Spacing → var(--sp-*) from tokens.css */
+  --spacing-1: var(--sp-1);
+  --spacing-2: var(--sp-2);
+  --spacing-3: var(--sp-3);
+  --spacing-4: var(--sp-4);
+  --spacing-5: var(--sp-5);
+  --spacing-6: var(--sp-6);
+  --spacing-8: var(--sp-8);
+  --spacing-10: var(--sp-10);
+  --spacing-12: var(--sp-12);
+
+  /* Durations → var(--dur-*) from tokens.css */
+  --transition-duration-fast: var(--dur-fast);
+  --transition-duration-normal: var(--dur-normal);
+  --transition-duration-slow: var(--dur-slow);
+
+  /* Easings → var(--ease-*) from tokens.css */
+  --ease-out: var(--ease-out);
+  --ease-standard: var(--ease-standard);
+}
+
+/*
+ * Alarms (Task 4.1) — the ONLY surface where color is allowed (CRIT/WARN/DIAG),
+ * always paired with a geometric glyph SHAPE + text so severity rides 3 redundant
+ * channels (ISA-101 §8.2). Folded here from AlarmBar.css / AlarmPanel.css /
+ * AlarmConfigForm.css (those files removed). Static structural styling lives as
+ * Tailwind token utilities on the components; this layer carries only what cannot
+ * be expressed inline: the keyframe selectors, the reduced-motion media block, and
+ * the clip-path glyph shapes. Stale token names from the old CSS (--space-*,
+ * --surface-2, --text-muted) are remapped to real contract tokens.
+ */
+@layer components {
+  /* §6b latitude — executive KPI hero entrance. The ONE restrained motion
+     affordance on the exec screen: a compositor-only fade + rise (opacity +
+     transform), disabled under prefers-reduced-motion. No shadow/gradient. */
+  .exec-kpi-enter {
+    animation: exec-kpi-rise var(--dur-normal) var(--ease-out) both;
+  }
+  @keyframes exec-kpi-rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .exec-kpi-enter {
+      animation: none;
+    }
+  }
+
+  /* §6b latitude — login card entrance. The ONE restrained motion affordance on
+     the login screen: a compositor-only fade + rise (opacity + transform),
+     disabled under prefers-reduced-motion. No shadow/gradient. */
+  .login-card-enter {
+    animation: login-card-rise var(--dur-slow) var(--ease-out) both;
+  }
+  @keyframes login-card-rise {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .login-card-enter {
+      animation: none;
+    }
+  }
+
+  /* ISA-101 §8.2 — geometric SHAPE, never color alone (shared by bar + panel). */
+  .sev-icon {
+    width: 10px;
+    height: 10px;
+    display: inline-block;
+    background: currentColor;
+  }
+  .sev-icon--octagon {
+    clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
+    color: var(--alarm-critical);
+  }
+  .sev-icon--triangle {
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+    color: var(--alarm-warning);
+  }
+  .sev-icon--diamond {
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+    color: var(--alarm-diag);
+  }
+  .sev-icon--dot {
+    border-radius: 50%;
+    color: var(--text-secondary);
+  }
+
+  /* §6.4 — blink ONLY the icon/counter opacity on unacked buckets (compositor-safe). */
+  .alarm-bar__bucket.is-unacked .sev-icon,
+  .alarm-bar__bucket.is-unacked .alarm-bar__n {
+    animation: alarm-blink 1s step-start infinite;
+  }
+  /* §6.4 — blink ONLY the icon opacity on unacked rows; never the whole row. */
+  .alarm-row.is-unacked .sev-icon {
+    animation: alarm-blink 1s step-start infinite;
+  }
+  @keyframes alarm-blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.4; }
+  }
+
+  /* 3px severity side-stripe + subtle bg on unacked panel rows (§5.5/§10). */
+  .alarm-row.is-unacked {
+    box-shadow: inset 3px 0 0 0 var(--alarm-stripe, currentColor);
+  }
+  .alarm-row.sev-critical.is-unacked {
+    background: var(--alarm-critical-bg, transparent);
+    --alarm-stripe: var(--alarm-critical);
+  }
+  .alarm-row.sev-warning.is-unacked {
+    background: var(--alarm-warning-bg, transparent);
+    --alarm-stripe: var(--alarm-warning);
+  }
+  .alarm-row.sev-advisory.is-unacked {
+    background: var(--alarm-diag-bg, transparent);
+    --alarm-stripe: var(--alarm-diag);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .alarm-bar__bucket.is-unacked .sev-icon,
+    .alarm-bar__bucket.is-unacked .alarm-bar__n,
+    .alarm-row.is-unacked .sev-icon {
+      animation: none;
+    }
+    /* Motion-free re-encode: heavier weight + underline (paired with the React
+       count badge + assertive live region rendered by AlarmBar). */
+    .alarm-bar__bucket.is-unacked .alarm-bar__n {
+      font-weight: var(--fw-bold);
+      text-decoration: underline;
+    }
+    .alarm-row.is-unacked .alarm-row__state {
+      font-weight: var(--fw-bold);
+      text-decoration: underline;
+    }
+  }
+}

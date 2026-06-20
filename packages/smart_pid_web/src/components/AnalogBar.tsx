@@ -12,10 +12,22 @@ export interface AnalogBarProps {
   decimals?: number;
 }
 
+/**
+ * Fill color per alarm level. These are CSS-variable references (theme contract
+ * tokens), not raw color literals — and they are runtime-selected, so the fill
+ * background MUST stay an inline style (mandated by the DOM-freeze §3a + §6
+ * inventory: the test reads `bar-fill.style.width`, and the fill is one of the
+ * two sanctioned dynamic inline styles).
+ */
 const ALARM_FILL: Record<AlarmLevel, string> = {
   normal: 'var(--bar-fill)',
   warning: 'var(--alarm-warning)',
   critical: 'var(--alarm-critical)',
+};
+
+const TRACK_HEIGHT: Record<NonNullable<AnalogBarProps['size']>, number> = {
+  card: 8,
+  faceplate: 14,
 };
 
 export function AnalogBar({
@@ -30,57 +42,40 @@ export function AnalogBar({
   const finite = typeof value === 'number' && Number.isFinite(value);
   const pct = (finite ? valueToFraction(value, scale) * 100 : 0).toFixed(2);
   const spPct = spValue !== undefined ? (valueToFraction(spValue, scale) * 100).toFixed(2) : null;
-  const trackHeight = size === 'faceplate' ? 14 : 8;
   const showSp = label === 'PV' && spPct !== null;
   const display = finite ? value.toFixed(decimals) : '—';
 
   return (
-    <div
-      className="analog-bar"
-      data-size={size}
-      style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-    >
-      <span className="analog-bar__label" style={{ width: 24, color: 'var(--text-secondary)' }}>
-        {label}
-      </span>
+    <div className="analog-bar flex items-center gap-2" data-size={size}>
+      <span className="analog-bar__label w-6 text-text-secondary">{label}</span>
       <div
-        className="analog-bar__track"
+        className="analog-bar__track relative flex-1 bg-bar-track overflow-hidden rounded-pill"
+        data-size={size}
         role="meter"
         aria-label={`${label} ${display} ${scale.unit}`}
         aria-valuemin={scale.euMin}
         aria-valuemax={scale.euMax}
         aria-valuenow={finite ? value : undefined}
-        style={{
-          position: 'relative',
-          flex: 1,
-          height: trackHeight,
-          background: 'var(--bar-track)',
-          borderRadius: 'var(--radius-pill, 0)',
-          overflow: 'hidden',
-        }}
+        style={{ height: TRACK_HEIGHT[size] }}
       >
         <div
           data-testid="bar-fill"
           data-alarm={alarm}
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: `${pct}%`,
-            background: ALARM_FILL[alarm],
-          }}
+          className="absolute inset-y-0 left-0"
+          // §3a / §6: dynamic width + runtime-selected fill color stay inline —
+          // Tailwind cannot express a runtime `%` width nor the per-alarm token swap.
+          style={{ width: `${pct}%`, background: ALARM_FILL[alarm] }}
         />
         {showSp && (
           <span
             data-testid="sp-marker"
             aria-hidden
+            className="analog-bar__sp-marker absolute top-0 h-0 w-0"
+            // §3a / §6: marker position is a runtime `%` (stays inline). The
+            // triangle borders use a theme token color, so they stay inline too.
             style={{
-              position: 'absolute',
-              top: -3,
               left: `${spPct}%`,
-              width: 0,
-              height: 0,
+              top: -3,
               borderLeft: '4px solid transparent',
               borderRight: '4px solid transparent',
               borderTop: '5px solid var(--bar-marker)',
@@ -91,17 +86,14 @@ export function AnalogBar({
       </div>
       <span
         data-testid="bar-value"
-        className="analog-bar__value numeric"
+        className="analog-bar__value numeric font-data tabular-nums text-right text-text"
         style={{
           minWidth: 64,
-          textAlign: 'right',
-          color: 'var(--text)',
-          fontVariantNumeric: 'tabular-nums',
           fontWeight: alarm === 'normal' ? 400 : 600,
         }}
       >
         {display}{' '}
-        <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--text-secondary)' }}>
+        <span className="text-text-secondary" style={{ fontSize: 'var(--text-2xs)' }}>
           {scale.unit}
         </span>
       </span>

@@ -4,13 +4,19 @@ import { apiGet } from '../api/client';
 import { toLimitsForm, type ControllerResponse } from '../api/controllers';
 import { AppShell } from '../components/shell/AppShell';
 import { ControllerCard, type ControllerSummary } from '../components/ControllerCard';
-import { Dialog } from '../components/ui/Dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 import { Faceplate } from '../components/Faceplate';
 import { AiPanel } from '../features/loop-config/AiPanel';
 import { CardControls } from '../features/loop-config/CardControls';
 import { LoopConfigDialog } from '../features/loop-config/LoopConfigDialog';
 import type { ControllerMode } from '../features/loop-config/types';
 import { useRealtime } from '../realtime/useRealtime';
+import { EmptyState, ErrorState, LoadingState } from '../components/MissingState';
 
 interface OpcuaStatus { state: string; endpoint: string | null; }
 
@@ -58,9 +64,33 @@ export function DashboardPage() {
   const selected = list.find((c) => c.id === configId) ?? null;
   const faceplateController = list.find((c) => c.id === faceplateId) ?? null;
 
-  return (
-    <AppShell opcDown={opcDown}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-3)' }}>
+  // §6a missing states: loading (static bars + aria-busy), error (diag + retry),
+  // empty (explicit "no loops"). The loaded grid is unchanged below.
+  let body: JSX.Element;
+  if (controllers.isLoading) {
+    body = <LoadingState testId="dashboard-loading" label="Loading loops…" />;
+  } else if (controllers.isError) {
+    body = (
+      <ErrorState
+        testId="dashboard-error"
+        message="Failed to load loops."
+        actionLabel="Retry"
+        onAction={() => void controllers.refetch()}
+      />
+    );
+  } else if (list.length === 0) {
+    body = (
+      <EmptyState
+        testId="dashboard-empty"
+        message="No loops configured."
+        hint="Open or import a project to add control loops."
+      />
+    );
+  } else {
+    body = (
+      // Responsive (Task 9.2 / §9): the card strip wraps at >=1024; below the 1024 token
+      // breakpoint it reflows to a single column (`max-lg:flex-col`) so each card spans the row.
+      <div className="flex flex-wrap gap-3 max-lg:flex-col">
         {list.map((c) => {
           const status = lastStatus.get(c.id);
           const mode = (status?.mode as ControllerMode | undefined) ?? DEFAULT_MODE;
@@ -86,6 +116,12 @@ export function DashboardPage() {
           );
         })}
       </div>
+    );
+  }
+
+  return (
+    <AppShell opcDown={opcDown}>
+      {body}
 
       {selected ? (
         <LoopConfigDialog
@@ -102,14 +138,23 @@ export function DashboardPage() {
       ) : null}
 
       {faceplateController ? (
-        <Dialog open onClose={() => setFaceplateId(null)} title={`Faceplate ${faceplateController.name}`}>
-          <Faceplate
-            controllerId={faceplateController.id}
-            tag={faceplateController.name}
-            description={faceplateController.description}
-            scale={{ euMin: 0, euMax: 100, unit: faceplateController.pv_unit }}
-            decimals={faceplateController.pv_decimals}
-          />
+        <Dialog open onOpenChange={(next) => { if (!next) setFaceplateId(null); }}>
+          {/* Responsive (Task 9.2 / §9): >=1024 the faceplate is the centered side-sheet dialog;
+              below the 1024 token breakpoint it goes full-screen — pinned to all insets, no centering
+              transform, full width/height, internal scroll. Only the faceplate dialog opts in; other
+              dialogs keep the centered layout. */}
+          <DialogContent className="max-lg:inset-0 max-lg:left-0 max-lg:top-0 max-lg:h-full max-lg:max-w-none max-lg:translate-x-0 max-lg:translate-y-0 max-lg:overflow-auto max-lg:rounded-none">
+            <DialogHeader>
+              <DialogTitle>Faceplate {faceplateController.name}</DialogTitle>
+            </DialogHeader>
+            <Faceplate
+              controllerId={faceplateController.id}
+              tag={faceplateController.name}
+              description={faceplateController.description}
+              scale={{ euMin: 0, euMax: 100, unit: faceplateController.pv_unit }}
+              decimals={faceplateController.pv_decimals}
+            />
+          </DialogContent>
         </Dialog>
       ) : null}
     </AppShell>

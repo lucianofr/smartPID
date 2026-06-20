@@ -1,5 +1,11 @@
 import { useState, type ReactNode } from 'react';
-import { Dialog } from '../../components/ui/Dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog';
 import { useUpdateControllerMutation } from './useCommands';
 import { hasErrors, validateLimits, validatePidParams } from './validation';
 import {
@@ -30,51 +36,39 @@ type SectionState = Record<Section, boolean>;
 
 const PID_STRUCTURES: PidStructure[] = ['ISA', 'PARALLEL', 'SERIES'];
 
-const rowStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 'var(--sp-3)',
-};
+/**
+ * Flat ISA-101 loop-config form bodies. Inline-style blocks migrated to token
+ * utilities (Task 8.2). The dialog shell is the shadcn Dialog (Task 8.1). The
+ * NONE/FUZZY/RL engine radios stay NATIVE (`getByLabelText('RL')` is frozen) and
+ * the Structure/Objective selectors stay native `<select>`s, all restyled flat.
+ * Numeric inputs carry `numeric` (tabular numerals, §6). Font sizes stay inline as
+ * `var(--text-*)` (no Tailwind type-scale mapping in the `@theme inline` bridge).
+ */
+const LABEL = 'w-36 flex-shrink-0 text-text-secondary';
 
-const labelStyle: React.CSSProperties = {
-  fontSize: 'var(--text-xs)',
-  color: 'var(--text-secondary)',
-  width: '9rem',
-  flexShrink: 0,
-};
+const FIELD =
+  'numeric w-32 bg-field-bg text-text border border-border rounded-control px-2 py-1 ' +
+  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)] ' +
+  'aria-[invalid=true]:border-border-strong';
 
-const fieldStyle: React.CSSProperties = {
-  background: 'var(--field-bg)',
-  color: 'var(--text)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-control)',
-  padding: '0.25rem 0.5rem',
-  fontSize: 'var(--text-sm)',
-  width: '8rem',
-};
+const SELECT =
+  'numeric w-auto bg-field-bg text-text border border-border rounded-control px-2 py-1 cursor-pointer ' +
+  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)]';
 
-const errorStyle: React.CSSProperties = {
-  fontSize: 'var(--text-2xs)',
-  color: 'var(--alarm-warning, #d08a3a)',
-};
+const SECTION_HEADER =
+  'w-full cursor-pointer bg-transparent border-0 border-b border-border text-left text-text py-2 font-semibold ' +
+  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)]';
 
-const sectionHeaderStyle: React.CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  borderBottom: '1px solid var(--border)',
-  color: 'var(--text)',
-  textAlign: 'left',
-  padding: 'var(--sp-2) 0',
-  fontSize: 'var(--text-base)',
-  fontWeight: 'var(--fw-semibold)' as unknown as number,
-  cursor: 'pointer',
-  width: '100%',
-};
+const FOOTER_BUTTON =
+  'cursor-pointer bg-surface-container-high text-text border border-border rounded-control px-3 py-1 ' +
+  'transition-colors duration-fast hover:bg-surface-container active:bg-field-bg ' +
+  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)] ' +
+  'disabled:text-text-disabled disabled:cursor-not-allowed disabled:hover:bg-surface-container-high';
 
 function ErrorText({ message }: { message: string | null | undefined }) {
   if (!message) return null;
   return (
-    <span role="alert" style={errorStyle}>
+    <span role="alert" className="text-alarm-warning" style={{ fontSize: 'var(--text-2xs)' }}>
       {message}
     </span>
   );
@@ -90,19 +84,19 @@ interface NumberFieldProps {
 
 function NumberField({ id, label, value, onChange, error }: NumberFieldProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' }}>
-      <div style={rowStyle}>
-        <label htmlFor={id} style={labelStyle}>
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-3">
+        <label htmlFor={id} className={LABEL} style={{ fontSize: 'var(--text-xs)' }}>
           {label}
         </label>
         <input
           id={id}
-          className="numeric"
+          className={FIELD}
           type="number"
           inputMode="decimal"
           value={Number.isNaN(value) ? '' : value}
           onChange={(e) => onChange(Number(e.target.value))}
-          style={fieldStyle}
+          style={{ fontSize: 'var(--text-sm)' }}
           aria-invalid={Boolean(error)}
         />
       </div>
@@ -120,20 +114,17 @@ interface CollapsibleProps {
 
 function Collapsible({ label, expanded, onToggle, children }: CollapsibleProps) {
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+    <section className="flex flex-col gap-2">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        style={sectionHeaderStyle}
+        className={SECTION_HEADER}
+        style={{ fontSize: 'var(--text-base)' }}
       >
         {label}
       </button>
-      {expanded ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-          {children}
-        </div>
-      ) : null}
+      {expanded ? <div className="flex flex-col gap-2">{children}</div> : null}
     </section>
   );
 }
@@ -227,25 +218,13 @@ export function LoopConfigDialog({
     );
   };
 
-  const footer = (
-    <>
-      <button type="button" onClick={onClose}>
-        Cancelar
-      </button>
-      <button type="button" onClick={handleSave} disabled={disabled || update.isPending}>
-        Salvar
-      </button>
-    </>
-  );
-
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title={`Configurar Loop #${controllerId}`}
-      footer={footer}
-    >
-      <Collapsible label="PID" expanded={expanded.pid} onToggle={() => toggle('pid')}>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Configurar Loop #{controllerId}</DialogTitle>
+        </DialogHeader>
+        <Collapsible label="PID" expanded={expanded.pid} onToggle={() => toggle('pid')}>
         <NumberField
           id="cfg-gain"
           label="Gain (Kp)"
@@ -281,15 +260,16 @@ export function LoopConfigDialog({
           onChange={(v) => setPidField('deadband', v)}
           error={pidErrors.deadband}
         />
-        <div style={rowStyle}>
-          <label htmlFor="cfg-structure" style={labelStyle}>
+        <div className="flex items-center gap-3">
+          <label htmlFor="cfg-structure" className={LABEL} style={{ fontSize: 'var(--text-xs)' }}>
             Structure
           </label>
           <select
             id="cfg-structure"
             value={structure}
             onChange={(e) => setStructure(e.target.value as PidStructure)}
-            style={{ ...fieldStyle, width: 'auto' }}
+            className={SELECT}
+            style={{ fontSize: 'var(--text-sm)' }}
           >
             {PID_STRUCTURES.map((s) => (
               <option key={s} value={s}>
@@ -305,13 +285,16 @@ export function LoopConfigDialog({
         expanded={expanded.ai}
         onToggle={() => toggle('ai')}
       >
-        <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
-          <legend style={{ ...labelStyle, width: 'auto' }}>Engine</legend>
-          <div style={{ display: 'flex', gap: 'var(--sp-4)' }}>
+        <fieldset className="border-0 m-0 p-0">
+          <legend className="text-text-secondary" style={{ fontSize: 'var(--text-xs)' }}>
+            Engine
+          </legend>
+          <div className="flex gap-4">
             {AI_ENGINES.map((engine: AiEngine) => (
               <label
                 key={engine}
-                style={{ fontSize: 'var(--text-sm)', display: 'inline-flex', gap: 'var(--sp-1)' }}
+                className="inline-flex items-center gap-1"
+                style={{ fontSize: 'var(--text-sm)' }}
               >
                 <input
                   type="radio"
@@ -328,15 +311,16 @@ export function LoopConfigDialog({
 
         {ai.engine !== 'NONE' ? (
           <>
-            <div style={rowStyle}>
-              <label htmlFor="cfg-objective" style={labelStyle}>
+            <div className="flex items-center gap-3">
+              <label htmlFor="cfg-objective" className={LABEL} style={{ fontSize: 'var(--text-xs)' }}>
                 Objective
               </label>
               <select
                 id="cfg-objective"
                 value={ai.objective}
                 onChange={(e) => setAi((prev) => ({ ...prev, objective: e.target.value }))}
-                style={{ ...fieldStyle, width: 'auto' }}
+                className={SELECT}
+                style={{ fontSize: 'var(--text-sm)' }}
               >
                 {OBJECTIVES.map((o) => (
                   <option key={o} value={o}>
@@ -451,7 +435,21 @@ export function LoopConfigDialog({
           error={limitsErrors.sp_ftime}
         />
       </Collapsible>
-      <ErrorText message={update.error?.detail} />
+        <ErrorText message={update.error?.detail} />
+        <DialogFooter>
+          <button type="button" onClick={onClose} className={FOOTER_BUTTON}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={disabled || update.isPending}
+            className={FOOTER_BUTTON}
+          >
+            Salvar
+          </button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   );
 }
