@@ -1,4 +1,5 @@
 import { StatusIndicator } from './StatusIndicator';
+import { ThemeSwitcher } from './ThemeSwitcher';
 
 export function TopBar({ opcDown }: { opcDown: boolean }) {
   return (
@@ -11,6 +12,7 @@ export function TopBar({ opcDown }: { opcDown: boolean }) {
     >
       <strong style={{ fontSize: 'var(--text-lg)' }}>Smart PID</strong>
       <span style={{ flex: 1 }} />
+      <ThemeSwitcher />
       <StatusIndicator state={opcDown ? 'down' : 'normal'} label="OPC" />
     </header>
   );

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ThemeProvider, useTheme, THEMES } from './ThemeProvider';
 
@@ -35,5 +35,30 @@ describe('ThemeProvider registry', () => {
     );
     expect(screen.getByTestId('current').textContent).toBe('isa101');
     expect(document.documentElement.getAttribute('data-theme')).toBe('isa101');
+  });
+
+  it('persists theme choice to localStorage and applies data-theme', () => {
+    render(
+      <ThemeProvider>
+        <Probe />
+      </ThemeProvider>,
+    );
+    act(() => {
+      screen.getByText('ocean').click();
+    });
+    expect(screen.getByTestId('current').textContent).toBe('ocean');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('ocean');
+    expect(localStorage.getItem('spid.theme')).toBe('ocean');
+  });
+
+  it('rehydrates the persisted theme on remount', () => {
+    localStorage.setItem('spid.theme', 'md3-light');
+    render(
+      <ThemeProvider>
+        <Probe />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId('current').textContent).toBe('md3-light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('md3-light');
   });
 });
