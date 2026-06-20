@@ -31,6 +31,18 @@ export const ENFORCED_DIRS: readonly string[] = [
 ];
 
 /**
+ * Individual files (relative to `src/`) that MUST be ISA-101-clean even though
+ * their parent directory is NOT enforced. `src/components/` is a flat dir with
+ * many un-migrated siblings (ControllerCard, Faceplate, …), so it is enforced
+ * file-by-file as each is migrated rather than as a whole directory.
+ *
+ * Phase 2 (Task 2.1): AnalogBar — the ISA-101 "boldness budget" signature bar.
+ */
+export const ENFORCED_FILES: readonly string[] = [
+  'components/AnalogBar.tsx',
+];
+
+/**
  * Paths (relative to `src/`) excluded from the enforced scope:
  *  - `Dialog.tsx`  — legacy hand-rolled dialog, removed in Phase 8.
  *  - `__tests__`   — test code, not shipped UI.
@@ -108,7 +120,9 @@ function walkSourceFiles(dir: string): string[] {
 }
 
 function enforcedFiles(): string[] {
-  return ENFORCED_DIRS.flatMap((d) => walkSourceFiles(resolve(srcRoot, d)));
+  const fromDirs = ENFORCED_DIRS.flatMap((d) => walkSourceFiles(resolve(srcRoot, d)));
+  const fromFiles = ENFORCED_FILES.map((f) => resolve(srcRoot, f));
+  return [...new Set([...fromDirs, ...fromFiles])];
 }
 
 const FIXTURES_DIR = resolve(srcRoot, '__lintfixtures__');
