@@ -13,6 +13,7 @@ import { ConfirmApplyTuningDialog } from '../features/loop-config/ConfirmApplyTu
 import { validateOutput, validateSetpoint } from '../features/loop-config/validation';
 import type { ApiError } from '../api/client';
 import { AnalogBar } from './AnalogBar';
+import { Slider } from './ui/slider';
 import type { Scale } from '../lib/scale';
 
 export interface FaceplateProps {
@@ -25,122 +26,48 @@ export interface FaceplateProps {
 
 const CO_SCALE: Scale = { euMin: 0, euMax: 100, unit: '%' };
 
-const rootStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 'var(--sp-4)',
-  padding: 'var(--sp-4)',
-  background: 'var(--surface)',
-  color: 'var(--text)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-card)',
-  minWidth: '22rem',
-};
+/*
+ * ISA-101 faceplate (Task 3.1) — the design-system "vitrine".
+ *
+ * All static styling is expressed as token utilities (`bg-surface`, `border-border`,
+ * `text-text*`, `rounded-*`, `--sp-*` spacing). Hierarchy is scale + weight + gray
+ * only; flat per §design-quality (no shadow/lift/gradient). Font sizes stay inline
+ * as `var(--text-*)` because the type scale has no Tailwind utility in the
+ * `@theme inline` bridge — same sanctioned precedent as AnalogBar/ControllerCard.
+ *
+ * DOM-freeze (§3a) preserved exactly: root `<aside>` keeps `aria-label="Faceplate {tag}"`
+ * (implicit `role="complementary"`); the 8 mode buttons keep their mode names + `aria-pressed`;
+ * the numeric CO input keeps `aria-label="Manual CO"` and its MAN-only `disabled`; the
+ * Setpoint input + `Set setpoint`/`Set output` buttons + apply-tuning button are unchanged.
+ */
 
-const tagStyle: React.CSSProperties = {
-  fontFamily: 'var(--font-data)',
-  fontSize: 'var(--text-3xl)',
-  fontWeight: 'var(--fw-bold)' as unknown as number,
-  lineHeight: 1,
-};
+// Segmented mode switch (§5.3): flat tactile buttons, ≥44×44, no shadow.
+// Inactive = high container + muted text; active = field surface + strong border.
+const MODE_BUTTON_BASE =
+  'flex min-h-[44px] min-w-[44px] items-center justify-center cursor-pointer numeric ' +
+  'border border-border transition-colors duration-fast ' +
+  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)]';
+const MODE_BUTTON_INACTIVE =
+  'bg-surface-container-high text-text-secondary hover:bg-surface-container hover:text-text';
+const MODE_BUTTON_ACTIVE = 'bg-field-bg text-text border-2 border-border-strong';
 
-const descStyle: React.CSSProperties = {
-  fontSize: 'var(--text-sm)',
-  color: 'var(--text-secondary)',
-};
+const FIELD =
+  'bg-field-bg text-text border border-border rounded-control numeric ' +
+  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)] ' +
+  'disabled:text-text-disabled disabled:cursor-not-allowed';
 
-const readoutRowStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: 'var(--sp-4)',
-  flexWrap: 'wrap',
-};
+const ACTION_BUTTON =
+  'min-h-[44px] cursor-pointer bg-surface-container-high text-text border border-border rounded-control ' +
+  'transition-colors duration-fast hover:bg-surface-container ' +
+  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)] ' +
+  'disabled:text-text-disabled disabled:cursor-not-allowed';
 
-const readoutStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 'var(--sp-1)',
-};
-
-const readoutLabelStyle: React.CSSProperties = {
-  fontSize: 'var(--text-2xs)',
-  color: 'var(--text-secondary)',
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-};
-
-const readoutValueStyle: React.CSSProperties = {
-  fontFamily: 'var(--font-data)',
-  fontSize: 'var(--text-xl)',
-  fontWeight: 'var(--fw-semibold)' as unknown as number,
-};
-
-// Design §5.3: the PV is the dominant reading in the faceplate hierarchy.
-const readoutValuePrimaryStyle: React.CSSProperties = {
-  ...readoutValueStyle,
-  fontSize: 'var(--text-3xl)',
-};
-
-const barsStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 'var(--sp-2)',
-};
-
-const modeGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(4, 1fr)',
-  gap: 'var(--sp-1)',
-};
-
-const modeButtonStyle = (active: boolean): React.CSSProperties => ({
-  background: active ? 'var(--text)' : 'var(--field-bg)',
-  color: active ? 'var(--surface)' : 'var(--text)',
-  border: `1px solid ${active ? 'var(--border-strong)' : 'var(--border)'}`,
-  borderRadius: 'var(--radius-control)',
-  padding: 'var(--sp-1) var(--sp-2)',
-  fontFamily: 'var(--font-data)',
-  fontSize: 'var(--text-xs)',
-  fontWeight: 'var(--fw-semibold)' as unknown as number,
-  cursor: 'pointer',
-});
-
-const controlRowStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 'var(--sp-2)',
-};
-
-const controlLabelStyle: React.CSSProperties = {
-  fontSize: 'var(--text-2xs)',
-  color: 'var(--text-secondary)',
-  width: '3rem',
-  flexShrink: 0,
-};
-
-const fieldStyle: React.CSSProperties = {
-  background: 'var(--field-bg)',
-  color: 'var(--text)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-control)',
-  padding: 'var(--sp-1) var(--sp-2)',
-  fontSize: 'var(--text-sm)',
-  width: '6rem',
-};
-
-const errorStyle: React.CSSProperties = {
-  fontSize: 'var(--text-2xs)',
-  color: 'var(--alarm-warning, #d08a3a)',
-};
-
-const applyButtonStyle: React.CSSProperties = {
-  border: '1px solid var(--border-strong)',
-  background: 'transparent',
-  color: 'var(--text)',
-  borderRadius: 'var(--radius-control)',
-  fontWeight: 'var(--fw-semibold)' as unknown as number,
-  padding: 'var(--sp-2) var(--sp-3)',
-  cursor: 'pointer',
-};
+// apply-tuning (§5.3): emphasis via a STRONG BORDER, never an alarm color.
+const APPLY_BUTTON =
+  'min-h-[44px] cursor-pointer bg-transparent text-text border-2 border-border-strong rounded-control ' +
+  'transition-colors duration-fast hover:bg-surface-container-high ' +
+  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)] ' +
+  'disabled:text-text-disabled disabled:cursor-not-allowed';
 
 function Readout({
   label,
@@ -156,11 +83,26 @@ function Readout({
   decimals?: number;
 }) {
   return (
-    <div style={readoutStyle}>
-      <span style={readoutLabelStyle}>{label}</span>
-      <span style={primary ? readoutValuePrimaryStyle : readoutValueStyle}>
+    <div className="flex flex-col gap-1">
+      <span
+        className="text-text-secondary uppercase tracking-[0.05em]"
+        style={{ fontSize: 'var(--text-2xs)' }}
+      >
+        {label}
+      </span>
+      <span
+        className="numeric text-text tabular-nums"
+        style={{
+          fontSize: primary ? 'var(--text-3xl)' : 'var(--text-xl)',
+          fontWeight: primary ? 500 : 600,
+          lineHeight: 'var(--lh-tight)',
+        }}
+      >
         {value.toFixed(decimals)}
-        <span style={descStyle}> {unit}</span>
+        <span className="text-text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
+          {' '}
+          {unit}
+        </span>
       </span>
     </div>
   );
@@ -192,12 +134,28 @@ export function Faceplate({ controllerId, tag, description, scale, decimals = 1 
 
   if (!status) {
     return (
-      <aside style={rootStyle} aria-label={`Faceplate ${tag}`}>
+      <aside
+        className="flex flex-col gap-4 p-4 bg-surface text-text border border-border rounded-card"
+        style={{ minWidth: '22rem' }}
+        aria-label={`Faceplate ${tag}`}
+        aria-busy="true"
+      >
         <header>
-          <div style={tagStyle}>{tag}</div>
-          {description ? <div style={descStyle}>{description}</div> : null}
+          <div
+            className="numeric font-bold"
+            style={{ fontSize: 'var(--text-3xl)', lineHeight: 1 }}
+          >
+            {tag}
+          </div>
+          {description ? (
+            <div className="text-text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
+              {description}
+            </div>
+          ) : null}
         </header>
-        <p style={descStyle}>Waiting for data…</p>
+        <p className="text-text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
+          Waiting for data…
+        </p>
       </aside>
     );
   }
@@ -212,6 +170,9 @@ export function Faceplate({ controllerId, tag, description, scale, decimals = 1 
   const spError = spInput === '' ? undefined : validateSetpoint(spValue);
   const coError = coInput === '' ? undefined : validateOutput(coValue);
 
+  // Manual CO slider tracks the typed value while editing, else the live CO.
+  const coSliderValue = coInput === '' || coError ? co : coValue;
+
   const handleSetSetpoint = () => {
     if (spInput === '' || spError) return;
     setpointCmd.mutate({ id: controllerId, value: spValue });
@@ -222,41 +183,71 @@ export function Faceplate({ controllerId, tag, description, scale, decimals = 1 
     outputCmd.mutate({ id: controllerId, value: coValue });
   };
 
+  const handleSliderCommit = (next: number) => {
+    if (!isManual) return;
+    outputCmd.mutate({ id: controllerId, value: next });
+  };
+
   return (
-    <aside style={rootStyle} aria-label={`Faceplate ${tag}`}>
+    <aside
+      className="flex flex-col gap-4 p-4 bg-surface text-text border border-border rounded-card"
+      style={{ minWidth: '22rem' }}
+      aria-label={`Faceplate ${tag}`}
+    >
       <header>
-        <div style={tagStyle}>{tag}</div>
-        {description ? <div style={descStyle}>{description}</div> : null}
+        <div className="numeric font-bold" style={{ fontSize: 'var(--text-3xl)', lineHeight: 1 }}>
+          {tag}
+        </div>
+        {description ? (
+          <div className="text-text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
+            {description}
+          </div>
+        ) : null}
       </header>
 
-      <div style={readoutRowStyle}>
+      <div className="flex flex-wrap gap-4">
         <Readout label="PV" value={pv} unit={scale.unit} primary decimals={decimals} />
         <Readout label="SP" value={sp} unit={scale.unit} decimals={decimals} />
         <Readout label="CO" value={co} unit={CO_SCALE.unit} />
       </div>
 
-      <div style={barsStyle}>
-        <AnalogBar label="PV" value={pv} scale={scale} spValue={sp} size="faceplate" decimals={decimals} />
+      <div className="flex flex-col gap-2">
+        <AnalogBar
+          label="PV"
+          value={pv}
+          scale={scale}
+          spValue={sp}
+          size="faceplate"
+          decimals={decimals}
+        />
         <AnalogBar label="SP" value={sp} scale={scale} size="faceplate" decimals={decimals} />
         <AnalogBar label="CO" value={co} scale={CO_SCALE} size="faceplate" decimals={1} />
       </div>
 
-      <div role="group" aria-label="Controller mode" style={modeGridStyle}>
-        {CONTROLLER_MODES.map((m) => (
-          <button
-            key={m}
-            type="button"
-            aria-pressed={m === status.mode}
-            style={modeButtonStyle(m === status.mode)}
-            onClick={() => modeCmd.mutate({ id: controllerId, mode: m as ControllerMode })}
-          >
-            {m}
-          </button>
-        ))}
+      <div role="group" aria-label="Controller mode" className="grid grid-cols-4 gap-1">
+        {CONTROLLER_MODES.map((m) => {
+          const active = m === status.mode;
+          return (
+            <button
+              key={m}
+              type="button"
+              aria-pressed={active}
+              className={`${MODE_BUTTON_BASE} ${active ? MODE_BUTTON_ACTIVE : MODE_BUTTON_INACTIVE}`}
+              style={{ fontSize: 'var(--text-xs)', fontWeight: 600 }}
+              onClick={() => modeCmd.mutate({ id: controllerId, mode: m as ControllerMode })}
+            >
+              {m}
+            </button>
+          );
+        })}
       </div>
 
-      <div style={controlRowStyle}>
-        <label htmlFor={`fp-sp-${controllerId}`} style={controlLabelStyle}>
+      <div className="flex items-center gap-2">
+        <label
+          htmlFor={`fp-sp-${controllerId}`}
+          className="text-text-secondary shrink-0"
+          style={{ fontSize: 'var(--text-2xs)', width: '3rem' }}
+        >
           SP
         </label>
         <input
@@ -267,7 +258,8 @@ export function Faceplate({ controllerId, tag, description, scale, decimals = 1 
           value={spInput}
           onChange={(e) => setSpInput(e.target.value)}
           onBlur={handleSetSetpoint}
-          style={fieldStyle}
+          className={FIELD}
+          style={{ fontSize: 'var(--text-sm)', width: '6rem', padding: 'var(--sp-1) var(--sp-2)' }}
           aria-invalid={Boolean(spError)}
         />
         <button
@@ -275,19 +267,29 @@ export function Faceplate({ controllerId, tag, description, scale, decimals = 1 
           aria-label="Set setpoint"
           onClick={handleSetSetpoint}
           disabled={setpointCmd.isPending || spInput === '' || Boolean(spError)}
+          className={ACTION_BUTTON}
+          style={{ fontSize: 'var(--text-sm)', padding: 'var(--sp-1) var(--sp-3)' }}
         >
           Set
         </button>
       </div>
       {spError ? (
-        <span role="alert" style={errorStyle}>
+        <span role="alert" className="text-alarm-warning" style={{ fontSize: 'var(--text-2xs)' }}>
           {spError}
         </span>
       ) : null}
-      {setpointCmd.error ? <span style={errorStyle}>{setpointCmd.error.detail}</span> : null}
+      {setpointCmd.error ? (
+        <span className="text-alarm-warning" style={{ fontSize: 'var(--text-2xs)' }}>
+          {setpointCmd.error.detail}
+        </span>
+      ) : null}
 
-      <div style={controlRowStyle}>
-        <label htmlFor={`fp-co-${controllerId}`} style={controlLabelStyle}>
+      <div className="flex items-center gap-2">
+        <label
+          htmlFor={`fp-co-${controllerId}`}
+          className="text-text-secondary shrink-0"
+          style={{ fontSize: 'var(--text-2xs)', width: '3rem' }}
+        >
           CO
         </label>
         <input
@@ -299,7 +301,8 @@ export function Faceplate({ controllerId, tag, description, scale, decimals = 1 
           onChange={(e) => setCoInput(e.target.value)}
           onBlur={handleSetOutput}
           disabled={!isManual}
-          style={fieldStyle}
+          className={FIELD}
+          style={{ fontSize: 'var(--text-sm)', width: '6rem', padding: 'var(--sp-1) var(--sp-2)' }}
           aria-invalid={Boolean(coError)}
         />
         <button
@@ -307,20 +310,43 @@ export function Faceplate({ controllerId, tag, description, scale, decimals = 1 
           aria-label="Set output"
           onClick={handleSetOutput}
           disabled={!isManual || outputCmd.isPending || coInput === '' || Boolean(coError)}
+          className={ACTION_BUTTON}
+          style={{ fontSize: 'var(--text-sm)', padding: 'var(--sp-1) var(--sp-3)' }}
         >
           Set
         </button>
       </div>
+      {/* Tactile MAN-only CO slider beside the numeric field. Distinct accessible name
+          ("Manual CO slider") so getByLabelText('Manual CO') still resolves uniquely to
+          the numeric input above. Shares the same MAN gate via `disabled`. */}
+      <div className="flex items-center gap-2 min-h-[44px]">
+        <span className="shrink-0" style={{ width: '3rem' }} aria-hidden />
+        <Slider
+          aria-label="Manual CO slider"
+          min={CO_SCALE.euMin}
+          max={CO_SCALE.euMax}
+          step={1}
+          value={[coSliderValue]}
+          disabled={!isManual}
+          onValueChange={(vals) => setCoInput(String(vals[0]))}
+          onValueCommit={(vals) => handleSliderCommit(vals[0])}
+        />
+      </div>
       {coError ? (
-        <span role="alert" style={errorStyle}>
+        <span role="alert" className="text-alarm-warning" style={{ fontSize: 'var(--text-2xs)' }}>
           {coError}
         </span>
       ) : null}
-      {outputCmd.error ? <span style={errorStyle}>{outputCmd.error.detail}</span> : null}
+      {outputCmd.error ? (
+        <span className="text-alarm-warning" style={{ fontSize: 'var(--text-2xs)' }}>
+          {outputCmd.error.detail}
+        </span>
+      ) : null}
 
       <button
         type="button"
-        style={applyButtonStyle}
+        className={APPLY_BUTTON}
+        style={{ fontSize: 'var(--text-sm)', fontWeight: 600, padding: 'var(--sp-2) var(--sp-3)' }}
         disabled={!canApply}
         onClick={() => setConfirmOpen(true)}
       >

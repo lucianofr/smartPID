@@ -38,11 +38,13 @@ export const ENFORCED_DIRS: readonly string[] = [
  *
  * Phase 2 (Task 2.1): AnalogBar — the ISA-101 "boldness budget" signature bar.
  * Phase 2 (Task 2.2): ControllerCard + LoopHealthRow — flat token-utility cards.
+ * Phase 3 (Task 3.1): Faceplate — the design-system "vitrine".
  */
 export const ENFORCED_FILES: readonly string[] = [
   'components/AnalogBar.tsx',
   'components/ControllerCard.tsx',
   'components/LoopHealthRow.tsx',
+  'components/Faceplate.tsx',
 ];
 
 /**
