@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { queryClient } from './api/queryClient';
@@ -8,17 +8,32 @@ import { RequireAuth } from './auth/RequireAuth';
 import { RealtimeProvider } from './realtime/RealtimeProvider';
 import { ThemeProvider } from './theme/ThemeProvider';
 import { DashboardPage } from './pages/DashboardPage';
-import { ExecutiveDashboardPage } from './pages/ExecutiveDashboardPage';
-import { MultiTrendPage } from './pages/MultiTrendPage';
-import { SimulatorPage } from './pages/SimulatorPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ConnectionPage } from './pages/ConnectionPage';
-import { ProjectsPage } from './pages/ProjectsPage';
 import { AppShell } from './components/shell/AppShell';
 import { AlarmPanel } from './features/alarms/AlarmPanel';
 import { WelcomeDialog } from './features/projects/WelcomeDialog';
 import './theme/tokens.css';
 import './theme/themes.css';
+
+// Heavy/rare surfaces are code-split so the dashboard entry stays within the
+// app-page JS budget (see scripts/check-bundle.mjs, §12 perf budget).
+const ExecutiveDashboardPage = lazy(() =>
+  import('./pages/ExecutiveDashboardPage').then((m) => ({ default: m.ExecutiveDashboardPage })),
+);
+const MultiTrendPage = lazy(() =>
+  import('./pages/MultiTrendPage').then((m) => ({ default: m.MultiTrendPage })),
+);
+const SimulatorPage = lazy(() =>
+  import('./pages/SimulatorPage').then((m) => ({ default: m.SimulatorPage })),
+);
+const ProjectsPage = lazy(() =>
+  import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })),
+);
+
+function RouteFallback() {
+  return <div role="status" aria-live="polite" className="p-8 text-muted-foreground" />;
+}
 
 function Shell() {
   const { token } = useAuth();
@@ -46,7 +61,9 @@ function Shell() {
           path="/executive"
           element={
             <RequireAuth>
-              <ExecutiveDashboardPage />
+              <Suspense fallback={<RouteFallback />}>
+                <ExecutiveDashboardPage />
+              </Suspense>
             </RequireAuth>
           }
         />
@@ -54,7 +71,9 @@ function Shell() {
           path="/multitrend"
           element={
             <RequireAuth>
-              <MultiTrendPage />
+              <Suspense fallback={<RouteFallback />}>
+                <MultiTrendPage />
+              </Suspense>
             </RequireAuth>
           }
         />
@@ -62,7 +81,9 @@ function Shell() {
           path="/simulator"
           element={
             <RequireAuth>
-              <SimulatorPage />
+              <Suspense fallback={<RouteFallback />}>
+                <SimulatorPage />
+              </Suspense>
             </RequireAuth>
           }
         />
@@ -96,7 +117,9 @@ function Shell() {
           path="/projects"
           element={
             <RequireAuth>
-              <ProjectsPage />
+              <Suspense fallback={<RouteFallback />}>
+                <ProjectsPage />
+              </Suspense>
             </RequireAuth>
           }
         />

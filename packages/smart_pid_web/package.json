@@ -10,6 +10,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "typecheck": "tsc -b",
+    "check:bundle": "node scripts/check-bundle.mjs",
+    "build:budget": "npm run build && npm run check:bundle",
     "gen:api": "openapi-typescript http://127.0.0.1:8000/openapi.json -o src/api/generated/openapi.ts",
     "lint": "eslint ."
   },
