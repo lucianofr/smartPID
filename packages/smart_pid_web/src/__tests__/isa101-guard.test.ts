@@ -56,6 +56,10 @@ export const ENFORCED_DIRS: readonly string[] = [
  *   type scale, ONE compositor-only entrance via the `.login-card-enter` class folded
  *   into index.css). Flat token-colored; error state uses the desaturated `--alarm-diag`
  *   token (via the `text-alarm-diag`/`border-alarm-diag` utilities), never critical red.
+ * Phase 8 (Task 8.2): loop-config form bodies — LoopConfigDialog, AiPanel, CardControls.
+ *   Inline-style blocks migrated to flat token utilities. Native mode `<select>`, the
+ *   NONE/FUZZY/RL radios, and the Structure/Objective selects stay native (frozen tests)
+ *   but restyled flat; error text uses the `--alarm-warning` token via `text-alarm-warning`.
  */
 export const ENFORCED_FILES: readonly string[] = [
   'auth/LoginPage.tsx',
@@ -74,6 +78,9 @@ export const ENFORCED_FILES: readonly string[] = [
   'components/ExecutiveKPICard.tsx',
   'components/TuningRecommendationCard.tsx',
   'pages/ExecutiveDashboardPage.tsx',
+  'features/loop-config/LoopConfigDialog.tsx',
+  'features/loop-config/AiPanel.tsx',
+  'features/loop-config/CardControls.tsx',
 ];
 
 /**

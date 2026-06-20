@@ -12,44 +12,24 @@ export interface AiPanelProps {
   controllerId: number;
 }
 
-const panelStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 'var(--sp-3)',
-};
+/**
+ * Flat ISA-101 AI optimization panel. Inline-style blocks migrated to token
+ * utilities (Task 8.2). The frozen `data-testid="ai-panel"` and the
+ * `getByRole('button', { name: /apply tuning/i })` disabled state are preserved.
+ * Numeric readouts carry `numeric` (tabular numerals, §6). Font sizes stay inline
+ * as `var(--text-*)` (no Tailwind type-scale mapping in the `@theme inline` bridge).
+ */
+const ACTION_BUTTON =
+  'cursor-pointer bg-surface-container-high text-text border border-border rounded-control px-2 py-0.5 ' +
+  'transition-colors duration-fast hover:bg-surface-container active:bg-field-bg ' +
+  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)] ' +
+  'disabled:text-text-disabled disabled:cursor-not-allowed disabled:hover:bg-surface-container-high';
 
-const fieldRowStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'auto 1fr',
-  gap: 'var(--sp-1) var(--sp-3)',
-  fontSize: 'var(--text-sm)',
-};
-
-const labelStyle: React.CSSProperties = {
-  color: 'var(--text-secondary)',
-  fontSize: 'var(--text-xs)',
-};
-
-const buttonRowStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: 'var(--sp-2)',
-  flexWrap: 'wrap',
-};
-
-const applyButtonStyle: React.CSSProperties = {
-  border: '2px solid var(--accent, var(--border-strong, var(--border)))',
-  borderRadius: 'var(--radius-control)',
-  background: 'transparent',
-  color: 'var(--text)',
-  fontWeight: 'var(--fw-semibold)' as unknown as number,
-  padding: '0.25rem 0.75rem',
-  cursor: 'pointer',
-};
-
-const errorStyle: React.CSSProperties = {
-  fontSize: 'var(--text-2xs)',
-  color: 'var(--alarm-warning, #d08a3a)',
-};
+const APPLY_BUTTON =
+  'cursor-pointer bg-transparent text-text border-2 border-border-strong rounded-control px-3 py-0.5 font-semibold ' +
+  'transition-colors duration-fast hover:bg-surface-container-high active:bg-field-bg ' +
+  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)] ' +
+  'disabled:text-text-disabled disabled:border-border disabled:cursor-not-allowed disabled:hover:bg-transparent';
 
 const AI_ACTIONS: AiAction[] = ['start', 'stop', 'pause'];
 
@@ -101,35 +81,51 @@ export function AiPanel({ controllerId }: AiPanelProps) {
   };
 
   return (
-    <div data-testid="ai-panel" style={panelStyle}>
-      <div style={fieldRowStyle}>
-        <span style={labelStyle}>Engine</span>
+    <div data-testid="ai-panel" className="flex flex-col gap-3">
+      <div
+        className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1"
+        style={{ fontSize: 'var(--text-sm)' }}
+      >
+        <span className="text-text-secondary" style={{ fontSize: 'var(--text-xs)' }}>
+          Engine
+        </span>
         <span>{ai?.engine ?? '-'}</span>
-        <span style={labelStyle}>Objective</span>
+        <span className="text-text-secondary" style={{ fontSize: 'var(--text-xs)' }}>
+          Objective
+        </span>
         <span>{ai?.objective ?? '-'}</span>
-        <span style={labelStyle}>Enabled</span>
+        <span className="text-text-secondary" style={{ fontSize: 'var(--text-xs)' }}>
+          Enabled
+        </span>
         <span>{ai ? (ai.enabled ? 'yes' : 'no') : '-'}</span>
-        <span style={labelStyle}>Strategy</span>
+        <span className="text-text-secondary" style={{ fontSize: 'var(--text-xs)' }}>
+          Strategy
+        </span>
         <span>{strategy}</span>
-        <span style={labelStyle}>Current Ki</span>
-        <span>{ki ?? '-'}</span>
-        <span style={labelStyle}>Last gamma</span>
-        <span>{gamma ?? '-'}</span>
+        <span className="text-text-secondary" style={{ fontSize: 'var(--text-xs)' }}>
+          Current Ki
+        </span>
+        <span className="numeric">{ki ?? '-'}</span>
+        <span className="text-text-secondary" style={{ fontSize: 'var(--text-xs)' }}>
+          Last gamma
+        </span>
+        <span className="numeric">{gamma ?? '-'}</span>
       </div>
 
-      <div style={buttonRowStyle}>
+      <div className="flex flex-wrap gap-2">
         {AI_ACTIONS.map((action) => (
           <button
             key={action}
             type="button"
             onClick={() => aiAction.mutate({ id: controllerId, action })}
+            className={ACTION_BUTTON}
           >
             {action.charAt(0).toUpperCase() + action.slice(1)}
           </button>
         ))}
         <button
           type="button"
-          style={applyButtonStyle}
+          className={APPLY_BUTTON}
           disabled={!canApply}
           onClick={() => setConfirmOpen(true)}
         >
@@ -137,7 +133,11 @@ export function AiPanel({ controllerId }: AiPanelProps) {
         </button>
       </div>
 
-      {aiAction.error ? <span style={errorStyle}>{aiAction.error.detail}</span> : null}
+      {aiAction.error ? (
+        <span className="text-alarm-warning" style={{ fontSize: 'var(--text-2xs)' }}>
+          {aiAction.error.detail}
+        </span>
+      ) : null}
 
       {rec ? (
         <ConfirmApplyTuningDialog
