@@ -4,6 +4,8 @@ import { apiGet } from '../api/client';
 import { toLimitsForm, type ControllerResponse } from '../api/controllers';
 import { AppShell } from '../components/shell/AppShell';
 import { ControllerCard, type ControllerSummary } from '../components/ControllerCard';
+import { Dialog } from '../components/ui/Dialog';
+import { Faceplate } from '../components/Faceplate';
 import { AiPanel } from '../features/loop-config/AiPanel';
 import { CardControls } from '../features/loop-config/CardControls';
 import { LoopConfigDialog } from '../features/loop-config/LoopConfigDialog';
@@ -29,6 +31,7 @@ function toSummary(c: ControllerResponse): ControllerSummary {
 export function DashboardPage() {
   const { lastStatus, onResync } = useRealtime();
   const [configId, setConfigId] = useState<number | null>(null);
+  const [faceplateId, setFaceplateId] = useState<number | null>(null);
 
   const controllers = useQuery({
     queryKey: ['controllers'],
@@ -53,6 +56,7 @@ export function DashboardPage() {
   const opcDown = opcua.data ? opcua.data.state !== 'ONLINE' : false;
   const list = controllers.data ?? [];
   const selected = list.find((c) => c.id === configId) ?? null;
+  const faceplateController = list.find((c) => c.id === faceplateId) ?? null;
 
   return (
     <AppShell opcDown={opcDown}>
@@ -66,6 +70,7 @@ export function DashboardPage() {
               controller={toSummary(c)}
               status={status}
               onOpenConfig={() => setConfigId(c.id)}
+              onOpenFaceplate={() => setFaceplateId(c.id)}
               controls={
                 <>
                   <CardControls
@@ -94,6 +99,17 @@ export function DashboardPage() {
             ai: selected.ai_config,
           }}
         />
+      ) : null}
+
+      {faceplateController ? (
+        <Dialog open onClose={() => setFaceplateId(null)} title={`Faceplate ${faceplateController.name}`}>
+          <Faceplate
+            controllerId={faceplateController.id}
+            tag={faceplateController.name}
+            description={faceplateController.description}
+            scale={{ euMin: 0, euMax: 100, unit: faceplateController.pv_unit }}
+          />
+        </Dialog>
       ) : null}
     </AppShell>
   );

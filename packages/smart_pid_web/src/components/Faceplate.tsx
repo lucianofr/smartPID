@@ -73,6 +73,12 @@ const readoutValueStyle: React.CSSProperties = {
   fontWeight: 'var(--fw-semibold)' as unknown as number,
 };
 
+// Design §5.3: the PV is the dominant reading in the faceplate hierarchy.
+const readoutValuePrimaryStyle: React.CSSProperties = {
+  ...readoutValueStyle,
+  fontSize: 'var(--text-3xl)',
+};
+
 const barsStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -135,11 +141,21 @@ const applyButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
 };
 
-function Readout({ label, value, unit }: { label: string; value: number; unit: string }) {
+function Readout({
+  label,
+  value,
+  unit,
+  primary = false,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  primary?: boolean;
+}) {
   return (
     <div style={readoutStyle}>
       <span style={readoutLabelStyle}>{label}</span>
-      <span style={readoutValueStyle}>
+      <span style={primary ? readoutValuePrimaryStyle : readoutValueStyle}>
         {value.toFixed(1)}
         <span style={descStyle}> {unit}</span>
       </span>
@@ -211,7 +227,7 @@ export function Faceplate({ controllerId, tag, description, scale }: FaceplatePr
       </header>
 
       <div style={readoutRowStyle}>
-        <Readout label="PV" value={pv} unit={scale.unit} />
+        <Readout label="PV" value={pv} unit={scale.unit} primary />
         <Readout label="SP" value={sp} unit={scale.unit} />
         <Readout label="CO" value={co} unit={CO_SCALE.unit} />
       </div>

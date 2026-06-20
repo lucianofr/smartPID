@@ -143,4 +143,16 @@ describe('DashboardPage wiring (Fatia 2)', () => {
     const fuzzyRadio = within(dialog).getByRole('radio', { name: 'FUZZY' }) as HTMLInputElement;
     expect(fuzzyRadio.checked).toBe(true);
   });
+
+  it('opens the Faceplate dialog for the right controller when the ⤢ is clicked', async () => {
+    renderDashboard();
+    await screen.findByText('TIC-009');
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /open faceplate/i }));
+
+    const dialog = await screen.findByRole('dialog');
+    // The faceplate surface renders inside the dialog, labelled by the controller tag.
+    expect(within(dialog).getByRole('complementary', { name: /faceplate TIC-009/i })).toBeInTheDocument();
+  });
 });

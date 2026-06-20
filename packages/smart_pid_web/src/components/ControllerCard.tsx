@@ -13,11 +13,13 @@ export function ControllerCard({
   controller,
   status,
   onOpenConfig,
+  onOpenFaceplate,
   controls,
 }: {
   controller: ControllerSummary;
   status: StatusData | undefined;
   onOpenConfig?: () => void;
+  onOpenFaceplate?: () => void;
   controls?: React.ReactNode;
 }) {
   return (
@@ -36,6 +38,20 @@ export function ControllerCard({
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--sp-2)' }}>
             {controller.description && (
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{controller.description}</span>
+            )}
+            {onOpenFaceplate && (
+              <button
+                type="button"
+                aria-label="Open faceplate"
+                title="Open faceplate"
+                onClick={onOpenFaceplate}
+                style={{
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: 'var(--text-secondary)', fontSize: 'var(--text-base)', lineHeight: 1, padding: 0,
+                }}
+              >
+                ⤢
+              </button>
             )}
             {onOpenConfig && (
               <button

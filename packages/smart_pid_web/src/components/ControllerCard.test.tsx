@@ -44,4 +44,17 @@ describe('ControllerCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /config/i }));
     expect(onOpenConfig).toHaveBeenCalledTimes(1);
   });
+
+  it('calls onOpenFaceplate when the faceplate button is clicked', () => {
+    const onOpenFaceplate = vi.fn();
+    render(
+      <ControllerCard
+        controller={{ id: 5, name: 'PIC-005', description: 'Pressure', pv_decimals: 1, pv_unit: '°C' }}
+        status={status}
+        onOpenFaceplate={onOpenFaceplate}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /open faceplate/i }));
+    expect(onOpenFaceplate).toHaveBeenCalledTimes(1);
+  });
 });
