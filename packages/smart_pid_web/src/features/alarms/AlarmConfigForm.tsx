@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAlarmConfig, useUpdateAlarmConfig } from './useAlarmConfig';
 import type { AlarmThreshold, AlarmType, AlarmPriority } from './types';
-import './AlarmConfigForm.css';
 
 const ALARM_TYPES: AlarmType[] = ['HIHI', 'HI', 'LO', 'LOLO', 'DV_HI', 'DV_LO'];
 const PRIORITIES: AlarmPriority[] = ['CRITICAL', 'WARNING', 'ADVISORY', 'LOG'];
@@ -29,24 +28,29 @@ export function AlarmConfigForm({ controllerId }: { controllerId: number }): JSX
 
   return (
     <form
-      className="alarm-config"
+      className="alarm-config flex flex-col gap-2"
       onSubmit={(e) => { e.preventDefault(); update.mutate(draft); }}
       aria-label={`Alarm configuration for controller ${controllerId}`}
     >
       {draft.map((row) => (
-        <fieldset key={row.alarm_type} data-testid={`threshold-${row.alarm_type}`} className="alarm-config__row">
-          <legend>{row.alarm_type}</legend>
-          <label>
+        <fieldset
+          key={row.alarm_type}
+          data-testid={`threshold-${row.alarm_type}`}
+          className="alarm-config__row grid items-center gap-2 border border-divider p-2"
+          style={{ gridTemplateColumns: '5rem repeat(3, 1fr)' }}
+        >
+          <legend className="font-semibold">{row.alarm_type}</legend>
+          <label className="flex flex-col gap-0.5" style={{ fontSize: 'var(--text-xs)' }}>
             Enabled
             <input type="checkbox" checked={row.enabled}
               onChange={(e) => patch(row.alarm_type, { enabled: e.target.checked })} />
           </label>
-          <label>
+          <label className="flex flex-col gap-0.5" style={{ fontSize: 'var(--text-xs)' }}>
             Limit
-            <input type="number" value={row.limit}
+            <input type="number" className="numeric" value={row.limit}
               onChange={(e) => patch(row.alarm_type, { limit: Number(e.target.value) })} />
           </label>
-          <label>
+          <label className="flex flex-col gap-0.5" style={{ fontSize: 'var(--text-xs)' }}>
             Priority
             <select value={row.priority}
               onChange={(e) => patch(row.alarm_type, { priority: e.target.value as AlarmPriority })}>

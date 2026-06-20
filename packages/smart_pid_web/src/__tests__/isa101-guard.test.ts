@@ -28,6 +28,11 @@ const srcRoot = resolve(here, '..'); // .../src
 export const ENFORCED_DIRS: readonly string[] = [
   'components/ui',
   'components/shell',
+  // Phase 4 (Task 4.1): alarms — the ONLY surface where color is allowed
+  // (CRIT/WARN/DIAG). Color lives in CSS tokens (--alarm-*) folded into index.css,
+  // never as raw literals in source, so the whole dir passes the guard. `__tests__`
+  // is excluded via EXCLUDE_DIRS.
+  'features/alarms',
 ];
 
 /**

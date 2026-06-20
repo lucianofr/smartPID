@@ -61,3 +61,88 @@
   --ease-out: var(--ease-out);
   --ease-standard: var(--ease-standard);
 }
+
+/*
+ * Alarms (Task 4.1) — the ONLY surface where color is allowed (CRIT/WARN/DIAG),
+ * always paired with a geometric glyph SHAPE + text so severity rides 3 redundant
+ * channels (ISA-101 §8.2). Folded here from AlarmBar.css / AlarmPanel.css /
+ * AlarmConfigForm.css (those files removed). Static structural styling lives as
+ * Tailwind token utilities on the components; this layer carries only what cannot
+ * be expressed inline: the keyframe selectors, the reduced-motion media block, and
+ * the clip-path glyph shapes. Stale token names from the old CSS (--space-*,
+ * --surface-2, --text-muted) are remapped to real contract tokens.
+ */
+@layer components {
+  /* ISA-101 §8.2 — geometric SHAPE, never color alone (shared by bar + panel). */
+  .sev-icon {
+    width: 10px;
+    height: 10px;
+    display: inline-block;
+    background: currentColor;
+  }
+  .sev-icon--octagon {
+    clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
+    color: var(--alarm-critical);
+  }
+  .sev-icon--triangle {
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+    color: var(--alarm-warning);
+  }
+  .sev-icon--diamond {
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+    color: var(--alarm-diag);
+  }
+  .sev-icon--dot {
+    border-radius: 50%;
+    color: var(--text-secondary);
+  }
+
+  /* §6.4 — blink ONLY the icon/counter opacity on unacked buckets (compositor-safe). */
+  .alarm-bar__bucket.is-unacked .sev-icon,
+  .alarm-bar__bucket.is-unacked .alarm-bar__n {
+    animation: alarm-blink 1s step-start infinite;
+  }
+  /* §6.4 — blink ONLY the icon opacity on unacked rows; never the whole row. */
+  .alarm-row.is-unacked .sev-icon {
+    animation: alarm-blink 1s step-start infinite;
+  }
+  @keyframes alarm-blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.4; }
+  }
+
+  /* 3px severity side-stripe + subtle bg on unacked panel rows (§5.5/§10). */
+  .alarm-row.is-unacked {
+    box-shadow: inset 3px 0 0 0 var(--alarm-stripe, currentColor);
+  }
+  .alarm-row.sev-critical.is-unacked {
+    background: var(--alarm-critical-bg, transparent);
+    --alarm-stripe: var(--alarm-critical);
+  }
+  .alarm-row.sev-warning.is-unacked {
+    background: var(--alarm-warning-bg, transparent);
+    --alarm-stripe: var(--alarm-warning);
+  }
+  .alarm-row.sev-advisory.is-unacked {
+    background: var(--alarm-diag-bg, transparent);
+    --alarm-stripe: var(--alarm-diag);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .alarm-bar__bucket.is-unacked .sev-icon,
+    .alarm-bar__bucket.is-unacked .alarm-bar__n,
+    .alarm-row.is-unacked .sev-icon {
+      animation: none;
+    }
+    /* Motion-free re-encode: heavier weight + underline (paired with the React
+       count badge + assertive live region rendered by AlarmBar). */
+    .alarm-bar__bucket.is-unacked .alarm-bar__n {
+      font-weight: var(--fw-bold);
+      text-decoration: underline;
+    }
+    .alarm-row.is-unacked .alarm-row__state {
+      font-weight: var(--fw-bold);
+      text-decoration: underline;
+    }
+  }
+}
