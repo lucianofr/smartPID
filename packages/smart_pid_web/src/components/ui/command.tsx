@@ -3,6 +3,7 @@ import { Command as CommandPrimitive } from 'cmdk';
 import { Search } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 
 const Command = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive>,
@@ -19,11 +20,19 @@ const Command = React.forwardRef<
 ));
 Command.displayName = CommandPrimitive.displayName;
 
-// NOTE: The shadcn `CommandDialog` wrapper (which composes the dialog primitive) is
-// intentionally omitted here. The hand-rolled `Dialog.tsx` (capital D) still owns dialogs;
-// the shadcn primitive lives in `dialog-primitive.tsx` until Phase 8.
-// `CommandDialog` will be reintroduced in Phase 8 when `Dialog.tsx` is replaced by the
-// shadcn dialog (which will then be renamed back to `dialog.tsx`).
+type CommandDialogProps = React.ComponentPropsWithoutRef<typeof Dialog>;
+
+function CommandDialog({ children, ...props }: CommandDialogProps) {
+  return (
+    <Dialog {...props}>
+      <DialogContent className="overflow-hidden p-0">
+        <Command className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-text-secondary [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
+          {children}
+        </Command>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 const CommandInput = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Input>,
@@ -117,6 +126,7 @@ CommandShortcut.displayName = 'CommandShortcut';
 
 export {
   Command,
+  CommandDialog,
   CommandInput,
   CommandList,
   CommandEmpty,

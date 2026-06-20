@@ -4,7 +4,12 @@ import { apiGet } from '../api/client';
 import { toLimitsForm, type ControllerResponse } from '../api/controllers';
 import { AppShell } from '../components/shell/AppShell';
 import { ControllerCard, type ControllerSummary } from '../components/ControllerCard';
-import { Dialog } from '../components/ui/Dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
 import { Faceplate } from '../components/Faceplate';
 import { AiPanel } from '../features/loop-config/AiPanel';
 import { CardControls } from '../features/loop-config/CardControls';
@@ -102,14 +107,19 @@ export function DashboardPage() {
       ) : null}
 
       {faceplateController ? (
-        <Dialog open onClose={() => setFaceplateId(null)} title={`Faceplate ${faceplateController.name}`}>
-          <Faceplate
-            controllerId={faceplateController.id}
-            tag={faceplateController.name}
-            description={faceplateController.description}
-            scale={{ euMin: 0, euMax: 100, unit: faceplateController.pv_unit }}
-            decimals={faceplateController.pv_decimals}
-          />
+        <Dialog open onOpenChange={(next) => { if (!next) setFaceplateId(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Faceplate {faceplateController.name}</DialogTitle>
+            </DialogHeader>
+            <Faceplate
+              controllerId={faceplateController.id}
+              tag={faceplateController.name}
+              description={faceplateController.description}
+              scale={{ euMin: 0, euMax: 100, unit: faceplateController.pv_unit }}
+              decimals={faceplateController.pv_decimals}
+            />
+          </DialogContent>
         </Dialog>
       ) : null}
     </AppShell>

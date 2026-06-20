@@ -78,10 +78,12 @@ export const ENFORCED_FILES: readonly string[] = [
 
 /**
  * Paths (relative to `src/`) excluded from the enforced scope:
- *  - `Dialog.tsx`  — legacy hand-rolled dialog, removed in Phase 8.
  *  - `__tests__`   — test code, not shipped UI.
+ *
+ * (The legacy hand-rolled `Dialog.tsx` was deleted in Task 8.1; its exclusion is gone and the
+ *  whole `components/ui/` dir — including the flat shadcn `dialog.tsx` — is now enforced.)
  */
-const EXCLUDE_FILES: ReadonlySet<string> = new Set(['components/ui/Dialog.tsx']);
+const EXCLUDE_FILES: ReadonlySet<string> = new Set();
 const EXCLUDE_DIRS: ReadonlySet<string> = new Set(['__tests__', '__lintfixtures__']);
 
 const SOURCE_EXT = /\.(?:ts|tsx|js|jsx)$/;

@@ -1,5 +1,11 @@
 import { useState, type ReactNode } from 'react';
-import { Dialog } from '../../components/ui/Dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog';
 import { useUpdateControllerMutation } from './useCommands';
 import { hasErrors, validateLimits, validatePidParams } from './validation';
 import {
@@ -227,25 +233,13 @@ export function LoopConfigDialog({
     );
   };
 
-  const footer = (
-    <>
-      <button type="button" onClick={onClose}>
-        Cancelar
-      </button>
-      <button type="button" onClick={handleSave} disabled={disabled || update.isPending}>
-        Salvar
-      </button>
-    </>
-  );
-
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title={`Configurar Loop #${controllerId}`}
-      footer={footer}
-    >
-      <Collapsible label="PID" expanded={expanded.pid} onToggle={() => toggle('pid')}>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Configurar Loop #{controllerId}</DialogTitle>
+        </DialogHeader>
+        <Collapsible label="PID" expanded={expanded.pid} onToggle={() => toggle('pid')}>
         <NumberField
           id="cfg-gain"
           label="Gain (Kp)"
@@ -451,7 +445,16 @@ export function LoopConfigDialog({
           error={limitsErrors.sp_ftime}
         />
       </Collapsible>
-      <ErrorText message={update.error?.detail} />
+        <ErrorText message={update.error?.detail} />
+        <DialogFooter>
+          <button type="button" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="button" onClick={handleSave} disabled={disabled || update.isPending}>
+            Salvar
+          </button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   );
 }

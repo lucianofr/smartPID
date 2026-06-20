@@ -20,7 +20,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { AnalogBar } from '../components/AnalogBar';
-import { Dialog } from '../components/ui/Dialog';
+import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog';
 
 const scale = { euMin: 0, euMax: 200, unit: '°C' };
 
@@ -68,12 +68,11 @@ describe('DOM-freeze contract §3a — AnalogBar (analog meter, riskiest swap)',
 describe('DOM-freeze contract §3a — Dialog (shadcn swap target)', () => {
   it('keeps dialog role, backdrop testid, and the Fechar accessible name', () => {
     render(
-      h(Dialog, {
-        open: true,
-        onClose: () => {},
-        title: 'Freeze',
-        children: h('p', null, 'body'),
-      }),
+      h(
+        Dialog,
+        { open: true },
+        h(DialogContent, null, h(DialogTitle, null, 'Freeze'), h('p', null, 'body')),
+      ),
     );
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     const backdrop = screen.getByTestId('dialog-backdrop');

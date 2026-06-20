@@ -1,4 +1,5 @@
-// Phase 8 will rename this to dialog.tsx after the hand-rolled Dialog.tsx is removed and its 3 consumers migrated.
+// Flat shadcn/Radix Dialog (ISA-101). Renamed from dialog-primitive.tsx in Task 8.1 once the
+// hand-rolled Dialog.tsx was deleted and its consumers migrated to this composition API.
 import * as React from 'react';
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { X } from 'lucide-react';
@@ -14,16 +15,21 @@ const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
-  // Dialog scrim is the ONE allowed translucent overlay (see Task 0.3 brief).
-  <DialogPrimitive.Overlay
-    ref={ref}
-    data-testid="dialog-backdrop"
-    className={cn(
-      'fixed inset-0 z-50 bg-black/60 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-      className,
-    )}
-    {...props}
-  />
+  // Dialog scrim is the ONE allowed translucent overlay (see Task 0.3 brief). Clicking it closes
+  // the dialog (DialogClose asChild), preserving the legacy backdrop behavior; it keeps the frozen
+  // `data-testid="dialog-backdrop"` + `aria-label="Fechar"` bindings the dialog tests assert on.
+  <DialogPrimitive.Close asChild>
+    <DialogPrimitive.Overlay
+      ref={ref}
+      data-testid="dialog-backdrop"
+      aria-label="Fechar"
+      className={cn(
+        'fixed inset-0 z-50 bg-black/60 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+        className,
+      )}
+      {...props}
+    />
+  </DialogPrimitive.Close>
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
@@ -44,7 +50,7 @@ const DialogContent = React.forwardRef<
       {children}
       <DialogPrimitive.Close className="absolute right-4 top-4 rounded-none text-text-secondary opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-border-strong disabled:pointer-events-none">
         <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
+        <span className="sr-only">Fechar</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>

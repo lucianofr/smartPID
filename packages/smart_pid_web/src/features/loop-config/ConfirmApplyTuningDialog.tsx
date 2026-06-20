@@ -1,4 +1,10 @@
-import { Dialog } from '../../components/ui/Dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog';
 import type { TuningRecommendation } from './commandApi';
 
 export interface ConfirmApplyTuningDialogProps {
@@ -83,37 +89,39 @@ export function ConfirmApplyTuningDialog({
 }: ConfirmApplyTuningDialogProps) {
   const { recommended_kp, recommended_ti, recommended_td } = recommendation;
 
-  const footer = (
-    <>
-      <button type="button" onClick={onCancel}>
-        Cancel
-      </button>
-      <button type="button" onClick={onConfirm} style={confirmButtonStyle}>
-        Confirm Write
-      </button>
-    </>
-  );
-
   return (
-    <Dialog open={open} onClose={onCancel} title={`Apply tuning to controller #${controllerId}`} footer={footer}>
-      <p style={warningStyle}>
-        You are writing Kp={recommended_kp} Ti={recommended_ti} Td={recommended_td} to controller #
-        {controllerId}.
-      </p>
-      <div style={gridStyle}>
-        <span style={headCellStyle} />
-        <span style={headCellStyle}>Current</span>
-        <span style={headCellStyle}>Recommended</span>
-        <Row label="Kp" current={recommendation.current_kp} recommended={recommended_kp} />
-        <Row label="Ti" current={recommendation.current_ti} recommended={recommended_ti} />
-        <Row label="Td" current={recommendation.current_td} recommended={recommended_td} />
-      </div>
-      <p style={reasonStyle}>{recommendation.reason}</p>
-      {error ? (
-        <p style={errorStyle} role="alert">
-          {error}
+    <Dialog open={open} onOpenChange={(next) => { if (!next) onCancel(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Apply tuning to controller #{controllerId}</DialogTitle>
+        </DialogHeader>
+        <p style={warningStyle}>
+          You are writing Kp={recommended_kp} Ti={recommended_ti} Td={recommended_td} to controller #
+          {controllerId}.
         </p>
-      ) : null}
+        <div style={gridStyle}>
+          <span style={headCellStyle} />
+          <span style={headCellStyle}>Current</span>
+          <span style={headCellStyle}>Recommended</span>
+          <Row label="Kp" current={recommendation.current_kp} recommended={recommended_kp} />
+          <Row label="Ti" current={recommendation.current_ti} recommended={recommended_ti} />
+          <Row label="Td" current={recommendation.current_td} recommended={recommended_td} />
+        </div>
+        <p style={reasonStyle}>{recommendation.reason}</p>
+        {error ? (
+          <p style={errorStyle} role="alert">
+            {error}
+          </p>
+        ) : null}
+        <DialogFooter>
+          <button type="button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm} style={confirmButtonStyle}>
+            Confirm Write
+          </button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   );
 }

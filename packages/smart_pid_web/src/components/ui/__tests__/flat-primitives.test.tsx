@@ -2,7 +2,7 @@ import { createRef } from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { Dialog, DialogContent, DialogTitle } from '../dialog-primitive';
+import { Dialog, DialogContent, DialogTitle } from '../dialog';
 import { Slider } from '../slider';
 import { Switch } from '../switch';
 
