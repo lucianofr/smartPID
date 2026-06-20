@@ -112,6 +112,20 @@ export const ENFORCED_FILES: readonly string[] = [
   'pages/ProjectsPage.tsx',
   'pages/SettingsPage.tsx',
   'pages/SimulatorPage.tsx',
+  // Final-review followups: surfaces already migrated/clean but missing from scope.
+  // ConfirmApplyTuningDialog migrated to the shadcn Dialog + flat token utilities
+  // (warning/error via the --alarm-warning/--alarm-critical tokens, no hex fallback).
+  'features/loop-config/ConfirmApplyTuningDialog.tsx',
+  // MultiTrendPage chrome migrated from BEM (.multitrend-page__*) + sibling .css to
+  // flat token utilities (the .css file was deleted).
+  'pages/MultiTrendPage.tsx',
+  // Simulator child controls (Phase 8.3 surface) — flat native form controls with no
+  // raw color, completing the simulator migrated-set == enforced-set invariant.
+  'features/simulator/AutoToggles.tsx',
+  'features/simulator/DisturbanceControls.tsx',
+  'features/simulator/PresetSelector.tsx',
+  'features/simulator/StartStopControl.tsx',
+  'features/simulator/TwinOutputModeControl.tsx',
 ];
 
 /**

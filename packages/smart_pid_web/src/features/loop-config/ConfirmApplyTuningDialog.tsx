@@ -17,64 +17,23 @@ export interface ConfirmApplyTuningDialogProps {
   error?: string;
 }
 
-const gridStyle: React.CSSProperties = {
-  display: 'grid',
+// Flat ISA-101 token utilities. The 3-column grid template + token-var spacing is
+// the only genuinely-dynamic styling kept inline (no Tailwind grid-cols token for it).
+const GRID_STYLE: React.CSSProperties = {
   gridTemplateColumns: 'auto 1fr 1fr',
   gap: 'var(--sp-1) var(--sp-3)',
-  alignItems: 'baseline',
-  fontSize: 'var(--text-sm)',
 };
-
-const headCellStyle: React.CSSProperties = {
-  fontSize: 'var(--text-xs)',
-  color: 'var(--text-secondary)',
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-};
-
-const recValueStyle: React.CSSProperties = {
-  fontWeight: 'var(--fw-semibold)' as unknown as number,
-  color: 'var(--text)',
-};
-
-const reasonStyle: React.CSSProperties = {
-  fontSize: 'var(--text-xs)',
-  color: 'var(--text-secondary)',
-  fontStyle: 'italic',
-};
-
-const warningStyle: React.CSSProperties = {
-  fontSize: 'var(--text-sm)',
-  color: 'var(--alarm-warning, #d08a3a)',
-  border: '1px solid var(--alarm-warning, #d08a3a)',
-  borderRadius: 'var(--radius-control)',
-  padding: 'var(--sp-2) var(--sp-3)',
-};
-
-const errorStyle: React.CSSProperties = {
-  fontSize: 'var(--text-sm)',
-  color: 'var(--alarm-critical, #d04a4a)',
-  border: '1px solid var(--alarm-critical, #d04a4a)',
-  borderRadius: 'var(--radius-control)',
-  padding: 'var(--sp-2) var(--sp-3)',
-};
-
-const confirmButtonStyle: React.CSSProperties = {
-  border: '2px solid var(--alarm-warning, #d08a3a)',
-  borderRadius: 'var(--radius-control)',
-  background: 'transparent',
-  color: 'var(--text)',
-  fontWeight: 'var(--fw-semibold)' as unknown as number,
-  padding: '0.35rem 0.9rem',
-  cursor: 'pointer',
-};
+const HEAD_CELL = 'uppercase tracking-wide text-text-secondary';
+const REC_VALUE = 'font-semibold text-text';
 
 function Row({ label, current, recommended }: { label: string; current: number; recommended: number }) {
   return (
     <>
-      <span style={headCellStyle}>{label}</span>
+      <span className={HEAD_CELL} style={{ fontSize: 'var(--text-xs)' }}>
+        {label}
+      </span>
       <span>{current}</span>
-      <span style={recValueStyle}>{recommended}</span>
+      <span className={REC_VALUE}>{recommended}</span>
     </>
   );
 }
@@ -95,21 +54,34 @@ export function ConfirmApplyTuningDialog({
         <DialogHeader>
           <DialogTitle>Apply tuning to controller #{controllerId}</DialogTitle>
         </DialogHeader>
-        <p style={warningStyle}>
+        <p
+          className="text-alarm-warning border border-alarm-warning rounded-control px-3 py-2"
+          style={{ fontSize: 'var(--text-sm)' }}
+        >
           You are writing Kp={recommended_kp} Ti={recommended_ti} Td={recommended_td} to controller #
           {controllerId}.
         </p>
-        <div style={gridStyle}>
-          <span style={headCellStyle} />
-          <span style={headCellStyle}>Current</span>
-          <span style={headCellStyle}>Recommended</span>
+        <div className="grid items-baseline" style={{ ...GRID_STYLE, fontSize: 'var(--text-sm)' }}>
+          <span className={HEAD_CELL} style={{ fontSize: 'var(--text-xs)' }} />
+          <span className={HEAD_CELL} style={{ fontSize: 'var(--text-xs)' }}>
+            Current
+          </span>
+          <span className={HEAD_CELL} style={{ fontSize: 'var(--text-xs)' }}>
+            Recommended
+          </span>
           <Row label="Kp" current={recommendation.current_kp} recommended={recommended_kp} />
           <Row label="Ti" current={recommendation.current_ti} recommended={recommended_ti} />
           <Row label="Td" current={recommendation.current_td} recommended={recommended_td} />
         </div>
-        <p style={reasonStyle}>{recommendation.reason}</p>
+        <p className="italic text-text-secondary" style={{ fontSize: 'var(--text-xs)' }}>
+          {recommendation.reason}
+        </p>
         {error ? (
-          <p style={errorStyle} role="alert">
+          <p
+            className="text-alarm-critical border border-alarm-critical rounded-control px-3 py-2"
+            style={{ fontSize: 'var(--text-sm)' }}
+            role="alert"
+          >
             {error}
           </p>
         ) : null}
@@ -117,7 +89,11 @@ export function ConfirmApplyTuningDialog({
           <button type="button" onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" onClick={onConfirm} style={confirmButtonStyle}>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="border-2 border-alarm-warning rounded-control bg-transparent font-semibold text-text px-4 py-1.5 cursor-pointer"
+          >
             Confirm Write
           </button>
         </DialogFooter>
