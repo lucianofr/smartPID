@@ -16,6 +16,7 @@ import { assertMinTarget } from './helpers/targetSize';
 // into sessionStorage before load; the post-login WelcomeDialog is suppressed.
 
 const WCAG_AA_MIN = 24;
+const SPEC_MIN = 44;
 
 const CONTROLLERS = [
   {
@@ -123,5 +124,90 @@ test.describe('target size (>=44x44)', () => {
     const applyTuning = page.getByRole('button', { name: /apply tuning/i }).first();
     await expect(applyTuning).toBeVisible();
     await assertMinTarget(applyTuning, WCAG_AA_MIN);
+  });
+});
+
+// Responsive floor (Task 9.2 / §9): below the 1024 token breakpoint the spec's full >=44x44 floor
+// is ENFORCED on the primary controls — nav items (collapsed icon rail), mode buttons, ACK ALL, and
+// the MAN-only CO slider thumb. Same mocked harness; status frame uses MAN so the slider is enabled.
+test.describe('target size (>=44x44) — responsive <1024', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript((controllerIds: number[]) => {
+      sessionStorage.setItem('smart-pid-token', 'jwt-e2e');
+      sessionStorage.setItem('spid.welcome-seen', '1');
+
+      const ff = (value: number) => ({
+        value,
+        severity: 'GOOD',
+        limit_bits: 'NONE',
+        sub_status: 'NON_SPECIFIC',
+      });
+      const statusFrame = (loopId: number) =>
+        JSON.stringify({
+          type: 'status',
+          loop_id: loopId,
+          seq: 1,
+          ts: 1,
+          data: {
+            pv: ff(50),
+            sp: ff(55),
+            co: ff(42),
+            bkcal_in: ff(0),
+            bkcal_out: ff(0),
+            mode: 'MAN',
+            kp: 1,
+            ti: 10,
+            td: 0,
+            integral_val: 0,
+            timestamp: '2026-06-20T00:00:00.000Z',
+          },
+        });
+
+      class StubWS extends EventTarget {
+        url: string;
+        readyState = 1;
+        onopen: (() => void) | null = null;
+        onmessage: ((e: MessageEvent) => void) | null = null;
+        onclose: (() => void) | null = null;
+        constructor(url: string) {
+          super();
+          this.url = url;
+          setTimeout(() => this.onopen?.(), 0);
+        }
+        send() {
+          setTimeout(() => {
+            this.onmessage?.(
+              new MessageEvent('message', { data: JSON.stringify({ type: 'auth_ok' }) }),
+            );
+            for (const id of controllerIds) {
+              this.onmessage?.(new MessageEvent('message', { data: statusFrame(id) }));
+            }
+          }, 0);
+        }
+        close() {
+          this.onclose?.();
+        }
+      }
+      // @ts-expect-error override
+      window.WebSocket = StubWS;
+    }, CONTROLLERS.map((c) => c.id));
+    await mockRest(page);
+    await page.setViewportSize({ width: 768, height: 1100 });
+    await page.goto('/');
+    await expect(page.getByText('FIC-101')).toBeVisible();
+  });
+
+  test('nav items, ack-all, mode buttons and slider thumb all clear >=44x44', async ({ page }) => {
+    await assertMinTarget(page.getByRole('link', { name: 'Dashboard' }), SPEC_MIN);
+    await assertMinTarget(page.getByRole('button', { name: 'ACK ALL' }), SPEC_MIN);
+
+    const card = page
+      .getByText('FIC-101', { exact: true })
+      .locator('xpath=ancestor::*[contains(@class,"rounded-card")][1]');
+    await card.getByRole('button', { name: 'Open faceplate' }).click();
+    await expect(page.getByRole('complementary', { name: /faceplate fic-101/i })).toBeVisible();
+
+    await assertMinTarget(page.getByRole('button', { name: 'AUTO' }).first(), SPEC_MIN);
+    await assertMinTarget(page.getByRole('slider').first(), SPEC_MIN);
   });
 });

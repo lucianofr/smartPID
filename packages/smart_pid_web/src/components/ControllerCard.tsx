@@ -40,7 +40,7 @@ export function ControllerCard({
   controls?: React.ReactNode;
 }) {
   return (
-    <div className="flex w-[var(--card-w)] flex-col border border-border bg-surface rounded-card">
+    <div className="flex w-[var(--card-w)] flex-col border border-border bg-surface rounded-card max-lg:w-full">
       <div className="h-[var(--alarmstrip-h)]" />
       <div className="flex flex-col gap-2 p-4">
         <div className="flex items-baseline justify-between gap-2">

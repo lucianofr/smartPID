@@ -88,7 +88,9 @@ export function DashboardPage() {
     );
   } else {
     body = (
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-3)' }}>
+      // Responsive (Task 9.2 / §9): the card strip wraps at >=1024; below the 1024 token
+      // breakpoint it reflows to a single column (`max-lg:flex-col`) so each card spans the row.
+      <div className="flex flex-wrap gap-3 max-lg:flex-col">
         {list.map((c) => {
           const status = lastStatus.get(c.id);
           const mode = (status?.mode as ControllerMode | undefined) ?? DEFAULT_MODE;
@@ -137,7 +139,11 @@ export function DashboardPage() {
 
       {faceplateController ? (
         <Dialog open onOpenChange={(next) => { if (!next) setFaceplateId(null); }}>
-          <DialogContent>
+          {/* Responsive (Task 9.2 / §9): >=1024 the faceplate is the centered side-sheet dialog;
+              below the 1024 token breakpoint it goes full-screen — pinned to all insets, no centering
+              transform, full width/height, internal scroll. Only the faceplate dialog opts in; other
+              dialogs keep the centered layout. */}
+          <DialogContent className="max-lg:inset-0 max-lg:left-0 max-lg:top-0 max-lg:h-full max-lg:max-w-none max-lg:translate-x-0 max-lg:translate-y-0 max-lg:overflow-auto max-lg:rounded-none">
             <DialogHeader>
               <DialogTitle>Faceplate {faceplateController.name}</DialogTitle>
             </DialogHeader>

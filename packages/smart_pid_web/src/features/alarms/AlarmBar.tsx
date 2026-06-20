@@ -38,8 +38,10 @@ export function AlarmBar(): JSX.Element {
 
   return (
     <footer
-      className="alarm-bar flex items-center gap-4 px-3 border-t border-divider bg-surface-container text-text-secondary"
-      style={{ height: 'var(--alarmbar-h)', fontSize: 'var(--text-sm)' }}
+      // Responsive (Task 9.2 / §9): the bar is the 36px strip at >=1024; below the 1024 token
+      // breakpoint it relaxes to `h-auto`/`min-h-11` so the ACK ALL touch target can reach 44px.
+      className="alarm-bar flex h-[var(--alarmbar-h)] items-center gap-4 px-3 border-t border-divider bg-surface-container text-text-secondary max-lg:h-auto max-lg:min-h-11 max-lg:py-1"
+      style={{ fontSize: 'var(--text-sm)' }}
       aria-label="Alarm summary"
     >
       <div className="alarm-bar__counts flex gap-3">
@@ -80,7 +82,8 @@ export function AlarmBar(): JSX.Element {
       </span>
       <button
         type="button"
-        className="alarm-bar__ack-all ml-auto"
+        // Responsive (Task 9.2 / §9): grows to the 44px touch floor below the 1024 breakpoint.
+        className="alarm-bar__ack-all ml-auto max-lg:inline-flex max-lg:min-h-11 max-lg:min-w-11 max-lg:items-center max-lg:justify-center max-lg:px-3"
         disabled={ackAll.isPending}
         onClick={() => ackAll.mutate()}
       >
