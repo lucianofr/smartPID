@@ -1,0 +1,63 @@
+@import "tailwindcss";
+@import "./theme/tokens.css";
+@import "./theme/themes.css";
+
+/*
+ * Token bridge (Tailwind v4, CSS-first).
+ *
+ * `@theme inline` maps Tailwind utility namespaces onto the EXISTING token-contract
+ * CSS variables defined in `theme/tokens.css` (:root) and `theme/themes.css`
+ * ([data-theme='…']). Because `inline` makes each utility emit `var(--…)` instead of
+ * snapshotting a value, every utility re-resolves at runtime when `data-theme` flips —
+ * keeping all 5 themes working without rebuilding.
+ *
+ * This block ONLY references contract variables; it never redefines them.
+ */
+@theme inline {
+  /* Colors → var(--…) from themes.css ([data-theme]) */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-field-bg: var(--field-bg);
+  --color-text: var(--text);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-disabled: var(--text-disabled);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-divider: var(--divider);
+  --color-alarm-critical: var(--alarm-critical);
+  --color-alarm-warning: var(--alarm-warning);
+  --color-alarm-diag: var(--alarm-diag);
+  --color-bar-fill: var(--bar-fill);
+  --color-bar-track: var(--bar-track);
+
+  /* Radius → var(--…) from tokens.css (overridden per-theme in themes.css) */
+  --radius-card: var(--radius-card);
+  --radius-control: var(--radius-control);
+  --radius-pill: var(--radius-pill);
+
+  /* Fonts → var(--…) from tokens.css */
+  --font-ui: var(--font-ui);
+  --font-data: var(--font-data);
+
+  /* Spacing → var(--sp-*) from tokens.css */
+  --spacing-1: var(--sp-1);
+  --spacing-2: var(--sp-2);
+  --spacing-3: var(--sp-3);
+  --spacing-4: var(--sp-4);
+  --spacing-5: var(--sp-5);
+  --spacing-6: var(--sp-6);
+  --spacing-8: var(--sp-8);
+  --spacing-10: var(--sp-10);
+  --spacing-12: var(--sp-12);
+
+  /* Durations → var(--dur-*) from tokens.css */
+  --transition-duration-fast: var(--dur-fast);
+  --transition-duration-normal: var(--dur-normal);
+  --transition-duration-slow: var(--dur-slow);
+
+  /* Easings → var(--ease-*) from tokens.css */
+  --ease-out: var(--ease-out);
+  --ease-standard: var(--ease-standard);
+}
