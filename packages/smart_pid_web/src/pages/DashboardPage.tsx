@@ -16,6 +16,7 @@ import { CardControls } from '../features/loop-config/CardControls';
 import { LoopConfigDialog } from '../features/loop-config/LoopConfigDialog';
 import type { ControllerMode } from '../features/loop-config/types';
 import { useRealtime } from '../realtime/useRealtime';
+import { EmptyState, ErrorState, LoadingState } from '../components/MissingState';
 
 interface OpcuaStatus { state: string; endpoint: string | null; }
 
@@ -63,8 +64,30 @@ export function DashboardPage() {
   const selected = list.find((c) => c.id === configId) ?? null;
   const faceplateController = list.find((c) => c.id === faceplateId) ?? null;
 
-  return (
-    <AppShell opcDown={opcDown}>
+  // §6a missing states: loading (static bars + aria-busy), error (diag + retry),
+  // empty (explicit "no loops"). The loaded grid is unchanged below.
+  let body: JSX.Element;
+  if (controllers.isLoading) {
+    body = <LoadingState testId="dashboard-loading" label="Loading loops…" />;
+  } else if (controllers.isError) {
+    body = (
+      <ErrorState
+        testId="dashboard-error"
+        message="Failed to load loops."
+        actionLabel="Retry"
+        onAction={() => void controllers.refetch()}
+      />
+    );
+  } else if (list.length === 0) {
+    body = (
+      <EmptyState
+        testId="dashboard-empty"
+        message="No loops configured."
+        hint="Open or import a project to add control loops."
+      />
+    );
+  } else {
+    body = (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-3)' }}>
         {list.map((c) => {
           const status = lastStatus.get(c.id);
@@ -91,6 +114,12 @@ export function DashboardPage() {
           );
         })}
       </div>
+    );
+  }
+
+  return (
+    <AppShell opcDown={opcDown}>
+      {body}
 
       {selected ? (
         <LoopConfigDialog

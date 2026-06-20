@@ -110,6 +110,15 @@ export function AlarmPanel(): JSX.Element {
       </div>
 
       <div ref={parentRef} className="alarm-panel__scroll flex-1 min-h-0 overflow-auto" data-testid="alarm-scroll">
+        {rows.length === 0 ? (
+          <p
+            data-testid="alarm-panel-empty"
+            role="status"
+            className="alarm-panel__empty p-4 text-center text-text-secondary"
+          >
+            No active alarms.
+          </p>
+        ) : null}
         <div style={{ height: virt.getTotalSize(), position: 'relative' }}>
           {virt.getVirtualItems().map((vi) => {
             const a = rows[vi.index];

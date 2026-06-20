@@ -74,6 +74,12 @@ export const ENFORCED_DIRS: readonly string[] = [
  */
 export const ENFORCED_FILES: readonly string[] = [
   'auth/LoginPage.tsx',
+  // Phase 9 (Task 9.1): mandated missing states (§6a). Flat, token-only loading
+  // (static placeholder bars, NO shimmer), empty, and error/WS-disconnect
+  // (desaturated --alarm-diag) surfaces + the DashboardPage that consumes them.
+  'components/MissingState.tsx',
+  'components/WsConnectionBanner.tsx',
+  'pages/DashboardPage.tsx',
   'components/AnalogBar.tsx',
   'components/ControllerCard.tsx',
   'components/LoopHealthRow.tsx',

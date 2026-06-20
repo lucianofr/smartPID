@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { HistoryParams, TelemetryFrame } from './useHistory';
+import { EmptyState, LoadingState } from '../../components/MissingState';
 
 interface Props {
   controllerId: number;
@@ -7,6 +8,8 @@ interface Props {
   frames: TelemetryFrame[];
   count: number;
   isLoading: boolean;
+  /** True once a query has been submitted — lets us distinguish "not yet run" from "ran, empty". */
+  hasQueried?: boolean;
 }
 
 function toIso(localValue: string): string | undefined {
@@ -16,7 +19,14 @@ function toIso(localValue: string): string | undefined {
 
 const fieldClass = 'flex flex-col gap-0.5 text-text-secondary';
 
-export function HistoryQuery({ controllerId, onQuery, frames, count, isLoading }: Props): JSX.Element {
+export function HistoryQuery({
+  controllerId,
+  onQuery,
+  frames,
+  count,
+  isLoading,
+  hasQueried = false,
+}: Props): JSX.Element {
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [limit, setLimit] = useState(1000);
@@ -57,6 +67,16 @@ export function HistoryQuery({ controllerId, onQuery, frames, count, isLoading }
       <p className="history-query__count text-text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
         {isLoading ? 'Loading…' : `${count} frame(s)`}
       </p>
+      {isLoading && (
+        <LoadingState testId="history-loading" label="Querying history…" bars={3} />
+      )}
+      {!isLoading && hasQueried && frames.length === 0 && (
+        <EmptyState
+          testId="history-empty"
+          message="No history for this range."
+          hint="Widen the start/end window or raise the limit."
+        />
+      )}
       {frames.length > 0 && (
         <table className="history-query__table numeric w-full border-collapse text-left" style={{ fontSize: 'var(--text-xs)' }}>
           <thead className="text-text-secondary">

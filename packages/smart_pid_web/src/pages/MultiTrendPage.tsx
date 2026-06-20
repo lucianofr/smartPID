@@ -73,6 +73,7 @@ export function MultiTrendPage(): JSX.Element {
             frames={history.frames}
             count={history.count}
             isLoading={history.isLoading}
+            hasQueried={historyParams !== null}
           />
           <ExportButton request={exportRequest} />
         </aside>
