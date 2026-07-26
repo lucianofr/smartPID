@@ -69,7 +69,13 @@ export const endpoints = {
 
   opcuaStatus: () => api.get<OpcuaStatus>('/opcua/status'),
 
-  simulatorStatus: () => api.get<SimulatorStatus>('/simulator/status'),
+  /**
+   * Admin-only by backend design (phase-0 RBAC classification). A `user`
+   * session is refused here on every realtime resync, which is normal — so the
+   * global "Sem permissão" toast is suppressed. Callers still receive the 403.
+   */
+  simulatorStatus: () =>
+    api.get<SimulatorStatus>('/simulator/status', { silentForbidden: true }),
 
   /** Bulk acknowledgement behind the footer's `ACK ALL` (§6.9). */
   ackAllAlarms: () => api.post<Record<string, unknown>>('/alarms/ack-all'),

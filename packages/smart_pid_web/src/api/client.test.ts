@@ -89,6 +89,30 @@ describe('api core', () => {
     expect(onForbidden).toHaveBeenCalledTimes(1);
   });
 
+  it('suppresses onForbidden when silentForbidden is set, but still throws', async () => {
+    const onUnauthorized = vi.fn();
+    const onForbidden = vi.fn();
+    setAuthHooks({ getToken: () => 't', onUnauthorized, onForbidden });
+    fetchMock.mockResolvedValueOnce(json({ detail: 'Admin privileges required' }, 403));
+    const err = (await api
+      .get('/simulator/status', { silentForbidden: true })
+      .catch((e: unknown) => e)) as ApiError;
+    // The caller still sees the refusal ...
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.kind).toBe('forbidden');
+    // ... but no global toast / `/auth/me` refetch is triggered.
+    expect(onForbidden).not.toHaveBeenCalled();
+  });
+
+  it('never silences 401 even when silentForbidden is set', async () => {
+    const onUnauthorized = vi.fn();
+    const onForbidden = vi.fn();
+    setAuthHooks({ getToken: () => 't', onUnauthorized, onForbidden });
+    fetchMock.mockResolvedValueOnce(json({ detail: 'expired' }, 401));
+    await api.get('/simulator/status', { silentForbidden: true }).catch(() => {});
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
   it('maps transport failure to kind network, status 0', async () => {
     fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
     const err = (await api.get('/controllers').catch((e: unknown) => e)) as ApiError;

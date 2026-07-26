@@ -20,6 +20,17 @@ export interface ValidationIssue {
   type: string;
 }
 
+/** Per-call transport options. */
+export interface RequestOptions {
+  /**
+   * Suppress the global §11 403 side effects (toast + `/auth/me` refetch) for a
+   * route that is admin-only BY DESIGN, where a `user` session being refused is
+   * the expected outcome rather than an error worth surfacing. The ApiError is
+   * still thrown — the caller must still handle it. Never silences 401.
+   */
+  silentForbidden?: boolean;
+}
+
 export function classifyStatus(status: number): ApiErrorKind {
   if (status === 401) return 'unauthorized';
   if (status === 403) return 'forbidden';
@@ -86,9 +97,18 @@ async function toApiError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, kind, detail, fields);
 }
 
-function dispatchAuthSideEffects(err: ApiError): void {
+/**
+ * §11 global side effects. `silentForbidden` opts a single call out of the
+ * 403 branch: some routes are admin-only BY DESIGN and a `user` session is
+ * expected to be refused (e.g. the simulator-status probe the realtime resync
+ * runs on every reconnect). Those callers already handle the refusal locally;
+ * without this opt-out the transport would raise a "Sem permissão" toast and a
+ * wasted `/auth/me` refetch on every reconnect for a perfectly normal session.
+ * 401 is never silenced — an expired token must always reach the logout path.
+ */
+function dispatchAuthSideEffects(err: ApiError, opts?: RequestOptions): void {
   if (err.kind === 'unauthorized') hooks.onUnauthorized?.(err);
-  if (err.kind === 'forbidden') hooks.onForbidden?.(err);
+  if (err.kind === 'forbidden' && !opts?.silentForbidden) hooks.onForbidden?.(err);
 }
 
 function authHeaders(): Record<string, string> {
@@ -96,7 +116,7 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-async function run(path: string, init: RequestInit): Promise<Response> {
+async function run(path: string, init: RequestInit, opts?: RequestOptions): Promise<Response> {
   let res: Response;
   try {
     res = await fetch(`${BASE}${path}`, init);
@@ -105,26 +125,35 @@ async function run(path: string, init: RequestInit): Promise<Response> {
   }
   if (!res.ok) {
     const err = await toApiError(res);
-    dispatchAuthSideEffects(err);
+    dispatchAuthSideEffects(err, opts);
     throw err;
   }
   return res;
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  opts?: RequestOptions,
+): Promise<T> {
   const headers: Record<string, string> = { ...authHeaders() };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const res = await run(path, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const res = await run(
+    path,
+    {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+    opts,
+  );
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>('GET', path),
+  get: <T>(path: string, opts?: RequestOptions) => request<T>('GET', path, undefined, opts),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
