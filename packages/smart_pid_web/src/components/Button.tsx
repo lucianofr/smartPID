@@ -1,0 +1,43 @@
+import * as React from 'react';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { cn } from '@/lib/utils';
+
+/**
+ * Quiet instrument chrome (§6.1): secondary (outline) is the default; primary
+ * (accent) is opt-in; destructive uses --alarm-crit — the ONE sanctioned
+ * process-color exception for confirm affordances (§6.3).
+ */
+export const buttonVariants = cva(
+  cn(
+    'inline-flex min-h-11 min-w-11 select-none items-center justify-center gap-2 whitespace-nowrap',
+    'rounded-control font-ui font-medium outline-none transition-colors',
+    'focus-visible:ring-2 focus-visible:ring-focus-ring',
+    'disabled:pointer-events-none disabled:opacity-50',
+  ),
+  {
+    variants: {
+      variant: {
+        primary: 'bg-accent text-on-accent hover:bg-accent-hover active:bg-accent-sunk',
+        secondary: 'border border-rule-strong bg-surface text-text hover:bg-surface-sunk',
+        ghost: 'text-text-soft hover:bg-surface-sunk hover:text-text',
+        destructive: 'bg-alarm-crit text-on-alarm hover:opacity-90',
+      },
+      size: {
+        md: 'px-4 py-2 text-sm',
+        sm: 'px-3 py-1 text-xs',
+      },
+    },
+    defaultVariants: { variant: 'secondary', size: 'md' },
+  },
+);
+
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {}
+
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, type = 'button', ...props }, ref) => (
+    <button ref={ref} type={type} className={cn(buttonVariants({ variant, size }), className)} {...props} />
+  ),
+);
+Button.displayName = 'Button';

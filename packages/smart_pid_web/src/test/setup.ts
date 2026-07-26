@@ -26,6 +26,9 @@ if (typeof HTMLCanvasElement !== 'undefined') {
       measureText: () => ({ width: 0 }),
       fillText: () => {},
       arc: () => {},
+      rotate: () => {},
+      ellipse: () => {},
+      createLinearGradient: () => ({ addColorStop: () => {} }),
       lineWidth: 1,
       strokeStyle: '',
       fillStyle: '',
@@ -43,7 +46,14 @@ if (!('ResizeObserver' in globalThis)) {
   (globalThis as unknown as { ResizeObserver: typeof ResizeObserverStub }).ResizeObserver =
     ResizeObserverStub;
 }
-
+// jsdom lacks Path2D; uPlot constructs one during series path build. Stub a
+// no-op constructor so Trend's drawHalo path-read does not throw async.
+if (typeof globalThis.Path2D === 'undefined') {
+  (globalThis as unknown as { Path2D: new () => unknown }).Path2D = class {
+    constructor() {}
+  };
+}
+// jsdom lacks ResizeObserver; @tanstack/react-virtual and Trend need one.
 // jsdom lacks matchMedia; reduced-motion checks need it.
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>
