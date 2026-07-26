@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 /* eslint-disable no-undef -- Node build script: process/console are Node globals,
    and the flat ESLint config only declares browser globals for src/** + e2e/**. */
-// Perf budget gate (§12): measure gzip size of the app-page entry JS + CSS
-// produced by `vite build`, fail on budget breach or regression vs baseline.
+// Perf budget gate (§12): gzip size of the app-page entry JS + CSS produced by
+// `vite build`, plus the RAW sum of dist/assets/*.woff2 (§6.2 font budget —
+// woff2 is pre-compressed, raw ≈ transfer). Fails on budget breach or
+// regression vs the committed baseline.
 //
-// Budgets (gzip): app-page JS <= 300 KB, CSS <= 50 KB.
+// Budgets: app-page JS <= 300 KB gzip, CSS <= 50 KB gzip, fonts <= 160 KB raw.
 // Run AFTER `vite build`:  node scripts/check-bundle.mjs
 //   --update-baseline   rewrite bundle-baseline.json to current sizes
 //
 // Zero runtime deps: gzip via Node's built-in zlib.
 
 import { gzipSync } from 'node:zlib';
-import { readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
@@ -23,7 +25,7 @@ const manifestPath = join(distDir, '.vite', 'manifest.json');
 const baselinePath = join(webRoot, 'bundle-baseline.json');
 
 const KB = 1024;
-const BUDGET = { jsKb: 300, cssKb: 50 };
+const BUDGET = { jsKb: 300, cssKb: 50, fontsKb: 160 };
 // Allowed growth over the committed baseline before a regression fails CI.
 const REGRESSION_TOLERANCE_KB = 10;
 
@@ -76,14 +78,22 @@ if (!entryJs) {
 const jsKb = gzipKb(entryJs);
 const cssKb = entryCss ? gzipKb(entryCss) : 0;
 
+// §6.2 font budget: sum RAW dist/assets/*.woff2 (woff2 does not gzip further).
+const fontFiles = existsSync(assetsDir)
+  ? readdirSync(assetsDir).filter((f) => f.endsWith('.woff2'))
+  : [];
+const fontsKb = fontFiles.reduce((sum, f) => sum + statSync(join(assetsDir, f)).size, 0) / KB;
+
 const current = {
   appPageJsGzipKb: Number(jsKb.toFixed(1)),
   cssGzipKb: Number(cssKb.toFixed(1)),
+  fontsRawKb: Number(fontsKb.toFixed(1)),
 };
 
-console.log('Bundle budget check (gzip):');
-console.log(`  app-page JS: ${current.appPageJsGzipKb} KB  (budget ${BUDGET.jsKb} KB)`);
-console.log(`  CSS:         ${current.cssGzipKb} KB  (budget ${BUDGET.cssKb} KB)`);
+console.log('Bundle budget check:');
+console.log(`  app-page JS: ${current.appPageJsGzipKb} KB gzip  (budget ${BUDGET.jsKb} KB)`);
+console.log(`  CSS:         ${current.cssGzipKb} KB gzip  (budget ${BUDGET.cssKb} KB)`);
+console.log(`  fonts:       ${current.fontsRawKb} KB raw (${fontFiles.length} woff2)  (budget ${BUDGET.fontsKb} KB)`);
 
 if (updateBaseline) {
   writeFileSync(baselinePath, `${JSON.stringify(current, null, 2)}\n`);
@@ -108,12 +118,17 @@ if (current.appPageJsGzipKb > BUDGET.jsKb) {
 if (current.cssGzipKb > BUDGET.cssKb) {
   errors.push(`CSS ${current.cssGzipKb} KB exceeds budget ${BUDGET.cssKb} KB`);
 }
+if (current.fontsRawKb > BUDGET.fontsKb) {
+  errors.push(`fonts ${current.fontsRawKb} KB exceed the §6.2 budget ${BUDGET.fontsKb} KB`);
+}
 
 const jsDelta = current.appPageJsGzipKb - baseline.appPageJsGzipKb;
 const cssDelta = current.cssGzipKb - baseline.cssGzipKb;
+const fontsDelta = current.fontsRawKb - (baseline.fontsRawKb ?? 0);
 console.log(
   `  delta vs baseline: JS ${jsDelta >= 0 ? '+' : ''}${jsDelta.toFixed(1)} KB, ` +
-    `CSS ${cssDelta >= 0 ? '+' : ''}${cssDelta.toFixed(1)} KB`,
+    `CSS ${cssDelta >= 0 ? '+' : ''}${cssDelta.toFixed(1)} KB, ` +
+    `fonts ${fontsDelta >= 0 ? '+' : ''}${fontsDelta.toFixed(1)} KB`,
 );
 
 if (jsDelta > REGRESSION_TOLERANCE_KB) {
@@ -125,6 +140,12 @@ if (jsDelta > REGRESSION_TOLERANCE_KB) {
 if (cssDelta > REGRESSION_TOLERANCE_KB) {
   errors.push(
     `CSS grew ${cssDelta.toFixed(1)} KB over baseline ` +
+      `(> ${REGRESSION_TOLERANCE_KB} KB tolerance). Run with --update-baseline if intentional.`,
+  );
+}
+if (fontsDelta > REGRESSION_TOLERANCE_KB) {
+  errors.push(
+    `fonts grew ${fontsDelta.toFixed(1)} KB over baseline ` +
       `(> ${REGRESSION_TOLERANCE_KB} KB tolerance). Run with --update-baseline if intentional.`,
   );
 }
