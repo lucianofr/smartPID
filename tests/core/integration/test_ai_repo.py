@@ -11,10 +11,13 @@ async def repo(tmp_path):
     r = SQLiteRepository(tmp_path / "test.spid")
     await r.initialize()
     # Need a controller row for FK reference
-    await r.db.execute(
-        "INSERT INTO Controladores (id, nome) VALUES (1, 'Test')"
-    )
-    await r.db.commit()
+    from sqlalchemy import text
+
+    async with r.session_factory() as session:
+        await session.execute(
+            text("INSERT INTO Controladores (id, nome) VALUES (1, 'Test')")
+        )
+        await session.commit()
     yield r
 
 
@@ -23,7 +26,7 @@ class TestAIModelRepo:
     async def test_save_and_get_model_metadata(self, repo):
         from smart_pid_core.adapters.outbound.ai_repo import AIRepository
 
-        ai_repo = AIRepository(repo)
+        ai_repo = AIRepository(repo.session_factory)
         model_id = await ai_repo.save_model_metadata(
             controller_id=1,
             algorithm="SAC",
@@ -42,7 +45,7 @@ class TestAIModelRepo:
     async def test_log_tuning_action(self, repo):
         from smart_pid_core.adapters.outbound.ai_repo import AIRepository
 
-        ai_repo = AIRepository(repo)
+        ai_repo = AIRepository(repo.session_factory)
         await ai_repo.log_tuning_action(
             controller_id=1,
             engine="FUZZY",

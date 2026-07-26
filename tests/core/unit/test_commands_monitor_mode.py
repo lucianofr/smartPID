@@ -47,8 +47,8 @@ async def monitor_deps(tmp_path):
     user_db_path = tmp_path / "users.db"
     user_repo = UserRepository(user_db_path)
     await user_repo.initialize()
-    alarm_repo = AlarmRepository(repo)
-    audit_repo = AuditRepository(repo)
+    alarm_repo = AlarmRepository(repo.session_factory)
+    audit_repo = AuditRepository(repo.session_factory)
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
     loop_manager = LoopManager(bus=bus, execution_mode="monitor")
@@ -160,8 +160,8 @@ class TestApplyTuning:
         user_db_path = tmp_path / "users.db"
         user_repo = UserRepository(user_db_path)
         await user_repo.initialize()
-        alarm_repo = AlarmRepository(repo)
-        audit_repo = AuditRepository(repo)
+        alarm_repo = AlarmRepository(repo.session_factory)
+        audit_repo = AuditRepository(repo.session_factory)
         bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
         bus.start()
         loop_manager = LoopManager(bus=bus, execution_mode="execute")
