@@ -90,3 +90,25 @@ export type ProjectMeta = components['schemas']['ProjectResponse'];
 export type UserRow = components['schemas']['UserResponse'];
 export type UserCreateBody = components['schemas']['UserCreate'];
 export type UserUpdateBody = components['schemas']['UserUpdate'];
+
+/** GET /system/status — health check, no auth (routers/system.py). */
+export type SystemStatusResponse = components['schemas']['SystemStatusResponse'];
+
+/**
+ * GET /alarms/ai-history returns a bare `list[dict]` (routers/alarms.py:56), so
+ * the OpenAPI dump carries no schema for it. Hand-mirrored from the SELECT in
+ * ai_repo.py:142-150 — note it exposes `controller_name` and NOT the `approved`
+ * flag that the per-loop `AITuningLogEntry` schema carries.
+ */
+export interface AiTuningLogRow {
+  id: number;
+  controller_id: number;
+  controller_name: string | null;
+  timestamp: string;
+  engine: string;
+  ki_before: number | null;
+  ki_after: number | null;
+  objective: string | null;
+  /** Objective metric recorded at that tuning. An error index: lower is better. */
+  metric: number | null;
+}

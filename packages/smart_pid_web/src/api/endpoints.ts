@@ -1,6 +1,7 @@
 import { api } from './client';
 import type {
   AiStatus,
+  AiTuningLogRow,
   AlarmConfigResponse,
   AlarmRow,
   AlarmThreshold,
@@ -18,6 +19,7 @@ import type {
   ProjectMeta,
   SimulatorStatus,
   StatsResponse,
+  SystemStatusResponse,
   TokenResponse,
   UserCreateBody,
   UserRow,
@@ -41,6 +43,14 @@ export interface HistoryParams {
   start?: string;
   end?: string;
   limit?: number;
+}
+
+export interface AiTuningHistoryParams {
+  /** ISO-8601 — both bounds are REQUIRED by the route (alarms.py:62-63). */
+  start: string;
+  end: string;
+  /** Narrow to one loop; omitted means every controller. */
+  controllerId?: number;
 }
 
 export const endpoints = {
@@ -180,4 +190,16 @@ export const endpoints = {
 
   /** Soft deactivation — returns the updated row, not 204. */
   deactivateUser: (userId: number) => api.delete<UserRow>(`/users/${userId}`),
+
+  // ---- phase 9 · executive dashboard ----
+
+  /** Backend health snapshot. Unauthenticated by design (routers/system.py). */
+  systemStatus: () => api.get<SystemStatusResponse>('/system/status'),
+
+  /** AI tuning log over a window — the only before/after evidence the backend keeps. */
+  aiTuningHistory: (params: AiTuningHistoryParams) => {
+    const q = new URLSearchParams({ start: params.start, end: params.end });
+    if (params.controllerId !== undefined) q.set('controller_id', String(params.controllerId));
+    return api.get<AiTuningLogRow[]>(`/alarms/ai-history?${q.toString()}`);
+  },
 };

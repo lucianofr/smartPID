@@ -29,4 +29,8 @@ export const queryKeys = {
   projects: ['projects', 'list'] as const,
   /** Admin-only user roster (phase 10). */
   users: ['users'] as const,
+  /** Backend health snapshot behind the executive dashboard (phase 9). */
+  systemStatus: ['system', 'status'] as const,
+  /** AI tuning log — keyed by the whole executive window (phase 9). */
+  aiTuningHistory: (window: object) => ['ai', 'tuning-history', window] as const,
 };
