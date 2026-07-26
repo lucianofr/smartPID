@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import msgpack
@@ -18,7 +19,7 @@ async def setup(tmp_path):
     repo = SQLiteRepository(db_path)
     await repo.initialize()
     historian = SQLiteHistorian(repo.session_factory)  # engine A — used by the TEST to query
-    bus = EventBus()
+    bus = EventBus(url_prefix=f"inproc://test_db_worker_{uuid.uuid4().hex[:8]}")
     bus.start()
     yield bus, historian, repo
     bus.stop()

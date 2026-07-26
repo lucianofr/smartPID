@@ -1,4 +1,6 @@
 """Tests for LoopManager in monitor mode."""
+import uuid
+
 import pytest
 
 from smart_pid_core.application.event_bus import EventBus
@@ -10,7 +12,7 @@ from smart_pid_domain.models.controller import Controller
 
 @pytest.fixture
 def bus():
-    b = EventBus()
+    b = EventBus(url_prefix=f"inproc://test_loop_manager_m_{uuid.uuid4().hex[:8]}")
     b.start()
     yield b
     b.stop()
