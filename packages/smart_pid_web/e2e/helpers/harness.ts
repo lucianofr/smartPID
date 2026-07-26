@@ -66,6 +66,20 @@ function controllerPayload(loop: HarnessLoop): Record<string, unknown> {
     pv_scale: { eu_min: loop.euMin ?? 0, eu_max: loop.euMax ?? 100, unit: loop.unit ?? '' },
     out_scale: { eu_min: 0, eu_max: 100, unit: '%' },
     permitted_modes: ['MAN', 'AUTO'],
+    sp_lo_lim: loop.euMin ?? 0,
+    sp_hi_lim: loop.euMax ?? 100,
+    process_speed: 'MEDIUM',
+    ai_config: {
+      engine: 'FUZZY',
+      objective: 'SP_TRACKING',
+      dead_time_l: 1,
+      limit_min: 0.1,
+      limit_max: 100,
+      rl_fallback_kp: 0.6,
+      rl_fallback_kd: 0.2,
+      rl_learning_rate: 0.0003,
+      rl_train_interval: 32,
+    },
     optimization_enabled: false,
   };
 }

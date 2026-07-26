@@ -24,10 +24,14 @@ export const tuningRecommendationKey = (controllerId: number) =>
  * Optimizer state. `queryKeys.aiStatus` is the key the §7 resync primes, so the
  * panel shows the resynced status without a second fetch.
  */
-export function useAiStatus(controllerId: number): UseQueryResult<AiStatus, ApiError> {
+export function useAiStatus(
+  controllerId: number,
+  enabled = true,
+): UseQueryResult<AiStatus, ApiError> {
   return useQuery<AiStatus, ApiError>({
     queryKey: queryKeys.aiStatus(controllerId),
     queryFn: () => getAiStatus(controllerId),
+    enabled,
     // 404 = the loop has no AI worker. A settled state, not a transient failure.
     retry: false,
   });
@@ -35,10 +39,12 @@ export function useAiStatus(controllerId: number): UseQueryResult<AiStatus, ApiE
 
 export function useTuningRecommendation(
   controllerId: number,
+  enabled = true,
 ): UseQueryResult<TuningRecommendation, ApiError> {
   return useQuery<TuningRecommendation, ApiError>({
     queryKey: tuningRecommendationKey(controllerId),
     queryFn: () => getTuningRecommendation(controllerId),
+    enabled,
     // 404 = nothing pending. Same reasoning as above.
     retry: false,
   });

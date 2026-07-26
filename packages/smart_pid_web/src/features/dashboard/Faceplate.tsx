@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { endpoints } from '@/api/endpoints';
 import { queryKeys } from '@/api/queryKeys';
@@ -6,11 +6,12 @@ import type { ControllerMode } from '@/api/types';
 import { AnalogBar } from '@/components/AnalogBar';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
-import { Input } from '@/components/Field';
 import { Readout } from '@/components/Readout';
 import { Slider } from '@/components/Slider';
 import { toast } from '@/components/Toast';
-import { useCan } from '@/auth/useCan';
+import { AiPanel } from '@/features/loop-config/AiPanel';
+import { CardControls } from '@/features/loop-config/CardControls';
+import type { Range } from '@/features/loop-config/types';
 import { formatPercent } from '@/lib/format';
 import type { Scale } from '@/lib/scale';
 import type { StatsData, StatusData } from '@/lib/envelope';
@@ -24,6 +25,8 @@ export interface FaceplateProps {
   description?: string;
   scale: Scale;
   decimals?: number;
+  /** Loop SP limits (`sp_lo_lim`/`sp_hi_lim`); omit to check finiteness only. */
+  spRange?: Range;
 }
 
 /** Operator modes offered on the faceplate; the rest of the enum is config-only. */
@@ -31,28 +34,40 @@ const OPERATOR_MODES: readonly ControllerMode[] = ['AUTO', 'MAN'];
 
 /**
  * Fixed ~320 px loop faceplate (§6.9). Both roles keep AUTO/MAN, setpoint and
- * manual output; only `tuning.edit` sees `Apply tuning` — the shorter variant
- * is a designed state, not a hole. The backend re-enforces all of it.
+ * manual output; only an admin gets the AI panel (and the `Apply tuning` it
+ * owns) — the shorter variant is a designed state, not a hole. The backend
+ * re-enforces all of it.
+ *
+ * SP/CO entry is `CardControls`, mounted here rather than restated: the loop
+ * must not offer the same operator two setpoint boxes on one screen.
  */
-export function Faceplate({ controllerId, tag, description, scale, decimals = 1 }: FaceplateProps) {
+export function Faceplate({
+  controllerId,
+  tag,
+  description,
+  scale,
+  decimals = 1,
+  spRange,
+}: FaceplateProps) {
   const status = useRealtime<StatusData>(controllerId, 'status');
   const stats = useRealtime<StatsData>(controllerId, 'stats');
-  const canTune = useCan('tuning.edit');
   const queryClient = useQueryClient();
 
-  const spId = useId();
-  const [spDraft, setSpDraft] = useState('');
   const [coDraft, setCoDraft] = useState(0);
 
   const data = status.last?.data ?? null;
   const mode = data?.mode ?? '—';
   const isManual = mode === 'MAN';
 
-  // The manual slider tracks the live CO until the operator grabs it.
+  // The manual slider tracks the live CO until the operator grabs it, and goes
+  // back to tracking whenever the loop leaves MAN.
   const [coTouched, setCoTouched] = useState(false);
   useEffect(() => {
     if (!coTouched && data !== null) setCoDraft(data.co.value);
   }, [coTouched, data]);
+  useEffect(() => {
+    if (!isManual) setCoTouched(false);
+  }, [isManual]);
 
   const invalidate = (): void => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.controllers });
@@ -66,35 +81,11 @@ export function Faceplate({ controllerId, tag, description, scale, decimals = 1 
     onSuccess: invalidate,
     onError: onCommandError,
   });
-  const spCmd = useMutation({
-    mutationFn: (value: number) => endpoints.setSetpoint(controllerId, value),
-    onSuccess: invalidate,
-    onError: onCommandError,
-  });
-  const coCmd = useMutation({
-    mutationFn: (value: number) => endpoints.setOutput(controllerId, value),
-    onSuccess: () => {
-      setCoTouched(false);
-      invalidate();
-    },
-    onError: onCommandError,
-  });
-  const tuningCmd = useMutation({
-    mutationFn: () => endpoints.applyTuning(controllerId),
-    onSuccess: () => {
-      toast({ title: 'Sintonia aplicada', description: `Malha ${tag}` });
-      invalidate();
-    },
-    onError: onCommandError,
-  });
-
-  const spValue = Number(spDraft);
-  const spValid = spDraft.trim() !== '' && Number.isFinite(spValue);
 
   return (
     <aside
       aria-label={`Faceplate ${tag}`}
-      className="flex w-full shrink-0 flex-col gap-3 border-rule bg-surface p-3 lg:w-80 lg:border-l"
+      className="flex w-full shrink-0 flex-col gap-3 border-rule bg-surface p-3 lg:w-80 lg:overflow-y-auto lg:border-l"
     >
       <header className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -162,24 +153,12 @@ export function Faceplate({ controllerId, tag, description, scale, decimals = 1 
         ))}
       </div>
 
-      <div className="flex items-end gap-2">
-        <span className="flex min-w-0 flex-1 flex-col gap-1">
-          <label htmlFor={spId} className="text-2xs font-medium uppercase tracking-wider text-text-soft">
-            Setpoint
-          </label>
-          <Input
-            id={spId}
-            type="number"
-            className="px-2 py-1 text-sm"
-            placeholder={String(data?.sp.value ?? '')}
-            value={spDraft}
-            onChange={(e) => setSpDraft(e.target.value)}
-          />
-        </span>
-        <Button disabled={!spValid || spCmd.isPending} onClick={() => spCmd.mutate(spValue)}>
-          Set setpoint
-        </Button>
-      </div>
+      <CardControls
+        controllerId={controllerId}
+        mode={mode}
+        spRange={spRange}
+        controls={['setpoint']}
+      />
 
       <div className="flex flex-col gap-1">
         <span className="flex items-baseline justify-between">
@@ -203,24 +182,20 @@ export function Faceplate({ controllerId, tag, description, scale, decimals = 1 
             setCoDraft(v);
           }}
         />
-        <Button
-          className="self-end"
-          disabled={!isManual || coCmd.isPending}
-          onClick={() => coCmd.mutate(coDraft)}
-        >
-          Set output
-        </Button>
+        {/* Numeric twin of the slider: same draft, one `Set output` write. */}
+        <CardControls
+          controllerId={controllerId}
+          mode={mode}
+          controls={['output']}
+          outputValue={coDraft}
+          onOutputValueChange={(v) => {
+            setCoTouched(true);
+            setCoDraft(v);
+          }}
+        />
       </div>
 
-      {canTune ? (
-        <Button
-          variant="secondary"
-          disabled={tuningCmd.isPending}
-          onClick={() => tuningCmd.mutate()}
-        >
-          Apply tuning
-        </Button>
-      ) : null}
+      <AiPanel controllerId={controllerId} tag={tag} />
     </aside>
   );
 }
