@@ -33,9 +33,7 @@ if (typeof HTMLCanvasElement !== 'undefined') {
     })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
 }
 
-// jsdom lacks ResizeObserver; @tanstack/react-virtual instantiates one to track the
-// scroll element. A no-op stand-in keeps the virtualizer happy (size is fed via the
-// element's offsetWidth/offsetHeight, which AlarmPanel.test stubs to a real viewport).
+// jsdom lacks ResizeObserver; @tanstack/react-virtual and Trend need one.
 if (!('ResizeObserver' in globalThis)) {
   class ResizeObserverStub {
     observe(): void {}
@@ -46,7 +44,7 @@ if (!('ResizeObserver' in globalThis)) {
     ResizeObserverStub;
 }
 
-// jsdom lacks matchMedia; ThemeProvider/reduced-motion checks need it.
+// jsdom lacks matchMedia; reduced-motion checks need it.
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>
     ({
@@ -59,4 +57,14 @@ if (!window.matchMedia) {
       removeListener: () => {},
       dispatchEvent: () => false,
     }) as unknown as MediaQueryList;
+}
+
+// Radix Select/DropdownMenu call these DOM APIs jsdom does not implement.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => {};
+  Element.prototype.releasePointerCapture = () => {};
 }
