@@ -1,6 +1,7 @@
 """Project lifecycle orchestration — new, open, import, download, delete."""
 from __future__ import annotations
 
+import asyncio
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
     from smart_pid_core.application.daemon_state import DaemonState
     from smart_pid_core.application.loop_manager import LoopManager
+    from smart_pid_core.application.workers.db_worker import DBWorker
 
 # Project names are restricted to a safe, portable character set. This blocks
 # path traversal (``..``, ``/``, ``\``), absolute paths, NUL bytes and other
@@ -33,6 +35,7 @@ class ProjectService:
         simulator_adapter: object | None = None,
         daemon_state: DaemonState | None = None,
         opcua_adapter: object | None = None,
+        db_worker: DBWorker | None = None,
     ) -> None:
         self._repo = repo
         self._loop_manager = loop_manager
@@ -40,6 +43,7 @@ class ProjectService:
         self._simulator_adapter = simulator_adapter
         self._daemon_state = daemon_state
         self._opcua_adapter = opcua_adapter
+        self._db_worker = db_worker
 
     @property
     def projects_dir(self) -> Path:
@@ -100,13 +104,14 @@ class ProjectService:
         dest = self._safe_project_path(name)
         if dest.exists():
             raise FileExistsError(f"Project '{name}' already exists")
-        self._loop_manager.stop_all()
         self._stop_simulator()
         self._stop_opcua()
+        await self._stop_db_worker()
         await self._repo.reopen(dest)
         await self._repo.set_meta("nome", name)
         if self._daemon_state:
             self._daemon_state.set_active_project(name)
+        self._start_db_worker()
         return ProjectResponse(
             name=name,
             path=dest.name,
@@ -118,14 +123,15 @@ class ProjectService:
         path = self._safe_project_path(name)
         if not path.exists():
             raise FileNotFoundError(f"Project '{name}' not found")
-        self._loop_manager.stop_all()
         self._stop_simulator()
+        await self._stop_db_worker()
         await self._repo.reopen(path)
         await self._load_simulator_configs()
         await self._start_control_loops()
         await self._load_opcua_endpoint()
         if self._daemon_state:
             self._daemon_state.set_active_project(name)
+        self._start_db_worker()
         return await self.get_current()
 
     async def import_project(self, name: str, data: bytes) -> ProjectResponse:
@@ -134,19 +140,25 @@ class ProjectService:
         if dest.exists():
             raise FileExistsError(f"Project '{name}' already exists")
         dest.write_bytes(data)
-        self._loop_manager.stop_all()
         self._stop_simulator()
+        await self._stop_db_worker()
         await self._repo.reopen(dest)
         await self._load_simulator_configs()
         await self._start_control_loops()
         await self._load_opcua_endpoint()
         if self._daemon_state:
             self._daemon_state.set_active_project(name)
+        self._start_db_worker()
         return await self.get_current()
 
-    def download_path(self) -> Path:
-        """Return the filesystem path of the active project for download."""
-        return self._repo._db_path
+    async def prepare_download(self) -> Path:
+        """Checkpoint engine A, then return the live .spid path for streaming.
+
+        GET /project/download must never stream a file whose recent writes
+        still sit in the -wal sibling (spec §10).
+        """
+        await self._repo.checkpoint()
+        return self._repo.db_path
 
     async def delete_project(self, name: str) -> None:
         """Delete a project file. Cannot delete the active project."""
@@ -215,3 +227,20 @@ class ProjectService:
         """Stop the OPC-UA adapter if present."""
         if self._opcua_adapter is not None and hasattr(self._opcua_adapter, "stop"):
             self._opcua_adapter.stop()
+
+    async def _stop_db_worker(self) -> None:
+        """Drain engine B before a project switch.
+
+        stop() joins the worker thread; its finally block flushed pending
+        frames into the OLD file and disposed engine B, so no pooled handle
+        survives on the old path. Run in a thread so the join never blocks
+        the event loop.
+        """
+        if self._db_worker is not None:
+            await asyncio.to_thread(self._db_worker.stop)
+
+    def _start_db_worker(self) -> None:
+        """Restart the worker: new thread, new loop, new engine B on the CURRENT path."""
+        if self._db_worker is not None:
+            self._db_worker.start()
+

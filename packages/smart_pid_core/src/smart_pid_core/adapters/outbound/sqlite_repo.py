@@ -779,8 +779,29 @@ class SQLiteRepository:
     # Project lifecycle
     # ------------------------------------------------------------------
 
+    async def checkpoint(self) -> None:
+        """PRAGMA wal_checkpoint(TRUNCATE) on engine A.
+
+        Folds the WAL into the main file and truncates it to zero bytes, so
+        the bare .spid can be streamed (download) or the file abandoned
+        (reopen) without losing tail writes. Runs on the raw driver
+        connection: PRAGMA must not sit inside an autobegun transaction.
+        """
+        async with self.engine.connect() as conn:
+            raw = await conn.get_raw_connection()
+            await raw.driver_connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
     async def reopen(self, db_path: Path) -> None:
-        """Close the current DB and open a new one at *db_path*."""
+        """Switch the active .spid — spec §10 lifecycle, engine-A half.
+
+        Order: (1) wal_checkpoint(TRUNCATE) on A, (2) dispose A — no pooled
+        handle survives and SQLite removes the -wal/-shm siblings on the last
+        close, (3) re-create the engine against the new path and re-run
+        bootstrap + back-fill. Engine B's half is handled by ProjectService,
+        which stops the DB worker (drain + dispose on its own loop) BEFORE
+        calling this and restarts it after.
+        """
+        await self.checkpoint()
         await self.engine.dispose()
         self._db_path = db_path
         await self.initialize()
