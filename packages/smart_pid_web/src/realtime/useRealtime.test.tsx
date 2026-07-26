@@ -1,7 +1,7 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createElement, type ReactNode } from 'react';
-import { RealtimeProvider } from './RealtimeProvider';
+import { createElement, useContext, type ReactNode } from 'react';
+import { RealtimeContext, RealtimeProvider, type RealtimeContextValue } from './RealtimeProvider';
 import { useRealtime } from './useRealtime';
 import type { ResyncRunner } from './resync';
 
@@ -315,5 +315,115 @@ describe('§8 resync sequencing (integration)', () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
     expect(MockWS.instances).toHaveLength(3);
+  });
+});
+
+describe('§7 last-frame replay', () => {
+  function deferred() {
+    const calls: Array<{ lastSeenAlarmTs: number | null }> = [];
+    let resolve!: () => void;
+    const runner: ResyncRunner = (ctx) => {
+      calls.push(ctx);
+      return new Promise<void>((res) => {
+        resolve = res;
+      });
+    };
+    return { runner, calls, resolve: () => resolve() };
+  }
+
+  function Probe({ loopId }: { loopId: number }) {
+    const { last } = useRealtime<{ pv: { value: number } }>(loopId, 'status');
+    return createElement('output', null, last === null ? 'none' : String(last.data.pv.value));
+  }
+
+  /** The provider stays mounted across rerenders; only the Probe mounts late. */
+  function tree(show: boolean, resync: ResyncRunner = recordingResync) {
+    return createElement(
+      RealtimeProvider,
+      { token: 'jwt-123', resync, onAuthExpired },
+      show ? createElement(Probe, { loopId: 5 }) : null,
+    );
+  }
+
+  it('hands a late subscriber the cached frame without waiting for the next one', () => {
+    const { rerender } = render(tree(false));
+    act(() => MockWS.instances[0]._open());
+    act(() => MockWS.instances[0]._emit(statusEnv(5, 1, 42)));
+    rerender(tree(true));
+    expect(screen.getByText('42')).toBeInTheDocument();
+  });
+
+  it('scopes the replay to the subscriber loop', () => {
+    const { rerender } = render(tree(false));
+    act(() => MockWS.instances[0]._open());
+    act(() => MockWS.instances[0]._emit(statusEnv(9, 1, 11)));
+    rerender(tree(true));
+    expect(screen.getByText('none')).toBeInTheDocument();
+  });
+
+  it('a resync drops the cache — no pre-resync frame is replayed after reconnect', async () => {
+    vi.useFakeTimers();
+    const d = deferred();
+    const { rerender } = render(tree(false, d.runner));
+    act(() => MockWS.instances[0]._open());
+    act(() => MockWS.instances[0]._emit(statusEnv(5, 1, 42)));
+    act(() => MockWS.instances[0]._close(1006));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    act(() => MockWS.instances[1]._open()); // reconnect → §8 resync
+    await act(async () => {
+      d.resolve();
+      await Promise.resolve();
+    });
+    rerender(tree(true, d.runner)); // same props → provider effect must not remount
+    expect(screen.getByText('none')).toBeInTheDocument();
+  });
+
+  it('replays the post-gap frame after a gap resync, never the pre-gap one', async () => {
+    const d = deferred();
+    const { rerender } = render(tree(false, d.runner));
+    act(() => MockWS.instances[0]._open());
+    act(() => MockWS.instances[0]._emit(statusEnv(5, 1, 10)));
+    act(() => MockWS.instances[0]._emit(statusEnv(5, 5, 50))); // seq 1 → 5: gap
+    expect(d.calls).toHaveLength(1);
+    await act(async () => {
+      d.resolve();
+      await Promise.resolve();
+    });
+    rerender(tree(true, d.runner)); // same props → provider effect must not remount
+    expect(screen.getByText('50')).toBeInTheDocument();
+  });
+
+  it('unsubscribe detaches the handler and the cache holds one frame per key', () => {
+    const captured: RealtimeContextValue[] = [];
+    function Capture() {
+      const ctx = useContext(RealtimeContext);
+      if (ctx) captured.push(ctx);
+      return null;
+    }
+    render(
+      createElement(
+        RealtimeProvider,
+        { token: 'jwt-123', resync: recordingResync, onAuthExpired },
+        createElement(Capture),
+      ),
+    );
+    const ctx = captured[0];
+    act(() => MockWS.instances[0]._open());
+    act(() => MockWS.instances[0]._emit(statusEnv(5, 1)));
+    act(() => MockWS.instances[0]._emit(statusEnv(5, 2)));
+
+    const first: number[] = [];
+    const off = ctx.subscribe('status', (env) => first.push(env.seq));
+    expect(first).toEqual([2]); // one replay of the newest — frames do not pile up
+    off();
+    act(() => MockWS.instances[0]._emit(statusEnv(5, 3)));
+    expect(first).toEqual([2]); // detached: nothing after unsubscribe
+
+    const second: number[] = [];
+    const off2 = ctx.subscribe('status', (env) => second.push(env.seq));
+    expect(second).toEqual([3]); // remount sees the newest frame, exactly once
+    off2();
   });
 });

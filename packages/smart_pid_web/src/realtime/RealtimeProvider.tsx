@@ -15,6 +15,7 @@ import {
   type RealtimeType,
 } from '../lib/envelope';
 import type { ResyncRunner } from './resync';
+import { createFrameCache, frameKey } from './frameCache';
 
 export type ConnectionPhase = 'idle' | 'connecting' | 'resyncing' | 'live' | 'auth-failed';
 
@@ -58,6 +59,9 @@ export function RealtimeProvider({ token, resync, onAuthExpired, children }: Rea
   // status/stats coalesce per (type, loop_id); everything else queues lossless.
   const coalesced = useRef(new Map<string, AnyEnvelope>());
   const lossless = useRef<AnyEnvelope[]>([]);
+  // Last frame per (type, loop_id): a subscriber mounting after a frame arrived
+  // renders it at once instead of blanking until the next one (§7 replay).
+  const frames = useRef(createFrameCache());
 
   const setPhaseBoth = (p: ConnectionPhase): void => {
     phaseRef.current = p;
@@ -68,6 +72,7 @@ export function RealtimeProvider({ token, resync, onAuthExpired, children }: Rea
     const set = subs.current.get(type) ?? new Set<Handler>();
     set.add(handler);
     subs.current.set(type, set);
+    frames.current.replay(type, handler);
     return () => {
       set.delete(handler);
     };
@@ -85,14 +90,16 @@ export function RealtimeProvider({ token, resync, onAuthExpired, children }: Rea
     }
     let cancelled = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    const cache = frames.current; // stable for this effect run; safe in cleanup
 
     const dispatch = (env: AnyEnvelope): void => {
+      cache.put(env);
       subs.current.get(env.type)?.forEach((h) => h(env));
     };
 
     const bufferDuringResync = (env: AnyEnvelope): void => {
       if (env.type === 'status' || env.type === 'stats') {
-        coalesced.current.set(`${env.type}:${env.loop_id ?? 'null'}`, env);
+        coalesced.current.set(frameKey(env), env);
       } else if (lossless.current.length < RESYNC_BUFFER_MAX) {
         lossless.current.push(env);
       }
@@ -109,6 +116,8 @@ export function RealtimeProvider({ token, resync, onAuthExpired, children }: Rea
 
     const runResync = (ws: WebSocket): void => {
       setPhaseBoth('resyncing');
+      // REST becomes the truth again: every cached frame predates the gap.
+      cache.clear();
       resync({ lastSeenAlarmTs: tracker.current.lastSeenTs('alarm') })
         .then(() => {
           if (cancelled || wsRef.current !== ws) return;
@@ -187,6 +196,7 @@ export function RealtimeProvider({ token, resync, onAuthExpired, children }: Rea
       if (reconnectTimer) clearTimeout(reconnectTimer);
       wsRef.current?.close();
       wsRef.current = null;
+      cache.clear();
     };
   }, [token, resync, onAuthExpired]);
 
