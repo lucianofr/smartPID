@@ -27,6 +27,7 @@ from smart_pid_core.adapters.inbound.api.routers import (
     stats,
     system,
     system_events,
+    users,
 )
 from smart_pid_core.adapters.inbound.api.ws.realtime import (
     ConnectionManager,
@@ -172,6 +173,7 @@ def create_app(
     app.include_router(audit.router, prefix="/audit", tags=["audit"])
     app.include_router(system_events.router, prefix="/system-events", tags=["system-events"])
     app.include_router(export.router, prefix="/export", tags=["export"])
+    app.include_router(users.router, prefix="/users", tags=["users"])
 
     # WebSocket realtime route (Backend->Web telemetry fan-out).
     register_realtime_ws(app)
