@@ -6,7 +6,6 @@ import uuid
 import msgpack
 import pytest
 
-from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.workers.db_worker import DBWorker
@@ -18,12 +17,11 @@ async def test_db_worker_persists_ai_log(tmp_path) -> None:
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
-    historian = SQLiteHistorian(repo)
 
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
 
-    worker = DBWorker(bus=bus, historian=historian, flush_interval_s=0.1)
+    worker = DBWorker(bus=bus, repo=repo, flush_interval_s=0.1)
     worker.start()
 
     # Give subscriber time to connect
@@ -51,11 +49,13 @@ async def test_db_worker_persists_ai_log(tmp_path) -> None:
     pub.close()
 
     # Verify in DB
-    async with repo.db.execute(
-        "SELECT controlador_id, motor, ki_antes, ki_depois, objetivo, metrica "
-        "FROM Log_Sintonia_IA WHERE controlador_id = 42"
-    ) as cur:
-        rows = await cur.fetchall()
+    from sqlalchemy import text
+    async with repo.session_factory() as session:
+        result = await session.execute(text(
+            "SELECT controlador_id, motor, ki_antes, ki_depois, objetivo, metrica "
+            "FROM Log_Sintonia_IA WHERE controlador_id = 42"
+        ))
+        rows = result.all()
 
     assert len(rows) == 1
     row = rows[0]
@@ -67,7 +67,7 @@ async def test_db_worker_persists_ai_log(tmp_path) -> None:
     assert row[5] == 0.5  # metrica (gamma)
 
     bus.stop()
-    await repo.db.close()
+    await repo.close()
 
 
 @pytest.mark.asyncio
@@ -76,23 +76,21 @@ async def test_db_worker_ai_log_buffer_empty_noop(tmp_path) -> None:
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
-    historian = SQLiteHistorian(repo)
 
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
 
-    worker = DBWorker(bus=bus, historian=historian, flush_interval_s=0.1)
+    worker = DBWorker(bus=bus, repo=repo, flush_interval_s=0.1)
     worker.start()
 
     import time
     time.sleep(0.2)
     worker.stop()
 
-    async with repo.db.execute(
-        "SELECT COUNT(*) FROM Log_Sintonia_IA"
-    ) as cur:
-        row = await cur.fetchone()
+    from sqlalchemy import text
+    async with repo.session_factory() as session:
+        row = (await session.execute(text("SELECT COUNT(*) FROM Log_Sintonia_IA"))).first()
     assert row[0] == 0
 
     bus.stop()
-    await repo.db.close()
+    await repo.close()

@@ -271,7 +271,7 @@ async def run_daemon(settings: CoreSettings) -> None:
             logger.warning("last_project_not_found", name=last_project)
             daemon_state.set_active_project(None)
 
-    historian = SQLiteHistorian(repo)
+    historian = SQLiteHistorian(repo.session_factory)
     bus = EventBus()
     bus.start()
     model_dir = settings.db_path.parent / "models"
@@ -421,7 +421,7 @@ async def run_daemon(settings: CoreSettings) -> None:
     # I-INT-1: DBWorker — persist telemetry to SQLite
     from smart_pid_core.application.workers.db_worker import DBWorker
 
-    db_worker = DBWorker(bus=bus, historian=historian)
+    db_worker = DBWorker(bus=bus, repo=repo)
     db_worker.start()
     logger.info("db_worker_started")
 

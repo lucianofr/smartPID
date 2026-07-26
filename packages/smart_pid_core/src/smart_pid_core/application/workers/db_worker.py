@@ -10,13 +10,16 @@ from typing import TYPE_CHECKING
 
 import msgpack
 import zmq
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from smart_pid_core.adapters.outbound.db_engine import create_sqlite_engine
+from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
 from smart_pid_domain.enums import InitSubStatus, LimitBits, SignalSeverity
 from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
 from smart_pid_domain.models.telemetry import TelemetryFrame
 
 if TYPE_CHECKING:
-    from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
+    from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
     from smart_pid_core.application.event_bus import EventBus
 
 
@@ -26,12 +29,13 @@ class DBWorker:
     def __init__(
         self,
         bus: EventBus,
-        historian: SQLiteHistorian,
+        repo: SQLiteRepository,
         flush_interval_s: float = 5.0,
         batch_size: int = 500,
     ) -> None:
         self._bus = bus
-        self._historian = historian
+        self._repo = repo
+        self._historian: SQLiteHistorian | None = None  # built per-run on the worker loop
         self._flush_interval_s = flush_interval_s
         self._batch_size = batch_size
         self._buffer: deque[TelemetryFrame] = deque(maxlen=10_000)
@@ -58,34 +62,44 @@ class DBWorker:
             loop.close()
 
     async def _run_async(self) -> None:
+        # Engine B — same .spid file, THIS thread's private loop (AsyncEngine
+        # is loop-affine). Created at thread start against the repo's current
+        # path; disposed in the finally block, so a stopped worker never holds
+        # a pooled handle on the file.
+        engine = create_sqlite_engine(self._repo.db_path)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        self._historian = SQLiteHistorian(session_factory)
         telem_sub = self._bus.create_subscriber(b"TELEMETRY")
         ai_sub = self._bus.create_subscriber(b"LOG.AI.")
-        while not self._stop_event.is_set():
-            try:
-                # Wait for telemetry messages up to flush interval
-                msg = telem_sub.recv(timeout_ms=int(self._flush_interval_s * 1000))
-                if msg is not None:
-                    self._process_message(msg)
-                # Drain remaining telemetry without blocking
-                while True:
-                    msg = telem_sub.recv(timeout_ms=0)
-                    if msg is None:
-                        break
-                    self._process_message(msg)
-                # Drain AI log messages without blocking
-                while True:
-                    msg = ai_sub.recv(timeout_ms=0)
-                    if msg is None:
-                        break
-                    self._process_ai_log(msg)
-            except zmq.ZMQError:
-                break
-            # Flush both buffers
+        try:
+            while not self._stop_event.is_set():
+                try:
+                    # Wait for telemetry messages up to flush interval
+                    msg = telem_sub.recv(timeout_ms=int(self._flush_interval_s * 1000))
+                    if msg is not None:
+                        self._process_message(msg)
+                    # Drain remaining telemetry without blocking
+                    while True:
+                        msg = telem_sub.recv(timeout_ms=0)
+                        if msg is None:
+                            break
+                        self._process_message(msg)
+                    # Drain AI log messages without blocking
+                    while True:
+                        msg = ai_sub.recv(timeout_ms=0)
+                        if msg is None:
+                            break
+                        self._process_ai_log(msg)
+                except zmq.ZMQError:
+                    break
+                # Flush both buffers
+                await self._flush()
+                await self._flush_ai_logs()
+        finally:
+            # Final flush on shutdown, then release engine B completely.
             await self._flush()
             await self._flush_ai_logs()
-        # Final flush on shutdown
-        await self._flush()
-        await self._flush_ai_logs()
+            await engine.dispose()
 
     def _process_message(self, msg: tuple[bytes, bytes]) -> None:
         _topic, payload = msg

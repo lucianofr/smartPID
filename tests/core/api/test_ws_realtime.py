@@ -377,7 +377,7 @@ async def test_create_app_registers_ws_route_and_openapi(tmp_path) -> None:
 
     repo = SQLiteRepository(tmp_path / "test.spid")
     await repo.initialize()
-    historian = SQLiteHistorian(repo)
+    historian = SQLiteHistorian(repo.session_factory)
     user_repo = UserRepository(tmp_path / "users.db")
     await user_repo.initialize()
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")

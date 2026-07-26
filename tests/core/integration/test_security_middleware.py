@@ -36,7 +36,7 @@ async def secure_client(tmp_path):
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
-    historian = SQLiteHistorian(repo)
+    historian = SQLiteHistorian(repo.session_factory)
     user_repo = UserRepository(tmp_path / "users.db")
     await user_repo.initialize()
     alarm_repo = AlarmRepository(repo)

@@ -23,7 +23,7 @@ from smart_pid_domain.enums import AuditAction
 async def app_fixture(tmp_path):
     repo = SQLiteRepository(tmp_path / "test.db")
     await repo.initialize()
-    historian = SQLiteHistorian(repo)
+    historian = SQLiteHistorian(repo.session_factory)
     user_db_path = tmp_path / "users.db"
     user_repo = UserRepository(user_db_path)
     await user_repo.initialize()

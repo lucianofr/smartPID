@@ -17,18 +17,18 @@ async def setup(tmp_path):
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
-    historian = SQLiteHistorian(repo)
+    historian = SQLiteHistorian(repo.session_factory)  # engine A — used by the TEST to query
     bus = EventBus()
     bus.start()
     yield bus, historian, repo
     bus.stop()
-
+    await repo.close()
 
 class TestDBWorker:
     @pytest.mark.asyncio
     async def test_flushes_telemetry_to_db(self, setup) -> None:
         bus, historian, repo = setup
-        worker = DBWorker(bus=bus, historian=historian, flush_interval_s=0.1)
+        worker = DBWorker(bus=bus, repo=repo, flush_interval_s=0.1)
         worker.start()
         try:
             pub = bus.create_publisher()
@@ -51,7 +51,7 @@ class TestDBWorker:
     @pytest.mark.asyncio
     async def test_handles_multiple_frames(self, setup) -> None:
         bus, historian, repo = setup
-        worker = DBWorker(bus=bus, historian=historian, flush_interval_s=0.1)
+        worker = DBWorker(bus=bus, repo=repo, flush_interval_s=0.1)
         worker.start()
         try:
             pub = bus.create_publisher()
