@@ -1,5 +1,4 @@
 """System events router — read-only history endpoint."""
-from __future__ import annotations
 
 from datetime import datetime as dt
 from typing import Annotated

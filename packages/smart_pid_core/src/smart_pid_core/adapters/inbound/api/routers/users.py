@@ -4,7 +4,6 @@ New surface introduced by the two-role model: list / create / update role /
 change password / deactivate. Every route requires ``require_admin``; the
 frontend management panel arrives in phase 10.
 """
-from __future__ import annotations
 
 from typing import Annotated
 

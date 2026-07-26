@@ -13,7 +13,9 @@
     "typecheck": "tsc -b",
     "check:bundle": "node scripts/check-bundle.mjs",
     "build:budget": "npm run build && npm run check:bundle",
-    "gen:api": "openapi-typescript http://127.0.0.1:8000/openapi.json -o src/api/generated/openapi.ts",
+    "gen:api:dump": "uv run --directory ../.. python scripts/dump_openapi.py --out packages/smart_pid_web/openapi.json",
+    "gen:api": "npm run gen:api:dump && openapi-typescript openapi.json -o src/api/generated/openapi.ts",
+    "gen:api:check": "git diff --exit-code openapi.json src/api/generated/openapi.ts",
     "lint": "eslint ."
   },
   "dependencies": {

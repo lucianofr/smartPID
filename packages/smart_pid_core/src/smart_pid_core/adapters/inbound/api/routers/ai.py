@@ -1,5 +1,4 @@
 """AI optimization router — status, history, and start/stop/pause controls."""
-from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, Annotated
@@ -11,9 +10,11 @@ from fastapi.security import OAuth2PasswordBearer
 from smart_pid_core.adapters.inbound.api.auth import create_access_token  # noqa: TC001
 from smart_pid_core.adapters.inbound.api.dependencies import (
     controller_label,
-    get_audit_repo,
+    get_ai_repo,
     get_ai_workers,
+    get_audit_repo,
     get_current_user,
+    get_event_bus,
     get_settings,
     get_user_repo,
     require_admin,

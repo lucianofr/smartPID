@@ -1,5 +1,4 @@
 """Command router — setpoint, mode, output, and optimizer changes."""
-from __future__ import annotations
 
 import json
 from dataclasses import replace
@@ -10,7 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from starlette.requests import Request
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
+    audit_and_broadcast,
+    get_audit_repo,
     get_event_bus,
+    get_execution_mode,
     get_loop_manager,
     get_repo,
     get_system_event_worker,

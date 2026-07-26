@@ -1,5 +1,4 @@
 """OPC-UA browse and status router."""
-from __future__ import annotations
 
 from typing import Annotated
 

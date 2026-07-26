@@ -1,5 +1,4 @@
 """Auth router — login and token refresh (single-admin deployment)."""
-from __future__ import annotations
 
 from typing import Annotated
 
