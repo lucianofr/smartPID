@@ -295,6 +295,23 @@ def test_ws_rejects_bad_origin() -> None:
     assert exc.value.code == 4401
 
 
+def test_ws_rejects_legacy_role_token() -> None:
+    """Spec §9.5 applies to the socket too: legacy vocabulary => 4401."""
+    app = _make_app()
+    client = TestClient(app)
+    for legacy in ("ADMIN", "SUPERVISOR", "OPERATOR"):
+        legacy_token = create_access_token(
+            user_id=1, username="admin", role=legacy, secret=_SECRET
+        )
+        with client.websocket_connect(
+            "/ws/realtime", headers={"origin": _ALLOWED_ORIGIN}
+        ) as ws:
+            ws.send_json({"type": "auth", "token": legacy_token})
+            with pytest.raises(WebSocketDisconnect) as exc:
+                ws.receive_text()
+        assert exc.value.code == 4401, f"role={legacy!r} must close 4401"
+
+
 def test_ws_accepts_valid_token_and_broadcast_reaches_client() -> None:
     app = _make_app()
     client = TestClient(app)

@@ -19,6 +19,7 @@ from fastapi import FastAPI, WebSocket
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
 from smart_pid_core.adapters.inbound.api.auth import decode_access_token
+from smart_pid_domain.enums import UserRole
 
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import BusSubscriber, EventBus
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
 _ALLOWED_ORIGIN_DEFAULT = "http://127.0.0.1:5173"
 _WS_CLOSE_AUTH = 4401
 _LOSSLESS_QUEUE_MAX = 256
+_VALID_ROLES = frozenset(role.value for role in UserRole)
 
 
 class _Sendable(Protocol):
@@ -217,8 +219,13 @@ def register_realtime_ws(app: FastAPI) -> None:
             await websocket.close(code=_WS_CLOSE_AUTH)
             return
         try:
-            decode_access_token(token, secret=settings.jwt_secret)
+            payload = decode_access_token(token, secret=settings.jwt_secret)
         except Exception:  # noqa: BLE001 — any JWT error => reject
+            await websocket.close(code=_WS_CLOSE_AUTH)
+            return
+        if payload.get("role") not in _VALID_ROLES:
+            # Legacy vocabulary ("ADMIN"/"SUPERVISOR"/"OPERATOR") => forced
+            # re-login (spec §9.5) — REST and WS cut over together.
             await websocket.close(code=_WS_CLOSE_AUTH)
             return
 
