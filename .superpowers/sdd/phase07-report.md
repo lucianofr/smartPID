@@ -53,6 +53,17 @@ still do not exist in `appRoutes`: `executive-dashboard` ×2 (`/executive`),
 An earlier pass of this gate also showed `simulator.spec.ts:308` failing; that
 belonged to the phase-8 agent mid-edit and is green in the final run.
 
+**Re-verified after `6f7da80`** (`fix(web): stop the spurious permission toast
+on every user-role reconnect` — the parent agent's additive
+`RequestOptions { silentForbidden? }` on `api.get`, threaded through `run()` /
+`request()` / `dispatchAuthSideEffects`). The phase-7 endpoints call `api.get`,
+`api.post` and `api.download` with the pre-existing signatures and needed no
+change. Every gate re-run clean on that commit: **492 passed / 72 files**
+(490 + the two tests that ship with the fix), typecheck 0, lint 0,
+`e2e/multitrend.spec.ts` 3 passed, the 43 previously-green E2E 43 passed, full
+dir 49 passed / 4 failed (the same four red-by-design routes), and the bundle
+unchanged at 183.1 KB gzip.
+
 ## What shipped
 
 ### Task 1 — four-slot model
