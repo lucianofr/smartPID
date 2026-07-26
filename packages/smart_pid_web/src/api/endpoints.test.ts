@@ -102,6 +102,102 @@ describe('endpoints — exact backend routes (app.py:161-174 prefixes)', () => {
     await endpoints.applyTuning(4);
     expect(calledPath()).toBe('/api/commands/apply-tuning/4');
   });
+
+  it('opcua writes hit the real verbs: PUT /endpoint, POST /connect|/disconnect', async () => {
+    fetchMock.mockImplementation(
+      () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    await endpoints.saveOpcuaEndpoint('opc.tcp://plc:4840');
+    expect(calledPath()).toBe('/api/opcua/endpoint');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('PUT');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBe(
+      JSON.stringify({ endpoint: 'opc.tcp://plc:4840' }),
+    );
+
+    fetchMock.mockClear();
+    await endpoints.opcuaConnect();
+    expect(calledPath()).toBe('/api/opcua/connect');
+    // OPCUAConnectRequest is optional — no body means "reuse the stored endpoint".
+    expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBeUndefined();
+
+    fetchMock.mockClear();
+    await endpoints.opcuaDisconnect();
+    expect(calledPath()).toBe('/api/opcua/disconnect');
+  });
+
+  it('percent-encodes node ids and search queries', async () => {
+    fetchMock.mockImplementation(
+      () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    await endpoints.opcuaBrowse('ns=2;s=FT-101');
+    expect(calledPath()).toBe('/api/opcua/browse/ns%3D2%3Bs%3DFT-101');
+    fetchMock.mockClear();
+    await endpoints.opcuaSearch('MAIN.PV');
+    expect(calledPath()).toBe('/api/opcua/search?q=MAIN.PV');
+  });
+
+  it('project routes match routers/project.py exactly', async () => {
+    fetchMock.mockImplementation(
+      () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    await endpoints.projectList();
+    expect(calledPath()).toBe('/api/project/list');
+
+    fetchMock.mockClear();
+    await endpoints.createProject('unit-a');
+    expect(calledPath()).toBe('/api/project/new');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBe(
+      JSON.stringify({ name: 'unit-a' }),
+    );
+
+    fetchMock.mockClear();
+    await endpoints.openProject('unit a');
+    expect(calledPath()).toBe('/api/project/open');
+
+    fetchMock.mockClear();
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+    await endpoints.deleteProject('unit a/b');
+    expect(calledPath()).toBe('/api/project/unit%20a%2Fb');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('DELETE');
+  });
+
+  it('import posts multipart with the file and optional name, no manual content-type', async () => {
+    fetchMock.mockResolvedValue(
+      new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    const file = new File(['x'], 'plant.spid');
+    await endpoints.importProject(file, 'plant');
+    expect(calledPath()).toBe('/api/project/import');
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.method).toBe('POST');
+    expect(init.headers).not.toHaveProperty('Content-Type');
+    const form = init.body as FormData;
+    expect(form.get('file')).toBe(file);
+    expect(form.get('name')).toBe('plant');
+  });
+
+  it('user management uses PATCH for updates and DELETE for deactivation', async () => {
+    fetchMock.mockImplementation(
+      () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    await endpoints.users();
+    expect(calledPath()).toBe('/api/users');
+
+    fetchMock.mockClear();
+    await endpoints.createUser({ username: 'operador', password: 'p', role: 'user' });
+    expect(calledPath()).toBe('/api/users');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('POST');
+
+    fetchMock.mockClear();
+    await endpoints.updateUser(9, { role: 'user' });
+    expect(calledPath()).toBe('/api/users/9');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('PATCH');
+
+    fetchMock.mockClear();
+    await endpoints.deactivateUser(9);
+    expect(calledPath()).toBe('/api/users/9');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('DELETE');
+  });
 });
 
 describe('queryKeys — canonical, stable identities', () => {
@@ -112,5 +208,9 @@ describe('queryKeys — canonical, stable identities', () => {
     expect(queryKeys.aiStatus(3)).toEqual(['ai', 'status', 3]);
     expect(queryKeys.opcuaStatus).toEqual(['opcua', 'status']);
     expect(queryKeys.simulatorStatus).toEqual(['simulator', 'status']);
+    expect(queryKeys.projects).toEqual(['projects', 'list']);
+    expect(queryKeys.users).toEqual(['users']);
+    expect(queryKeys.opcuaBrowse('i=85')).toEqual(['opcua', 'browse', 'i=85']);
+    expect(queryKeys.opcuaSearch('FT')).toEqual(['opcua', 'search', 'FT']);
   });
 });

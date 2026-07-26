@@ -74,3 +74,19 @@ export interface AlarmRow {
   ack_at: string | null;
   status: AlarmRowStatus;
 }
+
+/** OPC-UA address-space vocabulary (routers/opcua.py — browse/search are admin-only). */
+export type ConnectionState = components['schemas']['ConnectionState'];
+export type OpcuaNode = components['schemas']['OPCUANodeInfo'];
+export type OpcuaBrowseResponse = components['schemas']['OPCUABrowseResponse'];
+export type OpcuaSearchResponse = components['schemas']['OPCUASearchResponse'];
+
+/** Portable `.spid` projects (routers/project.py — everything but /current is admin-only). */
+export type ProjectItem = components['schemas']['ProjectListItem'];
+export type ProjectListResponse = components['schemas']['ProjectListResponse'];
+export type ProjectMeta = components['schemas']['ProjectResponse'];
+
+/** Admin-only user management (routers/users.py). */
+export type UserRow = components['schemas']['UserResponse'];
+export type UserCreateBody = components['schemas']['UserCreate'];
+export type UserUpdateBody = components['schemas']['UserUpdate'];

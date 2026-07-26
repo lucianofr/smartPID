@@ -11,10 +11,17 @@ import type {
   ExportRequest,
   HistoryResponse,
   MeResponse,
+  OpcuaBrowseResponse,
+  OpcuaSearchResponse,
   OpcuaStatus,
+  ProjectListResponse,
+  ProjectMeta,
   SimulatorStatus,
   StatsResponse,
   TokenResponse,
+  UserCreateBody,
+  UserRow,
+  UserUpdateBody,
 } from './types';
 
 export interface AlarmHistoryParams {
@@ -115,4 +122,62 @@ export const endpoints = {
 
   /** Bearer travels in a header, so the download cannot be a plain <a href>. */
   downloadExport: (exportId: string) => api.download(`/export/${exportId}/download`),
+
+  // ---- phase 10 · OPC-UA connection (everything below /status is admin-only) ----
+
+  /** 422 when the endpoint does not start with `opc.tcp://` (routers/opcua.py). */
+  saveOpcuaEndpoint: (endpoint: string) => api.put<OpcuaStatus>('/opcua/endpoint', { endpoint }),
+
+  /** Body is optional; omitting it reconnects the stored endpoint. */
+  opcuaConnect: (endpoint?: string) =>
+    api.post<OpcuaStatus>('/opcua/connect', endpoint !== undefined ? { endpoint } : undefined),
+
+  opcuaDisconnect: () => api.post<OpcuaStatus>('/opcua/disconnect'),
+
+  /** `{node_id:path}` — node ids carry `;` and `=`, so they are percent-encoded. */
+  opcuaBrowse: (nodeId: string) =>
+    api.get<OpcuaBrowseResponse>(`/opcua/browse/${encodeURIComponent(nodeId)}`),
+
+  /** `q` is REQUIRED, 1..200 chars — an empty query is a 422, never a fetch. */
+  opcuaSearch: (query: string) =>
+    api.get<OpcuaSearchResponse>(`/opcua/search?q=${encodeURIComponent(query)}`),
+
+  // ---- phase 10 · portable `.spid` projects (admin-only) ----
+
+  projectList: () => api.get<ProjectListResponse>('/project/list'),
+
+  createProject: (name: string) => api.post<ProjectMeta>('/project/new', { name }),
+
+  openProject: (name: string) => api.post<ProjectMeta>('/project/open', { name }),
+
+  /**
+   * Multipart upload. 413 when it exceeds `max_upload_bytes` (50 MB default),
+   * 400 when the archive is not a valid `.spid` — both are user-facing states.
+   */
+  importProject: (file: File, name?: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (name !== undefined && name !== '') form.append('name', name);
+    return api.upload<ProjectMeta>('/project/import', form);
+  },
+
+  /** The backend WAL-checkpoints before streaming — the client never duplicates that. */
+  downloadProject: () => api.download('/project/download'),
+
+  /** 204 on success; 409 when the target is the active project. */
+  deleteProject: (name: string) => api.delete<void>(`/project/${encodeURIComponent(name)}`),
+
+  // ---- phase 10 · user management (admin-only, require_admin on every route) ----
+
+  users: () => api.get<UserRow[]>('/users'),
+
+  /** 409 `Username already exists` — the backend catches the IntegrityError. */
+  createUser: (body: UserCreateBody) => api.post<UserRow>('/users', body),
+
+  /** 409 when demoting/deactivating the last active admin. */
+  updateUser: (userId: number, body: UserUpdateBody) =>
+    api.patch<UserRow>(`/users/${userId}`, body),
+
+  /** Soft deactivation — returns the updated row, not 204. */
+  deactivateUser: (userId: number) => api.delete<UserRow>(`/users/${userId}`),
 };

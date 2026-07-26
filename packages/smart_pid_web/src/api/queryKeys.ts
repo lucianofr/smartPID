@@ -21,4 +21,12 @@ export const queryKeys = {
   history: (window: object) => ['history', window] as const,
   /** One export job's poll cursor (phase 7). */
   exportJob: (exportId: string) => ['export', exportId] as const,
+  /** One expanded OPC-UA folder's children (phase 10). */
+  opcuaBrowse: (nodeId: string) => ['opcua', 'browse', nodeId] as const,
+  /** Tag-search hits, keyed by the query string (phase 10). */
+  opcuaSearch: (query: string) => ['opcua', 'search', query] as const,
+  /** Portable `.spid` roster — every project mutation invalidates it (phase 10). */
+  projects: ['projects', 'list'] as const,
+  /** Admin-only user roster (phase 10). */
+  users: ['users'] as const,
 };

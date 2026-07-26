@@ -156,6 +156,8 @@ export const api = {
   get: <T>(path: string, opts?: RequestOptions) => request<T>('GET', path, undefined, opts),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
+  /** Partial update — the only verb PATCH /users/{id} accepts (phase 10). */
+  patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
 
   /** Authenticated binary GET (Bearer travels in a header; <a href> would lose it). */
