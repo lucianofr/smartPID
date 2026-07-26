@@ -1,16 +1,37 @@
-import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+
+/**
+ * Composition-root smoke: the providers mount, the theme is applied, and an
+ * anonymous session lands on /login instead of the guarded dashboard.
+ */
+
+class SilentWebSocket {
+  onopen: (() => void) | null = null;
+  onmessage: ((e: MessageEvent) => void) | null = null;
+  onclose: ((e: { code: number }) => void) | null = null;
+  send(): void {}
+  close(): void {}
+}
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   document.documentElement.removeAttribute('data-theme');
+  window.history.pushState({}, '', '/');
+  vi.stubGlobal('WebSocket', SilentWebSocket);
 });
 
-describe('App shell (phase-2 foundation)', () => {
-  it('mounts ThemeProvider (data-theme applied) and shows the wordmark', () => {
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('App composition root', () => {
+  it('applies the default theme and guards the dashboard behind /login', async () => {
     render(<App />);
-    expect(screen.getByRole('heading', { name: 'SMART PID' })).toBeInTheDocument();
     expect(document.documentElement.getAttribute('data-theme')).toBe('recorder');
+    await waitFor(() => expect(window.location.pathname).toBe('/login'));
+    expect(screen.getByRole('button', { name: 'Entrar' })).toBeVisible();
   });
 });
