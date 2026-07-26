@@ -11,7 +11,7 @@ const CONTROLLERS = [
   makeController({ id: 2, name: 'TIC-202', description: 'Temp' }),
 ];
 
-function renderDashboard(controllers = CONTROLLERS) {
+function renderDashboard(controllers = CONTROLLERS, path = '/') {
   sessionStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: 'admin', role: 'admin' });
   const queryClient = createQueryClient();
@@ -20,7 +20,7 @@ function renderDashboard(controllers = CONTROLLERS) {
   const realtime = createFakeRealtime();
   return {
     ...render(
-      <TestProviders queryClient={queryClient} realtime={realtime.value}>
+      <TestProviders queryClient={queryClient} realtime={realtime.value} initialEntries={[path]}>
         <DashboardPage />
       </TestProviders>,
     ),
@@ -73,6 +73,16 @@ describe('DashboardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Abrir TIC-202' }));
     expect(screen.getByRole('complementary', { name: 'Faceplate TIC-202' })).toBeVisible();
     expect(screen.getByRole('img', { name: 'Tendência TIC-202' })).toBeInTheDocument();
+  });
+
+  it('preselects the loop named by ?loop= so a bad-actor row lands on it', () => {
+    renderDashboard(CONTROLLERS, '/?loop=2');
+    expect(screen.getByRole('complementary', { name: 'Faceplate TIC-202' })).toBeVisible();
+  });
+
+  it('ignores a ?loop= that names no configured loop', () => {
+    renderDashboard(CONTROLLERS, '/?loop=nope');
+    expect(screen.getByRole('complementary', { name: 'Faceplate FIC-101' })).toBeVisible();
   });
 
   it('stacks the faceplate under the trend below 1024 and splits them above', () => {

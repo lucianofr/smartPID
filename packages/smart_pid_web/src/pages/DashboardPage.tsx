@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/Button';
 import { EmptyState, ErrorState, LoadingState } from '@/components/MissingState';
 import { AlarmFooterBar } from '@/features/dashboard/AlarmFooterBar';
@@ -21,13 +22,21 @@ import { cn } from '@/lib/utils';
  * push the trend below the fold — then trend + ~320 px faceplate side by side
  * at ≥1024 (trend keeps ≥65% at 1440) and stacked below it, over a persistent
  * alarm footer that collapses to a count chip under 768.
+ *
+ * `/?loop=<id>` preselects one loop: it is the landing target of the executive
+ * dashboard's bad-actor rows (phase 9). The param seeds the initial selection
+ * only — clicking a card afterwards must not be undone by a stale URL.
  */
 export function DashboardPage() {
   const controllers = useControllers();
   const statuses = useLoopStatuses();
   const canManage = useCan('controllers.manage');
   const twinRunning = useTwinRunning();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [params] = useSearchParams();
+  const [selectedId, setSelectedId] = useState<number | null>(() => {
+    const asked = Number(params.get('loop'));
+    return Number.isInteger(asked) && asked > 0 ? asked : null;
+  });
   const [configId, setConfigId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
 
