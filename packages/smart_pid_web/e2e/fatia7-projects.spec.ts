@@ -1,18 +1,23 @@
 import { expect, test, type Page } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mockRest, seedSession, stubWebSocket } from './helpers/harness';
 
 // ESM: __dirname is not defined under Vite's "type": "module", so derive it from import.meta.url.
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-// Fatia 7 — projects e2e. No real backend: all /api/* is mocked via page.route and the WebSocket
-// is stubbed via addInitScript (mirrors executive-dashboard.spec.ts / simulator.spec.ts). The
-// /projects route is RequireAuth-gated, so the token is seeded into sessionStorage before load.
+// Fatia 7 — projects e2e. No real backend: the shared phase-4 harness stubs
+// `/auth/me`, the complete §7 resync set and a monotonic-`seq` socket; the
+// project doubles below are registered after it and therefore win.
 //
-// The project routes are STATEFUL: a closure `projects` array is the source of truth. Each
-// mutation (create / import / delete) mutates it and invalidates the ['projects','list'] query,
-// so the page refetches GET /project/list and the table converges — Playwright's auto-retrying
-// assertions wait for that refetch without any arbitrary sleep.
+// /projects is `adminOnly`, so the harness role must be admin and the token has
+// to be seeded before first paint.
+//
+// The project routes are STATEFUL: a closure `projects` array is the source of
+// truth. Each mutation (create / import / delete) mutates it and invalidates the
+// ['projects','list'] query, so the page refetches GET /project/list and the
+// table converges — Playwright's auto-retrying assertions wait for that refetch
+// without any arbitrary sleep.
 
 interface ProjectItem {
   name: string;
@@ -20,49 +25,8 @@ interface ProjectItem {
   size_bytes: number;
 }
 
-async function stubWebSocket(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    sessionStorage.setItem('smart-pid-token', 'jwt-e2e');
-    // Skip the post-login WelcomeDialog, which renders as a modal overlay that intercepts clicks.
-    sessionStorage.setItem('spid.welcome-seen', '1');
-
-    class StubWS extends EventTarget {
-      url: string;
-      readyState = 1;
-      onopen: (() => void) | null = null;
-      onmessage: ((e: MessageEvent) => void) | null = null;
-      onclose: (() => void) | null = null;
-      constructor(url: string) {
-        super();
-        this.url = url;
-        setTimeout(() => this.onopen?.(), 0);
-      }
-      send() {
-        setTimeout(() => {
-          this.onmessage?.(
-            new MessageEvent('message', { data: JSON.stringify({ type: 'auth_ok' }) }),
-          );
-        }, 0);
-      }
-      close() {
-        this.onclose?.();
-      }
-    }
-    // @ts-expect-error override
-    window.WebSocket = StubWS;
-  });
-}
-
-async function mockRest(page: Page): Promise<void> {
+async function mockProjects(page: Page): Promise<void> {
   const projects: ProjectItem[] = [];
-
-  await page.route('**/api/auth/login', (route) =>
-    route.fulfill({ json: { access_token: 'jwt-e2e', token_type: 'bearer' } }),
-  );
-  await page.route('**/api/alarms/active', (route) => route.fulfill({ json: [] }));
-  await page.route('**/api/opcua/status', (route) =>
-    route.fulfill({ json: { state: 'ONLINE', endpoint: 'opc.tcp://x:4840' } }),
-  );
 
   await page.route('**/api/project/list', (route) => route.fulfill({ json: { projects } }));
   await page.route('**/api/project/new', (route) => {
@@ -92,8 +56,10 @@ async function mockRest(page: Page): Promise<void> {
 
 test.describe('Projects page', () => {
   test.beforeEach(async ({ page }) => {
+    await seedSession(page);
     await stubWebSocket(page);
-    await mockRest(page);
+    await mockRest(page, { role: 'admin' });
+    await mockProjects(page);
   });
 
   test('create a project, import a .spid, open it, then delete the created one', async ({ page }) => {

@@ -119,6 +119,9 @@ export async function mockRest(page: Page, options: RestOptions = {}): Promise<v
   await page.route('**/api/simulator/status', (route) =>
     route.fulfill({ json: { running: false, controllers: [] } }),
   );
+  // Phase 10: the WelcomeGate asks for the roster on the first authenticated
+  // view. Empty keeps the gate shut AND keeps the proxy quiet in every spec.
+  await page.route('**/api/project/list', (route) => route.fulfill({ json: { projects: [] } }));
   await page.route('**/api/commands/**', (route) => route.fulfill({ json: { ok: true } }));
 }
 
@@ -207,11 +210,19 @@ export async function stubWebSocket(page: Page, options: SocketOptions = {}): Pr
   );
 }
 
-/** Seed the guarded session (and optionally a stored theme) before first paint. */
+/**
+ * Seed the guarded session (and optionally a stored theme) before first paint.
+ *
+ * `spid.welcome-seen` is part of the seed: the phase-10 WelcomeGate is an
+ * admin-only modal that opens on the first authenticated view whenever the
+ * project roster is non-empty, and its scrim would swallow clicks in every
+ * spec that is not about the gate itself.
+ */
 export async function seedSession(page: Page, theme?: string): Promise<void> {
   await page.addInitScript(
     (arg: { key: string; theme?: string }) => {
       sessionStorage.setItem(arg.key, 'jwt-e2e');
+      sessionStorage.setItem('spid.welcome-seen', '1');
       if (arg.theme !== undefined) localStorage.setItem('spid.theme', arg.theme);
     },
     { key: SESSION_KEY, theme },
