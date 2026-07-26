@@ -116,7 +116,8 @@ async def import_project(
 ) -> ProjectResponse:
     """Import a project file (admin-only)."""
     svc = request.app.state.project_service
-    data = await file.read()
+    # Outside the try below: the 413 must not be caught and remapped to 400.
+    data = await _read_upload_limited(file, settings.max_upload_bytes)
     proj_name = name or file.filename or "imported"
     try:
         return await svc.import_project(proj_name, data)
