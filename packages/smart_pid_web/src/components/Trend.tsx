@@ -242,6 +242,7 @@ export function Trend({
       role="img"
       aria-label={ariaLabel}
       data-theme-key={themeKey}
+      data-glow={glow ? 'on' : 'off'}
       className={cn('w-full bg-trend-bg', className)}
       style={{ height }}
     />

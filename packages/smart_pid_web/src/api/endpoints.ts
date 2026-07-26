@@ -2,6 +2,7 @@ import { api } from './client';
 import type {
   AiStatus,
   AlarmRow,
+  ControllerMode,
   ControllerResponse,
   MeResponse,
   OpcuaStatus,
@@ -42,4 +43,19 @@ export const endpoints = {
   opcuaStatus: () => api.get<OpcuaStatus>('/opcua/status'),
 
   simulatorStatus: () => api.get<SimulatorStatus>('/simulator/status'),
+
+  /** Bulk acknowledgement behind the footer's `ACK ALL` (§6.9). */
+  ackAllAlarms: () => api.post<Record<string, unknown>>('/alarms/ack-all'),
+
+  setMode: (controllerId: number, mode: ControllerMode) =>
+    api.post<Record<string, unknown>>('/commands/mode', { controller_id: controllerId, mode }),
+
+  setSetpoint: (controllerId: number, value: number) =>
+    api.post<Record<string, unknown>>('/commands/setpoint', { controller_id: controllerId, value }),
+
+  setOutput: (controllerId: number, value: number) =>
+    api.post<Record<string, unknown>>('/commands/output', { controller_id: controllerId, value }),
+
+  applyTuning: (controllerId: number) =>
+    api.post<Record<string, unknown>>(`/commands/apply-tuning/${controllerId}`),
 };

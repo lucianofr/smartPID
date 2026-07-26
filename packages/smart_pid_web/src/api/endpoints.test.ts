@@ -65,6 +65,41 @@ describe('endpoints — exact backend routes (app.py:161-174 prefixes)', () => {
     await endpoints.simulatorStatus();
     expect(calledPath()).toBe('/api/simulator/status');
   });
+
+  it('ackAllAlarms posts to /api/alarms/ack-all', async () => {
+    fetchMock.mockResolvedValue(
+      new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    await endpoints.ackAllAlarms();
+    expect(calledPath()).toBe('/api/alarms/ack-all');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('POST');
+  });
+
+  it('operator commands post the controller_id in the body, not the path', async () => {
+    fetchMock.mockResolvedValue(
+      new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    await endpoints.setMode(4, 'MAN');
+    expect(calledPath()).toBe('/api/commands/mode');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBe(
+      JSON.stringify({ controller_id: 4, mode: 'MAN' }),
+    );
+
+    fetchMock.mockClear();
+    await endpoints.setSetpoint(4, 55.5);
+    expect(calledPath()).toBe('/api/commands/setpoint');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBe(
+      JSON.stringify({ controller_id: 4, value: 55.5 }),
+    );
+
+    fetchMock.mockClear();
+    await endpoints.setOutput(4, 12);
+    expect(calledPath()).toBe('/api/commands/output');
+
+    fetchMock.mockClear();
+    await endpoints.applyTuning(4);
+    expect(calledPath()).toBe('/api/commands/apply-tuning/4');
+  });
 });
 
 describe('queryKeys — canonical, stable identities', () => {

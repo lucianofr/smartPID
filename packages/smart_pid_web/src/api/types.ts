@@ -14,6 +14,9 @@ export type AiStatus = components['schemas']['AIStatusResponse'];
 export type OpcuaStatus = components['schemas']['OPCUAStatusResponse'];
 export type SimulatorStatus = components['schemas']['SimulatorStatusResponse'];
 
+/** PID block operating modes (ModeCommand payload enum). */
+export type ControllerMode = components['schemas']['ControllerMode'];
+
 /** Row status CASE — alarm_repo.py:129-132 / 209-212. */
 export type AlarmRowStatus = 'UNACKNOWLEDGED' | 'ACKNOWLEDGED' | 'CLEARED_UNACK';
 
