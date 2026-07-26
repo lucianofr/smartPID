@@ -1,14 +1,21 @@
 import { useState } from 'react';
 import { Button } from '@/components/Button';
 import { EmptyState, ErrorState, LoadingState } from '@/components/MissingState';
+import { AlarmFooterBar } from '@/features/dashboard/AlarmFooterBar';
+import { Faceplate } from '@/features/dashboard/Faceplate';
 import { LoopCard } from '@/features/dashboard/LoopCard';
-import { useControllers } from '@/features/dashboard/useControllers';
+import { TrendPanel } from '@/features/dashboard/TrendPanel';
+import { pvScale, useControllers } from '@/features/dashboard/useControllers';
 import { useLoopStatuses } from '@/features/dashboard/useLoopStatuses';
 import { cn } from '@/lib/utils';
 
 /**
- * Operational dashboard (§6.9): a single non-wrapping card strip over the trend
- * and faceplate. Wrapping is forbidden — it pushes the trend below the fold.
+ * Operational dashboard (§6.9).
+ *
+ * Layout contract: a single non-wrapping card strip on top — wrapping would
+ * push the trend below the fold — then trend + ~320 px faceplate side by side
+ * at ≥1024 (trend keeps ≥65% at 1440) and stacked below it, over a persistent
+ * alarm footer that collapses to a count chip under 768.
  */
 export function DashboardPage() {
   const controllers = useControllers();
@@ -29,15 +36,18 @@ export function DashboardPage() {
   }
   if (controllers.data.length === 0) {
     return (
-      <EmptyState
-        message="Nenhuma malha configurada."
-        hint="Cadastre um controlador para começar."
-      />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <EmptyState
+          className="flex-1"
+          message="Nenhuma malha configurada."
+          hint="Cadastre um controlador para começar."
+        />
+        <AlarmFooterBar />
+      </div>
     );
   }
 
-  const selected =
-    controllers.data.find((c) => c.id === selectedId) ?? controllers.data[0];
+  const selected = controllers.data.find((c) => c.id === selectedId) ?? controllers.data[0];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -78,6 +88,21 @@ export function DashboardPage() {
           ))}
         </ul>
       </section>
+
+      <div
+        data-testid="dashboard-detail"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden"
+      >
+        <TrendPanel controllerId={selected.id} scale={pvScale(selected)} />
+        <Faceplate
+          controllerId={selected.id}
+          tag={selected.name}
+          description={selected.description}
+          scale={pvScale(selected)}
+        />
+      </div>
+
+      <AlarmFooterBar />
     </div>
   );
 }

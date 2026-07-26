@@ -76,8 +76,10 @@ describe('endpoints — exact backend routes (app.py:161-174 prefixes)', () => {
   });
 
   it('operator commands post the controller_id in the body, not the path', async () => {
-    fetchMock.mockResolvedValue(
-      new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    // A Response body is single-use: hand each call its own.
+    fetchMock.mockImplementation(
+      () =>
+        new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
     );
     await endpoints.setMode(4, 'MAN');
     expect(calledPath()).toBe('/api/commands/mode');

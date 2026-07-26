@@ -14,7 +14,8 @@ import type { AnyEnvelope, RealtimeType } from '@/lib/envelope';
 
 export function createQueryClient(): QueryClient {
   return new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
+    // staleTime keeps preseeded `setQueryData` fixtures from firing a real fetch.
+    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: Number.POSITIVE_INFINITY } },
   });
 }
 
