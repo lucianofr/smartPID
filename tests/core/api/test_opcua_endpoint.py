@@ -55,7 +55,7 @@ def _make_test_app():
 def _mock_admin_user():
     """Override auth dependency to return admin claims."""
     from smart_pid_core.adapters.inbound.api.dependencies import (
-        require_authenticated_admin,
+        require_admin,
     )
     from smart_pid_domain.dtos.auth import UserClaims
 
@@ -64,7 +64,7 @@ def _mock_admin_user():
     def override():
         return admin
 
-    return require_authenticated_admin, override
+    return require_admin, override
 
 
 class TestPutOPCUAEndpoint:
