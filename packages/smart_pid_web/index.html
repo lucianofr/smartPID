@@ -7,6 +7,22 @@
     <link rel="preload" href="/src/assets/fonts/archivo-latin-var.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/src/assets/fonts/geist-mono-latin-400.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/src/assets/fonts/geist-mono-latin-500.woff2" as="font" type="font/woff2" crossorigin />
+    <script>
+      // Pre-paint theme (§6.8): apply the persisted theme before first paint so a
+      // returning Phosphor user never flashes Recorder. Mirrors LEGACY_THEME_MAP in
+      // src/theme/ThemeProvider.tsx — ThemeProvider.test.tsx enforces the sync.
+      (function () {
+        try {
+          var stored = localStorage.getItem('spid.theme');
+          var legacy = { 'dark-room': 'phosphor', 'md3-dark': 'recorder', 'md3-light': 'recorder', 'ocean': 'recorder' };
+          var valid = ['recorder', 'phosphor', 'isa101'];
+          var theme = valid.indexOf(stored) >= 0 ? stored : legacy[stored] || 'recorder';
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {
+          /* no storage: keep the static recorder default */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
