@@ -11,9 +11,9 @@ from smart_pid_core.adapters.inbound.api.auth import (
 )
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_audit_repo,
-    get_current_user,
     get_settings,
     get_user_repo,
+    require_user,
 )
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
@@ -54,7 +54,7 @@ async def login(
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(
-    current_user: Annotated[UserClaims, Depends(get_current_user)],
+    current_user: Annotated[UserClaims, Depends(require_user)],
     settings: Annotated[CoreSettings, Depends(get_settings)],
 ) -> TokenResponse:
     """Issue a fresh access token for an authenticated user."""
@@ -66,3 +66,16 @@ async def refresh_token(
         expiry_hours=settings.jwt_expiry_hours,
     )
     return TokenResponse(access_token=token)
+
+
+@router.get("/me", response_model=UserClaims)
+async def me(
+    current_user: Annotated[UserClaims, Depends(require_user)],
+) -> UserClaims:
+    """Return the authenticated principal's claims.
+
+    The SPA populates its AuthContext from this route after login and
+    refetches it whenever a 403 arrives (spec §11) — a role changed
+    mid-session is discovered here, not by decoding the JWT client-side.
+    """
+    return current_user

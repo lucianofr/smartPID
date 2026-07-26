@@ -84,3 +84,34 @@ class TestLegacyRoleClaims:
             "/controllers", headers={"Authorization": f"Bearer {token}"}
         )
         assert resp.status_code == 200
+
+
+class TestMe:
+    @pytest.mark.asyncio
+    async def test_me_returns_admin_claims(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        resp = await client.get("/auth/me", headers=admin_headers)
+        assert resp.status_code == 200
+        assert resp.json() == {"user_id": 1, "username": "admin", "role": "admin"}
+
+    @pytest.mark.asyncio
+    async def test_me_returns_user_claims(
+        self, client: AsyncClient, user_headers: dict[str, str]
+    ) -> None:
+        resp = await client.get("/auth/me", headers=user_headers)
+        assert resp.status_code == 200
+        assert resp.json() == {"user_id": 2, "username": "operator", "role": "user"}
+
+    @pytest.mark.asyncio
+    async def test_me_requires_token(self, client: AsyncClient) -> None:
+        resp = await client.get("/auth/me")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_refresh_works_for_user_role(
+        self, client: AsyncClient, user_headers: dict[str, str]
+    ) -> None:
+        resp = await client.post("/auth/refresh", headers=user_headers)
+        assert resp.status_code == 200
+        assert "access_token" in resp.json()
