@@ -4,36 +4,16 @@ import '@testing-library/jest-dom/vitest';
 // on ctx.clearRect after the component's synchronous try/catch has returned.
 // Stub a no-op 2D context so charts mount without unhandled async errors in tests.
 if (typeof HTMLCanvasElement !== 'undefined') {
-  HTMLCanvasElement.prototype.getContext = (() =>
-    ({
-      canvas: { width: 0, height: 0 },
-      clearRect: () => {},
-      fillRect: () => {},
-      strokeRect: () => {},
-      beginPath: () => {},
-      moveTo: () => {},
-      lineTo: () => {},
-      stroke: () => {},
-      fill: () => {},
-      save: () => {},
-      restore: () => {},
-      translate: () => {},
-      scale: () => {},
-      rect: () => {},
-      clip: () => {},
-      closePath: () => {},
-      setLineDash: () => {},
-      measureText: () => ({ width: 0 }),
-      fillText: () => {},
-      arc: () => {},
-      rotate: () => {},
-      ellipse: () => {},
-      createLinearGradient: () => ({ addColorStop: () => {} }),
-      lineWidth: 1,
-      strokeStyle: '',
-      fillStyle: '',
-      font: '',
-    })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = (() => ({
+    canvas: { width: 0, height: 0 },
+    clearRect: () => {}, fillRect: () => {}, strokeRect: () => {}, beginPath: () => {}, moveTo: () => {}, lineTo: () => {}, stroke: () => {}, fill: () => {}, save: () => {}, restore: () => {}, translate: () => {}, scale: () => {}, rect: () => {}, clip: () => {}, closePath: () => {}, setLineDash: () => {}, measureText: () => ({ width: 0 }), fillText: () => {}, arc: () => {}, rotate: () => {}, ellipse: () => {}, createLinearGradient: () => ({ addColorStop: () => {} }),
+    lineWidth: 1, strokeStyle: '', fillStyle: '', font: '',
+  })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+}
+
+// Disable uPlot in jsdom; its deferred canvas path renderer expects a native context.
+if (typeof window !== 'undefined' && /jsdom/i.test(window.navigator.userAgent)) {
+  HTMLCanvasElement.prototype.getContext = (() => null) as unknown as typeof HTMLCanvasElement.prototype.getContext;
 }
 
 // jsdom lacks ResizeObserver; @tanstack/react-virtual and Trend need one.

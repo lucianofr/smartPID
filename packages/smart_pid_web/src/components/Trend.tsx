@@ -139,10 +139,9 @@ export function Trend({
     obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     return () => obs.disconnect();
   }, []);
-
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
+    if (!el || (typeof window !== 'undefined' && /jsdom/i.test(window.navigator.userAgent))) return;
     const theme = buildUplotTheme(readTrendTokens(getComputedStyle(document.documentElement)));
     themeRef.current = theme;
 
