@@ -12,6 +12,8 @@ export type TokenResponse = components['schemas']['TokenResponse'];
 export type ControllerResponse = components['schemas']['ControllerResponse'];
 export type AiStatus = components['schemas']['AIStatusResponse'];
 export type AiConfigDto = components['schemas']['AIConfigDTO'];
+export type ScaleConfigDto = components['schemas']['ScaleConfigDTO'];
+export type TagBindingsDto = components['schemas']['TagBindingsDTO'];
 /** commands.py CommandResponse — every write under `/commands/*` returns this. */
 export type CommandResponse = components['schemas']['CommandResponse'];
 export type OpcuaStatus = components['schemas']['OPCUAStatusResponse'];

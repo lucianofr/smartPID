@@ -8,6 +8,8 @@ import { TrendPanel } from '@/features/dashboard/TrendPanel';
 import { pvScale, useControllers } from '@/features/dashboard/useControllers';
 import { useLoopStatuses } from '@/features/dashboard/useLoopStatuses';
 import { CardControls } from '@/features/loop-config/CardControls';
+import { LoopConfigDialog, NewLoopDialog } from '@/features/loop-config/LoopConfigDialog';
+import { useCan } from '@/auth/useCan';
 import { cn } from '@/lib/utils';
 
 /**
@@ -21,8 +23,23 @@ import { cn } from '@/lib/utils';
 export function DashboardPage() {
   const controllers = useControllers();
   const statuses = useLoopStatuses();
+  const canManage = useCan('controllers.manage');
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [, setConfigId] = useState<number | null>(null);
+  const [configId, setConfigId] = useState<number | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const newLoopDialog = canManage ? (
+    <NewLoopDialog
+      open={creating}
+      onClose={() => setCreating(false)}
+      onCreated={(created) => setSelectedId(created.id)}
+    />
+  ) : null;
+  const newLoopButton = canManage ? (
+    <Button variant="secondary" size="sm" onClick={() => setCreating(true)}>
+      Nova malha
+    </Button>
+  ) : null;
 
   if (controllers.isPending) {
     return <LoadingState label="Carregando malhas…" />;
@@ -42,13 +59,16 @@ export function DashboardPage() {
           className="flex-1"
           message="Nenhuma malha configurada."
           hint="Cadastre um controlador para começar."
+          action={newLoopButton}
         />
+        {newLoopDialog}
         <AlarmFooterBar />
       </div>
     );
   }
 
   const selected = controllers.data.find((c) => c.id === selectedId) ?? controllers.data[0];
+  const configTarget = controllers.data.find((c) => c.id === configId) ?? null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -60,6 +80,9 @@ export function DashboardPage() {
           'after:bg-[linear-gradient(to_right,transparent,var(--bg))]',
         )}
       >
+        {newLoopButton !== null ? (
+          <div className="flex justify-end px-3 pt-2">{newLoopButton}</div>
+        ) : null}
         <ul className="flex flex-nowrap gap-3 overflow-x-auto p-3">
           {controllers.data.map((controller) => {
             const status = statuses.get(controller.id) ?? null;
@@ -117,6 +140,16 @@ export function DashboardPage() {
       </div>
 
       <AlarmFooterBar />
+
+      {configTarget !== null ? (
+        <LoopConfigDialog
+          key={configTarget.id}
+          controller={configTarget}
+          open
+          onClose={() => setConfigId(null)}
+        />
+      ) : null}
+      {newLoopDialog}
     </div>
   );
 }
