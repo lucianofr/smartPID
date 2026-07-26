@@ -84,8 +84,7 @@ function AlarmRowLine({ alarm, canAck, ackPending, onAck }: AlarmRowLineProps) {
 
 export function AlarmPanel() {
   const [filters, setFilters] = useState<AlarmFilters>(DEFAULT_ALARM_FILTERS);
-  const { rows, loops, unackedCritical, isPending, isError, refetch, ack, ackAll } =
-    useAlarms(filters);
+  const { rows, loops, unackedCritical, isPending, isError, refetch, ack } = useAlarms(filters);
   const canAck = useCan('alarms.ack');
 
   const patch = (next: Partial<AlarmFilters>): void =>
@@ -136,15 +135,9 @@ export function AlarmPanel() {
             ))}
           </select>
         </label>
-        <Button
-          size="sm"
-          variant={unackedCritical > 0 ? 'primary' : 'secondary'}
-          className="ml-auto"
-          disabled={!canAck || rows.length === 0 || ackAll.isPending}
-          onClick={() => ackAll.mutate()}
-        >
-          ACK ALL
-        </Button>
+        {/* Bulk acknowledgement lives in the §6.9 footer, which is mounted on
+            this page too — a second ACK ALL here would be the same command
+            twice, one of them out of the operator's habitual reach. */}
       </header>
 
       {/* Assertive because an unacknowledged CRITICAL is exactly the case that

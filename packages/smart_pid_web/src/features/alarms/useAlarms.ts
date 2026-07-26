@@ -125,13 +125,11 @@ export interface UseAlarmsResult {
   isError: boolean;
   refetch: () => void;
   ack: UseMutationResult<Record<string, unknown>, ApiError, number>;
-  ackAll: UseMutationResult<Record<string, unknown>, ApiError, void>;
 }
 
 export function useAlarms(filters: AlarmFilters = DEFAULT_ALARM_FILTERS): UseAlarmsResult {
   const query = useActiveAlarms();
   const ack = useAckAlarm();
-  const ackAll = useAckAllAlarms();
   const data = query.data;
   const { sort, status, controllerId } = filters;
 
@@ -179,7 +177,6 @@ export function useAlarms(filters: AlarmFilters = DEFAULT_ALARM_FILTERS): UseAla
     isError: query.isError,
     refetch: () => void query.refetch(),
     ack,
-    ackAll,
   };
 }
 
