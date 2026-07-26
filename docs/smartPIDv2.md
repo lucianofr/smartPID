@@ -297,100 +297,44 @@ Grid 2x2 para instanciar até 4 controladores. Funcionalidade **Time-Sync**: Zoo
 * Configurar IP/Credenciais do servidor OPC-UA no Backend.
 * Botões para criar/manipular projetos: Novo, Abrir, Salvar, Salvar Como.
 
-### **8.6. Web HMI (React/Vite) — Fatia 0+1 (Foundation + Live Dashboard)**
-
-> O cliente web React/Vite/TS substitui a HMI PySide6 (a partir de 8.6 a UI corrente é a web;
-> as seções 8.0–8.5 descrevem a HMI desktop legada/congelada). A Fatia 0+1 entrega a fundação
-> ponta-a-ponta e o dashboard ao vivo.
-
-**Superfície entregue:**
-* **Login JWT:** `POST /auth/login`; o token de acesso é guardado em `sessionStorage`. Rotas
-  protegidas via `RequireAuth`.
-* **Dashboard ao vivo:** grade de `ControllerCard` (PV/SP/CO em `AnalogBar`, badge de modo) com
-  `RealtimeTrend`, alimentada pelo WebSocket `/ws/realtime`.
-* **Autenticação do WebSocket:** primeira mensagem do cliente `{type:"auth", token}` validada por
-  `decode_access_token`; header `Origin` validado contra allowlist; o socket fecha com código
-  `4401` em token/origin ausente ou inválido (nunca `?token=` na URL).
-* **Buffer por conexão (`ConnectionBuffer`):** coalescing de último-valor para `status`/`stats`;
-  entrega lossless (bounded) para `alarm`/`ai`/`system`. **Construído mas a ligação ao broadcast
-  ao vivo (e o fechar-no-overflow) está deferida** — ver deferrals abaixo.
-* **Status OPC-UA via REST poll:** `GET /opcua/status` consultado periodicamente; conexão
-  considerada online quando o estado é `ONLINE` (não trafega pelo WS).
-* **Serviço single-origin da SPA:** `StaticFiles(html=True)` montado **após** os routers; security
-  headers (herdados de P4); allowlist de CORS de desenvolvimento (`http://127.0.0.1:5173`). Bind em
-  `127.0.0.1`.
-* **Tema ISA-101** + contrato canônico de tokens (`tokens.css` + `themes.css`).
-
-**Correções de contrato registradas (vs. spec da fatia, confirmadas nos publish sites):**
-* `StatusData.timestamp` é **string ISO-8601** (não epoch). O `ts` do envelope WS permanece número
-  (epoch, carimbado pela ponte com `time.time()`).
-* `RealtimeType` inclui `'system'` (para `EVENT.SYSTEM`, `loop_id: null`): **6 tipos**
-  (`status`, `stats`, `action`, `alarm`, `ai`, `system`).
-
-**Deferrals conhecidos (fecham na Fatia 8):**
-* Ligação ao vivo do `ConnectionBuffer` ao broadcast + fechar-no-overflow para re-sync via REST.
-* Mapeamento real de unidade/range do `ControllerCard` a partir do backend
-  (`pv_scale.unit` / `eu_min` / `eu_max`; não há campo de casas decimais) — instrumentado na Fatia 8.
-
 ---
 
 ## **MÓDULO 9: Sistema de Alarmes e Eventos**
 
 A matemática do alarme roda no Backend. Quando acionado, o Backend dispara o `EVENT.ALARM` via ZeroMQ.
 ### **9.1. Regras e Níveis**
-* **Níveis:** HIHI, HI, LO, LOLO (com configuração de Banda Morta/Histerese).
+* **Níveis:** HIHI, HI, LO, LOLO (com configuração de Banda Morta/Histerese e Delay_ON e Delay_Off sempre em segundos). DV_HI e DV_LO são desvios alto e desvio baixo (PV-SP).
 * **Prioridades Visuais:**
   * CRITICAL (Vermelho, Octógono 🛑) - Ação imediata, pisca forte, emissão de som opcional configurável.
   * WARNING (Amarelo, Triângulo ⚠️) - Pisca lento.
   * ADVISORY (Roxo, Círculo ℹ️) - Diagnóstico.
-  * LOG (Cinza/Oculto) - Apenas banco de dados.
+  * LOG (Cinza/Oculto) - Apenas banco de dados, não é anunciado no banner de alarmes mas deve ser registrado. No painel de Alarmes e Eventos deverá ser possível filtrar esses alarmes e visualizálos
+
+  * **Visualização:**
+  Os alarmes devem ser mostrados no dashboard principal em dois locais:
+  - header de cada card de loop
+  - no banner de alarmes que fica na parte de baixo da tela
+    * Comportamento visual:
+  - Alarme atuado e não reconhecido - PISCANTE na cor da prioridade
+  - Alarme atuado e reconhecido - Firmar a cor da prioridade, parar de piscar
+  - Alarme normalizado - Desparece do banner e do header do card
+
+* **Categorias:**
+- Alarmes de loop: são os alarmes gerados de acordo com a configuração de cada loop)
+- AI Logs: são as ações do otimizador. Devem ser mostrados no campo especifico no dashboard principal e guardado no banco de dados. Não possui PRIORIDADE nem NIVEL
+- Eventos de sistema: são os logs do sistema em geral, possuem apenas PRIORIDADE (nivel de criticidade) e devem ser guardados no banco de dados
+
+
 
 ### **9.2. Persistência dos Dados de Alarme**
 * **Persistência:** Máximo de 30 dias de alarmes armazenados no SQLite pelo Backend.
 * **Reconhecimento (ACK):** O operador clica "ACK" na HMI, que envia um `PUT /alarms/ack` para o Backend registrar no banco.
 
-### **9.3. Web HMI (React/Vite) — Fatia 3 (Superfície de Alarmes)**
-
-> A superfície de alarmes do cliente web React substitui os widgets `alarm_panel` /
-> `alarm_bar` da HMI PySide6 (paridade funcional). Backend **inalterado**: a fatia consome
-> apenas `routers/alarms` (`GET /alarms/active`, `POST /alarms/{id}/ack`, `POST /alarms/ack-all`),
-> o alarm-config dos `routers/controllers` e os streams WS `EVENT.ALARM` / `EVENT.SYSTEM`.
-
-**`AlarmBar` (rodapé persistente no `AppShell`):**
-* Barra de 36px fixada no rodapé do shell canônico (`AppShell`), visível em todas as telas
-  (análoga ao `AlarmFooterWidget` PySide6).
-* Contadores agregados por `AlarmPriority`: **CRIT** (CRITICAL), **WARN** (WARNING),
-  **DIAG** (ADVISORY). Cada bucket pisca (blink) quando há ao menos um alarme não reconhecido.
-* Mostra o último alarme ativo e um botão **ACK ALL**.
-
-**`AlarmPanel` (rota `/alarms`):**
-* Lista de alarmes ativos **virtualizada** (`@tanstack/react-virtual`) — sobrevive a flood de
-  eventos; deduplicação por `id` (last-write-wins).
-* Ordenação por severidade (rank CRITICAL→LOG) ou por tempo; filtros por estado e por malha.
-* **Ack por linha** + **ACK ALL**. `aria-live="assertive"` anuncia novos alarmes CRITICAL.
-
-**`AlarmConfigForm` (por malha):**
-* Edita os 6 tipos de limite (`HIHI`, `HI`, `LO`, `LOLO`, `DV_HI`, `DV_LO`) com `enabled`,
-  `limit` e `priority`.
-* O `PUT` envia o array `thresholds[]` **completo** (o backend substitui tudo — replace-all) e
-  recarrega a quente o `AlarmWorker` em execução.
-
-**Modelo de estado de 3 estados (GAP-3a):** apenas `UNACKNOWLEDGED`, `ACKNOWLEDGED` e
-`CLEARED_UNACK` existem. **Ack ≠ clear:** reconhecer apenas muda `UNACKNOWLEDGED → ACKNOWLEDGED`
-e mantém a linha. O caso *cleared + acked* não é um 4º estado — é representado pela linha
-**saindo da lista ativa** (filtro `get_active` do backend); o "clear" é dirigido só pela condição
-de campo cessar no backend.
-
-**WS é gatilho, fonte da verdade é o backend (GAP-3b):** o handler do envelope `alarm`
-**não** lê `id`/`status` do payload — ele apenas invalida `['alarms','active']` e refaz o fetch
-(o `onResync` faz o mesmo). As mutações de ack também invalidam a query em `onSettled`, sem
-cirurgia otimista de estado (evita ack dessincronizado).
-
-**ISA-101 — codificação redundante (§8.2):** a severidade é sempre **forma geométrica + cor +
-texto**, nunca cor isolada — glifos octógono (CRITICAL), triângulo (WARNING), losango (ADVISORY)
-e ponto (LOG), nas classes `sev-critical` / `sev-warning` / `sev-advisory` / `sev-log`.
-**Blink + reduced-motion (§6.4):** linhas/buckets não reconhecidos piscam; sob
-`prefers-reduced-motion: reduce` o blink é substituído por peso de fonte + sublinhado.
+### **9.3 Painel de Alarmes e Eventos**
+O painel de alarmes e eventos é o local onde podemos visualizar os registros de alarmes e eventos do sistema. 
+O usuário deverá poder selecionar usando checkboxes, se possível dentro de um combobox, mais de uma opção em cada item PRIORIDADE, NIVEL E CATEGORIA.
+Tamabém deve ser possível definir o tempo inicial e final a ser pesquisado
+Deve haver um checkbox que se marcado o grid fica sendo atualizado a todo instante com as últimas 100 mensagens que estiverem no banco a depender da escolha do usuário feita nos filtros de PRIORIDADE, CATEGORIA E NIVEL.
 
 ---
 
@@ -454,282 +398,3 @@ A HMI não calcula a simulação, mas fornece a imersão visual.
 O Backend instancia um Servidor OPC-UA embarcado usando `asyncua`. A árvore simula uma planta real:
 * `Objects/SmartPID_Simul/Process_Flow/...` (Tags: PV, SP, CO, Mode)
 * O Backend conecta-se a si mesmo em `localhost`, enganando o barramento interno. Isso permite simular 100% da cadeia de rede e arquitetura de dados antes de plugar o software no CLP real da fábrica.
-
----
-
-## 13. Web HMI — Superfície de comandos & config (Fatia 2, verificada 2026-06-19)
-
-Investigação Task 1 contra `main 427b670` (inclui P1/P2/P3/P4). Corpos e rotas reais que o
-cliente web consome. **Auth:** toda rota exige `require_authenticated_admin` (modelo single-admin
-P3 — NÃO `require_operator/supervisor`). Erros REST devolvem `{detail}` (→ `ApiError`).
-
-### Comandos (`/commands`, todos POST → `CommandResponse {ok, controller_id?, detail?, enabled?}`)
-- `POST /setpoint` — `SetpointCommand {controller_id, value}` (chave `value`, não `setpoint`).
-- `POST /mode` — `ModeCommand {controller_id, mode: ControllerMode}` (9 modos incl. BYPASS).
-- `POST /output` — `OutputCommand {controller_id, value}` (chave `value`, não `output`).
-- `POST /tuning` — `TuningCommand {controller_id, kp?, ti?, td?}` (GAP-2a). kp/ti/td opcionais;
-  clamp server-side por `max_tuning_change_pct`; **409** se OPC-UA desconectado. NÃO existe
-  `/commands/pid/params`.
-- `POST /optimization` — `OptimizationCommand {controller_id, enabled}` (GAP-2b) → resposta inclui
-  `enabled`. Rótulo de UI: **"Enable AI Optimization"** (otimizador, não bloco PID). 404 se loop
-  inexistente. O único `pid/enable` literal é `POST /simulator/{id}/pid/enable` — escopo simulador,
-  NUNCA produção.
-- `GET /tuning-recommendations/{controller_id}` — dict (sem response_model); **404 = sem
-  recomendação**.
-- `POST /apply-tuning/{controller_id}` — **sem corpo**; clamp server-side; devolve dict
-  `{controller_id, applied_kp, applied_ti, applied_td, clamped}`. **409** se PID externo não está em
-  AUTO; **404** se nenhuma recomendação pendente.
-
-### Controles de IA (`/controllers/{id}/ai/*`)
-- `POST .../ai/start | stop | pause` — **sem corpo**; fire-and-forget via ZMQ; devolve
-  `{ok, controller_id, detail}` (sem response_model). Verbos **POST** (não PATCH).
-- `GET .../ai/status` → `AIStatusResponse {controller_id, engine, objective, speed, current_ki,
-  last_gamma?, enabled}`. **404** se não há AI worker para o loop.
-- `GET .../ai/history` → `AIHistoryResponse {controller_id, entries[]}`.
-
-### Config por loop (LoopConfigDialog)
-- **PID params (Kp/Ti/Td) ao vivo:** `POST /commands/tuning` (GAP-2a, escreve no DCS via OPC-UA).
-- **Limites & policy persistidos:** `PUT /controllers/{id}` (`ControllerUpdate`, todos os campos
-  opcionais) → `ControllerResponse`. Inclui `sp_hi_lim/sp_lo_lim`, `out_hi_lim/out_lo_lim`,
-  `arw_hi_lim/arw_lo_lim`, `max_tuning_change_pct`, `mode_normal`, `permitted_modes`.
-- **Seletor de engine de IA (NONE/FUZZY/RL) — HABILITADO** (decisão do usuário 2026-06-19):
-  `PUT /controllers/{id}` **aceita e persiste** `ai_config {engine, objective, dead_time_l,
-  limit_min, limit_max, rl_*}` e **faz hot-reload do AI worker** (controllers.py:330-447).
-  Corrige a "AI-engine persistence GAP" do contrato (premissa desatualizada — `ai_config` existe
-  em `ControllerCreate` e `ControllerUpdate`). Sem rota dedicada `/ai/config`; usar o PUT.
-
-### UI da superfície de comandos (Fatia 2 — montada no Live Dashboard, 2026-06-19)
-
-Os controles ficam embutidos em cada `ControllerCard` do dashboard (Fatia 0+1). A `DashboardPage`
-busca a lista completa de `ControllerResponse` via `GET /api/controllers` (uma única query — sem
-refetch por card) e deriva tudo a partir dela.
-
-- **`CardControls`** (slot `controls` do card): linha de Setpoint (input numérico + botão *Set*),
-  seletor de **Mode** (9 `ControllerMode`, incl. BYPASS), input de **Output** habilitado só em `MAN`,
-  e o toggle **"Enable AI Optimization"** (`POST /commands/optimization`). O `mode` vem **ao vivo** do
-  frame `status` do WS (`useRealtime().lastStatus`); `optimizationEnabled` vem de
-  `ControllerResponse.optimization_enabled`. Validação client-side (setpoint/output) antes de enviar.
-- **`LoopConfigDialog`** (aberto pelo botão ⚙ do card): seções colapsáveis **PID** (Kp/Ti/Td/alpha/
-  deadband + `pid_structure`), **Otimização IA** com **seletor de engine HABILITADO** (NONE/FUZZY/RL,
-  objective, dead_time_L, limites de Ki e campos RL) e **Limites** (out/arw hi-lo, filtros pv/sp).
-  O `initial` carrega o `ai_config` **completo** (9 campos) para round-trip sem clobber; salva via
-  `PUT /controllers/{id}`.
-- **`AiPanel`** (por loop): mostra engine/objective/enabled/strategy/Ki/gamma (status + frames `ai`
-  ao vivo), botões **Start/Pause/Stop** (`POST .../ai/{action}`) e **Apply tuning**.
-- **Guarda de apply-tuning:** "Apply tuning" só fica habilitado com recomendação `pending` e **não**
-  escreve no PID até o usuário confirmar em `ConfirmApplyTuningDialog` ("Confirm Write") →
-  `POST /commands/apply-tuning/{id}`. Coberto por Vitest e por e2e Playwright
-  (`e2e/fatia2-commands.spec.ts`, contagem de invocações de rota).
-
-## 14. Web HMI — Multi-trend + Stats + Export (Fatia 4, verificada 2026-06-19)
-
-Rota `/multitrend` (gated por `RequireAuth`). **Backend: nenhuma mudança** — só consumo de rotas já
-existentes (auditoria Task 12: todas declaram `response_model`; só `download_export` é `FileResponse`
-stream, legitimamente sem modelo). Todas as rotas exigem `require_authenticated_admin` e devolvem
-`{detail}` em erro (→ `ApiError`).
-
-### Layout (bento)
-Composição bento (não grade uniforme): a coluna do **trend ocupa ~8 colunas** e a **lateral ~4**
-(seletor de séries em cima, grade de estatísticas embaixo, painel de export/histórico no rodapé da
-lateral). Hierarquia por contraste de escala e densidade, não por padding uniforme.
-
-### Multi-trend (multi-série ao vivo)
-- **Fonte ao vivo:** `useRealtime().lastStatus` (frames `status` do `/ws/realtime`). Os buffers só
-  acumulam frames das malhas **atualmente selecionadas**; cada série é PV/SP/CO de um loop.
-- **Cores:** PV/SP/CO **herdam os tokens de tema** (`--trend-pv/-sp/-co`); malhas distintas recebem
-  **variação tonal** dentro do mesmo matiz (claro→escuro via `color-mix`), SP permanece tracejado.
-  Sem cores novas e sem preenchimento de área (ver `identidade_visual_ISA101.md §4.4`).
-- **Performance:** decimação **min/max por coluna de pixel** + cap de janela deslizante
-  (default **600 pts / 60 s**, configurável), com orçamento **≤16 ms/frame** (largura em px dimensiona
-  o rAF). O teste de decimação (Vitest) afirma saída ≤ `pxWidth*2` e preservação de picos.
-
-### Grade de estatísticas por loop
-Seed via REST `GET /controllers/stats` → `list[StatsResponse]` (e `GET /controllers/{id}/stats` →
-`StatsResponse`), sobreposto ao vivo pelos frames `STATS` do bus (`useRealtime().lastStats`; `stats`
-**é** bridgeado pelo RealtimeWS). Métricas: **IAE / ITAE / ISE / MSE / σ / TV** + variabilidade
-renderizada como **2σ/RANGE** e **2σ/SP** (ver MÓDULO 7).
-- **Reconciliação de campos (verificada Task 12):** REST `StatsResponse` e o frame WS `STATS`
-  compartilham os nomes **snake_case** `std_dev` / `total_variation` / `variability_sp` /
-  `variability_range`; o `StatsRow` do front-end é apenas o alias camelCase desses campos.
-
-### Historiador (consulta sob demanda)
-`GET /history/{controller_id}` → `HistoryResponse`. `controller_id` é **path** (obrigatório);
-parâmetros de query `start` / `end` / `limit`.
-
-### Export (não bloqueante, autenticado)
-Fluxo **create → poll → download**: `POST /export` → `ExportJob` (201); `GET /export/{export_id}` →
-`ExportJob` (poll de progresso/status); `GET /export/{export_id}/download` → **`FileResponse`**
-(blob autenticado; o estado "done" é um `<button>` que baixa via fetch+Authorization, não um link).
-- **GAP-4a (decisão registrada):** listagem de histórico de exports está **FORA** de escopo — não
-  existe rota `GET /export/list`. Apenas o ciclo create→poll→download é exposto.
-
-Cobertura: Vitest (agregação/seleção de séries, formatação de métricas + mapeamento de DTO, cap de
-decimação) e e2e Playwright `e2e/multitrend.spec.ts` (render multi-série + download de export).
-
-## 15. Web HMI — Simulador / Gêmeo Digital (Fatia 5, verificada 2026-06-19)
-
-Rota `/simulator` (gated por `RequireAuth`). **Backend: nenhuma mudança** — reusa **integralmente** as
-rotas REST `/simulator/*` já existentes (servidor OPC-UA local + `SimulatorAdapter` do MÓDULO 12) e os
-frames `status` do `/ws/realtime`. DTOs do front-end **hand-typed** em
-`features/simulator/types.ts`, espelhando os modelos Pydantic do backend (sem geração automática).
-Todas as rotas exigem autenticação de admin e devolvem `{detail}` em erro (→ `ApiError`); um teste
-negativo afirma o contrato single-admin (não autenticado → **401**, não 403 por papel).
-
-### Banner persistente de modo simulação
-No topo da página, `SimulationModeBanner` (`role="status"`) exibe "MODO SIMULAÇÃO — digital twin" de
-forma persistente, garantindo que o gêmeo **nunca seja confundido com o processo real** (ver
-`identidade_visual_ISA101.md §4.6`).
-
-### Painel de controle (`SimulatorControlPanel`, por loop selecionado)
-- **Preset selector** (`PresetSelector`): `POST /simulator/preset` (`{controller_id, preset}`) com os
-  presets `FLOW | PRESSURE | LEVEL | TEMPERATURE | CUSTOM` — troca a dinâmica do processo.
-- **Dynamics sliders** (`DynamicsSliders`): `PUT /simulator/parameters`
-  (`{controller_id, gain, tau1, tau2?, dead_time}`) — ganho, tempo morto **L**, constantes **τ1/τ2**.
-- **Disturbance** (`DisturbanceControls`): injeta via `POST /simulator/disturbance`
-  (`{controller_id, type: step|noise, amplitude}`) e remove via
-  `DELETE /simulator/disturbance/{controller_id}`; o botão **Remove** fica desabilitado quando não há
-  distúrbio ativo.
-- **Twin output + modo** (`TwinOutputModeControl`): CO% via `POST /simulator/{id}/co` (corpo
-  `SimulatorPIDSPRequest` — `sp` carrega o CO%) e MAN/AUTO via `POST /simulator/{id}/pid/mode`. A
-  entrada de CO% fica **desabilitada em AUTO** (o PID do twin escreve o CO).
-- **Auto-toggles** (`AutoToggles`): `PUT /simulator/{id}/auto-sp`
-  (`{enabled, sp_min_pct, sp_max_pct}`) e `PUT /simulator/{id}/auto-disturbance`
-  (`{enabled, max_amplitude_pct}`) — geração automática de SP / distúrbio com bounds default.
-- **Start/stop** (`StartStopControl`): `POST /simulator/start` | `POST /simulator/stop`.
-
-> Rotas inexistentes **não** são chamadas: não há `/simulator/output` nem `/simulator/mode` — saída e
-> modo usam `/simulator/{id}/co` e `/simulator/{id}/pid/mode`.
-
-### Trend ao vivo do gêmeo
-- **Snapshot de config:** `GET /simulator/status` → `SimulatorStatusResponse`
-  (`{enabled, running, controllers}`), via `useSimulatorStatus` (semente + lista de loops).
-- **Fonte ao vivo:** `useTwinTrend(controllerId)` lê o `StatusData` por-loop do mapa `live` do
-  RealtimeWS (frames `status` coalescidos, chaveados por loop id) e acumula PV/SP/CO num
-  `TrendData` (ring-buffer ~600 frames) alimentando `<RealtimeTrend>`; reseta ao trocar de loop.
-
-Cobertura: Vitest (preset selector, sliders, disturbance controls, auto-toggles, output/modo, control
-panel, status hook, rejeição não autenticada, `appendTwinSample`) e e2e Playwright
-`e2e/simulator.spec.ts` (aplicar-preset → resposta no trend; injetar distúrbio → degrau visível →
-remoção retorna ao normal).
-
-## 16. Web HMI — Executive Dashboard (Fatia 6, verificada 2026-06-19)
-
-Rota `/executive` (gated por `RequireAuth`; `ExecutiveDashboardPage`). **Backend: nenhuma mudança** —
-reusa **integralmente** as rotas REST já existentes e o canal `/ws/realtime`. Nenhum router/DTO é
-adicionado ou editado. Hooks de dados em `src/api/executive.ts` (wrappers finos de TanStack Query
-sobre o `apiGet` canônico, compartilhando o mesmo cache das fatias anteriores). Página single-admin:
-auth obrigatória, **sem** gating por papel.
-
-### Cartões de KPI agregado (bento)
-Cinco `ExecutiveKPICard` no topo, derivados de todos os loops via `aggregate(loopKpis, modesById)`
-(`lib/kpi.ts`):
-- **Loops in AUTO** — `autoPct` (% de loops em `AUTO|CAS|RCAS`).
-- **Avg variability 2σ/RANGE** — `avgVariabilityRange`; o delta fica fora-do-alvo
-  (`variabilityOutOfTarget`, alvo default 5% do RANGE) e só então pinta cor de alerta.
-- **Total valve travel (TV)** — `totalTv` (soma da Total Variation de todos os loops).
-- **Avg IAE** — `avgIae`.
-- **Loops** — `loopCount`.
-
-`ExecutiveKPICard` (`components/ExecutiveKPICard.css`, classes `exec-kpi-*`): valor grande mono-tabular
-(`--text-2xl` + `.numeric`), label, delta opcional de fora-do-alvo (neutro por default; cor de alerta
-apenas via `data-out-of-target`) e barra de range neutra opcional (`rangeBar`). Tokens reais; sem
-sparklines; cor usada só para tendência fora-do-alvo.
-
-### Saúde dos loops + pílula OPC
-`LoopHealthRow` por loop: estado `running | stopped | error` (`healthOf(mode, hasLiveStatus)` — `OOS`/
-`IMAN` = error; loop sem frame ao vivo e modo vazio/`BYPASS` = stopped; demais = running), o modo
-corrente e a pílula de estado OPC (`OFFLINE | CONNECTING | ONLINE | RECONNECTING`, de
-`GET /opcua/status`).
-
-### Janela de período configurável
-`PeriodSelector` + `lib/period.ts` com `PERIOD_OPTIONS` = `15m | 1h | 8h | 24h | 7d`; `periodRange(key)`
-devolve `{startIso, endIso, key}` usado nas consultas dependentes de janela (ex.: histórico de IA).
-
-### Recomendações de sintonia por loop + motor de IA
-`TuningRecommendationCard` por loop mostra `current_* → recommended_*` para Kp/Ti/Td + `reason`/`status`
-(ou "No tuning recommendation" quando vazio), de `GET /commands/tuning-recommendations/{id}` (404 →
-sem recomendação). O **motor de IA por loop** vem de `GET /controllers/{id}/ai/status`
-(`ControllerSummary` **não** carrega `ai_config`); o histórico de decisões usa `GET /alarms/ai-history`.
-
-### Overlay ao vivo (`useRealtime`)
-A página semeia os KPIs com o snapshot REST e depois sobrescreve por id com os frames ao vivo:
-`lastStats` (frames `stats` coalescidos) via `fromWsStats`, `lastStatus` (frames `status`) para o modo
-corrente. No reconectar, `onResync` dispara `invalidateQueries` (refetch REST de `controllers`/stats),
-re-sincronizando sem reload.
-
-### Endpoints REST reusados (todos verificados na fonte; nenhum inventado)
-- `GET /controllers` — lista de loops (`ControllerSummary`, subconjunto de id/name/mode/pv/sp/co).
-- `GET /controllers/stats` — snapshot de estatísticas de todos os loops.
-- `GET /controllers/{id}/ai/status` — motor de IA por loop (`getAiStatus`).
-- `GET /commands/tuning-recommendations/{id}` — recomendação de sintonia (404 quando não há;
-  **sem `response_model`** — reusado como está, não corrigido).
-- `GET /opcua/status` — estado da conexão OPC-UA.
-- `GET /alarms/ai-history` — histórico de decisões de IA; **sem `response_model`** (retorna
-  `list[dict]`) → tipado à mão como `AiHistoryEntry` no front-end, reusado como está (não corrigido).
-
-> **Reconciliação de campos (gotcha):** os nomes dos campos de estatística são **idênticos em
-> snake_case no REST e no WS** — `std_dev / total_variation / variability_sp / variability_range /
-> sample_count` (verificado em `StatsResponse` e em `realtime/envelope.ts StatsData`). **Não existe**
-> `sigma/tv/var_sp/var_range` no fio. `lib/kpi.ts` mapeia esses nomes snake_case para o `LoopKpis`
-> interno em camelCase (`sigma/tv/variabilitySp/variabilityRange`) via `fromRestStats`/`fromWsStats`.
-
-Componentes: `ExecutiveKPICard`, `LoopHealthRow`, `PeriodSelector`, `TuningRecommendationCard`. Libs:
-`lib/period.ts`, `lib/kpi.ts`. Hooks: `src/api/executive.ts`.
-
-Cobertura: Vitest (`kpi.test.ts` — mapeamento/agregação exatos; `period.test.ts`;
-`ExecutiveKPICard.test.tsx`; `ExecutiveDashboardPage.test.tsx` — números renderizados == REST mockado) e
-e2e Playwright `e2e/executive-dashboard.spec.ts` (KPIs/saúde a partir do REST stubado; um frame `stats`
-ao vivo atualiza o Avg IAE sem reload). Aceitação numérica (não paridade visual).
-
-## 17. Web HMI — Settings + Conexão OPC + Projetos (Fatia 7, verificada 2026-06-19)
-
-Três páginas de administração/configuração, mais o `WelcomeDialog` pós-login. **Mono-usuário:** o
-backend opera com um único admin — **não há** página de gestão de usuários, **nem** CRUD de usuários,
-**nem** gating por perfil/role na UI. As rotas de projeto exigem auth: sem JWT a UI redireciona para
-`/login` e o backend responde **401** (não 403). **Fronteira de credenciais:** as credenciais do admin
-vivem em `users.db` (fora do projeto) e **nunca** são gravadas no arquivo `.spid` (exportação sem
-tabelas de credenciais — verificado em `test_project_export_no_credentials.py`). Nenhuma superfície da
-Fatia 7 renderiza credenciais.
-
-### `/settings` — Preferências da aplicação (somente cliente)
-`SettingsPage` monta `SettingsForm` (`features/settings/`). Preferências persistidas **apenas no
-cliente** em `localStorage` sob a chave `spid.preferences` (hook `useSettings`, tipos em
-`settingsTypes.ts`): janela do trend (`trendWindowSeconds`, default 120), casas decimais numéricas
-(`decimals`) e confirmação de ações destrutivas (`confirmDestructive`, default `true`). **Sem tema**
-(Dark Room / ISA-101 / MD3 / Ocean ficam para a Fatia 8) e **sem** troca de senha do admin nem gestão
-de usuários — não existe endpoint `/auth/change-password`. Nenhuma chamada REST: a página é puramente
-local. Cobertura: Vitest (`useSettings.test.ts`, `SettingsForm.test.tsx`).
-
-### `/connection` — Configuração e estado da conexão OPC-UA
-`ConnectionPage` monta `ConnectionPanel` + `TagBrowser` (`features/connection/`, API em `opcuaApi.ts`,
-hook `useOpcua`). Permite configurar o endpoint OPC, conectar/desconectar e navegar/pesquisar tags.
-**Não há** controle de start/stop de aquisição — a aquisição é contínua; a página apenas configura a
-conexão. Endpoints REST reusados (todos verificados na fonte; nenhum inventado): `GET /opcua/status`,
-`POST /opcua/endpoint`, `POST /opcua/connect`, `POST /opcua/disconnect`, `GET /opcua/browse/{node_id}`,
-`GET /opcua/search`. Cobertura: Vitest (`opcuaApi.test.ts`, `ConnectionPanel.test.tsx`,
-`TagBrowser.test.tsx`) e e2e `e2e/fatia7-connection.spec.ts` (configurar endpoint, conectar, browse/
-search de tags).
-
-### `/projects` — Ciclo de vida de projetos `.spid` remotos
-`ProjectsPage` monta `ProjectList` + `ProjectImportDropzone` (`features/projects/`, API em
-`projectApi.ts`, hook `useProjects`). Lista, cria, importa (upload multipart de `.spid`), abre e exclui
-projetos gerenciados pelo backend. **Download = apenas o projeto ativo**, via blob autenticado
-(`apiUpload`/blob autenticado sobre o cliente canônico — nenhuma função existente foi alterada).
-Exclusão por linha é **confirmada quando `confirmDestructive`** estiver ligado nas preferências.
-Endpoints REST reusados: `GET /project/list`, `GET /project/current`, `POST /project/new`,
-`POST /project/open`, `POST /project/import` (multipart), `GET /project/download` (apenas ativo),
-`DELETE /project/{name}`. Cobertura: Vitest (`projectApi.test.ts`, `ProjectList.test.tsx`,
-`ProjectImportDropzone.test.tsx`) e e2e `e2e/fatia7-projects.spec.ts` (criar, importar, abrir, excluir).
-
-### `WelcomeDialog` (pós-login)
-Modal mostrado após o login quando há token e `sessionStorage['spid.welcome-seen']` não está setado
-(montado no `Shell()` de `App.tsx`; o overlay é descartado ao escolher/abrir um projeto, gravando
-`spid.welcome-seen='1'`). Lista os projetos do backend (`useProjectList` → `GET /project/list`) e permite
-abrir um deles direto. Cobertura: Vitest (`WelcomeDialog.test.tsx`).
-
-### Contrato de auth negativa
-- Backend (pytest paramétrico `test_project_auth_required.py`): `GET /project/list`, `GET /project/current`,
-  `POST /project/new`, `POST /project/open`, `GET /project/download`, `DELETE /project/{name}` retornam
-  **401** sem JWT (7 casos, incluindo o teste de exportação sem credenciais).
-- E2E (`e2e/fatia7-auth-negative.spec.ts`): a UI não autenticada é redirecionada para `/login` (o e2e roda
-  sem backend, portanto valida o redirect da UI, não o status HTTP).
