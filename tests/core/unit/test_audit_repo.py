@@ -15,7 +15,7 @@ from smart_pid_domain.enums import AuditAction
 async def audit_repo(tmp_path):
     repo = SQLiteRepository(tmp_path / "test.db")
     await repo.initialize()
-    audit_repo = AuditRepository(repo)
+    audit_repo = AuditRepository(repo.session_factory)
     yield audit_repo
 
 

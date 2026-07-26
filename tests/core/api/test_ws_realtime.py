@@ -406,4 +406,4 @@ async def test_create_app_registers_ws_route_and_openapi(tmp_path) -> None:
         loop_manager.stop_all()
         bus.stop()
         await user_repo.close()
-        await repo.db.close()
+        await repo.close()

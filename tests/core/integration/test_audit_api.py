@@ -27,8 +27,8 @@ async def app_fixture(tmp_path):
     user_db_path = tmp_path / "users.db"
     user_repo = UserRepository(user_db_path)
     await user_repo.initialize()
-    alarm_repo = AlarmRepository(repo)
-    audit_repo = AuditRepository(repo)
+    alarm_repo = AlarmRepository(repo.session_factory)
+    audit_repo = AuditRepository(repo.session_factory)
     bus = EventBus()
     bus.start()
     loop_manager = LoopManager(bus=bus)

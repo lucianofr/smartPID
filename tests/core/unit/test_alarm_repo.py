@@ -16,7 +16,7 @@ from smart_pid_domain.enums import AlarmPriority, AlarmType
 async def alarm_repo(tmp_path):
     repo = SQLiteRepository(tmp_path / "test.db")
     await repo.initialize()
-    alarm_repo = AlarmRepository(repo)
+    alarm_repo = AlarmRepository(repo.session_factory)
     yield alarm_repo
 
 
