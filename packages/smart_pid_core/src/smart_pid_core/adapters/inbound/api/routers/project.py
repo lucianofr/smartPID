@@ -135,9 +135,9 @@ async def download_project(
     request: Request,
     user: Annotated[UserClaims, Depends(require_admin)],
 ) -> FileResponse:
-    """Download the active project as a .spid file (WAL checkpointed first)."""
+    """Download the active project as a .spid file."""
     svc = request.app.state.project_service
-    path = await svc.prepare_download()
+    path = svc.download_path()
     return FileResponse(
         path=str(path),
         filename=path.name,

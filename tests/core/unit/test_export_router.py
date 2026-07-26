@@ -14,17 +14,18 @@ def _make_app(worker) -> FastAPI:
     """Create a minimal FastAPI app with export router and overridden deps."""
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/export")
-    # Override auth dependencies to bypass JWT (export router uses require_user)
+
+    # Override auth dependency to bypass JWT
     from smart_pid_core.adapters.inbound.api.dependencies import (
-        require_admin,
-        require_user,
+        require_authenticated_admin,
     )
     from smart_pid_domain.dtos.auth import UserClaims
 
-    _admin = UserClaims(user_id=1, username="admin", role="admin")
-    app.dependency_overrides[require_user] = lambda: _admin
-    app.dependency_overrides[require_admin] = lambda: _admin
+    app.dependency_overrides[require_authenticated_admin] = lambda: UserClaims(
+        user_id=1, username="admin", role="admin",
+    )
     app.dependency_overrides[get_export_worker] = lambda: worker
+
     return app
 
 

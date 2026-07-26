@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 
 import structlog
 import uvicorn
-from sqlalchemy import text
 
 from smart_pid_core.adapters.factory import AdapterFactory
 from smart_pid_core.adapters.inbound.api.app import create_app
@@ -31,20 +30,15 @@ if TYPE_CHECKING:
     from smart_pid_domain.models.alarm_config import AlarmConfig
 
 logger = structlog.get_logger()
-async def _load_alarm_configs(session_factory) -> dict[int, AlarmConfig]:  # noqa: ANN001
+async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
     """Load alarm configurations from Configuracao_Alarmes table."""
-    from sqlalchemy import text
-
     from smart_pid_domain.enums import AlarmPriority
     from smart_pid_domain.models.alarm_config import AlarmConfig as _AC
 
     configs: dict[int, _AC] = {}
     try:
-        async with session_factory() as session:
-            result = await session.execute(
-                text("SELECT * FROM Configuracao_Alarmes ORDER BY controlador_id"),
-            )
-            rows = result.mappings().all()
+        async with db.execute("SELECT * FROM Configuracao_Alarmes ORDER BY controlador_id") as cur:
+            rows = await cur.fetchall()
     except Exception:
         logger.debug("alarm_configs_not_loaded", exc_info=True)
         return configs
@@ -145,19 +139,19 @@ async def _migrate_users_if_needed(spid_path: Path, users_db_path: Path) -> None
         ) as cur:
             rows = await cur.fetchall()
 
+    if not rows:
+        return
+
     user_repo = UserRepository(users_db_path)
     await user_repo.initialize()
     for row in rows:
         with contextlib.suppress(Exception):
-            async with user_repo.session_factory() as session:
-                await session.execute(
-                    text(
-                        "INSERT INTO Usuarios (nome, senha_hash, perfil, ativo, criado_em)"
-                        " VALUES (:n, :h, :p, :a, :c)"
-                    ),
-                    {"n": row[0], "h": row[1], "p": row[2], "a": row[3], "c": row[4]},
-                )
-                await session.commit()
+            await user_repo.db.execute(
+                "INSERT INTO Usuarios (nome, senha_hash, perfil, ativo, criado_em)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (row[0], row[1], row[2], row[3], row[4]),
+            )
+    await user_repo.db.commit()
     await user_repo.close()
     logger.info(
         "migrated_users", count=len(rows), source=str(spid_path), target=str(users_db_path),
@@ -173,13 +167,16 @@ _ROLE_VALUE_MAP: tuple[tuple[str, str], ...] = (
 
 async def _migrate_user_roles(user_repo: UserRepository) -> None:
     """Rewrite legacy role values in users.db idempotently (spec §9.4)."""
-    async with user_repo.session_factory() as session:
-        for legacy, new in _ROLE_VALUE_MAP:
-            await session.execute(
-                text("UPDATE Usuarios SET perfil = :new WHERE perfil = :legacy"),
-                {"new": new, "legacy": legacy},
-            )
-        await session.commit()
+    migrated = 0
+    for legacy, new in _ROLE_VALUE_MAP:
+        cursor = await user_repo.db.execute(
+            "UPDATE Usuarios SET perfil = ? WHERE perfil = ?",
+            (new, legacy),
+        )
+        migrated += max(cursor.rowcount, 0)
+    await user_repo.db.commit()
+    if migrated:
+        logger.info("migrated_user_roles", rows=migrated)
 
 
 async def _seed_default_admin(user_repo: UserRepository) -> None:
@@ -218,29 +215,25 @@ async def _sim_persist_flusher(
                 _log.exception("sim_persist_flush_failed", controller_id=cid)
 
 
-async def _retention_cleanup(session_factory, interval_hours: int = 24) -> None:  # noqa: ANN001
+async def _retention_cleanup(repo_db, interval_hours: int = 24) -> None:  # noqa: ANN001
     """Daily cleanup of old alarm logs and system events."""
-    from sqlalchemy import text
-
     _log = structlog.get_logger()
     while True:
         await asyncio.sleep(interval_hours * 3600)
         try:
-            async with session_factory() as session:
-                await session.execute(text(
-                    "DELETE FROM Log_Alarmes WHERE timestamp <= datetime('now', '-30 days')"
-                ))
-                await session.execute(text(
-                    "DELETE FROM Log_System_Events"
-                    " WHERE timestamp <= datetime('now', '-30 days')"
-                ))
-                await session.execute(text(
-                    "DELETE FROM Log_Sintonia_IA WHERE timestamp <= datetime('now', '-7 days')"
-                ))
-                await session.execute(text(
-                    "DELETE FROM Log_Processo WHERE timestamp <= datetime('now', '-7 days')"
-                ))
-                await session.commit()
+            await repo_db.execute(
+                "DELETE FROM Log_Alarmes WHERE timestamp <= datetime('now', '-30 days')"
+            )
+            await repo_db.execute(
+                "DELETE FROM Log_System_Events WHERE timestamp <= datetime('now', '-30 days')"
+            )
+            await repo_db.execute(
+                "DELETE FROM Log_Sintonia_IA WHERE timestamp <= datetime('now', '-7 days')"
+            )
+            await repo_db.execute(
+                "DELETE FROM Log_Processo WHERE timestamp <= datetime('now', '-7 days')"
+            )
+            await repo_db.commit()
             _log.info("retention_cleanup_complete")
         except Exception:
             _log.exception("retention_cleanup_error")
@@ -383,18 +376,18 @@ async def run_daemon(settings: CoreSettings) -> None:
     # Phase 5: AI Repository
     from smart_pid_core.adapters.outbound.ai_repo import AIRepository
 
-    ai_repo = AIRepository(repo.session_factory)
+    ai_repo = AIRepository(repo)
 
     # Phase 6: Alarm + Audit infrastructure
     from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
     from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
     from smart_pid_core.application.workers.alarm_worker import AlarmWorker
-    alarm_repo = AlarmRepository(repo.session_factory)
-    audit_repo = AuditRepository(repo.session_factory)
+
+    alarm_repo = AlarmRepository(repo)
+    audit_repo = AuditRepository(repo)
 
     # Build alarm configs from Configuracao_Alarmes table
-    alarm_configs = await _load_alarm_configs(repo.session_factory)
-
+    alarm_configs = await _load_alarm_configs(repo.db)
     alarm_worker = AlarmWorker(
         bus=bus, alarm_configs=alarm_configs, alarm_repo=alarm_repo,
         event_loop=asyncio.get_running_loop(),
@@ -484,7 +477,6 @@ async def run_daemon(settings: CoreSettings) -> None:
         simulator_adapter=simulator_adapter,
         daemon_state=daemon_state,
         opcua_adapter=opcua_adapter,
-        db_worker=db_worker,
     )
 
     # Phase 2: FastAPI
@@ -532,10 +524,12 @@ async def run_daemon(settings: CoreSettings) -> None:
         logger.info("shutdown_signal_received")
         stop_event.set()
 
-    cleanup_task = asyncio.create_task(_retention_cleanup(repo.session_factory))
+    loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, handle_signal)
 
+    # Data retention cleanup (daily)
+    cleanup_task = asyncio.create_task(_retention_cleanup(repo.db))
 
     # Simulator config flusher (drains dirty set from OPC-UA-initiated writes)
     sim_flush_task: asyncio.Task | None = None

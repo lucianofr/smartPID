@@ -6,6 +6,7 @@ import json
 from collections.abc import Mapping  # noqa: TC003
 from pathlib import Path
 
+import aiosqlite
 from sqlalchemy import func, insert, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -264,6 +265,10 @@ class SQLiteRepository:
         self.session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
             expire_on_commit=False,
         )
+        # TRANSITIONAL (deleted in Task 10): legacy shared connection still
+        # feeds historian/alarm/audit/ai/system-event borrowers until their
+        # port tasks land.
+        self.db: aiosqlite.Connection
 
     @property
     def db_path(self) -> Path:
@@ -275,6 +280,10 @@ class SQLiteRepository:
         self.engine = create_sqlite_engine(self._db_path)
         self.session_factory.configure(bind=self.engine)
         await self._bootstrap()
+        # TRANSITIONAL (deleted in Task 10):
+        self.db = await aiosqlite.connect(self._db_path)
+        self.db.row_factory = aiosqlite.Row
+        await self.db.execute("PRAGMA journal_mode=WAL")
 
     async def _bootstrap(self) -> None:
         """Run CREATE TABLE IF NOT EXISTS + idempotent add-column back-fill.
@@ -779,32 +788,13 @@ class SQLiteRepository:
     # Project lifecycle
     # ------------------------------------------------------------------
 
-    async def checkpoint(self) -> None:
-        """PRAGMA wal_checkpoint(TRUNCATE) on engine A.
-
-        Folds the WAL into the main file and truncates it to zero bytes, so
-        the bare .spid can be streamed (download) or the file abandoned
-        (reopen) without losing tail writes. Runs on the raw driver
-        connection: PRAGMA must not sit inside an autobegun transaction.
-        """
-        async with self.engine.connect() as conn:
-            raw = await conn.get_raw_connection()
-            await raw.driver_connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-
     async def reopen(self, db_path: Path) -> None:
-        """Switch the active .spid — spec §10 lifecycle, engine-A half.
-
-        Order: (1) wal_checkpoint(TRUNCATE) on A, (2) dispose A — no pooled
-        handle survives and SQLite removes the -wal/-shm siblings on the last
-        close, (3) re-create the engine against the new path and re-run
-        bootstrap + back-fill. Engine B's half is handled by ProjectService,
-        which stops the DB worker (drain + dispose on its own loop) BEFORE
-        calling this and restarts it after.
-        """
-        await self.checkpoint()
+        """Close the current DB and open a new one at *db_path*."""
+        await self.db.close()  # TRANSITIONAL (deleted in Task 10)
         await self.engine.dispose()
         self._db_path = db_path
         await self.initialize()
+
     # ------------------------------------------------------------------
     # Test helpers
     # ------------------------------------------------------------------
@@ -824,4 +814,5 @@ class SQLiteRepository:
 
     async def close(self) -> None:
         """Dispose engine A (finalizes WAL on the pooled connection)."""
+        await self.db.close()  # TRANSITIONAL (deleted in Task 10)
         await self.engine.dispose()

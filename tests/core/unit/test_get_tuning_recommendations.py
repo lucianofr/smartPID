@@ -48,8 +48,8 @@ async def deps(tmp_path):
     user_db_path = tmp_path / "users.db"
     user_repo = UserRepository(user_db_path)
     await user_repo.initialize()
-    alarm_repo = AlarmRepository(repo.session_factory)
-    audit_repo = AuditRepository(repo.session_factory)
+    alarm_repo = AlarmRepository(repo)
+    audit_repo = AuditRepository(repo)
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
     loop_manager = LoopManager(bus=bus, execution_mode="monitor")
@@ -74,6 +74,7 @@ async def deps(tmp_path):
     loop_manager.stop_all()
     bus.stop()
     await user_repo.close()
+    await repo.db.close()
 
 
 def _make_app(deps_dict):

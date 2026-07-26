@@ -1,13 +1,10 @@
-"""User repository backed by a standalone SQLite database (engine C)."""
+"""User repository backed by a standalone SQLite database."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
-
-from smart_pid_core.adapters.outbound.db_engine import create_sqlite_engine
+import aiosqlite
 
 
 @dataclass
@@ -35,45 +32,43 @@ CREATE TABLE IF NOT EXISTS Usuarios (
 
 
 class UserRepository:
-    """CRUD operations on the Usuarios table using its own SQLite database.
-
-    Owns engine C (users.db, main loop, single connection). Credentials
-    never travel inside .spid; this engine is never touched by project
-    switching.
-    """
+    """CRUD operations on the Usuarios table using its own SQLite database."""
 
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
-        self._engine: AsyncEngine | None = None
-        self.session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
-            expire_on_commit=False,
-        )
+        self._db: aiosqlite.Connection | None = None
+
+    @property
+    def db(self) -> aiosqlite.Connection:
+        """Return the underlying connection (must call initialize first)."""
+        if self._db is None:
+            msg = "UserRepository not initialized — call initialize() first"
+            raise RuntimeError(msg)
+        return self._db
 
     async def initialize(self) -> None:
-        """Open the database, apply PRAGMAs, create the Usuarios table."""
+        """Open the database, enable WAL mode, create the Usuarios table."""
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._engine = create_sqlite_engine(self._db_path)
-        self.session_factory.configure(bind=self._engine)
-        async with self._engine.connect() as conn:
-            raw = await conn.get_raw_connection()
-            await raw.driver_connection.executescript(_USERS_DDL)
-            await raw.driver_connection.commit()
+        self._db = await aiosqlite.connect(self._db_path)
+        self._db.row_factory = aiosqlite.Row
+        await self._db.execute("PRAGMA journal_mode=WAL")
+        await self._db.executescript(_USERS_DDL)
+        await self._db.commit()
 
     async def close(self) -> None:
-        """Dispose engine C."""
-        if self._engine is not None:
-            await self._engine.dispose()
-            self._engine = None
+        """Close the SQLite connection."""
+        if self._db is not None:
+            await self._db.close()
+            self._db = None
 
     async def create(self, username: str, password_hash: str, role: str) -> User:
         """Insert a new user. Raises on duplicate username."""
-        async with self.session_factory() as session:
-            result = await session.execute(
-                text("INSERT INTO Usuarios (nome, senha_hash, perfil) VALUES (:n, :h, :p)"),
-                {"n": username, "h": password_hash, "p": role},
-            )
-            new_id = result.lastrowid
-            await session.commit()
+        async with self.db.execute(
+            "INSERT INTO Usuarios (nome, senha_hash, perfil) VALUES (?, ?, ?)",
+            (username, password_hash, role),
+        ) as cur:
+            new_id = cur.lastrowid
+        await self.db.commit()
         return User(
             id=new_id or 0,
             username=username,
@@ -84,15 +79,12 @@ class UserRepository:
 
     async def get_by_username(self, username: str) -> User | None:
         """Return active user or None if not found."""
-        async with self.session_factory() as session:
-            result = await session.execute(
-                text(
-                    "SELECT id, nome, senha_hash, perfil, criado_em, ativo"
-                    " FROM Usuarios WHERE nome = :n AND ativo = 1"
-                ),
-                {"n": username},
-            )
-            row = result.first()
+        async with self.db.execute(
+            "SELECT id, nome, senha_hash, perfil, criado_em, ativo"
+            " FROM Usuarios WHERE nome = ? AND ativo = 1",
+            (username,),
+        ) as cur:
+            row = await cur.fetchone()
         if row is None:
             return None
         return User(
@@ -106,14 +98,10 @@ class UserRepository:
 
     async def list_all(self) -> list[User]:
         """Return all users."""
-        async with self.session_factory() as session:
-            result = await session.execute(
-                text(
-                    "SELECT id, nome, senha_hash, perfil, criado_em, ativo"
-                    " FROM Usuarios ORDER BY id"
-                ),
-            )
-            rows = result.all()
+        async with self.db.execute(
+            "SELECT id, nome, senha_hash, perfil, criado_em, ativo FROM Usuarios ORDER BY id"
+        ) as cur:
+            rows = await cur.fetchall()
         return [
             User(
                 id=r[0], username=r[1], password_hash=r[2],
@@ -124,15 +112,11 @@ class UserRepository:
 
     async def get_by_id(self, user_id: int) -> User | None:
         """Return user by id or None if not found."""
-        async with self.session_factory() as session:
-            result = await session.execute(
-                text(
-                    "SELECT id, nome, senha_hash, perfil, criado_em, ativo"
-                    " FROM Usuarios WHERE id = :uid"
-                ),
-                {"uid": user_id},
-            )
-            row = result.first()
+        async with self.db.execute(
+            "SELECT id, nome, senha_hash, perfil, criado_em, ativo FROM Usuarios WHERE id = ?",
+            (user_id,),
+        ) as cur:
+            row = await cur.fetchone()
         if row is None:
             return None
         return User(
@@ -149,32 +133,30 @@ class UserRepository:
     ) -> User | None:
         """Update user fields. Returns updated user or None if not found."""
         updates: list[str] = []
-        params: dict = {"uid": user_id}
+        params: list[str | int] = []
         if role is not None:
-            updates.append("perfil = :role")
-            params["role"] = role
+            updates.append("perfil = ?")
+            params.append(role)
         if password_hash is not None:
-            updates.append("senha_hash = :hash")
-            params["hash"] = password_hash
+            updates.append("senha_hash = ?")
+            params.append(password_hash)
         if active is not None:
-            updates.append("ativo = :active")
-            params["active"] = 1 if active else 0
+            updates.append("ativo = ?")
+            params.append(1 if active else 0)
         if not updates:
             return await self.get_by_id(user_id)
-        async with self.session_factory() as session:
-            await session.execute(
-                text(f"UPDATE Usuarios SET {', '.join(updates)} WHERE id = :uid"),  # noqa: S608
-                params,
-            )
-            await session.commit()
+        params.append(user_id)
+        await self.db.execute(
+            f"UPDATE Usuarios SET {', '.join(updates)} WHERE id = ?",
+            params,
+        )
+        await self.db.commit()
         return await self.get_by_id(user_id)
 
     async def deactivate(self, user_id: int) -> User | None:
         """Soft-delete a user by setting ativo=0."""
-        async with self.session_factory() as session:
-            await session.execute(
-                text("UPDATE Usuarios SET ativo = 0 WHERE id = :uid"),
-                {"uid": user_id},
-            )
-            await session.commit()
+        await self.db.execute(
+            "UPDATE Usuarios SET ativo = 0 WHERE id = ?", (user_id,),
+        )
+        await self.db.commit()
         return await self.get_by_id(user_id)

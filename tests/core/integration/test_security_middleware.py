@@ -39,8 +39,8 @@ async def secure_client(tmp_path):
     historian = SQLiteHistorian(repo.session_factory)
     user_repo = UserRepository(tmp_path / "users.db")
     await user_repo.initialize()
-    alarm_repo = AlarmRepository(repo.session_factory)
-    audit_repo = AuditRepository(repo.session_factory)
+    alarm_repo = AlarmRepository(repo)
+    audit_repo = AuditRepository(repo)
     system_event_repo = SystemEventRepository(repo.session_factory)
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
@@ -73,6 +73,7 @@ async def secure_client(tmp_path):
     loop_manager.stop_all()
     bus.stop()
     await user_repo.close()
+    await repo.db.close()
 
 
 class TestSecurityHeaders:

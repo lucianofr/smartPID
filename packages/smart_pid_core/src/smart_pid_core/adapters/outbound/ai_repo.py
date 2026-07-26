@@ -3,22 +3,25 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import text
-
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+    from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 
 
 class AIRepository:
     """Persistence for AI model metadata and tuning action logs.
 
-    Bound to the injected .spid session factory (engine A).
+    Shares the aiosqlite.Connection owned by SQLiteRepository.
     """
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
-        self._session_factory = session_factory
+    def __init__(self, repo: SQLiteRepository) -> None:
+        self._repo = repo
+
+    @property
+    def _db(self):  # noqa: ANN202
+        """Always return the current (possibly reopened) connection."""
+        return self._repo.db
 
     async def save_model_metadata(
         self,
@@ -29,33 +32,25 @@ class AIRepository:
         model_path: str,
     ) -> int:
         """Save RL model metadata. Returns the row ID."""
-        async with self._session_factory() as session:
-            result = await session.execute(
-                text(
-                    "INSERT INTO Modelos_IA "
-                    "(controlador_id, algoritmo, episodios, reward_medio, caminho_modelo) "
-                    "VALUES (:cid, :algo, :eps, :reward, :path)"
-                ),
-                {"cid": controller_id, "algo": algorithm, "eps": episodes,
-                 "reward": avg_reward, "path": model_path},
-            )
-            row_id = result.lastrowid
-            await session.commit()
+        async with self._db.execute(
+            "INSERT INTO Modelos_IA "
+            "(controlador_id, algoritmo, episodios, reward_medio, caminho_modelo) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (controller_id, algorithm, episodes, avg_reward, model_path),
+        ) as cur:
+            row_id = cur.lastrowid
+        await self._db.commit()
         return row_id or 0
 
     async def get_latest_model(self, controller_id: int) -> dict | None:
         """Return the most recent model metadata for a controller."""
-        async with self._session_factory() as session:
-            result = await session.execute(
-                text(
-                    "SELECT id, controlador_id, algoritmo, episodios, reward_medio, "
-                    "caminho_modelo, criado_em "
-                    "FROM Modelos_IA WHERE controlador_id = :cid "
-                    "ORDER BY criado_em DESC LIMIT 1"
-                ),
-                {"cid": controller_id},
-            )
-            row = result.first()
+        async with self._db.execute(
+            "SELECT id, controlador_id, algoritmo, episodios, reward_medio, "
+            "caminho_modelo, criado_em "
+            "FROM Modelos_IA WHERE controlador_id = ? ORDER BY criado_em DESC LIMIT 1",
+            (controller_id,),
+        ) as cur:
+            row = await cur.fetchone()
         if row is None:
             return None
         return {
@@ -87,29 +82,22 @@ class AIRepository:
             objective: Control objective name.
             metric: Computed metric value (e.g. gamma).
         """
-        async with self._session_factory() as session:
-            await session.execute(
-                text(
-                    "INSERT INTO Log_Sintonia_IA "
-                    "(controlador_id, motor, ki_antes, ki_depois, objetivo, metrica, aprovado) "
-                    "VALUES (:cid, :motor, :old, :new, :obj, :metric, 1)"
-                ),
-                {"cid": controller_id, "motor": engine, "old": old_ki,
-                 "new": new_ki, "obj": objective, "metric": metric},
-            )
-            await session.commit()
+        await self._db.execute(
+            "INSERT INTO Log_Sintonia_IA "
+            "(controlador_id, motor, ki_antes, ki_depois, objetivo, metrica, aprovado) "
+            "VALUES (?, ?, ?, ?, ?, ?, 1)",
+            (controller_id, engine, old_ki, new_ki, objective, metric),
+        )
+        await self._db.commit()
 
     async def get_last_ki(self, controller_id: int) -> float | None:
         """Return the most recent Ki/Ti value computed by AI for a controller."""
-        async with self._session_factory() as session:
-            result = await session.execute(
-                text(
-                    "SELECT ki_depois FROM Log_Sintonia_IA "
-                    "WHERE controlador_id = :cid ORDER BY timestamp DESC LIMIT 1"
-                ),
-                {"cid": controller_id},
-            )
-            row = result.first()
+        async with self._db.execute(
+            "SELECT ki_depois FROM Log_Sintonia_IA "
+            "WHERE controlador_id = ? ORDER BY timestamp DESC LIMIT 1",
+            (controller_id,),
+        ) as cur:
+            row = await cur.fetchone()
         if row is None:
             return None
         return float(row[0])
@@ -120,17 +108,14 @@ class AIRepository:
         limit: int = 50,
     ) -> list[dict]:
         """Return recent tuning log entries."""
-        async with self._session_factory() as session:
-            result = await session.execute(
-                text(
-                    "SELECT id, controlador_id, timestamp, motor, ki_antes, ki_depois, "
-                    "objetivo, metrica, aprovado "
-                    "FROM Log_Sintonia_IA WHERE controlador_id = :cid "
-                    "ORDER BY timestamp DESC LIMIT :limit"
-                ),
-                {"cid": controller_id, "limit": limit},
-            )
-            rows = result.all()
+        async with self._db.execute(
+            "SELECT id, controlador_id, timestamp, motor, ki_antes, ki_depois, "
+            "objetivo, metrica, aprovado "
+            "FROM Log_Sintonia_IA WHERE controlador_id = ? "
+            "ORDER BY timestamp DESC LIMIT ?",
+            (controller_id, limit),
+        ) as cur:
+            rows = await cur.fetchall()
         return [
             {
                 "id": r[0],
@@ -162,15 +147,14 @@ class AIRepository:
             "a.objetivo as objective, a.metrica as metric "
             "FROM Log_Sintonia_IA a "
             "LEFT JOIN Controladores c ON c.id = a.controlador_id "
-            "WHERE a.timestamp BETWEEN :start AND :end"
+            "WHERE a.timestamp BETWEEN ? AND ?"
         )
-        params: dict = {"start": start.isoformat(), "end": end.isoformat()}
+        params: list = [start.isoformat(), end.isoformat()]
         if controller_id is not None:
-            sql += " AND a.controlador_id = :cid"
-            params["cid"] = controller_id
-        sql += " ORDER BY a.timestamp DESC LIMIT :limit"
-        params["limit"] = limit
-        async with self._session_factory() as session:
-            result = await session.execute(text(sql), params)
-            rows = result.mappings().all()
+            sql += " AND a.controlador_id = ?"
+            params.append(controller_id)
+        sql += " ORDER BY a.timestamp DESC LIMIT ?"
+        params.append(limit)
+        async with self._db.execute(sql, params) as cur:
+            rows = await cur.fetchall()
         return [dict(r) for r in rows]

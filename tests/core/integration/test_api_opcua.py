@@ -67,6 +67,7 @@ async def opcua_api_deps(tmp_path, mock_opcua_adapter):
     loop_manager.stop_all()
     bus.stop()
     await user_repo.close()
+    await repo.db.close()
 
 
 @pytest.fixture

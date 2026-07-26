@@ -143,7 +143,7 @@ class TestAlarmWorkerIntegration:
 
         repo = SQLiteRepository(tmp_path / "test.db")
         await repo.initialize()
-        alarm_repo = AlarmRepository(repo.session_factory)
+        alarm_repo = AlarmRepository(repo)
 
         mock_bus = MagicMock()
         mock_bus.create_subscriber.return_value = MagicMock()
@@ -191,6 +191,7 @@ class TestAlarmWorkerIntegration:
         assert len(active) == 1
         assert active[0]["cleared_at"] is not None
 
+        await repo.db.close()
 
 
 class TestSeedActiveAlarms:
