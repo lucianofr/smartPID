@@ -107,3 +107,47 @@ class TestModeBindingRoundTrip:
         assert loaded.tag_bindings.node_id_mode_actual == ""
         assert loaded.tag_bindings.mode_int_map == {}
 
+
+
+class TestForeignKeysStayInert:
+    """spec §10: foreign_keys OFF — ON DELETE CASCADE in the DDL must not fire."""
+
+    @pytest.mark.asyncio
+    async def test_orphan_child_insert_allowed(self, repo) -> None:
+        from sqlalchemy import text
+
+        async with repo.session_factory() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO Configuracao_Alarmes"
+                    " (controlador_id, tipo_alarme, prioridade, limite)"
+                    " VALUES (:cid, 'HI', 'WARNING', 90.0)"
+                ),
+                {"cid": 424242},  # no such controller — must NOT raise
+            )
+            await session.commit()
+
+    @pytest.mark.asyncio
+    async def test_delete_controller_does_not_cascade(self, repo) -> None:
+        from sqlalchemy import text
+
+        saved = await repo.save(Controller(id=0, name="TIC-900"))
+        async with repo.session_factory() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO Configuracao_Alarmes"
+                    " (controlador_id, tipo_alarme, prioridade, limite)"
+                    " VALUES (:cid, 'HI', 'WARNING', 90.0)"
+                ),
+                {"cid": saved.id},
+            )
+            await session.commit()
+        await repo.delete(saved.id)
+        async with repo.session_factory() as session:
+            count = (
+                await session.execute(
+                    text("SELECT COUNT(*) FROM Configuracao_Alarmes WHERE controlador_id = :cid"),
+                    {"cid": saved.id},
+                )
+            ).scalar()
+        assert count == 1  # child row survived — cascade inert, as before the port

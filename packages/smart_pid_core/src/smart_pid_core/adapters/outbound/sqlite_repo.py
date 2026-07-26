@@ -1,11 +1,17 @@
-"""SQLite-backed Controller repository adapter."""
+"""SQLite-backed Controller repository adapter (SQLAlchemy 2.0 async, engine A)."""
 from __future__ import annotations
 
 import contextlib
 import json
+from collections.abc import Mapping  # noqa: TC003
 from pathlib import Path
 
 import aiosqlite
+from sqlalchemy import func, insert, text, update
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+
+from smart_pid_core.adapters.outbound.db_engine import create_sqlite_engine
+from smart_pid_core.adapters.outbound.db_models import controladores
 
 from smart_pid_domain.enums import (
     AIEngine,
@@ -245,22 +251,55 @@ CREATE TABLE IF NOT EXISTS Configuracao_Simulador (
 
 
 class SQLiteRepository:
-    """SQLite-backed implementation of ControllerRepository."""
+    """SQLite-backed implementation of ControllerRepository.
+
+    Owns engine A (active .spid, main loop) and the .spid session factory.
+    The session factory's OBJECT IDENTITY is stable across reopen(): it is
+    re-bound in place, so injected copies held by other repositories never
+    go stale (this is what fixes the SystemEventRepository bug).
+    """
 
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
-        self.db: aiosqlite.Connection  # exposed for shared use by historian
+        self.engine: AsyncEngine  # created by initialize()
+        self.session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
+            expire_on_commit=False,
+        )
+        # TRANSITIONAL (deleted in Task 10): legacy shared connection still
+        # feeds historian/alarm/audit/ai/system-event borrowers until their
+        # port tasks land.
+        self.db: aiosqlite.Connection
+
+    @property
+    def db_path(self) -> Path:
+        """Filesystem path of the active .spid file."""
+        return self._db_path
 
     async def initialize(self) -> None:
-        """Open the database, enable WAL mode, create all tables."""
+        """Create engine A, run DDL bootstrap + back-fill (every open/reopen)."""
+        self.engine = create_sqlite_engine(self._db_path)
+        self.session_factory.configure(bind=self.engine)
+        await self._bootstrap()
+        # TRANSITIONAL (deleted in Task 10):
         self.db = await aiosqlite.connect(self._db_path)
         self.db.row_factory = aiosqlite.Row
         await self.db.execute("PRAGMA journal_mode=WAL")
-        await self.db.executescript(_DDL)
-        await self._apply_migrations()
-        await self.db.commit()
 
-    async def _apply_migrations(self) -> None:
+    async def _bootstrap(self) -> None:
+        """Run CREATE TABLE IF NOT EXISTS + idempotent add-column back-fill.
+
+        Executed through the raw aiosqlite driver connection (executescript
+        needs script support), exactly as before the port. Old .spid files
+        depend on this running on every open/reopen.
+        """
+        async with self.engine.connect() as conn:
+            raw = await conn.get_raw_connection()
+            driver = raw.driver_connection  # the real aiosqlite.Connection
+            await driver.executescript(_DDL)
+            await self._apply_migrations(driver)
+            await driver.commit()
+
+    async def _apply_migrations(self, driver) -> None:  # noqa: ANN001
         """Add columns that may be missing from older databases."""
         new_columns = [
             ("node_id_bkcal_in", "TEXT NOT NULL DEFAULT ''"),
@@ -271,7 +310,7 @@ class SQLiteRepository:
         ]
         for col_name, col_def in new_columns:
             with contextlib.suppress(Exception):
-                await self.db.execute(
+                await driver.execute(
                     f"ALTER TABLE Controladores ADD COLUMN {col_name} {col_def}",
                 )
         # Configuracao_Simulador: auto SP / auto disturbance columns + pid_sp
@@ -285,7 +324,7 @@ class SQLiteRepository:
         ]
         for col_name, col_def in sim_new_columns:
             with contextlib.suppress(Exception):
-                await self.db.execute(
+                await driver.execute(
                     f"ALTER TABLE Configuracao_Simulador ADD COLUMN {col_name} {col_def}",
                 )
 
@@ -299,25 +338,25 @@ class SQLiteRepository:
         ]
         for col_name, col_def in ai_new_columns:
             with contextlib.suppress(Exception):
-                await self.db.execute(
+                await driver.execute(
                     f"ALTER TABLE Controladores ADD COLUMN {col_name} {col_def}",
                 )
 
         # Rename scan_rate_ms → scan_rate_s (convert ms to seconds)
-        cursor = await self.db.execute("PRAGMA table_info(Controladores)")
+        cursor = await driver.execute("PRAGMA table_info(Controladores)")
         col_names = {r[1] for r in await cursor.fetchall()}
         if "scan_rate_ms" in col_names and "scan_rate_s" not in col_names:
-            await self.db.execute(
+            await driver.execute(
                 "ALTER TABLE Controladores ADD COLUMN scan_rate_s REAL NOT NULL DEFAULT 1.0"
             )
-            await self.db.execute(
+            await driver.execute(
                 "UPDATE Controladores SET scan_rate_s = scan_rate_ms / 1000.0"
             )
 
         # Add tss_s column
         if "tss_s" not in col_names:
             with contextlib.suppress(Exception):
-                await self.db.execute(
+                await driver.execute(
                     "ALTER TABLE Controladores ADD COLUMN tss_s REAL NOT NULL DEFAULT 60.0"
                 )
 
@@ -334,35 +373,41 @@ class SQLiteRepository:
 
     async def get(self, controller_id: int) -> Controller:
         """Return Controller or raise KeyError."""
-        async with self.db.execute(
-            "SELECT * FROM Controladores WHERE id = ?", (controller_id,)
-        ) as cur:
-            row = await cur.fetchone()
+        async with self.session_factory() as session:
+            result = await session.execute(
+                text("SELECT * FROM Controladores WHERE id = :cid"),
+                {"cid": controller_id},
+            )
+            row = result.mappings().first()
         if row is None:
             raise KeyError(controller_id)
         return self._row_to_controller(row)
 
     async def list_all(self) -> list[Controller]:
         """Return all controllers."""
-        async with self.db.execute(
-            "SELECT * FROM Controladores ORDER BY id",
-        ) as cur:
-            rows = await cur.fetchall()
+        async with self.session_factory() as session:
+            result = await session.execute(
+                text("SELECT * FROM Controladores ORDER BY id"),
+            )
+            rows = result.mappings().all()
         return [self._row_to_controller(r) for r in rows]
 
     async def delete(self, controller_id: int) -> None:
         """Delete controller or raise KeyError."""
-        async with self.db.execute(
-            "SELECT id FROM Controladores WHERE id = ?",
-            (controller_id,),
-        ) as cur:
-            row = await cur.fetchone()
-        if row is None:
-            raise KeyError(controller_id)
-        await self.db.execute(
-            "DELETE FROM Controladores WHERE id = ?", (controller_id,),
-        )
-        await self.db.commit()
+        async with self.session_factory() as session:
+            found = (
+                await session.execute(
+                    text("SELECT id FROM Controladores WHERE id = :cid"),
+                    {"cid": controller_id},
+                )
+            ).first()
+            if found is None:
+                raise KeyError(controller_id)
+            await session.execute(
+                text("DELETE FROM Controladores WHERE id = :cid"),
+                {"cid": controller_id},
+            )
+            await session.commit()
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -370,26 +415,22 @@ class SQLiteRepository:
 
     async def _insert(self, c: Controller) -> Controller:
         params = self._controller_to_params(c)
-        cols = ", ".join(params.keys())
-        placeholders = ", ".join("?" for _ in params)
-        sql = (
-            f"INSERT INTO Controladores ({cols}) VALUES ({placeholders})"
-        )
-        async with self.db.execute(sql, list(params.values())) as cur:
-            new_id = cur.lastrowid
-        await self.db.commit()
+        async with self.session_factory() as session:
+            result = await session.execute(insert(controladores).values(**params))
+            new_id = result.lastrowid
+            await session.commit()
         from dataclasses import replace
         return replace(c, id=new_id or 0)
 
     async def _update(self, c: Controller) -> None:
         params = self._controller_to_params(c)
-        assignments = ", ".join(f"{k} = ?" for k in params)
-        sql = (
-            f"UPDATE Controladores SET {assignments},"
-            " atualizado_em = datetime('now') WHERE id = ?"
-        )
-        await self.db.execute(sql, [*params.values(), c.id])
-        await self.db.commit()
+        async with self.session_factory() as session:
+            await session.execute(
+                update(controladores)
+                .where(controladores.c.id == c.id)
+                .values(**params, atualizado_em=func.datetime("now"))
+            )
+            await session.commit()
 
     def _controller_to_params(self, c: Controller) -> dict:
         """Map Controller fields to Controladores column dict."""
@@ -504,7 +545,7 @@ class SQLiteRepository:
             "optimization_enabled": int(c.optimization_enabled),
         }
 
-    def _row_to_controller(self, row: aiosqlite.Row) -> Controller:
+    def _row_to_controller(self, row: Mapping) -> Controller:
         """Convert a DB row to a Controller dataclass."""
         permitted_modes: set[ControllerMode] = {
             ControllerMode(m)
@@ -630,18 +671,21 @@ class SQLiteRepository:
 
     async def set_meta(self, key: str, value: str) -> None:
         """Insert or replace a project metadata key-value pair."""
-        await self.db.execute(
-            "INSERT OR REPLACE INTO Projeto_Meta (chave, valor) VALUES (?, ?)",
-            (key, value),
-        )
-        await self.db.commit()
+        async with self.session_factory() as session:
+            await session.execute(
+                text("INSERT OR REPLACE INTO Projeto_Meta (chave, valor) VALUES (:k, :v)"),
+                {"k": key, "v": value},
+            )
+            await session.commit()
 
     async def get_meta(self, key: str) -> str | None:
         """Return the value for *key* or ``None`` if missing."""
-        async with self.db.execute(
-            "SELECT valor FROM Projeto_Meta WHERE chave = ?", (key,),
-        ) as cur:
-            row = await cur.fetchone()
+        async with self.session_factory() as session:
+            result = await session.execute(
+                text("SELECT valor FROM Projeto_Meta WHERE chave = :k"),
+                {"k": key},
+            )
+            row = result.mappings().first()
         return str(row["valor"]) if row else None
 
     # ------------------------------------------------------------------
@@ -669,43 +713,57 @@ class SQLiteRepository:
         pid_sp: float = 50.0,
     ) -> None:
         """Insert or replace a simulator configuration for *controller_id*."""
-        await self.db.execute(
-            "INSERT OR REPLACE INTO Configuracao_Simulador"
-            " (controlador_id, preset, gain, tau1, tau2, dead_time,"
-            "  pid_enabled, pid_kp, pid_ti, pid_td, pid_mode,"
-            "  auto_sp_enabled, auto_sp_min_pct, auto_sp_max_pct,"
-            "  auto_dist_enabled, auto_dist_max_pct, pid_sp)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                controller_id, preset, gain, tau1, tau2, dead_time,
-                int(pid_enabled), pid_kp, pid_ti, pid_td, pid_mode,
-                int(auto_sp_enabled), auto_sp_min_pct, auto_sp_max_pct,
-                int(auto_dist_enabled), auto_dist_max_pct, pid_sp,
-            ),
-        )
-        await self.db.commit()
+        async with self.session_factory() as session:
+            await session.execute(
+                text(
+                    "INSERT OR REPLACE INTO Configuracao_Simulador"
+                    " (controlador_id, preset, gain, tau1, tau2, dead_time,"
+                    "  pid_enabled, pid_kp, pid_ti, pid_td, pid_mode,"
+                    "  auto_sp_enabled, auto_sp_min_pct, auto_sp_max_pct,"
+                    "  auto_dist_enabled, auto_dist_max_pct, pid_sp)"
+                    " VALUES (:cid, :preset, :gain, :tau1, :tau2, :dead_time,"
+                    "  :pid_enabled, :pid_kp, :pid_ti, :pid_td, :pid_mode,"
+                    "  :auto_sp_enabled, :auto_sp_min_pct, :auto_sp_max_pct,"
+                    "  :auto_dist_enabled, :auto_dist_max_pct, :pid_sp)"
+                ),
+                {
+                    "cid": controller_id, "preset": preset, "gain": gain,
+                    "tau1": tau1, "tau2": tau2, "dead_time": dead_time,
+                    "pid_enabled": int(pid_enabled), "pid_kp": pid_kp,
+                    "pid_ti": pid_ti, "pid_td": pid_td, "pid_mode": pid_mode,
+                    "auto_sp_enabled": int(auto_sp_enabled),
+                    "auto_sp_min_pct": auto_sp_min_pct,
+                    "auto_sp_max_pct": auto_sp_max_pct,
+                    "auto_dist_enabled": int(auto_dist_enabled),
+                    "auto_dist_max_pct": auto_dist_max_pct,
+                    "pid_sp": pid_sp,
+                },
+            )
+            await session.commit()
 
     async def get_sim_config(self, controller_id: int) -> dict | None:
         """Return sim config dict or ``None``."""
-        async with self.db.execute(
-            "SELECT * FROM Configuracao_Simulador WHERE controlador_id = ?",
-            (controller_id,),
-        ) as cur:
-            row = await cur.fetchone()
+        async with self.session_factory() as session:
+            result = await session.execute(
+                text("SELECT * FROM Configuracao_Simulador WHERE controlador_id = :cid"),
+                {"cid": controller_id},
+            )
+            row = result.mappings().first()
         if row is None:
             return None
         return self._sim_row_to_dict(row)
 
     async def list_sim_configs(self) -> list[dict]:
         """Return all simulator configurations."""
-        async with self.db.execute(
-            "SELECT * FROM Configuracao_Simulador ORDER BY controlador_id",
-        ) as cur:
-            rows = await cur.fetchall()
+        async with self.session_factory() as session:
+            result = await session.execute(
+                text("SELECT * FROM Configuracao_Simulador ORDER BY controlador_id"),
+            )
+            rows = result.mappings().all()
         return [self._sim_row_to_dict(r) for r in rows]
 
     @staticmethod
-    def _sim_row_to_dict(row: aiosqlite.Row) -> dict:
+    def _sim_row_to_dict(row: Mapping) -> dict:
         return {
             "controlador_id": row["controlador_id"],
             "preset": row["preset"],
@@ -732,7 +790,8 @@ class SQLiteRepository:
 
     async def reopen(self, db_path: Path) -> None:
         """Close the current DB and open a new one at *db_path*."""
-        await self.db.close()
+        await self.db.close()  # TRANSITIONAL (deleted in Task 10)
+        await self.engine.dispose()
         self._db_path = db_path
         await self.initialize()
 
@@ -741,18 +800,19 @@ class SQLiteRepository:
     # ------------------------------------------------------------------
 
     async def _get_table_names(self) -> list[str]:
-        async with self.db.execute(
-            "SELECT name FROM sqlite_master"
-            " WHERE type='table' ORDER BY name",
-        ) as cur:
-            rows = await cur.fetchall()
+        async with self.session_factory() as session:
+            result = await session.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"),
+            )
+            rows = result.mappings().all()
         return [r["name"] for r in rows]
 
     async def _get_journal_mode(self) -> str:
-        async with self.db.execute("PRAGMA journal_mode") as cur:
-            row = await cur.fetchone()
+        async with self.session_factory() as session:
+            row = (await session.execute(text("PRAGMA journal_mode"))).first()
         return str(row[0]) if row else ""
 
     async def close(self) -> None:
-        """Close the SQLite connection, finalizing WAL."""
-        await self.db.close()
+        """Dispose engine A (finalizes WAL on the pooled connection)."""
+        await self.db.close()  # TRANSITIONAL (deleted in Task 10)
+        await self.engine.dispose()
