@@ -216,6 +216,9 @@ export function useAlarmHistory(
   return useQuery<ActiveAlarm[], ApiError>({
     queryKey: queryKeys.alarmsHistory({ ...filter }),
     enabled,
+    // A filter change must not blank the table back to a loading state —
+    // the operator keeps reading the previous window until the new one lands.
+    placeholderData: (previous) => previous,
     queryFn: async () => {
       const rows = await endpoints.alarmHistory({
         start: filter.start,
