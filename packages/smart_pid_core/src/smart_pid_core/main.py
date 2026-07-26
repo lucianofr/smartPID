@@ -24,6 +24,7 @@ from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.application.telemetry_publisher import TelemetryPublisher
 from smart_pid_core.config import CoreSettings
+from smart_pid_domain.enums import UserRole
 
 if TYPE_CHECKING:
     from smart_pid_domain.models.alarm_config import AlarmConfig
@@ -154,6 +155,40 @@ async def _migrate_users_if_needed(spid_path: Path, users_db_path: Path) -> None
     await user_repo.close()
     logger.info(
         "migrated_users", count=len(rows), source=str(spid_path), target=str(users_db_path),
+    )
+
+
+_ROLE_VALUE_MAP: tuple[tuple[str, str], ...] = (
+    ("ADMIN", "admin"),
+    ("SUPERVISOR", "admin"),
+    ("OPERATOR", "user"),
+)
+
+
+async def _migrate_user_roles(user_repo: UserRepository) -> None:
+    """Rewrite legacy role values in users.db idempotently (spec §9.4)."""
+    migrated = 0
+    for legacy, new in _ROLE_VALUE_MAP:
+        cursor = await user_repo.db.execute(
+            "UPDATE Usuarios SET perfil = ? WHERE perfil = ?",
+            (new, legacy),
+        )
+        migrated += max(cursor.rowcount, 0)
+    await user_repo.db.commit()
+    if migrated:
+        logger.info("migrated_user_roles", rows=migrated)
+
+
+async def _seed_default_admin(user_repo: UserRepository) -> None:
+    """Create the default admin account when users.db has no rows."""
+    if await user_repo.list_all():
+        return
+    admin_hash = hash_password("admin")
+    await user_repo.create("admin", admin_hash, UserRole.ADMIN.value)
+    logger.warning(
+        "seeded_default_admin",
+        msg="SECURITY: Default admin account created with password 'admin'. "
+        "Change it immediately.",
     )
 
 
@@ -332,18 +367,11 @@ async def run_daemon(settings: CoreSettings) -> None:
     # Migrate users from .spid to standalone users.db if needed
     await _migrate_users_if_needed(settings.db_path, settings.users_db_path)
 
-    # Phase 2: User repo + seed admin (standalone DB)
+    # Phase 2: User repo + role-value migration + seed admin (standalone DB)
     user_repo = UserRepository(settings.users_db_path)
     await user_repo.initialize()
-    users = await user_repo.list_all()
-    if not users:
-        admin_hash = hash_password("admin")
-        await user_repo.create("admin", admin_hash, "admin")
-        logger.warning(
-            "seeded_default_admin",
-            msg="SECURITY: Default admin account created with password 'admin'. "
-            "Change it immediately.",
-        )
+    await _migrate_user_roles(user_repo)
+    await _seed_default_admin(user_repo)
 
     # Phase 5: AI Repository
     from smart_pid_core.adapters.outbound.ai_repo import AIRepository
