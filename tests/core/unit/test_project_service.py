@@ -139,9 +139,9 @@ async def test_import_project_conflict(service, projects_dir):
 
 
 @pytest.mark.asyncio
-async def test_download_path(service, projects_dir):
+async def test_prepare_download(service, projects_dir):
     await service.new_project("dl_test")
-    path = service.download_path()
+    path = await service.prepare_download()
     assert path.exists()
     assert path.name == "dl_test.spid"
 

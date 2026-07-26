@@ -15,7 +15,7 @@ import pytest
 async def test_exported_spid_has_no_credential_tables(api_deps) -> None:
     project_service = api_deps["project_service"]
     meta = await project_service.new_project("boundary-check")  # async -> active
-    export_path = project_service.download_path()  # sync -> active .spid Path
+    export_path = await project_service.prepare_download()  # active .spid Path
 
     con = sqlite3.connect(export_path)
     try:
