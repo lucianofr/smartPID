@@ -227,3 +227,19 @@ class ProjectService:
         """Stop the OPC-UA adapter if present."""
         if self._opcua_adapter is not None and hasattr(self._opcua_adapter, "stop"):
             self._opcua_adapter.stop()
+
+    async def _stop_db_worker(self) -> None:
+        """Drain engine B before a project switch.
+
+        stop() joins the worker thread; its finally block flushed pending
+        frames into the OLD file and disposed engine B, so no pooled handle
+        survives on the old path. Run in a thread so the join never blocks
+        the event loop.
+        """
+        if self._db_worker is not None:
+            await asyncio.to_thread(self._db_worker.stop)
+
+    def _start_db_worker(self) -> None:
+        """Restart the worker: new thread, new loop, new engine B on the CURRENT path."""
+        if self._db_worker is not None:
+            self._db_worker.start()
