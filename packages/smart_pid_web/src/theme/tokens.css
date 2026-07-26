@@ -1,0 +1,29 @@
+/*
+ * Theme-agnostic tokens. Theme-varying COLOR tokens live in themes.css under
+ * [data-theme]. The §6.4 type tokens resolve here (:root) — one type system,
+ * three palettes. The Archivo/Geist files behind these stacks are wired by
+ * src/assets/fonts/fonts.css (Task 3); the fallbacks are metric-compatible
+ * (§6.2: system-ui / ui-monospace, minor reflow on first paint accepted).
+ */
+:root {
+  /* Type faces (§6.2). --font-display is Archivo used at wdth 125 via .type-display. */
+  --font-display: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-ui: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-data: 'Geist Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+
+  /* Type scale */
+  --text-2xs: 0.6875rem; --text-xs: 0.75rem; --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+  --text-xl: clamp(1.25rem, 1.1rem + 0.6vw, 1.5rem);
+  --text-2xl: clamp(1.75rem, 1.4rem + 1.2vw, 2.5rem);
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+
+  /* Shape — instrument chrome is square; pills are reserved for count chips. */
+  --radius-card: 0px; --radius-control: 0px; --radius-pill: 999px;
+
+  /* Motion */
+  --dur-fast: 120ms; --dur-normal: 200ms; --dur-slow: 320ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}

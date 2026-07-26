@@ -1,1 +1,123 @@
 @import 'tailwindcss';
+@import './theme/tokens.css';
+@import './theme/themes.css';
+
+/*
+ * Token bridge (Tailwind v4, CSS-first).
+ *
+ * `@theme inline` maps Tailwind utility namespaces onto the §6.4 contract
+ * variables. Because `inline` makes each utility emit `var(--…)` instead of
+ * snapshotting a value, every utility re-resolves at runtime when [data-theme]
+ * flips. This block ONLY references contract variables; it never redefines them.
+ */
+@theme inline {
+  /* Colors → var(--…) from themes.css ([data-theme]) */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-sunk: var(--surface-sunk);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-text: var(--text);
+  --color-text-soft: var(--text-soft);
+  --color-text-disabled: var(--text-disabled);
+  --color-focus-ring: var(--focus-ring);
+  --color-selection: var(--selection);
+  --color-scrim: var(--scrim);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-sunk: var(--accent-sunk);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+  --color-alarm-crit: var(--alarm-crit);
+  --color-alarm-crit-bg: var(--alarm-crit-bg);
+  --color-alarm-warn: var(--alarm-warn);
+  --color-alarm-warn-bg: var(--alarm-warn-bg);
+  --color-alarm-adv: var(--alarm-adv);
+  --color-alarm-adv-bg: var(--alarm-adv-bg);
+  --color-alarm-log: var(--alarm-log);
+  --color-on-alarm: var(--on-alarm);
+  --color-state-running: var(--state-running);
+  --color-state-stopped: var(--state-stopped);
+  --color-state-error: var(--state-error);
+  --color-state-oos: var(--state-oos);
+  --color-trace-pv: var(--trace-pv);
+  --color-trace-sp: var(--trace-sp);
+  --color-trace-co: var(--trace-co);
+  --color-trend-grid: var(--trend-grid);
+  --color-trend-axis: var(--trend-axis);
+  --color-trend-bg: var(--trend-bg);
+  --color-bar-track: var(--bar-track);
+  --color-bar-fill: var(--bar-fill);
+  --color-bar-marker: var(--bar-marker);
+
+  /* Fonts */
+  --font-display: var(--font-display);
+  --font-ui: var(--font-ui);
+  --font-data: var(--font-data);
+
+  /* Font sizes (text-2xs … text-2xl utilities) */
+  --text-2xs: var(--text-2xs);
+  --text-xs: var(--text-xs);
+  --text-sm: var(--text-sm);
+  --text-base: var(--text-base);
+  --text-lg: var(--text-lg);
+  --text-xl: var(--text-xl);
+  --text-2xl: var(--text-2xl);
+
+  /* Radius */
+  --radius-card: var(--radius-card);
+  --radius-control: var(--radius-control);
+  --radius-pill: var(--radius-pill);
+
+  /* Durations / easing */
+  --transition-duration-fast: var(--dur-fast);
+  --transition-duration-normal: var(--dur-normal);
+  --transition-duration-slow: var(--dur-slow);
+  --ease-out: var(--ease-out);
+  --ease-standard: var(--ease-standard);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: var(--text-base);
+  }
+  ::selection {
+    background: var(--selection);
+  }
+
+  /* §6.2 display face: Archivo Expanded (wdth 125). NEVER for numerals. */
+  .type-display {
+    font-family: var(--font-display);
+    font-stretch: 125%;
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.01em;
+  }
+
+  /* §6.2 data face: every numeral in the product. Tabular + slashed zero. */
+  .numeric {
+    font-family: var(--font-data);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'zero' 1;
+    letter-spacing: 0;
+  }
+
+  /* §11 global reduced-motion policy (floor, not per-feature). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
