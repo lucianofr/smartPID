@@ -1,6 +1,8 @@
 import type { ComponentType } from 'react';
 import { AlarmsPage } from '@/pages/AlarmsPage';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { MultiTrendPage } from '@/pages/MultiTrendPage';
+import { SimulatorPage } from '@/pages/SimulatorPage';
 
 /**
  * Single route/navigation registry (§6.9). Every later phase appends ONE
@@ -27,10 +29,22 @@ export const appRoutes: AppRoute[] = [
     command: { label: 'Ir para Malhas', keywords: ['loops', 'malhas'] },
   },
   {
+    path: '/multitrend',
+    element: MultiTrendPage,
+    nav: { label: 'Trends', order: 20 },
+    command: { label: 'Ir para Trends', keywords: ['trend', 'tendência'] },
+  },
+  {
     path: '/alarms',
     element: AlarmsPage,
     nav: { label: 'Alarms', order: 30 },
     command: { label: 'Ir para Alarmes', keywords: ['alarmes'] },
+  },
+  {
+    path: '/simulator',
+    element: SimulatorPage,
+    nav: { label: 'Sim', order: 40 },
+    command: { label: 'Ir para Simulador', keywords: ['sim', 'twin', 'simulador'] },
   },
 ];
 

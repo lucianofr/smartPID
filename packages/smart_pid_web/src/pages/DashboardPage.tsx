@@ -9,6 +9,8 @@ import { pvScale, useControllers } from '@/features/dashboard/useControllers';
 import { useLoopStatuses } from '@/features/dashboard/useLoopStatuses';
 import { CardControls } from '@/features/loop-config/CardControls';
 import { LoopConfigDialog, NewLoopDialog } from '@/features/loop-config/LoopConfigDialog';
+import { SimulationModeBanner } from '@/features/simulator/SimulationModeBanner';
+import { useTwinRunning } from '@/features/simulator/useSimulatorStatus';
 import { useCan } from '@/auth/useCan';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +26,7 @@ export function DashboardPage() {
   const controllers = useControllers();
   const statuses = useLoopStatuses();
   const canManage = useCan('controllers.manage');
+  const twinRunning = useTwinRunning();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [configId, setConfigId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
@@ -72,6 +75,9 @@ export function DashboardPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {/* A model driving the plant is a fact the Loops page must not hide.
+          Cache-only read: the §7 resync already primes the twin snapshot. */}
+      {twinRunning ? <SimulationModeBanner running /> : null}
       <section
         aria-label="Malhas"
         className={cn(

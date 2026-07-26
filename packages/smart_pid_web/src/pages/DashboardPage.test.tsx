@@ -25,6 +25,7 @@ function renderDashboard(controllers = CONTROLLERS) {
       </TestProviders>,
     ),
     realtime,
+    queryClient,
   };
 }
 
@@ -95,5 +96,20 @@ describe('DashboardPage', () => {
     renderDashboard([]);
     expect(screen.getByText('Nenhuma malha configurada.')).toBeVisible();
     expect(screen.getByRole('button', { name: 'ACK ALL' })).toBeInTheDocument();
+  });
+
+  it('stays silent about simulation while the twin is stopped', () => {
+    renderDashboard();
+    expect(screen.queryByRole('status', { name: 'Simulation mode' })).toBeNull();
+  });
+
+  it('tells the operator when the numbers on the Loops page come from a model', async () => {
+    const { queryClient } = renderDashboard();
+    queryClient.setQueryData(queryKeys.simulatorStatus, {
+      enabled: true,
+      running: true,
+      controllers: {},
+    });
+    expect(await screen.findByRole('status', { name: 'Simulation mode' })).toBeVisible();
   });
 });
