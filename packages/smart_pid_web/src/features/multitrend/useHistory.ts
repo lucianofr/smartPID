@@ -53,6 +53,21 @@ export function historyWindow(
   };
 }
 
+const HOUR_MS = 3_600_000;
+
+/**
+ * Bounds for an export. An operator who has already framed a history window
+ * means THAT window; otherwise the last hour, which is the smallest range
+ * worth writing a file for.
+ */
+export function exportRange(
+  loaded: HistoryWindow | null,
+  now: number = Date.now(),
+): { start: string; end: string } {
+  if (loaded !== null) return { start: loaded.start, end: loaded.end };
+  return { start: new Date(now - HOUR_MS).toISOString(), end: new Date(now).toISOString() };
+}
+
 /** `null` keeps the query idle — the page must not replay history unasked. */
 export function useHistory(range: HistoryWindow | null): UseQueryResult<HistoryResponse, ApiError> {
   return useQuery<HistoryResponse, ApiError>({
