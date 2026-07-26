@@ -41,14 +41,15 @@ Two secondary problems compound this:
 - **The persistence layer is raw `aiosqlite`.** Hand-written SQL across seven repositories, with no
   ORM, makes the data layer the least idiomatic part of an otherwise clean backend.
 
-Additionally, the current authorization model has three roles (operator, supervisor, admin), which
-is more granularity than the product needs and more surface than it should maintain.
+Additionally, the deployed authorization model is single-admin — one seeded account, one gate on
+every route, no role tiers and no 403s. The product needs a second, restricted role without
+rebuilding authentication.
 
 ## Solution
 
 Rewrite the frontend source with a new visual identity built for commercial appeal, while preserving
 every behaviour the current client has. Replace the data-access layer with SQLAlchemy 2.0 async.
-Collapse authorization to two roles.
+Introduce a second role: administrator and regular user.
 
 **The identity ships as a coherent pair rather than a theme grab-bag:**
 
@@ -266,8 +267,8 @@ WebSocket contracts are unchanged.
 
 81. As a developer, I want the frontend test suite to query by role and accessible name rather than
     by DOM structure, so that a future restyle does not require another freeze contract.
-82. As a developer, I want the existing end-to-end suite retained as the regression net, so that the
-    rewrite is provably behaviour-preserving.
+82. As a developer, I want the existing end-to-end suite re-greened phase by phase as each surface
+    lands, so that the rewrite converges on proven behaviour instead of a big-bang validation.
 83. As a developer, I want frontend types generated from the backend OpenAPI schema, so that contract
     drift is a compile error.
 84. As a developer, I want data access through SQLAlchemy 2.0 async rather than hand-written SQL, so
@@ -298,7 +299,7 @@ The application is Archetype 3 (RBAC, time series, real time, OPC-UA and ML). Cu
 | Continuous loops (PID, OPC-UA, AI) in the asyncio event loop, not Celery | Already satisfied |
 | uPlot for high-frequency trends | Already satisfied |
 | SQLAlchemy 2.0 async | **Adopted by this work** |
-| Custom RBAC | Simplified to two roles by this work |
+| Custom RBAC | Two-tier model **introduced** by this work (deployed baseline is single-admin) |
 | Postgres + TimescaleDB | **Deliberate divergence** — see below |
 | Celery + Redis for discrete jobs | Not adopted — the only discrete job (export) is served by the existing in-process worker |
 
@@ -312,8 +313,9 @@ than a rewrite.
 
 ### Frontend
 
-- `packages/smart_pid_web/src` is replaced. Tooling is kept: Vite, TypeScript, Vitest, Playwright,
-  the OpenAPI codegen script, and the CI gates for bundle budget, lint and typecheck.
+- `packages/smart_pid_web/src` is replaced. Tooling is kept: Vite, TypeScript, React 18 (pinned),
+  Tailwind v4 + shadcn/Radix (rethemed, not replaced), Vitest, Playwright, the OpenAPI codegen
+  script (rebuilt hermetic and committed), and the CI gates for bundle budget, lint and typecheck.
 - Logic is separated from React into pure modules that test without a DOM: envelope parsing and
   sequence-gap detection, the bounded sliding window with decimation, the alarm state machine, the
   analog-bar scale and tick maths, and numeric formatting.
@@ -337,17 +339,22 @@ than a rewrite.
 
 ### Backend
 
-- Declarative SQLAlchemy models mapped to the existing tables. No renames, no migrations, no new
-  columns.
-- Async engine over `aiosqlite`, WAL retained. All seven repositories reimplemented against
-  `AsyncSession`, keeping their current public methods so callers are unaffected.
+- Declarative SQLAlchemy models mapped to the existing tables. No new schema changes; the existing
+  idempotent add-column back-fill for older `.spid` files is preserved verbatim.
+- Async engines over `aiosqlite`, WAL retained — three of them: the `.spid` engine on the main
+  loop, a dedicated `.spid` engine on the DB-worker's private loop, and the separate `users.db`
+  engine. The real coupling surface is the shared raw connection (`repo.db`), which is replaced by
+  injected session factories; the call sites that borrow it are in scope, enumerated in the spec.
 - The historian batch insert is preserved; it is the write-hot path and must not regress.
-- Authorization dependencies collapse to `require_user` (any authenticated principal) and
-  `require_admin`.
+- Authorization gains a second tier: `require_user` (any authenticated principal) and
+  `require_admin` (403 otherwise) replace the single `require_authenticated_admin` gate at all its
+  call sites; a `users` management router is added; existing role values are migrated one-time
+  (`ADMIN`/`SUPERVISOR` to `admin`, `OPERATOR` to `user`) and legacy JWTs are rejected with 401.
 
 ### Contracts
 
-- REST routes, request and response models are unchanged.
+- Existing REST routes, request and response models are unchanged. Additive only: the `users`
+  router and 403 responses on admin-only routes.
 - The WebSocket envelope `{ type, loop_id, seq, ts, data }` is unchanged.
 - Types are generated from the served OpenAPI document.
 
@@ -361,15 +368,19 @@ to survive a restyle; the new suite must not recreate that.
 - **Component** — every primitive and feature under Vitest and Testing Library, queried by role and
   accessible name wherever a role exists; `data-testid` only where no semantic query is available.
 - **Integration** — the realtime hook against a fake WebSocket; the API client against a mocked API.
-- **End-to-end** — the existing thirteen Playwright specs retained with patched selectors. These
-  assert behaviour rather than structure and are the regression net proving the rewrite preserves
-  function.
-- **Visual** — regenerated baselines, three themes across four breakpoints.
-- **Contrast** — automated WCAG AA check per theme; Recorder and Phosphor must both pass 4.5:1 for
-  body text.
-- **Backend** — the existing pytest suite stays green through the SQLAlchemy swap. Because the schema
-  is unchanged, fixtures are unchanged; only tests reaching into raw `aiosqlite` internals rather
-  than repository methods need adjustment.
+- **End-to-end** — the existing thirteen Playwright specs are re-greened per phase as each surface
+  lands (the theme spec is rewritten — it hardcodes the five dropped themes), plus one new spec
+  covering regular-user role gating. E2E specs stub the API and WebSocket, so they verify frontend
+  behaviour; backend behaviour is covered by pytest plus a 403-per-route contract test.
+- **Visual** — regenerated baselines: three themes across four breakpoints plus the faceplate
+  (13 total); the 21 old baselines are deleted.
+- **Contrast and accessibility** — automated gates per theme: WCAG AA 4.5:1 for text, 3:1 for
+  non-text (traces, alarm fills, focus ring, control boundaries), focus ring at least 2px, target
+  size at least 44 by 44, token resolution in every theme, reduced-motion compliance.
+- **Backend** — behaviour-level pytest stays green through the SQLAlchemy swap. The shared test
+  fixture layer and the tests that touch the raw connection directly are adapted in the same
+  phase; fixture code that authors `.spid` files with raw SQLite stays raw (that is the file
+  format, not the data layer). The historian is benchmarked before and after.
 
 Prior art: `tests/core/integration/test_telemetry_publisher.py` for bridge-style integration tests,
 and the existing alarm-engine tests as the reference for the frontend alarm state machine.
@@ -381,7 +392,8 @@ and the existing alarm-engine tests as the reference for the frontend alarm stat
 - Migrating to Postgres or TimescaleDB, and any change to the `.spid` file format.
 - Introducing Celery or Redis.
 - Any SQL schema change, table rename or migration.
-- Changing the REST contract or the WebSocket envelope.
+- Changing existing REST routes or the WebSocket envelope (the `users` router and 403 responses
+  are the only additive surface).
 - Retiring the PySide6 client. It is already frozen; removal is separate work.
 - Multi-tenant, remote or LAN-exposed operation. The bind stays `127.0.0.1`.
 - Roles beyond `admin` and `user`.
@@ -395,9 +407,10 @@ and the existing alarm-engine tests as the reference for the frontend alarm stat
 module structure and sequencing. Where this PRD and that spec disagree, the spec wins on
 implementation detail and this PRD wins on product intent.
 
-**Sequencing.** Twelve phases. The two backend phases (SQLAlchemy, then role collapse) land first
-and independently. Frontend foundation (tokens, themes, primitives) and the realtime layer follow,
-then feature surfaces one at a time, then theme port, end-to-end patching and visual baselines.
+**Sequencing.** Twelve phases. The two backend phases land first: the two-role model on the current
+data layer, then the SQLAlchemy port against the final role model. Frontend foundation (tokens,
+themes, primitives) and the realtime layer follow, then feature surfaces one at a time — each
+re-greening its own end-to-end specs — then ISA-101 retokenisation and visual baselines.
 
 **Theme reduction.** Going from five themes to three is a deliberate reduction in maintenance
 surface. Five unrelated themes each needed their own contrast validation and visual baselines;
