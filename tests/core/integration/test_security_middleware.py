@@ -147,7 +147,12 @@ class TestTrustedHost:
 
 
 class TestConfigDefault:
-    def test_api_host_defaults_to_loopback(self) -> None:
+    def test_api_host_defaults_to_loopback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # _env_file=None only silences .env; a SPID_API_HOST exported in the
+        # developer shell would still shadow the code default under test.
+        monkeypatch.delenv("SPID_API_HOST", raising=False)
         settings = CoreSettings(
             _env_file=None,
             jwt_secret="test-secret-key-minimum-32-bytes!",

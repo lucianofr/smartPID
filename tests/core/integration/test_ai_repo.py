@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import text
 
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 
@@ -11,11 +12,13 @@ async def repo(tmp_path):
     r = SQLiteRepository(tmp_path / "test.spid")
     await r.initialize()
     # Need a controller row for FK reference
-    await r.db.execute(
-        "INSERT INTO Controladores (id, nome) VALUES (1, 'Test')"
-    )
-    await r.db.commit()
+    async with r.session_factory() as session:
+        await session.execute(
+            text("INSERT INTO Controladores (id, nome) VALUES (1, 'Test')"),
+        )
+        await session.commit()
     yield r
+    await r.close()
 
 
 class TestAIModelRepo:
