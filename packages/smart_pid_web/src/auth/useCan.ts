@@ -2,7 +2,10 @@ import type { Role } from '../api/types';
 import { useAuth } from './AuthContext';
 
 /**
- * Capability actions — 1:1 with the spec §9 permission table (12 rows).
+ * Capability actions — the spec §9 permission table (12 rows) plus the phase-8
+ * additive row `simulator.configure`: starting, presetting, retuning or
+ * disturbing the digital twin is a CONFIGURATION act, while driving the twin's
+ * SP/mode/CO stays `loop.operate`.
  * Frontend gating is PRESENTATION ONLY: the backend enforces on every route
  * (require_user / require_admin, phase 0).
  */
@@ -19,6 +22,7 @@ export const CAPABILITY_ACTIONS = [
   'projects.manage', // .spid project management
   'users.manage', // Manage users
   'settings.manage', // Change application settings
+  'simulator.configure', // Start/stop the twin, presets, dynamics, disturbances
 ] as const;
 
 export type CapabilityAction = (typeof CAPABILITY_ACTIONS)[number];

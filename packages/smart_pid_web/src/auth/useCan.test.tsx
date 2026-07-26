@@ -35,7 +35,14 @@ describe('can — pure capability matrix', () => {
       'projects.manage',
       'users.manage',
       'settings.manage',
+      'simulator.configure',
     ]);
+  });
+
+  it('scopes the twin: configuring the simulator is admin-only, operating it is not', () => {
+    expect(can('admin', 'simulator.configure')).toBe(true);
+    expect(can('user', 'simulator.configure')).toBe(false);
+    expect(can('user', 'loop.operate')).toBe(true);
   });
 });
 
