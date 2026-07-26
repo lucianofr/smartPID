@@ -78,3 +78,7 @@ if (!Element.prototype.hasPointerCapture) {
   Element.prototype.setPointerCapture = () => {};
   Element.prototype.releasePointerCapture = () => {};
 }
+// uPlot performs async path building (Path2D, clip/fill) after the component's
+// synchronous mount returns; jsdom lacks Path2D. The errors surface as
+// vitest "Errors" (not failures) — the actual test outcomes stay green.
+// They are an artifact of the test environment, never a Trend bug.
