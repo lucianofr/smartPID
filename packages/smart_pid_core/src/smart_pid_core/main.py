@@ -410,7 +410,7 @@ async def run_daemon(settings: CoreSettings) -> None:
     from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
     from smart_pid_core.application.workers.system_event_worker import SystemEventWorker
 
-    system_event_repo = SystemEventRepository(repo.db)
+    system_event_repo = SystemEventRepository(repo.session_factory)
     system_event_worker = SystemEventWorker(
         bus=bus, system_event_repo=system_event_repo,
         event_loop=asyncio.get_running_loop(),

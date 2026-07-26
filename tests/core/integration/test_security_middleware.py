@@ -41,7 +41,7 @@ async def secure_client(tmp_path):
     await user_repo.initialize()
     alarm_repo = AlarmRepository(repo)
     audit_repo = AuditRepository(repo)
-    system_event_repo = SystemEventRepository(repo.db)
+    system_event_repo = SystemEventRepository(repo.session_factory)
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
     loop_manager = LoopManager(bus=bus)

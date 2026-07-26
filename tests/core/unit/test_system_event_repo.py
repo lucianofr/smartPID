@@ -3,18 +3,21 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import aiosqlite
 import pytest
 import pytest_asyncio
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from smart_pid_core.adapters.outbound.db_engine import create_sqlite_engine
 from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
 
 
 @pytest_asyncio.fixture
-async def db():
-    conn = await aiosqlite.connect(":memory:")
-    conn.row_factory = aiosqlite.Row
-    await conn.executescript("""
+async def session_factory(tmp_path):
+    engine = create_sqlite_engine(tmp_path / "events.spid")
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.connect() as conn:
+        raw = await conn.get_raw_connection()
+        await raw.driver_connection.executescript("""
         CREATE TABLE Log_System_Events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT NOT NULL DEFAULT (datetime('now')),
@@ -24,14 +27,15 @@ async def db():
         );
         CREATE INDEX idx_sysevents_timestamp ON Log_System_Events(timestamp);
         CREATE INDEX idx_sysevents_severity ON Log_System_Events(severity);
-    """)
-    yield conn
-    await conn.close()
+        """)
+        await raw.driver_connection.commit()
+    yield factory
+    await engine.dispose()
 
 
 @pytest_asyncio.fixture
-async def repo(db):
-    return SystemEventRepository(db)
+async def repo(session_factory):
+    return SystemEventRepository(session_factory)
 
 
 @pytest.mark.asyncio
