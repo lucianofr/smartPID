@@ -116,7 +116,7 @@ async def start_ai(
     )
     pub = bus.create_publisher()
     cmd = {"controller_id": controller_id, "action": "start"}
-    await pub.send(f"CMD.AI.{controller_id}".encode(), msgpack.packb(cmd))
+    pub.send(f"CMD.AI.{controller_id}".encode(), msgpack.packb(cmd))
     pub.close()
     return {"ok": True, "controller_id": controller_id, "detail": "AI start command sent"}
 
@@ -129,6 +129,7 @@ async def stop_ai(
     ai_workers: Annotated[dict[int, "AIWorker"], Depends(get_ai_workers)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     request: Request,
+    bus: Annotated[EventBus, Depends(get_event_bus)],
 ) -> dict:
     """Stop AI optimization for a controller loop."""
     worker = ai_workers.get(controller_id)
@@ -146,7 +147,7 @@ async def stop_ai(
     )
     pub = bus.create_publisher()
     cmd = {"controller_id": controller_id, "action": "stop"}
-    await pub.send(f"CMD.AI.{controller_id}".encode(), msgpack.packb(cmd))
+    pub.send(f"CMD.AI.{controller_id}".encode(), msgpack.packb(cmd))
     pub.close()
     return {"ok": True, "controller_id": controller_id, "detail": "AI stop command sent"}
 
@@ -159,6 +160,7 @@ async def pause_ai(
     ai_workers: Annotated[dict[int, "AIWorker"], Depends(get_ai_workers)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     request: Request,
+    bus: Annotated[EventBus, Depends(get_event_bus)],
 ) -> dict:
     """Pause AI optimization for a controller loop."""
     worker = ai_workers.get(controller_id)
@@ -176,6 +178,6 @@ async def pause_ai(
     )
     pub = bus.create_publisher()
     cmd = {"controller_id": controller_id, "action": "pause"}
-    await pub.send(f"CMD.AI.{controller_id}".encode(), msgpack.packb(cmd))
+    pub.send(f"CMD.AI.{controller_id}".encode(), msgpack.packb(cmd))
     pub.close()
     return {"ok": True, "controller_id": controller_id, "detail": "AI pause command sent"}
