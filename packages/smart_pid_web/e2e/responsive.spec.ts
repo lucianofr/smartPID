@@ -1,215 +1,114 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { assertMinTarget } from './helpers/targetSize';
+import { FIC101, TIC202, faceplate, gotoDashboard, loopCard } from './helpers/harness';
 
-// Responsive <1024 rules (Task 9.2 / design-system §9). Below the 1024 token breakpoint:
-//  - the nav rail collapses to an icon-only 64px rail,
-//  - the ControllerCard grid reflows to a single column (one card per row, full width),
-//  - the faceplate dialog goes full-screen,
-//  - interactive targets (nav items, mode buttons, ACK ALL, slider thumb) stay >=44x44.
+// §6.9 responsive contract:
+//  - >=1024: trend and the ~320px faceplate sit side by side (trend >=65% at 1440)
+//  - <1024 : the faceplate stacks under the trend
+//  - <768  : cards stay a horizontal scroller and the alarm bar collapses to a chip
+//  - 320   : degraded but usable — monitoring, acknowledgement and SP entry survive
 //
-// Harness mirrors target-size.spec.ts: no backend — /api/* is mocked via page.route and the
-// WebSocket is stubbed via addInitScript so the dashboard renders a live status frame. The dashboard
-// route `/` is RequireAuth-gated, so the token is seeded into sessionStorage before load and the
-// post-login WelcomeDialog is suppressed.
+// Card wrapping is forbidden at every width: it pushes the trend below the fold.
 
-const NAV_RAIL_COLLAPSED = 64;
-const NAV_RAIL_EXPANDED = 224;
 const TARGET_MIN = 44;
+const LOOPS = [FIC101, TIC202];
 
-const CONTROLLERS = [
-  { id: 1, name: 'FIC-101', description: 'Flow', pv_decimals: 1, pv_unit: '%', optimization_enabled: false },
-  { id: 2, name: 'TIC-202', description: 'Temp', pv_decimals: 1, pv_unit: '°C', optimization_enabled: false },
-];
+const trend = (page: Page) => page.getByRole('img', { name: 'Tendência FIC-101' });
 
-async function mockRest(page: Page): Promise<void> {
-  await page.route('**/api/auth/login', (route) =>
-    route.fulfill({ json: { access_token: 'jwt-e2e', token_type: 'bearer' } }),
-  );
-  await page.route('**/api/controllers/stats', (route) => route.fulfill({ json: [] }));
-  await page.route('**/api/controllers', (route) => route.fulfill({ json: CONTROLLERS }));
-  await page.route('**/api/opcua/status', (route) =>
-    route.fulfill({ json: { state: 'ONLINE', endpoint: 'opc.tcp://localhost:4840' } }),
-  );
-  await page.route('**/api/alarms/active', (route) => route.fulfill({ json: [] }));
-  await page.route('**/api/alarms/ai-history**', (route) => route.fulfill({ json: [] }));
-  await page.route('**/api/controllers/*/ai/status', (route) =>
-    route.fulfill({ status: 404, json: { detail: 'none' } }),
-  );
-  await page.route('**/api/commands/tuning-recommendations/*', (route) =>
-    route.fulfill({ status: 404, json: { detail: 'none' } }),
-  );
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
-async function stubWebSocket(page: Page): Promise<void> {
-  await page.addInitScript((controllerIds: number[]) => {
-    sessionStorage.setItem('smart-pid-token', 'jwt-e2e');
-    sessionStorage.setItem('spid.welcome-seen', '1');
+async function box(locator: Locator): Promise<Box> {
+  const b = await locator.boundingBox();
+  expect(b, 'element has a bounding box').not.toBeNull();
+  return b as Box;
+}
 
-    const ff = (value: number) => ({
-      value,
-      severity: 'GOOD',
-      limit_bits: 'NONE',
-      sub_status: 'NON_SPECIFIC',
-    });
-    const statusFrame = (loopId: number) =>
-      JSON.stringify({
-        type: 'status',
-        loop_id: loopId,
-        seq: 1,
-        ts: 1,
-        data: {
-          pv: ff(50),
-          sp: ff(55),
-          co: ff(42),
-          bkcal_in: ff(0),
-          bkcal_out: ff(0),
-          mode: 'MAN',
-          kp: 1,
-          ti: 10,
-          td: 0,
-          integral_val: 0,
-          timestamp: '2026-06-20T00:00:00.000Z',
-        },
+test.describe('responsive dashboard (§6.9)', () => {
+  test('trend and faceplate split at >=1024 and stack below it', async ({ page }) => {
+    await gotoDashboard(page, { loops: LOOPS, width: 1280, height: 900 });
+    let t = await box(trend(page));
+    let fp = await box(faceplate(page, 'FIC-101'));
+    expect(fp.x, 'faceplate sits to the right of the trend').toBeGreaterThan(t.x + t.width - 1);
+
+    await page.setViewportSize({ width: 900, height: 900 });
+    t = await box(trend(page));
+    fp = await box(faceplate(page, 'FIC-101'));
+    expect(fp.y, 'faceplate stacks under the trend').toBeGreaterThanOrEqual(t.y + t.height - 1);
+  });
+
+  test('the faceplate holds ~320px and the trend keeps >=65% at 1440', async ({ page }) => {
+    await gotoDashboard(page, { loops: LOOPS, width: 1440, height: 900 });
+    const fp = await box(faceplate(page, 'FIC-101'));
+    expect(Math.abs(fp.width - 320), 'faceplate is the fixed ~320px column').toBeLessThanOrEqual(8);
+
+    const t = await box(trend(page));
+    expect(t.width / 1440, 'trend keeps at least 65% of 1440').toBeGreaterThanOrEqual(0.65);
+  });
+
+  test('loop cards never wrap — one row at 320, 768 and 1440', async ({ page }) => {
+    for (const width of [320, 768, 1440]) {
+      await gotoDashboard(page, { loops: LOOPS, width, height: 900 });
+      const first = await loopCard(page, 'FIC-101').boundingBox();
+      const second = await loopCard(page, 'TIC-202').boundingBox();
+      expect(first, `FIC-101 card at ${width}`).not.toBeNull();
+      expect(second, `TIC-202 card at ${width}`).not.toBeNull();
+      expect(Math.abs(first!.y - second!.y), `cards share a row at ${width}`).toBeLessThan(4);
+
+      const strip = page.getByRole('region', { name: 'Malhas' }).getByRole('list');
+      const style = await strip.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return { wrap: s.flexWrap, overflowX: s.overflowX, scrolls: el.scrollWidth > el.clientWidth + 1 };
       });
-
-    class StubWS extends EventTarget {
-      url: string;
-      readyState = 1;
-      onopen: (() => void) | null = null;
-      onmessage: ((e: MessageEvent) => void) | null = null;
-      onclose: (() => void) | null = null;
-      constructor(url: string) {
-        super();
-        this.url = url;
-        setTimeout(() => this.onopen?.(), 0);
-      }
-      send() {
-        setTimeout(() => {
-          this.onmessage?.(
-            new MessageEvent('message', { data: JSON.stringify({ type: 'auth_ok' }) }),
-          );
-          for (const id of controllerIds) {
-            this.onmessage?.(new MessageEvent('message', { data: statusFrame(id) }));
-          }
-        }, 0);
-      }
-      close() {
-        this.onclose?.();
-      }
-    }
-    // @ts-expect-error override
-    window.WebSocket = StubWS;
-  }, CONTROLLERS.map((c) => c.id));
-}
-
-async function gotoDashboard(page: Page, width: number, height: number): Promise<void> {
-  await stubWebSocket(page);
-  await mockRest(page);
-  await page.setViewportSize({ width, height });
-  await page.goto('/');
-  await expect(page.getByText('FIC-101')).toBeVisible();
-}
-
-const navRail = (page: Page) => page.getByRole('navigation', { name: 'Main navigation' });
-
-// Click the per-card "Open faceplate" button inside the card whose tag matches `tag`.
-async function openFaceplate(page: Page, tag: string): Promise<void> {
-  const card = page
-    .getByText(tag, { exact: true })
-    .locator('xpath=ancestor::*[contains(@class,"rounded-card")][1]');
-  await card.getByRole('button', { name: 'Open faceplate' }).click();
-}
-
-test.describe('responsive <1024', () => {
-  test('nav rail collapses to icon-only (~64px) below 1024 and expands at >=1024', async ({
-    page,
-  }) => {
-    // 320 + 768 are below the breakpoint -> collapsed icon rail.
-    for (const width of [320, 768]) {
-      await gotoDashboard(page, width, 900);
-      const box = await navRail(page).boundingBox();
-      expect(box, `nav rail visible at ${width}`).not.toBeNull();
-      expect(box!.width, `nav rail collapsed at ${width}`).toBeLessThanOrEqual(
-        NAV_RAIL_COLLAPSED + 4,
-      );
-      // Labels are hidden when collapsed; the icon-only links keep their accessible name.
-      await expect(page.getByText('Dashboard', { exact: true })).toBeHidden();
-      await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible();
-    }
-
-    // 1024 + 1440 are at/above the breakpoint -> expanded label rail.
-    for (const width of [1024, 1440]) {
-      await gotoDashboard(page, width, 900);
-      const box = await navRail(page).boundingBox();
-      expect(box!.width, `nav rail expanded at ${width}`).toBeGreaterThanOrEqual(
-        NAV_RAIL_EXPANDED - 8,
-      );
-      await expect(page.getByText('Dashboard', { exact: true })).toBeVisible();
+      expect(style.wrap, `strip never wraps at ${width}`).toBe('nowrap');
+      expect(style.overflowX, `strip scrolls horizontally at ${width}`).toBe('auto');
+      // Two 280px cards only overflow once the viewport is narrower than the row.
+      expect(style.scrolls, `strip overflow at ${width}`).toBe(width < 600);
     }
   });
 
-  test('controller card grid is single-column below 1024 and multi-column at >=1024', async ({
-    page,
-  }) => {
-    // Below 1024: the two cards stack -> distinct rows (one card per row).
-    await gotoDashboard(page, 768, 900);
-    const cardA = page.getByText('FIC-101').locator('xpath=ancestor::*[contains(@class,"rounded-card")][1]');
-    const cardB = page.getByText('TIC-202').locator('xpath=ancestor::*[contains(@class,"rounded-card")][1]');
-    const boxA = await cardA.boundingBox();
-    const boxB = await cardB.boundingBox();
-    expect(boxA && boxB).toBeTruthy();
-    // Single column => card B starts below card A (no horizontal sharing of a row).
-    expect(boxB!.y, 'second card stacks below the first').toBeGreaterThanOrEqual(
-      boxA!.y + boxA!.height - 1,
+  test('the alarm bar collapses to a count chip below 768', async ({ page }) => {
+    await gotoDashboard(page, { loops: LOOPS, width: 1024, height: 900 });
+    await expect(page.getByTestId('alarm-buckets')).toBeVisible();
+    await expect(page.getByTestId('alarm-count-chip')).toBeHidden();
+
+    await page.setViewportSize({ width: 767, height: 900 });
+    await expect(page.getByTestId('alarm-buckets')).toBeHidden();
+    await expect(page.getByTestId('alarm-count-chip')).toBeVisible();
+  });
+
+  test('320 keeps monitoring, acknowledgement and SP entry', async ({ page }) => {
+    await gotoDashboard(page, { loops: LOOPS, width: 320, height: 720 });
+
+    // Monitoring.
+    await expect(loopCard(page, 'FIC-101').getByRole('meter', { name: 'PV' })).toHaveAttribute(
+      'aria-valuenow',
+      '50',
     );
-    // Each card spans (almost) the full content width — not the fixed 280px card token.
-    expect(boxA!.width, 'card grows past the 280px fixed width when stacked').toBeGreaterThan(300);
-
-    // At 1440: the cards sit side-by-side on the same row (wrap layout).
-    await gotoDashboard(page, 1440, 900);
-    const wideA = await page
-      .getByText('FIC-101')
-      .locator('xpath=ancestor::*[contains(@class,"rounded-card")][1]')
-      .boundingBox();
-    const wideB = await page
-      .getByText('TIC-202')
-      .locator('xpath=ancestor::*[contains(@class,"rounded-card")][1]')
-      .boundingBox();
-    expect(Math.abs(wideA!.y - wideB!.y), 'cards share a row at 1440').toBeLessThan(8);
-  });
-
-  test('faceplate opens full-screen below 1024', async ({ page }) => {
-    await gotoDashboard(page, 768, 900);
-    // Open the faceplate for FIC-101.
-    await openFaceplate(page, 'FIC-101');
-    const faceplate = page.getByRole('complementary', { name: /faceplate fic-101/i });
-    await expect(faceplate).toBeVisible();
-    // The dialog content wrapping the faceplate fills the viewport below 1024.
-    const dialog = page.getByRole('dialog');
-    const box = await dialog.boundingBox();
-    const viewport = page.viewportSize()!;
-    expect(box!.width, 'dialog spans viewport width').toBeGreaterThanOrEqual(viewport.width - 2);
-    expect(box!.height, 'dialog spans viewport height').toBeGreaterThanOrEqual(viewport.height - 2);
+    await expect(trend(page)).toBeVisible();
+    // Acknowledgement.
+    await expect(page.getByRole('button', { name: 'ACK ALL' })).toBeVisible();
+    // SP entry.
+    const fp = faceplate(page, 'FIC-101');
+    await expect(fp.getByLabel('Setpoint')).toBeVisible();
+    await expect(fp.getByRole('button', { name: 'Set setpoint' })).toBeVisible();
   });
 
   test('touch targets stay >=44x44 below 1024', async ({ page }) => {
-    await gotoDashboard(page, 768, 1100);
+    await gotoDashboard(page, { loops: LOOPS, width: 768, height: 1100 });
 
-    // Nav items (collapsed icon rail).
-    await assertMinTarget(page.getByRole('link', { name: 'Dashboard' }), TARGET_MIN);
-    await assertMinTarget(page.getByRole('link', { name: 'Alarms' }), TARGET_MIN);
-
-    // ACK ALL in the persistent alarm bar.
+    await assertMinTarget(page.getByRole('link', { name: 'Loops' }), TARGET_MIN);
+    await assertMinTarget(page.getByRole('button', { name: 'Comandos' }), TARGET_MIN);
+    await assertMinTarget(page.getByRole('button', { name: 'Sair' }), TARGET_MIN);
     await assertMinTarget(page.getByRole('button', { name: 'ACK ALL' }), TARGET_MIN);
+    await assertMinTarget(loopCard(page, 'FIC-101').getByRole('button', { name: 'Abrir FIC-101' }), TARGET_MIN);
 
-    // Open the faceplate to reach the mode buttons + the MAN-only CO slider thumb.
-    await openFaceplate(page, 'FIC-101');
-    await expect(page.getByRole('complementary', { name: /faceplate fic-101/i })).toBeVisible();
-
-    // Mode button (AUTO) inside the segmented control.
-    await assertMinTarget(page.getByRole('button', { name: 'AUTO' }).first(), TARGET_MIN);
-
-    // Slider thumb (MAN mode => enabled). Radix renders the thumb with role="slider".
-    await assertMinTarget(page.getByRole('slider').first(), TARGET_MIN);
+    const fp = faceplate(page, 'FIC-101');
+    await assertMinTarget(fp.getByRole('button', { name: 'AUTO' }), TARGET_MIN);
+    await assertMinTarget(fp.getByRole('slider', { name: 'Manual CO' }), TARGET_MIN);
   });
 });

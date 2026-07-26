@@ -105,7 +105,12 @@ export function TrendPanel({ controllerId, scale }: TrendPanelProps) {
   }, [data, scale, tag]);
 
   return (
-    <section aria-label={`Painel de tendência ${tag}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <section
+      aria-label={`Painel de tendência ${tag}`}
+      // Stacked (<1024) the pane keeps its natural height and the page scrolls;
+      // shrinking it would let the fixed-height plot overlap the faceplate.
+      className="flex min-w-0 flex-col max-lg:shrink-0 lg:min-h-0 lg:flex-1"
+    >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-rule px-3 py-2">
         <div className="flex items-center gap-2">
           <label htmlFor={windowId} className="text-2xs font-medium uppercase tracking-wider text-text-soft">

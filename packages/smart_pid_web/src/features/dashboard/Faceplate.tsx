@@ -192,6 +192,7 @@ export function Faceplate({ controllerId, tag, description, scale, decimals = 1 
         </span>
         <Slider
           thumbLabel="Manual CO"
+          data-testid="manual-co-slider"
           min={CO_SCALE.euMin}
           max={CO_SCALE.euMax}
           step={0.5}
