@@ -15,4 +15,10 @@ export const queryKeys = {
   aiStatus: (controllerId: number) => ['ai', 'status', controllerId] as const,
   opcuaStatus: ['opcua', 'status'] as const,
   simulatorStatus: ['simulator', 'status'] as const,
+  /** Loop performance metrics for every controller (phase 7 multitrend). */
+  allStats: ['controllers', 'stats'] as const,
+  /** Operator-driven telemetry replay — keyed by the whole window (phase 7). */
+  history: (window: object) => ['history', window] as const,
+  /** One export job's poll cursor (phase 7). */
+  exportJob: (exportId: string) => ['export', exportId] as const,
 };

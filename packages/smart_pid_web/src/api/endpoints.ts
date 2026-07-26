@@ -7,9 +7,13 @@ import type {
   CommandResponse,
   ControllerMode,
   ControllerResponse,
+  ExportJob,
+  ExportRequest,
+  HistoryResponse,
   MeResponse,
   OpcuaStatus,
   SimulatorStatus,
+  StatsResponse,
   TokenResponse,
 } from './types';
 
@@ -23,6 +27,13 @@ export interface AlarmHistoryParams {
   offset?: number;
   /** Narrow to one loop (alarms.py:40) — omitted means every controller. */
   controllerId?: number;
+}
+
+export interface HistoryParams {
+  /** ISO-8601; optional on this route (history.py) unlike /alarms/history. */
+  start?: string;
+  end?: string;
+  limit?: number;
 }
 
 export const endpoints = {
@@ -74,4 +85,28 @@ export const endpoints = {
 
   applyTuning: (controllerId: number) =>
     api.post<CommandResponse>(`/commands/apply-tuning/${controllerId}`),
+
+  /** Telemetry replay for one loop — frames ascend by timestamp. */
+  history: (controllerId: number, params: HistoryParams = {}) => {
+    const q = new URLSearchParams();
+    if (params.start !== undefined) q.set('start', params.start);
+    if (params.end !== undefined) q.set('end', params.end);
+    if (params.limit !== undefined) q.set('limit', String(params.limit));
+    const query = q.toString();
+    return api.get<HistoryResponse>(`/history/${controllerId}${query ? `?${query}` : ''}`);
+  },
+
+  /** Every loop that has a stats worker — the multitrend loop roster. */
+  allStats: () => api.get<StatsResponse[]>('/controllers/stats'),
+
+  loopStats: (controllerId: number) =>
+    api.get<StatsResponse>(`/controllers/${controllerId}/stats`),
+
+  /** 201 + a job; the file is produced asynchronously (poll `exportStatus`). */
+  createExport: (request: ExportRequest) => api.post<ExportJob>('/export', request),
+
+  exportStatus: (exportId: string) => api.get<ExportJob>(`/export/${exportId}`),
+
+  /** Bearer travels in a header, so the download cannot be a plain <a href>. */
+  downloadExport: (exportId: string) => api.download(`/export/${exportId}/download`),
 };

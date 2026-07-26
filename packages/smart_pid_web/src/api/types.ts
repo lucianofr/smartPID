@@ -22,6 +22,27 @@ export type SimulatorStatus = components['schemas']['SimulatorStatusResponse'];
 /** PID block operating modes (ModeCommand payload enum). */
 export type ControllerMode = components['schemas']['ControllerMode'];
 
+/** GET /history/{controller_id} — telemetry replay for the trend workspace. */
+export type HistoryResponse = components['schemas']['HistoryResponse'];
+export type TelemetryFrame = components['schemas']['TelemetryFrameDTO'];
+
+/** GET /controllers/stats and /controllers/{id}/stats — loop performance metrics. */
+export type StatsResponse = components['schemas']['StatsResponse'];
+
+/** POST /export, GET /export/{id} — one job per request. */
+export type ExportJob = components['schemas']['ExportJob'];
+export type ExportFormat = ExportJob['format'];
+export type ExportStatus = ExportJob['status'];
+
+/**
+ * POST /export body. Permanently SINGULAR `controller_id` (TD-008: there is no
+ * bulk export and no `GET /export/list`). `format` is server-defaulted to csv,
+ * so it stays optional here even though the codegen marks defaults required.
+ */
+export type ExportRequest = Omit<components['schemas']['ExportRequest'], 'format'> & {
+  format?: ExportFormat;
+};
+
 /** Alarm vocabulary + threshold CRUD schemas (routers/controllers.py). */
 export type AlarmPriority = components['schemas']['AlarmPriority'];
 export type AlarmTypeName = components['schemas']['AlarmType'];
