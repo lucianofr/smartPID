@@ -1,8 +1,8 @@
 /* ============================================================================
  * Theme value sets. Recorder (§6.5) and Phosphor (§6.6) are NORMATIVE — hex
- * values verbatim from the spec; do not "adjust". ISA-101 is an INTERIM block
- * (current-palette values under the new names) until phase 11a lands the
- * audited 5→3 retokenisation with unchanged visual output.
+ * values verbatim from the spec; do not "adjust". ISA-101 is the audited 5→3
+ * retokenisation of the pre-rewrite palette (phase 11); every hex is traced to
+ * its old token in docs/isa101-token-mapping.md. Visual output is unchanged.
  * ========================================================================= */
 
 [data-theme="recorder"] {
@@ -23,6 +23,7 @@
   --trace-pv: #1B4F87;  --trace-sp: #7C8894;  --trace-co: #BC7211;  /* 3.34:1 on sunk */
   --trend-grid: #E4E9EF;  --trend-axis: #9DA9B5;  --trend-bg: #EEF1F5;
   --trend-pv-width: 2px;  --trend-sp-width: 1.5px;  --trend-co-width: 1.5px;
+  --trend-sp-dash: 6 4;   /* §6.3 dashed graphite SP */
   --bar-track: #EEF1F5;  --bar-fill: #5A6875;  --bar-marker: #16202B;
 }
 
@@ -45,26 +46,28 @@
   --trace-pv: #9FC8F0;  --trace-sp: #6E7B8A;  --trace-co: #E39B3D;
   --trend-grid: #16202E;  --trend-axis: #3E4E63;  --trend-bg: #0A0E14;
   --trend-pv-width: 2px;  --trend-sp-width: 1.5px;  --trend-co-width: 1.5px;
+  --trend-sp-dash: 6 4;   /* §6.3 dashed graphite SP */
   --bar-track: #0E141C;  --bar-fill: #5E7080;  --bar-marker: #8FB6D6;
 }
 
 /*
- * ISA-101 — INTERIM (phase 2). Values are the CURRENT isa101 palette mapped onto
- * the §6.4 names so the theme attribute + token names resolve from phase 2
- * (token-resolution gate). Phase 11a replaces this block with the audited 5→3
- * mapping table; visual-output equivalence is verified there, not here.
- * ISA-101 keeps its own trace rules (§6.3): gray-until-abnormal PV, solid blue SP.
+ * ISA-101 — FINAL (phase 11). Every value is the pre-rewrite ISA-101 hex read
+ * from git (parent of the phase-2 src deletion), re-expressed under the §6.4
+ * shared names. The 5-step surface ladder collapses to 3; the arbitration of
+ * each collapse, and the four values with no old equivalent, are recorded in
+ * docs/isa101-token-mapping.md and pinned by isa101Mapping.test.ts.
+ * ISA-101 keeps its own trace rules (§6.3): gray PV, SOLID blue SP.
  */
 [data-theme="isa101"] {
-  --bg: #1E1E1E;  --surface: #2D2D30;
-  --surface-sunk: #252526;  /* was --field-bg */
-  --rule: #3A3A3D;          /* was --divider */
-  --rule-strong: #57575B;   /* was --border-strong */
+  --bg: #1E1E1E;  --surface: #2D2D30;      /* was --surface / --surface-container */
+  --surface-sunk: #252526;                 /* was --field-bg */
+  --rule: #454548;                         /* was --border (60 of 70 line uses) */
+  --rule-strong: #57575B;                  /* was --border-strong */
   --text: #E0E0E0;  --text-soft: #ABABAB;  --text-disabled: #666666;
-  --focus-ring: #C8C8C8;  --selection: #3A3A3D;  /* interim */  --scrim: rgba(0, 0, 0, 0.6);  /* interim */
-  --accent: #57575B;        /* interim — ISA-101 has no accent; neutral gray chrome */
-  --accent-hover: #666666;  /* interim */  --accent-sunk: #454548;  /* interim */
-  --accent-soft: #333337;   /* interim */  --on-accent: #FFFFFF;    /* interim */
+  --focus-ring: #C8C8C8;  --selection: #333337;  --scrim: rgba(0, 0, 0, 0.6);
+  --accent: #57575B;        /* ISA-101 has no accent hue: neutral control chrome */
+  --accent-hover: #666666;  --accent-sunk: #454548;
+  --accent-soft: #333337;   --on-accent: #FFFFFF;
   --alarm-crit: #FF3333;  --alarm-crit-bg: #3A0E0E;
   --alarm-warn: #FF8800;  --alarm-warn-bg: #3A2200;
   --alarm-adv:  #AA55FF;  --alarm-adv-bg:  #260A3A;
@@ -74,5 +77,6 @@
   --trace-pv: #E0E0E0;  --trace-sp: #33AAFF;  --trace-co: #FFB000;
   --trend-grid: #3A3A3D;  --trend-axis: #57575B;  --trend-bg: #252526;
   --trend-pv-width: 1.5px;  --trend-sp-width: 1.5px;  --trend-co-width: 1.5px;
+  --trend-sp-dash: none;  /* §6.3 ISA-101 SP is SOLID blue, never dashed */
   --bar-track: #252526;  --bar-fill: #9A9A9A;  --bar-marker: #CCCCCC;
 }

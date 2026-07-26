@@ -13,6 +13,7 @@ const SET = {
   '--trend-pv-width': '2px',
   '--trend-sp-width': '1.5px',
   '--trend-co-width': '1.5px',
+  '--trend-sp-dash': '6 4',
   '--font-data': "'Geist Mono', monospace",
 } as const;
 
@@ -48,11 +49,25 @@ describe('readTrendTokens (NEW §6.4 names)', () => {
 });
 
 describe('buildUplotTheme', () => {
-  it('maps series treatments: SP dashed [6,4], CO on the co scale', () => {
+  it('maps series treatments: SP dash from the token, CO on the co scale', () => {
     const theme = buildUplotTheme(readTrendTokens(apply()));
     expect(theme.series.sp.dash).toEqual([6, 4]);
     expect(theme.series.co.scale).toBe('co');
     expect(theme.series.pv.width).toBe(2);
     expect(theme.axisFont).toContain('Geist Mono');
+  });
+
+  it('SP renders SOLID when --trend-sp-dash is none (ISA-101 §6.3 rule)', () => {
+    apply();
+    root.style.setProperty('--trend-sp-dash', 'none');
+    expect(buildUplotTheme(readTrendTokens(getComputedStyle(root))).series.sp.dash).toEqual([]);
+  });
+
+  it('SP falls back to solid when the dash token is missing or unparseable', () => {
+    apply();
+    root.style.removeProperty('--trend-sp-dash');
+    expect(readTrendTokens(getComputedStyle(root)).spDash).toEqual([]);
+    root.style.setProperty('--trend-sp-dash', 'dotted');
+    expect(readTrendTokens(getComputedStyle(root)).spDash).toEqual([]);
   });
 });

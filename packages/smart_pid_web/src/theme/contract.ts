@@ -24,7 +24,7 @@ export const CONTRACT_TOKENS = [
   // Trend
   '--trace-pv', '--trace-sp', '--trace-co',
   '--trend-grid', '--trend-axis', '--trend-bg',
-  '--trend-pv-width', '--trend-sp-width', '--trend-co-width',
+  '--trend-pv-width', '--trend-sp-width', '--trend-co-width', '--trend-sp-dash',
   // Bar
   '--bar-track', '--bar-fill', '--bar-marker',
   // Type
