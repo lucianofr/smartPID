@@ -24,3 +24,14 @@ export function ticks(scale: Scale, count = 5): number[] {
   if (span <= 0) return [scale.euMin, scale.euMin];
   return Array.from({ length: n }, (_, i) => scale.euMin + (span * i) / (n - 1));
 }
+
+/** Percent position on the scale span, clamped 0..100 (phase-3 extension). */
+export function valueToPercent(value: number, scale: Scale): number {
+  return valueToFraction(value, scale) * 100;
+}
+
+/** Clamp a raw EU value into [euMin, euMax]; degenerate span collapses to euMin. */
+export function clampToScale(value: number, scale: Scale): number {
+  if (scale.euMax <= scale.euMin) return scale.euMin;
+  return Math.min(Math.max(value, scale.euMin), scale.euMax);
+}

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ticks, valueToFraction, type Scale } from './scale';
+import {
+  clampToScale,
+  ticks,
+  valueToFraction,
+  valueToPercent,
+  type Scale,
+} from './scale';
 
 const s: Scale = { euMin: 0, euMax: 200, unit: '°C' };
 
@@ -27,5 +33,35 @@ describe('ticks', () => {
 
   it('degenerate span collapses to [euMin, euMin]', () => {
     expect(ticks({ euMin: 7, euMax: 7, unit: '' })).toEqual([7, 7]);
+  });
+});
+
+describe('valueToPercent (phase-3 extension)', () => {
+  const scale = { euMin: 0, euMax: 200, unit: '°C' };
+  it('maps the scale span onto 0..100', () => {
+    expect(valueToPercent(0, scale)).toBe(0);
+    expect(valueToPercent(100, scale)).toBe(50);
+    expect(valueToPercent(200, scale)).toBe(100);
+  });
+  it('clamps out-of-range values (inherits valueToFraction clamping)', () => {
+    expect(valueToPercent(-50, scale)).toBe(0);
+    expect(valueToPercent(999, scale)).toBe(100);
+  });
+  it('degenerate span → 0 (matches valueToFraction)', () => {
+    expect(valueToPercent(5, { euMin: 10, euMax: 10, unit: '' })).toBe(0);
+  });
+});
+
+describe('clampToScale (phase-3 extension)', () => {
+  const scale = { euMin: -10, euMax: 10, unit: 'bar' };
+  it('passes in-range values through', () => {
+    expect(clampToScale(3.5, scale)).toBe(3.5);
+  });
+  it('clamps to the engineering-unit bounds', () => {
+    expect(clampToScale(-99, scale)).toBe(-10);
+    expect(clampToScale(99, scale)).toBe(10);
+  });
+  it('degenerate span → euMin', () => {
+    expect(clampToScale(7, { euMin: 4, euMax: 4, unit: '' })).toBe(4);
   });
 });
