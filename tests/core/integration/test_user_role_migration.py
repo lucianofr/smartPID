@@ -92,14 +92,24 @@ class TestRoleValueMigration:
 class TestDDLDefault:
     @pytest.mark.asyncio
     async def test_fresh_db_defaults_perfil_to_user(self, tmp_path: Path) -> None:
-        repo = UserRepository(tmp_path / "users.db")
+        import aiosqlite
+
+        db_path = tmp_path / "users.db"
+        repo = UserRepository(db_path)
         await repo.initialize()
-        await repo.db.execute(
-            "INSERT INTO Usuarios (nome, senha_hash) VALUES ('nodefault', 'h')"
-        )
-        await repo.db.commit()
-        assert (await _roles_by_name(repo))["nodefault"] == "user"
         await repo.close()
+        # No public API inserts omitting perfil (by design) — use an
+        # independent raw handle to exercise the DDL DEFAULT.
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute(
+                "INSERT INTO Usuarios (nome, senha_hash) VALUES ('nodefault', 'h')"
+            )
+            await db.commit()
+        repo2 = UserRepository(db_path)
+        await repo2.initialize()
+        users = await repo2.list_all()
+        await repo2.close()
+        assert [u.role for u in users if u.username == "nodefault"] == ["user"]
 
 
 class TestSeedDefaultAdmin:

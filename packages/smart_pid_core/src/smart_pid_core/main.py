@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 import uvicorn
+from sqlalchemy import text
 
 from smart_pid_core.adapters.factory import AdapterFactory
 from smart_pid_core.adapters.inbound.api.app import create_app
@@ -144,19 +145,19 @@ async def _migrate_users_if_needed(spid_path: Path, users_db_path: Path) -> None
         ) as cur:
             rows = await cur.fetchall()
 
-    if not rows:
-        return
-
     user_repo = UserRepository(users_db_path)
     await user_repo.initialize()
     for row in rows:
         with contextlib.suppress(Exception):
-            await user_repo.db.execute(
-                "INSERT INTO Usuarios (nome, senha_hash, perfil, ativo, criado_em)"
-                " VALUES (?, ?, ?, ?, ?)",
-                (row[0], row[1], row[2], row[3], row[4]),
-            )
-    await user_repo.db.commit()
+            async with user_repo.session_factory() as session:
+                await session.execute(
+                    text(
+                        "INSERT INTO Usuarios (nome, senha_hash, perfil, ativo, criado_em)"
+                        " VALUES (:n, :h, :p, :a, :c)"
+                    ),
+                    {"n": row[0], "h": row[1], "p": row[2], "a": row[3], "c": row[4]},
+                )
+                await session.commit()
     await user_repo.close()
     logger.info(
         "migrated_users", count=len(rows), source=str(spid_path), target=str(users_db_path),
@@ -172,16 +173,13 @@ _ROLE_VALUE_MAP: tuple[tuple[str, str], ...] = (
 
 async def _migrate_user_roles(user_repo: UserRepository) -> None:
     """Rewrite legacy role values in users.db idempotently (spec §9.4)."""
-    migrated = 0
-    for legacy, new in _ROLE_VALUE_MAP:
-        cursor = await user_repo.db.execute(
-            "UPDATE Usuarios SET perfil = ? WHERE perfil = ?",
-            (new, legacy),
-        )
-        migrated += max(cursor.rowcount, 0)
-    await user_repo.db.commit()
-    if migrated:
-        logger.info("migrated_user_roles", rows=migrated)
+    async with user_repo.session_factory() as session:
+        for legacy, new in _ROLE_VALUE_MAP:
+            await session.execute(
+                text("UPDATE Usuarios SET perfil = :new WHERE perfil = :legacy"),
+                {"new": new, "legacy": legacy},
+            )
+        await session.commit()
 
 
 async def _seed_default_admin(user_repo: UserRepository) -> None:
