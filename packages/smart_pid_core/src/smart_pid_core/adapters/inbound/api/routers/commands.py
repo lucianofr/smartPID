@@ -10,6 +10,7 @@ from starlette.requests import Request
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     audit_and_broadcast,
+    controller_label,
     get_audit_repo,
     get_event_bus,
     get_execution_mode,
