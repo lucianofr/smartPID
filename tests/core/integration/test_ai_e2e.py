@@ -47,6 +47,10 @@ class TestEndToEndAITuning:
         computation on its timer and publishes ACTION.AI.
         """
         stats_worker = StatsWorker(bus=bus, controller=controller)
+        # SP_TRACKING consumes StatsWorker snapshots (AIWorker._drain_stats),
+        # and production publishes STATS only once per 5 s of samples. Shorten
+        # both cadences so a full stats -> fuzzy cycle fits the test budget.
+        stats_worker._publish_interval = 5  # Override for fast testing
         ai_worker = AIWorker(bus=bus, controller=controller)
         ai_worker._ai_period_s = 0.5  # Override for fast testing
 
@@ -58,9 +62,13 @@ class TestEndToEndAITuning:
             ai_sub = bus.create_subscriber(f"ACTION.AI.{controller.id}".encode())
             time.sleep(0.05)
 
-            # Simulate steady-state error (PV below SP).
+            # Simulate steady-state error (PV below SP). IAE saturates at
+            # _IAE_FULL_SCALE = 20% of span, so a 15% offset is what rule R1
+            # (IAE HIGH + OSC STABLE + EFF SMOOTH -> reduce Ti) keys on; the
+            # old 5% offset normalises to IAE 0.25 = LOW, which correctly
+            # fires R5 "settled" and holds Ti.
             for _ in range(15):
-                telem = {"pv": 45.0, "sp": 50.0, "co": 50.0, "mode": "AUTO"}
+                telem = {"pv": 35.0, "sp": 50.0, "co": 50.0, "mode": "AUTO"}
                 pub.send(
                     f"TELEMETRY.{controller.id}".encode(),
                     msgpack.packb(telem),
