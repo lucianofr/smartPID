@@ -59,7 +59,7 @@ def _mock_admin_user():
     )
     from smart_pid_domain.dtos.auth import UserClaims
 
-    admin = UserClaims(user_id="1", username="admin", role="ADMIN")
+    admin = UserClaims(user_id="1", username="admin", role="admin")
 
     def override():
         return admin

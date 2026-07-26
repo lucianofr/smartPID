@@ -58,7 +58,7 @@ async def monitor_deps(tmp_path):
     )  # type: ignore[call-arg]
 
     admin_hash = hash_password("admin")
-    await user_repo.create("admin", admin_hash, "ADMIN")
+    await user_repo.create("admin", admin_hash, "admin")
 
     yield {
         "repo": repo,
@@ -99,7 +99,7 @@ async def monitor_client(monitor_app):
 @pytest.fixture
 def operator_headers(monitor_deps) -> dict[str, str]:
     token = create_access_token(
-        user_id=2, username="operator", role="OPERATOR",
+        user_id=2, username="operator", role="user",
         secret=monitor_deps["settings"].jwt_secret,
     )
     return {"Authorization": f"Bearer {token}"}
@@ -171,7 +171,7 @@ class TestApplyTuning:
         )  # type: ignore[call-arg]
 
         admin_hash = hash_password("admin")
-        await user_repo.create("admin", admin_hash, "ADMIN")
+        await user_repo.create("admin", admin_hash, "admin")
 
         yield {
             "repo": repo,
@@ -223,7 +223,7 @@ class TestApplyTuning:
         )
         headers = {
             "Authorization": "Bearer " + create_access_token(
-                user_id=1, username="admin", role="ADMIN",
+                user_id=1, username="admin", role="admin",
                 secret=execute_deps["settings"].jwt_secret,
             ),
         }
@@ -256,7 +256,7 @@ class TestApplyTuning:
 
         headers = {
             "Authorization": "Bearer " + create_access_token(
-                user_id=1, username="admin", role="ADMIN",
+                user_id=1, username="admin", role="admin",
                 secret=execute_deps["settings"].jwt_secret,
             ),
         }
@@ -289,7 +289,7 @@ class TestApplyTuning:
 
         headers = {
             "Authorization": "Bearer " + create_access_token(
-                user_id=1, username="admin", role="ADMIN",
+                user_id=1, username="admin", role="admin",
                 secret=execute_deps["settings"].jwt_secret,
             ),
         }

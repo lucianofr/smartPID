@@ -88,9 +88,9 @@ class TestEnums:
         assert OptimizerState.STOP == "STOP"
 
     def test_user_role_values(self) -> None:
-        assert UserRole.ADMIN == "ADMIN"
-        assert UserRole.SUPERVISOR == "SUPERVISOR"
-        assert UserRole.OPERATOR == "OPERATOR"
+        assert UserRole.ADMIN == "admin"
+        assert UserRole.USER == "user"
+        assert {r.value for r in UserRole} == {"admin", "user"}
 
 
 class TestPIDParams:

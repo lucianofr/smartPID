@@ -54,7 +54,7 @@ def test_get_audit_supervisor(app_fixture):
     )
     client = TestClient(app, base_url="http://127.0.0.1")
     token = create_access_token(
-        user_id=1, username="sup1", role="SUPERVISOR",
+        user_id=1, username="sup1", role="admin",
         secret=settings.jwt_secret, expiry_hours=1,
     )
     now = datetime.now(tz=UTC)
@@ -75,7 +75,7 @@ def test_get_audit_any_authenticated_user_allowed(app_fixture):
     app, audit_repo, settings = app_fixture
     client = TestClient(app, base_url="http://127.0.0.1")
     token = create_access_token(
-        user_id=1, username="op1", role="OPERATOR",
+        user_id=1, username="op1", role="user",
         secret=settings.jwt_secret, expiry_hours=1,
     )
     now = datetime.now(tz=UTC)

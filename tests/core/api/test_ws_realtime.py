@@ -255,7 +255,7 @@ def _make_app() -> FastAPI:
 
 def _good_token() -> str:
     return create_access_token(
-        user_id=1, username="admin", role="ADMIN", secret=_SECRET
+        user_id=1, username="admin", role="admin", secret=_SECRET
     )
 
 

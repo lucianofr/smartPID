@@ -338,7 +338,7 @@ async def run_daemon(settings: CoreSettings) -> None:
     users = await user_repo.list_all()
     if not users:
         admin_hash = hash_password("admin")
-        await user_repo.create("admin", admin_hash, "ADMIN")
+        await user_repo.create("admin", admin_hash, "admin")
         logger.warning(
             "seeded_default_admin",
             msg="SECURITY: Default admin account created with password 'admin'. "

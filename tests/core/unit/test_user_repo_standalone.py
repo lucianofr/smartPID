@@ -21,9 +21,9 @@ class TestUserRepoStandalone:
         db_path = tmp_path / "users.db"
         repo = UserRepository(db_path)
         await repo.initialize()
-        user = await repo.create("admin", "hash123", "ADMIN")
+        user = await repo.create("admin", "hash123", "admin")
         assert user.username == "admin"
-        assert user.role == "ADMIN"
+        assert user.role == "admin"
         fetched = await repo.get_by_username("admin")
         assert fetched is not None
         assert fetched.id == user.id
@@ -34,7 +34,7 @@ class TestUserRepoStandalone:
         db_path = tmp_path / "users.db"
         repo = UserRepository(db_path)
         await repo.initialize()
-        await repo.create("admin", "hash123", "ADMIN")
+        await repo.create("admin", "hash123", "admin")
         await repo.close()
         repo2 = UserRepository(db_path)
         await repo2.initialize()

@@ -169,13 +169,13 @@ class MockAPIClient:
     def list_users(self) -> list[UserResponse]:
         return [
             UserResponse(
-                id=1, username="admin", role="ADMIN", active=True, created_at="2026-01-01",
+                id=1, username="admin", role="admin", active=True, created_at="2026-01-01",
             ),
             UserResponse(
-                id=2, username="operator", role="OPERATOR", active=True, created_at="2026-01-02",
+                id=2, username="operator", role="user", active=True, created_at="2026-01-02",
             ),
             UserResponse(
-                id=3, username="inactive", role="OPERATOR", active=False, created_at="2026-01-03",
+                id=3, username="inactive", role="user", active=False, created_at="2026-01-03",
             ),
         ]
 
@@ -187,13 +187,13 @@ class MockAPIClient:
         password: str | None = None, active: bool | None = None,
     ) -> UserResponse:
         return UserResponse(
-            id=user_id, username="user", role=role or "OPERATOR",
+            id=user_id, username="user", role=role or "user",
             active=active if active is not None else True, created_at="",
         )
 
     def deactivate_user(self, user_id: int) -> UserResponse:
         return UserResponse(
-            id=user_id, username="user", role="OPERATOR", active=False, created_at="",
+            id=user_id, username="user", role="user", active=False, created_at="",
         )
 
     # Alarms

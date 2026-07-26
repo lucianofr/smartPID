@@ -59,7 +59,7 @@ async def deps(tmp_path):
     )  # type: ignore[call-arg]
 
     admin_hash = hash_password("admin")
-    await user_repo.create("admin", admin_hash, "ADMIN")
+    await user_repo.create("admin", admin_hash, "admin")
 
     yield {
         "repo": repo,
@@ -91,7 +91,7 @@ def _make_app(deps_dict):
 
 def _operator_headers(settings) -> dict[str, str]:
     token = create_access_token(
-        user_id=2, username="operator", role="OPERATOR",
+        user_id=2, username="operator", role="user",
         secret=settings.jwt_secret,
     )
     return {"Authorization": f"Bearer {token}"}

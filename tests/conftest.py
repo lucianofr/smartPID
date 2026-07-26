@@ -50,7 +50,7 @@ async def api_deps(tmp_path):
 
     # Seed admin user
     admin_hash = hash_password("admin")
-    await user_repo.create("admin", admin_hash, "ADMIN")
+    await user_repo.create("admin", admin_hash, "admin")
 
     projects_dir = tmp_path / "projects"
     projects_dir.mkdir()
@@ -111,7 +111,7 @@ async def client(app):
 def admin_headers(api_deps) -> dict[str, str]:
     """Pre-authenticated admin JWT headers."""
     token = create_access_token(
-        user_id=1, username="admin", role="ADMIN",
+        user_id=1, username="admin", role="admin",
         secret=api_deps["settings"].jwt_secret,
     )
     return {"Authorization": f"Bearer {token}"}
@@ -119,9 +119,9 @@ def admin_headers(api_deps) -> dict[str, str]:
 
 @pytest.fixture
 def user_headers(api_deps) -> dict[str, str]:
-    """Pre-authenticated operator JWT headers."""
+    """Pre-authenticated user-role JWT headers."""
     token = create_access_token(
-        user_id=2, username="operator", role="OPERATOR",
+        user_id=2, username="operator", role="user",
         secret=api_deps["settings"].jwt_secret,
     )
     return {"Authorization": f"Bearer {token}"}
@@ -139,9 +139,14 @@ async def alarm_repo(api_deps):
 
 @pytest.fixture
 def supervisor_headers(api_deps) -> dict[str, str]:
-    """Pre-authenticated supervisor JWT headers."""
+    """TEMPORARY alias of admin_headers (distinct identity, user_id 3).
+
+    The SUPERVISOR tier no longer exists (spec §9.4 maps it to admin).
+    Removed in the call-site-switch task once consumers migrate to
+    admin_headers.
+    """
     token = create_access_token(
-        user_id=3, username="supervisor", role="SUPERVISOR",
+        user_id=3, username="supervisor", role="admin",
         secret=api_deps["settings"].jwt_secret,
     )
     return {"Authorization": f"Bearer {token}"}
@@ -167,7 +172,7 @@ async def sim_api_deps(tmp_path):
     )  # type: ignore[call-arg]
 
     admin_hash = hash_password("admin")
-    await user_repo.create("admin", admin_hash, "ADMIN")
+    await user_repo.create("admin", admin_hash, "admin")
 
     from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
     simulator_adapter = SimulatorAdapter(settings=settings)

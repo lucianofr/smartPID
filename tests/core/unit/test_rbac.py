@@ -12,11 +12,11 @@ from smart_pid_domain.dtos.auth import UserClaims
 
 
 def test_authenticated_user_passes():
-    user = UserClaims(user_id=1, username="admin", role="ADMIN")
+    user = UserClaims(user_id=1, username="admin", role="admin")
     result = require_authenticated_admin(user)
     assert result.username == "admin"
 
 
 def test_returns_same_user_unchanged():
-    user = UserClaims(user_id=7, username="admin", role="ADMIN")
+    user = UserClaims(user_id=7, username="admin", role="admin")
     assert require_authenticated_admin(user) is user

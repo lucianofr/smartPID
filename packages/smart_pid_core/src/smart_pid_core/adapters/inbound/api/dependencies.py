@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, Request, status
 
 from smart_pid_core.adapters.inbound.api.auth import decode_access_token
 from smart_pid_domain.dtos.auth import UserClaims
+from smart_pid_domain.enums import UserRole
 
 if TYPE_CHECKING:
     from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
@@ -49,7 +50,13 @@ def get_settings(request: Request) -> CoreSettings:
 
 
 def get_current_user(request: Request) -> UserClaims:
-    """Extract and validate JWT from Authorization header."""
+    """Extract and validate JWT from Authorization header.
+
+    Any failure — bad signature, expiry, missing claims, or a legacy role
+    vocabulary ("ADMIN"/"SUPERVISOR"/"OPERATOR") — yields 401 so the client
+    performs a single forced re-login (spec §9.5). Legacy claims are never
+    mapped to the new roles.
+    """
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(
@@ -60,16 +67,36 @@ def get_current_user(request: Request) -> UserClaims:
     settings: CoreSettings = request.app.state.settings
     try:
         payload = decode_access_token(token, secret=settings.jwt_secret)
+        return UserClaims(
+            user_id=payload["sub"],
+            username=payload["username"],
+            role=payload["role"],  # strict: only "admin" | "user" validate
+        )
     except Exception:
+        # jwt.PyJWTError, KeyError, pydantic.ValidationError — all 401.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         ) from None
-    return UserClaims(
-        user_id=payload["sub"],
-        username=payload["username"],
-        role=payload["role"].upper(),
-    )
+
+
+def require_user(
+    user: Annotated[UserClaims, Depends(get_current_user)],
+) -> UserClaims:
+    """Gate: any authenticated principal (role ``admin`` or ``user``)."""
+    return user
+
+
+def require_admin(
+    user: Annotated[UserClaims, Depends(get_current_user)],
+) -> UserClaims:
+    """Gate: authenticated ``admin`` only; any other role → 403 (spec §9)."""
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+    return user
 
 
 def require_authenticated_admin(

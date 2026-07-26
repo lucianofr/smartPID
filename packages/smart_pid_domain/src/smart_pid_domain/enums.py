@@ -135,9 +135,16 @@ class OptimizerState(StrEnum):
     STOP = "STOP"
 
 class UserRole(StrEnum):
-    ADMIN = "ADMIN"
-    SUPERVISOR = "SUPERVISOR"
-    OPERATOR = "OPERATOR"
+    """Authorization tiers (spec §9): exactly two roles, lowercase values.
+
+    Legacy values ("ADMIN", "SUPERVISOR", "OPERATOR") were retired by the
+    two-role model. Persisted rows are rewritten at startup by
+    ``_migrate_user_roles`` (smart_pid_core.main); legacy JWT role claims are
+    rejected with 401 (single forced re-login) and are never mapped.
+    """
+
+    ADMIN = "admin"
+    USER = "user"
 
 class AlarmPriority(StrEnum):
     CRITICAL = "CRITICAL"
