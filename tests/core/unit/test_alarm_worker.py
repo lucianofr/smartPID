@@ -191,7 +191,6 @@ class TestAlarmWorkerIntegration:
         assert len(active) == 1
         assert active[0]["cleared_at"] is not None
 
-        await repo.db.close()
 
 
 class TestSeedActiveAlarms:

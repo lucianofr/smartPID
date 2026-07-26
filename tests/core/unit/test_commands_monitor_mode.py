@@ -73,7 +73,6 @@ async def monitor_deps(tmp_path):
     loop_manager.stop_all()
     bus.stop()
     await user_repo.close()
-    await repo.db.close()
 
 
 @pytest.fixture
@@ -185,8 +184,6 @@ class TestApplyTuning:
         }
         loop_manager.stop_all()
         bus.stop()
-        await user_repo.close()
-        await repo.db.close()
 
     async def _register_controller(self, deps: dict) -> int:
         """Save controller and register loop context."""

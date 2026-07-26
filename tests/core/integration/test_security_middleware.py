@@ -73,7 +73,6 @@ async def secure_client(tmp_path):
     loop_manager.stop_all()
     bus.stop()
     await user_repo.close()
-    await repo.db.close()
 
 
 class TestSecurityHeaders:
