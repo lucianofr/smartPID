@@ -40,18 +40,18 @@ E2E commands run:
 ```
 npx playwright test e2e/multitrend.spec.ts
 npx playwright test --grep-invert 'Executive Dashboard|Connection page|Projects page|Simulator|Multi-trend'
-npx playwright test          # full dir: 50 passed / 5 failed
+npx playwright test          # full dir: 49 passed / 4 failed
 ```
 
 `CI=1` is set in this environment, which flips Playwright's
 `reuseExistingServer` off and makes the run abort against the already-running
 dev server; the commands above were executed with `env -u CI`.
 
-Of the 5 full-suite failures, 4 are unchanged red-by-design specs for routes
-that still do not exist in `appRoutes` (`executive-dashboard` ×2,
-`fatia7-connection`, `fatia7-projects`). The fifth,
-`simulator.spec.ts:308`, belongs to the phase-8 agent and was mid-edit
-(`e2e/simulator.spec.ts` was dirty in the worktree) while this gate ran.
+All 4 full-suite failures are unchanged red-by-design specs for routes that
+still do not exist in `appRoutes`: `executive-dashboard` ×2 (`/executive`),
+`fatia7-connection` (`/connection`) and `fatia7-projects` (`/projects`).
+An earlier pass of this gate also showed `simulator.spec.ts:308` failing; that
+belonged to the phase-8 agent mid-edit and is green in the final run.
 
 ## What shipped
 
