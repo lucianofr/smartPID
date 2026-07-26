@@ -20,6 +20,7 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
     require_user,
 )
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository  # noqa: TC001
+from smart_pid_core.adapters.outbound.ai_repo import AIRepository  # noqa: TC001
 from smart_pid_core.adapters.outbound.user_repo import User  # noqa: TC001
 from smart_pid_core.application.event_bus import EventBus  # noqa: TC001
 from smart_pid_core.application.loop_manager import LoopManager  # noqa: TC001
