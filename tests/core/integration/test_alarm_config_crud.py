@@ -113,10 +113,10 @@ class TestUpdateAlarmConfig:
         assert types == {"HIHI", "HI", "LO", "LOLO"}
 
     @pytest.mark.asyncio
-    async def test_update_alarm_config_any_authenticated_user_allowed(
+    async def test_update_alarm_config_rejects_user_role(
         self, client: AsyncClient, user_headers: dict[str, str], api_deps: dict,
     ) -> None:
-        # Single-admin deployment: any authenticated user may update config.
+        # PUT /controllers/{id}/alarm-config is admin-only (spec §9.2 Appendix A).
         cid = await _create_controller(api_deps)
         body = {
             "thresholds": [
@@ -128,7 +128,7 @@ class TestUpdateAlarmConfig:
             json=body,
             headers=user_headers,
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 403
 
     @pytest.mark.asyncio
     async def test_update_alarm_config_unknown_controller(

@@ -54,13 +54,14 @@ class TestNewProject:
         resp = await client.post("/project/new", json={"name": "x"})
         assert resp.status_code == 401
 
-    async def test_any_authenticated_user_allowed(
+    async def test_rejects_user_role(
         self, client: httpx.AsyncClient, user_headers: dict[str, str],
     ) -> None:
+        # POST /project/new is admin-only (spec §9.2 Appendix A).
         resp = await client.post(
             "/project/new", json={"name": "x"}, headers=user_headers,
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 403
 
     async def test_path_traversal_rejected(
         self,
@@ -120,15 +121,15 @@ class TestOpenProject:
         )
         assert resp.status_code == 404
 
-    async def test_any_authenticated_user_allowed(
+    async def test_rejects_user_role(
         self, client: httpx.AsyncClient, user_headers: dict[str, str],
     ) -> None:
-        # Any authenticated user reaches the handler; a missing project is 404,
-        # never a role-based 403.
+        # POST /project/open is admin-only (spec §9.2 Appendix A): the role
+        # gate refuses before the handler can report a missing project.
         resp = await client.post(
             "/project/open", json={"name": "x"}, headers=user_headers,
         )
-        assert resp.status_code == 404
+        assert resp.status_code == 403
 
     async def test_path_traversal_rejected(
         self, client: httpx.AsyncClient, supervisor_headers: dict[str, str],
@@ -143,9 +144,9 @@ class TestOpenProject:
 
 class TestListProjects:
     async def test_list_empty(
-        self, client: httpx.AsyncClient, user_headers: dict[str, str],
+        self, client: httpx.AsyncClient, admin_headers: dict[str, str],
     ) -> None:
-        resp = await client.get("/project/list", headers=user_headers)
+        resp = await client.get("/project/list", headers=admin_headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["projects"] == []
@@ -155,7 +156,7 @@ class TestListProjects:
         assert resp.status_code == 401
 
     async def test_list_with_files(
-        self, client: httpx.AsyncClient, user_headers: dict[str, str], api_deps,
+        self, client: httpx.AsyncClient, admin_headers: dict[str, str], api_deps,
     ) -> None:
         import aiosqlite
 
@@ -169,7 +170,7 @@ class TestListProjects:
             await db.execute("INSERT INTO Controladores (nome) VALUES (?)", ("c1",))
             await db.commit()
 
-        resp = await client.get("/project/list", headers=user_headers)
+        resp = await client.get("/project/list", headers=admin_headers)
         assert resp.status_code == 200
         projects = resp.json()["projects"]
         assert len(projects) == 1
@@ -201,28 +202,18 @@ class TestImportProject:
         assert resp.status_code == 200
         assert resp.json()["name"] == "uploaded"
 
-    async def test_any_authenticated_user_allowed(
-        self, client: httpx.AsyncClient, user_headers: dict[str, str], tmp_path,
+    async def test_rejects_user_role(
+        self, client: httpx.AsyncClient, user_headers: dict[str, str],
     ) -> None:
-        # Single-admin deployment: any authenticated user may import.
-        import aiosqlite
-
-        src = tmp_path / "upload.spid"
-        async with aiosqlite.connect(src) as db:
-            await db.execute(
-                "CREATE TABLE IF NOT EXISTS Controladores "
-                "(id INTEGER PRIMARY KEY, nome TEXT NOT NULL)"
-            )
-            await db.commit()
-        file_bytes = src.read_bytes()
-
+        # POST /project/import is admin-only (spec §9.2 Appendix A); the gate
+        # refuses before the upload body is parsed.
         resp = await client.post(
             "/project/import",
-            files={"file": ("upload.spid", file_bytes, "application/octet-stream")},
+            files={"file": ("upload.spid", b"", "application/octet-stream")},
             data={"name": "uploaded_by_user"},
             headers=user_headers,
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 403
 
     async def test_path_traversal_via_name_rejected(
         self,
@@ -295,15 +286,12 @@ class TestDownloadProject:
         resp = await client.get("/project/download")
         assert resp.status_code == 401
 
-    async def test_any_authenticated_user_allowed(
+    async def test_rejects_user_role(
         self, client: httpx.AsyncClient, user_headers: dict[str, str],
     ) -> None:
-        # Single-admin deployment: any authenticated user may download.
-        await client.post(
-            "/project/new", json={"name": "dluser"}, headers=user_headers,
-        )
+        # GET /project/download is admin-only (spec §9.2 Appendix A).
         resp = await client.get("/project/download", headers=user_headers)
-        assert resp.status_code == 200
+        assert resp.status_code == 403
 
 
 class TestDeleteProject:

@@ -1,6 +1,7 @@
 """Integration tests for audit trail endpoint."""
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest_asyncio
@@ -29,7 +30,7 @@ async def app_fixture(tmp_path):
     await user_repo.initialize()
     alarm_repo = AlarmRepository(repo.session_factory)
     audit_repo = AuditRepository(repo.session_factory)
-    bus = EventBus()
+    bus = EventBus(url_prefix=f"inproc://test_audit_api_{uuid.uuid4().hex[:8]}")
     bus.start()
     loop_manager = LoopManager(bus=bus)
     settings = CoreSettings(
@@ -49,9 +50,7 @@ async def app_fixture(tmp_path):
 def test_get_audit_supervisor(app_fixture):
     import asyncio
     app, audit_repo, settings = app_fixture
-    asyncio.get_event_loop().run_until_complete(
-        audit_repo.record(1, "admin", AuditAction.LOGIN, None, None)
-    )
+    asyncio.run(audit_repo.record(1, "admin", AuditAction.LOGIN, None, None))
     client = TestClient(app, base_url="http://127.0.0.1")
     token = create_access_token(
         user_id=1, username="sup1", role="admin",
@@ -70,8 +69,8 @@ def test_get_audit_supervisor(app_fixture):
     assert len(resp.json()) >= 1
 
 
-def test_get_audit_any_authenticated_user_allowed(app_fixture):
-    # Single-admin deployment: any authenticated user may read the audit trail.
+def test_get_audit_rejects_user_role(app_fixture):
+    # GET /audit is admin-only (spec §9.2 Appendix A).
     app, audit_repo, settings = app_fixture
     client = TestClient(app, base_url="http://127.0.0.1")
     token = create_access_token(
@@ -87,7 +86,7 @@ def test_get_audit_any_authenticated_user_allowed(app_fixture):
         },
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 403
 
 
 def test_get_audit_requires_auth(app_fixture):
