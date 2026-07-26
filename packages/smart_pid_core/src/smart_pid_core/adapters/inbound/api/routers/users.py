@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Annotated
 
 import aiosqlite
+from sqlalchemy.exc import IntegrityError as SAIntegrityError
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from smart_pid_core.adapters.inbound.api.auth import hash_password
@@ -74,7 +75,7 @@ async def create_user(
         created = await user_repo.create(
             body.username, hash_password(body.password), body.role.value
         )
-    except aiosqlite.IntegrityError:
+    except (aiosqlite.IntegrityError, SAIntegrityError):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Username already exists",
