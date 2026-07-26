@@ -114,14 +114,14 @@ describe('Faceplate', () => {
   });
 
   it('posts the mode command when a mode button is pressed', async () => {
-    const setMode = vi.spyOn(endpoints, 'setMode').mockResolvedValue({});
+    const setMode = vi.spyOn(endpoints, 'setMode').mockResolvedValue({ ok: true });
     renderFaceplate();
     fireEvent.click(await screen.findByRole('button', { name: 'MAN' }));
     await waitFor(() => expect(setMode).toHaveBeenCalledWith(5, 'MAN'));
   });
 
   it('posts the typed setpoint', async () => {
-    const setSetpoint = vi.spyOn(endpoints, 'setSetpoint').mockResolvedValue({});
+    const setSetpoint = vi.spyOn(endpoints, 'setSetpoint').mockResolvedValue({ ok: true });
     renderFaceplate();
     fireEvent.change(await screen.findByLabelText('Setpoint'), { target: { value: '61.5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Set setpoint' }));

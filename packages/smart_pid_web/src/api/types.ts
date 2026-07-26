@@ -11,6 +11,8 @@ export type TokenResponse = components['schemas']['TokenResponse'];
 
 export type ControllerResponse = components['schemas']['ControllerResponse'];
 export type AiStatus = components['schemas']['AIStatusResponse'];
+/** commands.py CommandResponse — every write under `/commands/*` returns this. */
+export type CommandResponse = components['schemas']['CommandResponse'];
 export type OpcuaStatus = components['schemas']['OPCUAStatusResponse'];
 export type SimulatorStatus = components['schemas']['SimulatorStatusResponse'];
 

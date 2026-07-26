@@ -2,6 +2,7 @@ import { api } from './client';
 import type {
   AiStatus,
   AlarmRow,
+  CommandResponse,
   ControllerMode,
   ControllerResponse,
   MeResponse,
@@ -48,14 +49,14 @@ export const endpoints = {
   ackAllAlarms: () => api.post<Record<string, unknown>>('/alarms/ack-all'),
 
   setMode: (controllerId: number, mode: ControllerMode) =>
-    api.post<Record<string, unknown>>('/commands/mode', { controller_id: controllerId, mode }),
+    api.post<CommandResponse>('/commands/mode', { controller_id: controllerId, mode }),
 
   setSetpoint: (controllerId: number, value: number) =>
-    api.post<Record<string, unknown>>('/commands/setpoint', { controller_id: controllerId, value }),
+    api.post<CommandResponse>('/commands/setpoint', { controller_id: controllerId, value }),
 
   setOutput: (controllerId: number, value: number) =>
-    api.post<Record<string, unknown>>('/commands/output', { controller_id: controllerId, value }),
+    api.post<CommandResponse>('/commands/output', { controller_id: controllerId, value }),
 
   applyTuning: (controllerId: number) =>
-    api.post<Record<string, unknown>>(`/commands/apply-tuning/${controllerId}`),
+    api.post<CommandResponse>(`/commands/apply-tuning/${controllerId}`),
 };
