@@ -22,6 +22,13 @@ export type SimulatorStatus = components['schemas']['SimulatorStatusResponse'];
 /** PID block operating modes (ModeCommand payload enum). */
 export type ControllerMode = components['schemas']['ControllerMode'];
 
+/** Alarm vocabulary + threshold CRUD schemas (routers/controllers.py). */
+export type AlarmPriority = components['schemas']['AlarmPriority'];
+export type AlarmTypeName = components['schemas']['AlarmType'];
+export type AlarmThreshold = components['schemas']['AlarmThreshold'];
+export type AlarmConfigResponse = components['schemas']['AlarmConfigResponse'];
+export type AlarmConfigUpdate = components['schemas']['AlarmConfigUpdate'];
+
 /** Row status CASE — alarm_repo.py:129-132 / 209-212. */
 export type AlarmRowStatus = 'UNACKNOWLEDGED' | 'ACKNOWLEDGED' | 'CLEARED_UNACK';
 

@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react';
+import { AlarmsPage } from '@/pages/AlarmsPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 
 /**
@@ -24,6 +25,12 @@ export const appRoutes: AppRoute[] = [
     element: DashboardPage,
     nav: { label: 'Loops', order: 10 },
     command: { label: 'Ir para Malhas', keywords: ['loops', 'malhas'] },
+  },
+  {
+    path: '/alarms',
+    element: AlarmsPage,
+    nav: { label: 'Alarms', order: 30 },
+    command: { label: 'Ir para Alarmes', keywords: ['alarmes'] },
   },
 ];
 

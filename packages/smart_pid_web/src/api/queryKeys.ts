@@ -8,6 +8,10 @@ export const queryKeys = {
   alarmsActive: ['alarms', 'active'] as const,
   /** Gap-window history rows fetched by resync (alarms since last_seen_ts). */
   alarmsResyncHistory: ['alarms', 'resync-history'] as const,
+  /** Operator-driven history window — keyed by the whole filter (phase 6). */
+  alarmsHistory: (filter: Record<string, unknown>) => ['alarms', 'history', filter] as const,
+  /** Per-loop threshold set behind the admin-only config form (phase 6). */
+  alarmConfig: (controllerId: number) => ['alarms', 'config', controllerId] as const,
   aiStatus: (controllerId: number) => ['ai', 'status', controllerId] as const,
   opcuaStatus: ['opcua', 'status'] as const,
   simulatorStatus: ['simulator', 'status'] as const,

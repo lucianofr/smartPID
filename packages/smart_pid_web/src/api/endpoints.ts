@@ -1,7 +1,9 @@
 import { api } from './client';
 import type {
   AiStatus,
+  AlarmConfigResponse,
   AlarmRow,
+  AlarmThreshold,
   CommandResponse,
   ControllerMode,
   ControllerResponse,
@@ -19,6 +21,8 @@ export interface AlarmHistoryParams {
   /** Backend default is 100 (alarms.py:41) — resync passes an explicit high cap. */
   limit?: number;
   offset?: number;
+  /** Narrow to one loop (alarms.py:40) — omitted means every controller. */
+  controllerId?: number;
 }
 
 export const endpoints = {
@@ -35,8 +39,19 @@ export const endpoints = {
     const q = new URLSearchParams({ start: params.start, end: params.end });
     if (params.limit !== undefined) q.set('limit', String(params.limit));
     if (params.offset !== undefined) q.set('offset', String(params.offset));
+    if (params.controllerId !== undefined) q.set('controller_id', String(params.controllerId));
     return api.get<AlarmRow[]>(`/alarms/history?${q.toString()}`);
   },
+
+  /** Single-row acknowledgement — the row stays active, ack ≠ clear (§7). */
+  ackAlarm: (alarmId: number) => api.post<Record<string, unknown>>(`/alarms/${alarmId}/ack`),
+
+  alarmConfig: (controllerId: number) =>
+    api.get<AlarmConfigResponse>(`/controllers/${controllerId}/alarm-config`),
+
+  /** PUT REPLACES the whole threshold array — always send every row. */
+  updateAlarmConfig: (controllerId: number, thresholds: readonly AlarmThreshold[]) =>
+    api.put<AlarmConfigResponse>(`/controllers/${controllerId}/alarm-config`, { thresholds }),
 
   aiStatus: (controllerId: number) =>
     api.get<AiStatus>(`/controllers/${controllerId}/ai/status`),
