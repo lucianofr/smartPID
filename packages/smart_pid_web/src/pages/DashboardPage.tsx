@@ -7,6 +7,7 @@ import { LoopCard } from '@/features/dashboard/LoopCard';
 import { TrendPanel } from '@/features/dashboard/TrendPanel';
 import { pvScale, useControllers } from '@/features/dashboard/useControllers';
 import { useLoopStatuses } from '@/features/dashboard/useLoopStatuses';
+import { CardControls } from '@/features/loop-config/CardControls';
 import { cn } from '@/lib/utils';
 
 /**
@@ -60,32 +61,44 @@ export function DashboardPage() {
         )}
       >
         <ul className="flex flex-nowrap gap-3 overflow-x-auto p-3">
-          {controllers.data.map((controller) => (
-            <li
-              key={controller.id}
-              className={cn(
-                'flex',
-                controller.id === selected.id && 'outline outline-2 outline-focus-ring',
-              )}
-            >
-              <LoopCard
-                controller={controller}
-                status={statuses.get(controller.id) ?? null}
-                onOpenConfig={setConfigId}
-                controlsSlot={
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    aria-label={`Abrir ${controller.name}`}
-                    aria-pressed={controller.id === selected.id}
-                    onClick={() => setSelectedId(controller.id)}
-                  >
-                    Abrir
-                  </Button>
-                }
-              />
-            </li>
-          ))}
+          {controllers.data.map((controller) => {
+            const status = statuses.get(controller.id) ?? null;
+            const selectedHere = controller.id === selected.id;
+            return (
+              <li
+                key={controller.id}
+                className={cn('flex', selectedHere && 'outline outline-2 outline-focus-ring')}
+              >
+                <LoopCard
+                  controller={controller}
+                  status={status}
+                  onOpenConfig={setConfigId}
+                  controlsSlot={
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        aria-label={`Abrir ${controller.name}`}
+                        aria-pressed={selectedHere}
+                        onClick={() => setSelectedId(controller.id)}
+                      >
+                        Abrir
+                      </Button>
+                      {/* Only the open loop carries the mode switch: the strip
+                          must not offer the same command on every card. */}
+                      {selectedHere ? (
+                        <CardControls
+                          controllerId={controller.id}
+                          mode={status?.mode ?? controller.mode}
+                          controls={['mode']}
+                        />
+                      ) : null}
+                    </div>
+                  }
+                />
+              </li>
+            );
+          })}
         </ul>
       </section>
 
@@ -99,6 +112,7 @@ export function DashboardPage() {
           tag={selected.name}
           description={selected.description}
           scale={pvScale(selected)}
+          spRange={{ min: selected.sp_lo_lim, max: selected.sp_hi_lim }}
         />
       </div>
 
