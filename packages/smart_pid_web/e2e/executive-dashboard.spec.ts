@@ -1,10 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
+import { FIC101, mockRest, seedSession } from './helpers/harness';
 
-// Fatia 6 — executive-dashboard e2e. No real backend: all /api/* is mocked via page.route and
-// the WebSocket is stubbed via addInitScript (mirrors multitrend.spec.ts / fatia2-commands).
-// The /executive route is RequireAuth-gated, so the token is seeded into sessionStorage before
-// load (STORAGE_KEY = 'smart-pid-token'); WITHOUT it /executive redirects to /login and every
-// assertion fails. The route mocks do not validate the token.
+// Phase 9 — executive dashboard e2e. No backend runs: REST comes from the shared
+// harness (which also stubs `/api/auth/me` and the whole §7 resync set, because
+// StrictMode's second mount always resyncs) and the WebSocket is replaced in an
+// init script.
+//
+// This spec keeps its own socket stub instead of the harness one for a single
+// reason: it must hand the test a `__pushStats` handle so a live STATS frame can
+// be injected mid-test. It obeys the same rule the harness enforces — `seq`
+// advances MONOTONICALLY, or the phase-3 tracker reads a gap, forces a resync
+// and recycles the socket forever.
 //
 // Two scenarios:
 //  1. The page loads and the aggregate KPI cards + loop health render the stubbed REST values.
@@ -14,7 +20,7 @@ import { expect, test, type Page } from '@playwright/test';
 // avgIae = iae = 12.5 -> "12.50" and avgVariabilityRange = variability_range = 0.04 -> "4.0%".
 const STATS = [
   {
-    controller_id: 1,
+    controller_id: FIC101.id,
     iae: 12.5,
     itae: 200,
     ise: 30,
@@ -26,97 +32,136 @@ const STATS = [
     sample_count: 600,
   },
 ];
-const CONTROLLERS = [{ id: 1, name: 'FIC-101', mode: 'AUTO' }];
 
-// AppShell + page shell REST dependencies. No backend runs, so every endpoint the page +
-// AppShell touch must be stubbed or the unstubbed ones hang/404.
-async function mockRest(page: Page): Promise<void> {
-  await page.route('**/api/auth/login', (route) =>
-    route.fulfill({ json: { access_token: 'jwt-e2e', token_type: 'bearer' } }),
-  );
-  // /controllers and /controllers/stats share a prefix — register /stats first so the more
-  // specific glob wins over the bare /controllers handler.
+const SYSTEM = {
+  status: 'running',
+  uptime_s: 3661,
+  active_controllers: 1,
+  bus_active: true,
+  api_version: '2.0.0',
+};
+
+/** Harness REST + the three routes only the executive dashboard reads. */
+async function mockExecutiveRest(page: Page): Promise<void> {
+  await mockRest(page, { loops: [FIC101] });
+  // `**/api/controllers` (harness) cannot match `/api/controllers/stats`, and
+  // `**/api/alarms/history**` cannot match `/api/alarms/ai-history` — no overlap.
   await page.route('**/api/controllers/stats', (route) => route.fulfill({ json: STATS }));
-  await page.route('**/api/controllers', (route) => route.fulfill({ json: CONTROLLERS }));
-  await page.route('**/api/opcua/status', (route) =>
-    route.fulfill({ json: { state: 'ONLINE', endpoint: 'opc.tcp://x:4840' } }),
-  );
-  await page.route('**/api/alarms/active', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/alarms/ai-history**', (route) => route.fulfill({ json: [] }));
-  // Per-loop AI status + tuning recommendation: 404 = no AI worker / no pending recommendation.
-  // The page treats both as null (retry:false), so this is the correct "nothing pending" state.
-  await page.route('**/api/controllers/1/ai/status', (route) =>
-    route.fulfill({ status: 404, json: { detail: 'none' } }),
-  );
-  await page.route('**/api/commands/tuning-recommendations/1', (route) =>
-    route.fulfill({ status: 404, json: { detail: 'none' } }),
-  );
+  await page.route('**/api/system/status', (route) => route.fulfill({ json: SYSTEM }));
 }
 
-// Stub the WebSocket: emit `auth_ok` on send(), then expose __pushStats so a test can push a
-// live STATS.{id} frame. The frame data is the snake_case StatsData shape (envelope.ts); the
-// RealtimeProvider routes `type:'stats'` into lastStats and the page overlays it via fromWsStats.
+// Emit `auth_ok` plus one STATUS frame on send(), then expose __pushStats so a test
+// can inject a live STATS.{id} frame. The frame data is the snake_case StatsData
+// shape (envelope.ts); RealtimeProvider routes `type:'stats'` to the subscribers and
+// useStats overlays the polled row for that loop.
 async function stubWebSocket(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    sessionStorage.setItem('smart-pid-token', 'jwt-e2e');
-
-    const statsFrame = (loopId: number, iae: number) =>
-      JSON.stringify({
-        type: 'stats',
-        loop_id: loopId,
-        seq: 1,
-        ts: 1,
-        data: {
-          controller_id: loopId,
-          iae,
-          itae: 200,
-          ise: 30,
-          mse: 1.1,
-          std_dev: 0.8,
-          total_variation: 4.2,
-          variability_range: 0.04,
-          variability_sp: 0.03,
-        },
+  await page.addInitScript(
+    (loop: { id: number; pv: number; sp: number; co: number; mode: string }) => {
+      const T0 = 1750000000;
+      // Test-double handle the stub publishes on `window`; the real page has no
+      // such global, so the assertion is the whole point of the double.
+      const handle = window as unknown as {
+        __pushStats?: (loopId: number, iae: number) => void;
+      };
+      const ff = (value: number) => ({
+        value,
+        severity: 'GOOD',
+        limit_bits: 'NONE',
+        sub_status: 'NON_SPECIFIC',
       });
 
-    class StubWS extends EventTarget {
-      url: string;
-      readyState = 1;
-      onopen: (() => void) | null = null;
-      onmessage: ((e: MessageEvent) => void) | null = null;
-      onclose: (() => void) | null = null;
-      constructor(url: string) {
-        super();
-        this.url = url;
-        (
-          window as unknown as { __pushStats?: (loopId: number, iae: number) => void }
-        ).__pushStats = (loopId: number, iae: number) => {
+      class StubWS extends EventTarget {
+        url: string;
+        readyState = 1;
+        seq = 0;
+        onopen: (() => void) | null = null;
+        onmessage: ((e: MessageEvent) => void) | null = null;
+        onclose: ((e: { code: number }) => void) | null = null;
+
+        constructor(url: string) {
+          super();
+          this.url = url;
+          handle.__pushStats = (loopId: number, iae: number) => {
+            this.emit({
+              type: 'stats',
+              loop_id: loopId,
+              ts: T0 + this.seq,
+              data: {
+                iae,
+                itae: 200,
+                ise: 30,
+                mse: 1.1,
+                std_dev: 0.8,
+                total_variation: 4.2,
+                variability_sp: 0.03,
+                variability_range: 0.04,
+                sample_count: 600,
+                mean_abs_error: 0,
+                pk_pk_error: 0,
+                reversals: 0,
+                zero_crossings: 0,
+                recent_pk_pk_error: 0,
+                recent_reversals: 0,
+                tv_per_sample: 0,
+                osc: 0,
+              },
+            });
+          };
+          setTimeout(() => this.onopen?.(), 0);
+        }
+
+        /** The ONE place `seq` is stamped, so every frame advances it. */
+        emit(envelope: Record<string, unknown>): void {
+          this.seq += 1;
           this.onmessage?.(
-            new MessageEvent('message', { data: statsFrame(loopId, iae) }),
+            new MessageEvent('message', { data: JSON.stringify({ ...envelope, seq: this.seq }) }),
           );
-        };
-        setTimeout(() => this.onopen?.(), 0);
+        }
+
+        send(): void {
+          setTimeout(() => {
+            this.onmessage?.(
+              new MessageEvent('message', { data: JSON.stringify({ type: 'auth_ok' }) }),
+            );
+            this.emit({
+              type: 'status',
+              loop_id: loop.id,
+              ts: T0,
+              data: {
+                controller_id: loop.id,
+                pv: ff(loop.pv),
+                sp: ff(loop.sp),
+                co: ff(loop.co),
+                bkcal_in: ff(0),
+                bkcal_out: ff(0),
+                mode: loop.mode,
+                kp: 1,
+                ti: 10,
+                td: 0,
+                integral_val: 0,
+                timestamp: T0,
+              },
+            });
+          }, 0);
+        }
+
+        close(): void {
+          this.onclose?.({ code: 1000 });
+        }
       }
-      send() {
-        setTimeout(() => {
-          this.onmessage?.(
-            new MessageEvent('message', { data: JSON.stringify({ type: 'auth_ok' }) }),
-          );
-        }, 0);
-      }
-      close() {
-        this.onclose?.();
-      }
-    }
-    // @ts-expect-error override
-    window.WebSocket = StubWS;
-  });
+      // @ts-expect-error test double
+      window.WebSocket = StubWS;
+    },
+    { id: FIC101.id, pv: FIC101.pv, sp: FIC101.sp, co: FIC101.co, mode: FIC101.mode },
+  );
 }
 
 test.describe('Executive Dashboard', () => {
   test.beforeEach(async ({ page }) => {
+    await seedSession(page);
     await stubWebSocket(page);
-    await mockRest(page);
+    await mockExecutiveRest(page);
   });
 
   test('loads and renders aggregate KPI + health values from REST', async ({ page }) => {
@@ -133,13 +178,13 @@ test.describe('Executive Dashboard', () => {
     await page.goto('/executive');
     await expect(page.getByTestId('kpi-iae')).toContainText('12.50');
 
-    // Push a live STATS frame for loop 1 with a new IAE. fromWsStats overlays the REST snapshot,
+    // Push a live STATS frame for loop 1 with a new IAE. useStats overlays the REST snapshot,
     // so avgIae becomes 9.00 — no reload, the RealtimeProvider re-renders on the frame.
     await page.evaluate(() => {
-      (window as unknown as { __pushStats?: (loopId: number, iae: number) => void }).__pushStats?.(
-        1,
-        9.0,
-      );
+      const handle = window as unknown as {
+        __pushStats?: (loopId: number, iae: number) => void;
+      };
+      handle.__pushStats?.(1, 9.0);
     });
 
     await expect(page.getByTestId('kpi-iae')).toContainText('9.00');

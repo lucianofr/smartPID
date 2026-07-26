@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, useCallback, useMemo, useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { AppShell } from '@/app/AppShell';
 import { appRoutes } from '@/app/routes';
 import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { RouteGuard } from '@/auth/RouteGuard';
+import { LoadingState } from '@/components/MissingState';
 import { Toaster, toast } from '@/components/Toast';
 import { LoginPage } from '@/pages/LoginPage';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
@@ -17,11 +18,18 @@ import { ThemeProvider } from '@/theme/ThemeProvider';
  * 4401 close must be able to force the login route — so it sits inside both.
  */
 
+/**
+ * Secondary routes are code-split (see `app/routes.tsx`), so the shell needs
+ * one Suspense boundary. It sits INSIDE `AppShell` — the top bar and the
+ * palette must stay on screen while a route chunk arrives.
+ */
 function ProtectedLayout() {
   return (
     <RouteGuard>
       <AppShell>
-        <Outlet />
+        <Suspense fallback={<LoadingState label="Carregando página…" bars={3} />}>
+          <Outlet />
+        </Suspense>
       </AppShell>
     </RouteGuard>
   );

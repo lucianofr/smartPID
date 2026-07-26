@@ -1,8 +1,31 @@
-import type { ComponentType } from 'react';
+import { lazy, type ComponentType } from 'react';
 import { AlarmsPage } from '@/pages/AlarmsPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { MultiTrendPage } from '@/pages/MultiTrendPage';
-import { SimulatorPage } from '@/pages/SimulatorPage';
+
+/**
+ * `React.lazy` over a NAMED export — every page in this app exports by name,
+ * and `lazy` insists on a default. One place to do the unwrapping.
+ */
+function lazyPage<T>(load: () => Promise<T>, pick: (module: T) => ComponentType): ComponentType {
+  return lazy(async () => ({ default: pick(await load()) }));
+}
+
+/**
+ * Secondary surfaces are code-split (§12 perf budget). Loops, Trends and
+ * Alarms stay in the entry chunk — they are the operator's first paint. The
+ * commissioning twin, the buyer dashboard and the admin group all load on
+ * demand behind App's Suspense boundary.
+ */
+const SimulatorPage = lazyPage(() => import('@/pages/SimulatorPage'), (m) => m.SimulatorPage);
+const ExecutiveDashboardPage = lazyPage(
+  () => import('@/pages/ExecutiveDashboardPage'),
+  (m) => m.ExecutiveDashboardPage,
+);
+const ProjectsPage = lazyPage(() => import('@/pages/ProjectsPage'), (m) => m.ProjectsPage);
+const SettingsPage = lazyPage(() => import('@/pages/SettingsPage'), (m) => m.SettingsPage);
+const ConnectionPage = lazyPage(() => import('@/pages/ConnectionPage'), (m) => m.ConnectionPage);
+const UsersPage = lazyPage(() => import('@/pages/UsersPage'), (m) => m.UsersPage);
 
 /**
  * Single route/navigation registry (§6.9). Every later phase appends ONE
@@ -45,6 +68,45 @@ export const appRoutes: AppRoute[] = [
     element: SimulatorPage,
     nav: { label: 'Sim', order: 40 },
     command: { label: 'Ir para Simulador', keywords: ['sim', 'twin', 'simulador'] },
+  },
+  {
+    // Command-only: the buyer view stays out of the operator's top bar, which
+    // is Loops · Trends · Alarms · Sim. The wordmark and `[k]` reach it.
+    path: '/executive',
+    element: ExecutiveDashboardPage,
+    command: { label: 'Painel executivo', keywords: ['executivo', 'kpi', 'roi'] },
+  },
+  // Phase 10 — the `[cfg]` administration group. Every entry is `adminOnly`:
+  // the routers behind them are `require_admin`, so a `user` who reached one
+  // would only collect 403s. RouteGuard sends them back to the dashboard and
+  // AppShell drops the menu/palette entries entirely.
+  {
+    path: '/projects',
+    element: ProjectsPage,
+    adminOnly: true,
+    cfg: { label: 'Projects', order: 10 },
+    command: { label: 'Ir para Projetos', keywords: ['projeto', 'spid'] },
+  },
+  {
+    path: '/settings',
+    element: SettingsPage,
+    adminOnly: true,
+    cfg: { label: 'Settings', order: 20 },
+    command: { label: 'Ir para Configurações', keywords: ['config', 'preferências'] },
+  },
+  {
+    path: '/connection',
+    element: ConnectionPage,
+    adminOnly: true,
+    cfg: { label: 'Connection', order: 30 },
+    command: { label: 'Ir para Conexão', keywords: ['opc', 'opcua', 'conexão', 'tags'] },
+  },
+  {
+    path: '/users',
+    element: UsersPage,
+    adminOnly: true,
+    cfg: { label: 'Users', order: 40 },
+    command: { label: 'Ir para Usuários', keywords: ['usuário', 'conta', 'perfil'] },
   },
 ];
 
