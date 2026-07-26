@@ -30,15 +30,20 @@ if TYPE_CHECKING:
     from smart_pid_domain.models.alarm_config import AlarmConfig
 
 logger = structlog.get_logger()
-async def _load_alarm_configs(db) -> dict[int, AlarmConfig]:  # noqa: ANN001
+async def _load_alarm_configs(session_factory) -> dict[int, AlarmConfig]:  # noqa: ANN001
     """Load alarm configurations from Configuracao_Alarmes table."""
+    from sqlalchemy import text
+
     from smart_pid_domain.enums import AlarmPriority
     from smart_pid_domain.models.alarm_config import AlarmConfig as _AC
 
     configs: dict[int, _AC] = {}
     try:
-        async with db.execute("SELECT * FROM Configuracao_Alarmes ORDER BY controlador_id") as cur:
-            rows = await cur.fetchall()
+        async with session_factory() as session:
+            result = await session.execute(
+                text("SELECT * FROM Configuracao_Alarmes ORDER BY controlador_id"),
+            )
+            rows = result.mappings().all()
     except Exception:
         logger.debug("alarm_configs_not_loaded", exc_info=True)
         return configs
@@ -215,25 +220,29 @@ async def _sim_persist_flusher(
                 _log.exception("sim_persist_flush_failed", controller_id=cid)
 
 
-async def _retention_cleanup(repo_db, interval_hours: int = 24) -> None:  # noqa: ANN001
+async def _retention_cleanup(session_factory, interval_hours: int = 24) -> None:  # noqa: ANN001
     """Daily cleanup of old alarm logs and system events."""
+    from sqlalchemy import text
+
     _log = structlog.get_logger()
     while True:
         await asyncio.sleep(interval_hours * 3600)
         try:
-            await repo_db.execute(
-                "DELETE FROM Log_Alarmes WHERE timestamp <= datetime('now', '-30 days')"
-            )
-            await repo_db.execute(
-                "DELETE FROM Log_System_Events WHERE timestamp <= datetime('now', '-30 days')"
-            )
-            await repo_db.execute(
-                "DELETE FROM Log_Sintonia_IA WHERE timestamp <= datetime('now', '-7 days')"
-            )
-            await repo_db.execute(
-                "DELETE FROM Log_Processo WHERE timestamp <= datetime('now', '-7 days')"
-            )
-            await repo_db.commit()
+            async with session_factory() as session:
+                await session.execute(text(
+                    "DELETE FROM Log_Alarmes WHERE timestamp <= datetime('now', '-30 days')"
+                ))
+                await session.execute(text(
+                    "DELETE FROM Log_System_Events"
+                    " WHERE timestamp <= datetime('now', '-30 days')"
+                ))
+                await session.execute(text(
+                    "DELETE FROM Log_Sintonia_IA WHERE timestamp <= datetime('now', '-7 days')"
+                ))
+                await session.execute(text(
+                    "DELETE FROM Log_Processo WHERE timestamp <= datetime('now', '-7 days')"
+                ))
+                await session.commit()
             _log.info("retention_cleanup_complete")
         except Exception:
             _log.exception("retention_cleanup_error")
@@ -382,12 +391,12 @@ async def run_daemon(settings: CoreSettings) -> None:
     from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
     from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
     from smart_pid_core.application.workers.alarm_worker import AlarmWorker
-
     alarm_repo = AlarmRepository(repo.session_factory)
     audit_repo = AuditRepository(repo.session_factory)
 
     # Build alarm configs from Configuracao_Alarmes table
-    alarm_configs = await _load_alarm_configs(repo.db)
+    alarm_configs = await _load_alarm_configs(repo.session_factory)
+
     alarm_worker = AlarmWorker(
         bus=bus, alarm_configs=alarm_configs, alarm_repo=alarm_repo,
         event_loop=asyncio.get_running_loop(),
@@ -524,12 +533,10 @@ async def run_daemon(settings: CoreSettings) -> None:
         logger.info("shutdown_signal_received")
         stop_event.set()
 
-    loop = asyncio.get_running_loop()
+    cleanup_task = asyncio.create_task(_retention_cleanup(repo.session_factory))
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, handle_signal)
 
-    # Data retention cleanup (daily)
-    cleanup_task = asyncio.create_task(_retention_cleanup(repo.db))
 
     # Simulator config flusher (drains dirty set from OPC-UA-initiated writes)
     sim_flush_task: asyncio.Task | None = None
