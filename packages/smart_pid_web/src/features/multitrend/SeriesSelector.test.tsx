@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { SeriesSelector } from './SeriesSelector';
+import { SeriesSelector, type SeriesSelectorProps } from './SeriesSelector';
 
-function renderSelector(overrides: Partial<Parameters<typeof SeriesSelector>[0]> = {}) {
+function renderSelector(overrides: Partial<SeriesSelectorProps> = {}) {
   const onToggle = vi.fn();
   render(
     <SeriesSelector
