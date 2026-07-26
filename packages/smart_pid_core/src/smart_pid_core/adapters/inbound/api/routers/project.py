@@ -14,10 +14,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
-
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_settings,
-    require_authenticated_admin,
+    require_admin,
+    require_user,
 )
 from smart_pid_core.config import CoreSettings  # noqa: TC001
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
@@ -56,7 +56,7 @@ async def _read_upload_limited(file: UploadFile, max_bytes: int) -> bytes:
 @router.get("/current", response_model=ProjectResponse)
 async def get_current(
     request: Request,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_user)],
 ) -> ProjectResponse:
     """Return metadata about the currently-open project."""
     svc = request.app.state.project_service
@@ -67,7 +67,7 @@ async def get_current(
 async def new_project(
     body: ProjectCreate,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_admin)],
 ) -> ProjectResponse:
     """Create a new project file."""
     svc = request.app.state.project_service
@@ -83,7 +83,7 @@ async def new_project(
 async def open_project(
     body: ProjectOpen,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_admin)],
 ) -> ProjectResponse:
     """Open an existing project by name."""
     svc = request.app.state.project_service
@@ -98,7 +98,7 @@ async def open_project(
 @router.get("/list", response_model=ProjectListResponse)
 async def list_projects(
     request: Request,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_admin)],
 ) -> ProjectListResponse:
     """List all available projects in the backend directory."""
     svc = request.app.state.project_service
@@ -110,14 +110,14 @@ async def list_projects(
 async def import_project(
     request: Request,
     file: UploadFile,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_admin)],
     settings: Annotated[CoreSettings, Depends(get_settings)],
     name: str = Form(default=""),
 ) -> ProjectResponse:
-    """Upload a .spid file to the backend projects directory."""
+    """Import a project file (admin-only)."""
     svc = request.app.state.project_service
-    proj_name = name.strip() or (file.filename or "imported").removesuffix(".spid")
-    data = await _read_upload_limited(file, settings.max_upload_bytes)
+    data = await file.read()
+    proj_name = name or file.filename or "imported"
     try:
         return await svc.import_project(proj_name, data)
     except ValueError as exc:
@@ -126,12 +126,14 @@ async def import_project(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
         ) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/download")
 async def download_project(
     request: Request,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_admin)],
 ) -> FileResponse:
     """Download the active project as a .spid file."""
     svc = request.app.state.project_service
@@ -147,7 +149,7 @@ async def download_project(
 async def delete_project(
     name: str,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_admin)],
 ) -> None:
     """Delete a project file from the backend directory."""
     svc = request.app.state.project_service

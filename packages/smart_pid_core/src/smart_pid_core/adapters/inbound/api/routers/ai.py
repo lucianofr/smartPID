@@ -10,6 +10,7 @@ from fastapi.security import OAuth2PasswordBearer
 
 from smart_pid_core.adapters.inbound.api.auth import create_access_token  # noqa: TC001
 from smart_pid_core.adapters.inbound.api.dependencies import (
+    controller_label,
     get_audit_repo,
     get_ai_workers,
     get_current_user,
@@ -29,7 +30,6 @@ from smart_pid_core.config import CoreSettings
 from smart_pid_domain.dtos.ai import AIHistoryResponse, AIStatusResponse, AITuningLogEntry
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
 from smart_pid_domain.enums import AuditAction
-from smart_pid_domain.tools import controller_label  # noqa: TC001
 
 router = APIRouter()
 
@@ -73,6 +73,7 @@ async def get_ai_status(
     )
 
 
+@router.get("/{controller_id}/ai/history", response_model=AIHistoryResponse)
 async def get_ai_history(
     controller_id: int,
     user: Annotated[UserClaims, Depends(require_user)],
@@ -87,6 +88,7 @@ async def get_ai_history(
     )
 
 
+@router.post("/{controller_id}/ai/start")
 async def start_ai(
     _admin: Annotated[UserClaims, Depends(require_admin)],
     controller_id: int,
@@ -117,6 +119,7 @@ async def start_ai(
     return {"ok": True, "controller_id": controller_id, "detail": "AI start command sent"}
 
 
+@router.post("/{controller_id}/ai/stop")
 async def stop_ai(
     _admin: Annotated[UserClaims, Depends(require_admin)],
     controller_id: int,
@@ -146,6 +149,7 @@ async def stop_ai(
     return {"ok": True, "controller_id": controller_id, "detail": "AI stop command sent"}
 
 
+@router.post("/{controller_id}/ai/pause")
 async def pause_ai(
     _admin: Annotated[UserClaims, Depends(require_admin)],
     controller_id: int,

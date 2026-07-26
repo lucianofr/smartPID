@@ -99,16 +99,6 @@ def require_admin(
     return user
 
 
-def require_authenticated_admin(
-    user: Annotated[UserClaims, Depends(get_current_user)],
-) -> UserClaims:
-    """Authentication gate for the single-admin deployment.
-
-    This platform is single-user: there is exactly one admin account and no
-    role tiers. Every protected endpoint requires a valid token (401 when
-    missing/invalid via ``get_current_user``); there are no role-based 403s.
-    """
-    return user
 
 
 def get_simulator_adapter(request: Request) -> SimulatorAdapter:

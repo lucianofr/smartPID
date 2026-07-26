@@ -10,15 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from starlette.requests import Request
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
-    audit_and_broadcast,
-    controller_label,
-    get_audit_repo,
     get_event_bus,
-    get_execution_mode,
     get_loop_manager,
     get_repo,
     get_system_event_worker,
-    require_authenticated_admin,
+    require_admin,
+    require_user,
 )
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository  # noqa: TC001
@@ -51,7 +48,7 @@ _MONITOR_DETAIL = "Not available in monitor mode. PID is controlled by external 
 async def set_setpoint(
     body: SetpointCommand,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_user)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
@@ -84,7 +81,7 @@ async def set_setpoint(
 async def set_mode(
     body: ModeCommand,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_user)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
@@ -121,7 +118,7 @@ async def set_mode(
 async def set_output(
     body: OutputCommand,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_user)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
@@ -154,7 +151,7 @@ async def set_output(
 async def set_optimization(
     body: OptimizationCommand,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_admin)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     bus: Annotated[EventBus, Depends(get_event_bus)],
@@ -225,7 +222,7 @@ async def set_optimization(
 async def write_tuning(
     body: TuningCommand,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_admin)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
@@ -287,7 +284,7 @@ async def write_tuning(
 async def get_tuning_recommendation(
     controller_id: int,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_user)],
 ) -> dict:
     """Return the current tuning recommendation for a controller."""
     from smart_pid_domain.dtos.ai import TuningRecommendationResponse
@@ -318,7 +315,7 @@ async def get_tuning_recommendation(
 async def apply_tuning(
     controller_id: int,
     request: Request,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_admin)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],

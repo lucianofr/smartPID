@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_historian,
-    require_authenticated_admin,
+    require_user,
 )
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
 from smart_pid_domain.dtos.auth import UserClaims
@@ -20,7 +20,7 @@ router = APIRouter()
 @router.get("/{controller_id}", response_model=HistoryResponse)
 async def query_history(
     controller_id: int,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_user)],
     historian: Annotated[SQLiteHistorian, Depends(get_historian)],
     start: Annotated[datetime | None, Query()] = None,
     end: Annotated[datetime | None, Query()] = None,
