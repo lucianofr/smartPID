@@ -1,0 +1,24 @@
+/* §6.2 — one Archivo Variable file (wght+wdth), two Geist Mono statics. swap +
+ * preload; metric-compatible fallbacks accept minor reflow on first paint. */
+@font-face {
+  font-family: 'Archivo Variable';
+  src: url('./archivo-latin-var.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-stretch: 62.5% 125%;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('./geist-mono-latin-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('./geist-mono-latin-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
