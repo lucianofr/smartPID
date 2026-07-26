@@ -222,4 +222,51 @@ test.describe('Multi-trend', () => {
     const [download] = await Promise.all([page.waitForEvent('download'), downloadBtn.click()]);
     expect(download.suggestedFilename()).toContain('export_e1.csv');
   });
+
+  test('replays a bounded history window and scores the loops from REST stats', async ({
+    page,
+  }) => {
+    const frame = (sec: number, pv: number) => ({
+      timestamp: new Date(Date.UTC(2026, 5, 19, 0, 0, sec)).toISOString(),
+      pv,
+      sp: 60,
+      co: 40,
+      mode: 'AUTO',
+      status: 'GOOD',
+    });
+    await page.route('**/api/history/1**', (route) =>
+      route.fulfill({
+        json: { controller_id: 1, count: 3, frames: [frame(1, 50), frame(2, 51), frame(3, 52)] },
+      }),
+    );
+
+    await page.goto('/multitrend');
+
+    // The stats roster scores every loop, selected or not — one column per metric.
+    await expect(page.getByRole('columnheader', { name: 'IAE' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: '2σ/SP' })).toBeVisible();
+    await expect(page.getByRole('rowheader', { name: 'Loop 2' })).toBeVisible();
+    await expect(page.getByRole('cell', { name: '20.0%' }).first()).toBeVisible();
+
+    // No loop is checked, so the history target falls back to the first stats loop.
+    await page.getByLabel('Janela').fill('2');
+    await page.getByLabel('Unidade').selectOption('hora');
+    const [request] = await Promise.all([
+      page.waitForRequest(/\/api\/history\/1\?/),
+      page.getByRole('button', { name: 'Carregar histórico' }).click(),
+    ]);
+
+    // Duration → explicit ISO bounds spanning exactly two hours, plus a row cap.
+    const params = new URL(request.url()).searchParams;
+    const span = Date.parse(params.get('end')!) - Date.parse(params.get('start')!);
+    expect(span).toBe(2 * 60 * 60 * 1000);
+    expect(Number(params.get('limit'))).toBeGreaterThan(0);
+
+    await expect(page.getByText('3 amostras')).toBeVisible();
+    await expect(page.getByTestId('multitrend-history-chart')).toBeVisible();
+
+    // Live accumulation is stoppable without leaving the page.
+    await page.getByRole('button', { name: 'Pausar' }).click();
+    await expect(page.getByRole('button', { name: 'Retomar' })).toBeVisible();
+  });
 });
