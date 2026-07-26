@@ -12,10 +12,16 @@ import {
 } from '@/lib/alarmMachine';
 import type { AlarmEventData } from '@/lib/envelope';
 import { useRealtime } from '@/realtime/useRealtime';
+import { ALARM_SEVERITIES, toSeverity } from '@/features/alarms/severity';
+import type { AlarmSeverity } from '@/features/alarms/types';
 
-/** Wire priorities — `AlarmPriority` (smart_pid_domain/enums.py:141-146). */
-export const ALARM_SEVERITIES = ['CRITICAL', 'WARNING', 'ADVISORY', 'LOG'] as const;
-export type AlarmSeverity = (typeof ALARM_SEVERITIES)[number];
+/**
+ * The severity vocabulary lives in `features/alarms` (§6.4 presentation map);
+ * it is re-exported here because the footer and its tests were written against
+ * this module first — one definition, two entry points.
+ */
+export { ALARM_SEVERITIES };
+export type { AlarmSeverity };
 
 export interface AlarmBucket {
   active: number;
@@ -26,14 +32,6 @@ export interface AlarmCounts {
   buckets: Record<AlarmSeverity, AlarmBucket>;
   totalUnacked: number;
   lastEvent: AlarmEventData | null;
-}
-
-/** An unknown priority must still be visible; LOG is the non-escalating bucket. */
-function toSeverity(priority: string): AlarmSeverity {
-  const upper = priority.toUpperCase();
-  return (ALARM_SEVERITIES as readonly string[]).includes(upper)
-    ? (upper as AlarmSeverity)
-    : 'LOG';
 }
 
 interface AlarmPoint {

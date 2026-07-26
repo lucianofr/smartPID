@@ -122,3 +122,71 @@
     }
   }
 }
+
+/*
+ * Alarm presentation (§6.4). Severity is text + SHAPE + color; acknowledgement
+ * is weight + blink (motion) or weight + border + badge (reduced motion). No
+ * channel here is color-only, and every color is a themes.css contract var.
+ */
+@layer components {
+  .sev-icon {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    flex: none;
+    background: currentColor;
+  }
+  .sev-icon--octagon {
+    clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
+  }
+  .sev-icon--triangle {
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  }
+  .sev-icon--diamond {
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  }
+  .sev-icon--dot {
+    border-radius: 50%;
+  }
+
+  .sev-critical { color: var(--alarm-crit); }
+  .sev-warning { color: var(--alarm-warn); }
+  .sev-advisory { color: var(--alarm-adv); }
+  .sev-log { color: var(--alarm-log); }
+
+  /* Blink the GLYPH opacity only — never the row, never the text (compositor-safe). */
+  .alarm-blink .sev-icon {
+    animation: alarm-blink 1s step-start infinite;
+  }
+  @keyframes alarm-blink {
+    0%,
+    50% {
+      opacity: 1;
+    }
+    51%,
+    100% {
+      opacity: 0.4;
+    }
+  }
+
+  /* 3 px severity stripe on unacknowledged rows — a shape cue, not a fill. */
+  .alarm-row.is-unacked {
+    box-shadow: inset 3px 0 0 0 currentColor;
+  }
+  .alarm-row.sev-critical.is-unacked { background: var(--alarm-crit-bg); }
+  .alarm-row.sev-warning.is-unacked { background: var(--alarm-warn-bg); }
+  .alarm-row.sev-advisory.is-unacked { background: var(--alarm-adv-bg); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .alarm-blink .sev-icon {
+      animation: none;
+    }
+    /* Motion-free re-encode of "new vs seen": heavier weight + underline,
+       paired with the React-rendered unacked badge and live region. */
+    .is-unacked .alarm-count,
+    .alarm-row.is-unacked .alarm-row__state {
+      font-weight: var(--fw-bold);
+      text-decoration: underline;
+    }
+  }
+}
