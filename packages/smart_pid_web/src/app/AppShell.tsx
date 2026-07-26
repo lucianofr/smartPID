@@ -22,7 +22,8 @@ import {
 import { useAuth } from '@/auth/AuthContext';
 import { useTheme, type ThemeId } from '@/theme/ThemeProvider';
 import { cn } from '@/lib/utils';
-import { cfgRoutes, commandRoutes, navRoutes } from './routes';
+import { WelcomeGate } from '@/features/projects/WelcomeGate';
+import { appRoutes, cfgRoutes, commandRoutes, navRoutes } from './routes';
 
 export interface AppShellProps {
   children?: ReactNode;
@@ -43,13 +44,16 @@ const NAV_LINK_CLASS = cn(
 );
 
 export function AppShell({ children }: AppShellProps) {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const { theme, setTheme, themes } = useTheme();
   const navigate = useNavigate();
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const nav = navRoutes();
-  const cfg = cfgRoutes();
-  const commands = commandRoutes();
+  // An `adminOnly` route redirects a user back to `/`, so offering it in the
+  // [cfg] menu or the palette would only advertise a dead end (phase 10).
+  const visible = appRoutes.filter((r) => r.adminOnly !== true || user?.role === 'admin');
+  const nav = navRoutes(visible);
+  const cfg = cfgRoutes(visible);
+  const commands = commandRoutes(visible);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
@@ -73,9 +77,16 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg text-text">
       <header className="flex shrink-0 items-center gap-2 border-b border-rule bg-surface px-3 py-1.5">
-        <span className="type-display shrink-0 text-sm uppercase tracking-widest text-text">
+        {/* The wordmark is the plant-wide entry point (phase 9 executive view). */}
+        <NavLink
+          to="/executive"
+          className={cn(
+            'type-display shrink-0 rounded-control px-1 text-sm uppercase tracking-widest text-text',
+            'outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+          )}
+        >
           Smart PID
-        </span>
+        </NavLink>
         <nav aria-label="Navegação principal" className="flex min-w-0 items-center gap-1 overflow-x-auto">
           {nav.map((route) => (
             <NavLink
@@ -139,6 +150,9 @@ export function AppShell({ children }: AppShellProps) {
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+
+      {/* Admin-only, once per session, and only when the roster actually loaded. */}
+      <WelcomeGate />
 
       <CommandDialog open={paletteOpen} onOpenChange={setPaletteOpen}>
         <CommandInput />
