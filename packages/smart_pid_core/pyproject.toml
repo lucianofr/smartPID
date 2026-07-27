@@ -17,6 +17,9 @@ dependencies = [
     "structlog>=24.0",
     "numpy>=2.0",
     "scipy>=1.11",
+    # Cross-platform process/host metrics for GET /system/status. The route
+    # degrades to null CPU/RAM if the import fails, so this stays soft.
+    "psutil>=5.9",
     # >=2.0: 1.1.x calls issubclass() on a str annotation in ua_binary and
     # cannot open a secure channel on Python 3.14 (requires-python is >=3.13).
     "asyncua>=2.0",

@@ -2579,6 +2579,10 @@ export interface components {
             api_version: string;
             /** Bus Active */
             bus_active: boolean;
+            /** Cpu Percent */
+            cpu_percent?: number | null;
+            /** Memory Percent */
+            memory_percent?: number | null;
             /** Status */
             status: string;
             /** Uptime S */
