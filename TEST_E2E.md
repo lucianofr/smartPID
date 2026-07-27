@@ -28,6 +28,11 @@ export SPID_DB_PATH='/tmp/spid-e2e/project.spid'
 export SPID_SIMULATOR_ENABLED='true'
 export SPID_API_HOST='127.0.0.1'
 export SPID_API_PORT='8000'
+# REQUIRED. The default is `monitor`, a read-only observer: /commands/* then
+# writes straight to the DCS and mode writes need a mode_int_map that E2E-009
+# never binds, so E2E-016/017 and the AI procedures cannot pass. `execute`
+# makes SmartPID own the DDC algorithm, which is what these procedures test.
+export SPID_EXECUTION_MODE='execute'
 uv run python -m smart_pid_core
 ```
 
