@@ -175,6 +175,64 @@ describe('TagBrowser', () => {
     expect(onSelect).toHaveBeenCalledWith(FT_101);
   });
 
+  it('walks into a folder rather than reporting it as the selection', async () => {
+    const browse = vi
+      .spyOn(endpoints, 'opcuaBrowse')
+      .mockImplementation((nodeId: string) =>
+        Promise.resolve({
+          parent_node_id: nodeId,
+          children: nodeId === FOLDER.node_id ? [FT_101] : [FOLDER],
+        }),
+      );
+    const onSelect = renderBrowser();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Plant' }));
+
+    expect(await screen.findByRole('button', { name: 'FT-101' })).toBeVisible();
+    expect(browse).toHaveBeenCalledWith(FOLDER.node_id);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByTestId('tag-browser-path')).toHaveTextContent('Objects › Plant');
+  });
+
+  it('Voltar climbs back to the parent level', async () => {
+    vi.spyOn(endpoints, 'opcuaBrowse').mockImplementation((nodeId: string) =>
+      Promise.resolve({
+        parent_node_id: nodeId,
+        children: nodeId === FOLDER.node_id ? [FT_101] : [FOLDER],
+      }),
+    );
+    renderBrowser();
+
+    const plant = await screen.findByRole('button', { name: 'Plant' });
+    expect(screen.getByRole('button', { name: 'Voltar' })).toBeDisabled();
+
+    fireEvent.click(plant);
+    await screen.findByRole('button', { name: 'FT-101' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+
+    expect(await screen.findByRole('button', { name: 'Plant' })).toBeVisible();
+    expect(screen.getByTestId('tag-browser-path')).toHaveTextContent('Objects');
+    expect(screen.getByRole('button', { name: 'Voltar' })).toBeDisabled();
+  });
+
+  it('shows the NodeID beside the name only when the caller asks for it', async () => {
+    vi.spyOn(endpoints, 'opcuaBrowse').mockResolvedValue({
+      parent_node_id: 'i=85',
+      children: [FT_101],
+    });
+    mockSession('admin');
+    render(
+      <TestProviders queryClient={createQueryClient()}>
+        <TagBrowser showNodeId onSelect={vi.fn()} />
+      </TestProviders>,
+    );
+
+    expect(
+      await screen.findByRole('button', { name: `FT-101 ${FT_101.node_id}` }),
+    ).toBeVisible();
+  });
+
   it('reports a disconnected server instead of an empty tree', async () => {
     vi.spyOn(endpoints, 'opcuaBrowse').mockRejectedValue(
       new ApiError(503, 'server', 'OPC-UA client not connected'),
