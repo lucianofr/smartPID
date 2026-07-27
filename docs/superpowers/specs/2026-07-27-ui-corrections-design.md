@@ -471,10 +471,19 @@ Four new contract tokens. The contract requires every theme to declare every tok
 
 | Token | `neon` | others |
 |---|---|---|
-| `--glow-alarm` | `0 0 12px rgba(255,45,111,0.55)` | `none` |
-| `--glow-focus` | `0 0 10px rgba(0,229,255,0.65)` | `none` |
-| `--glow-accent` | `0 0 14px rgba(0,229,255,0.45)` | `none` |
+| `--glow-alarm` | `0 0 12px rgba(255,45,111,0.55)` | `0 0 #0000` |
+| `--glow-focus` | `0 0 10px rgba(0,229,255,0.65)` | `0 0 #0000` |
+| `--glow-accent` | `0 0 14px rgba(0,229,255,0.45)` | `0 0 #0000` |
 | `--glow-trace` | `8px` | `phosphor: 4px`, `recorder`/`isa101`: `0px` |
+
+**The off-value is `0 0 #0000`, not `none`.** Corrected during planning after an agent compiled the
+real `index.css` with `@tailwindcss/cli`. The `box-shadow` grammar is `none | <shadow>#`: `none` is
+only valid as the *sole* value, so it cannot sit in a comma-separated list. Tailwind composes
+`.ring-2` from five shadow variables, so a `none` glow token would make the whole declaration
+invalid at computed-value time and **delete the focus ring in the three non-neon themes** — an
+accessibility regression introduced by a token meant to be inert. `0 0 #0000` is Tailwind's own
+registered initial value: valid in a list, renders nothing. `--glow-trace` is unaffected; it is a
+`parseFloat` length and `0px` is correct.
 
 Applied to: active and unacknowledged alarm rows, severity badges, the focus ring, the PV trace, and
 primary-button hover/active. **Not** applied to: state dots, body text, card borders, headers, or
@@ -522,15 +531,16 @@ Executive. Not a two-element change.
 | 4 | `theme/tokens.css` | `--font-display` removed from `:root` |
 | 5 | `theme/themeContrast.ts` | `GateThemeId` gains `'neon'`; mirrored palette entry |
 | 6 | `theme/themeContrast.test.ts:7` | gate theme list |
-| 7 | `theme/isa101Mapping.test.ts:256` | expects exactly `['recorder','phosphor','isa101']` |
+| 7 | `theme/isa101Mapping.test.ts:256` | expects exactly `['recorder','phosphor','isa101']`; `:192-200` forces every new contract token into `ISA101_EXPECTED` and `:213-215` into `MAPPING` as DERIVED — the four glow tokens and `--font-display` all trip these |
 | 8 | `theme/isa101Mapping.test.ts:193` | type-token exception list drops to `--font-ui`, `--font-data` |
 | 9 | `theme/fonts.test.ts:27` | counts `font-display: swap` — 3 becomes 4 |
 | 10 | `index.html` | static `data-theme`, pre-paint `valid` array and fallback, font preload |
 | 11 | `App.test.tsx:33` | default is no longer `recorder` |
 | 12 | `e2e/themes.spec.ts:28` | `recorder is the default when nothing is stored` |
 | 13 | `e2e/themes.spec.ts` | `THEMES` loop, `THEME_LABEL`, and new `dashboard-neon-<width>.png` baselines |
-| 14 | `e2e/user-role.spec.ts:185` | `menuitemradio` count 3 → 4 |
+| 14 | `e2e/user-role.spec.ts:165` and `:185` | `:185` is the `menuitemradio` count 3 → 4; `:165` asserts the user menu's exact label array and breaks identically |
 | 15 | `features/dashboard/TrendPanel.tsx:170`, `features/simulator/TwinTrend.tsx:73` | drop `theme === 'phosphor'` in favour of the token |
+| 16 | `app/AppShell.test.tsx:171`, `:202` | theme `menuitemradio` list and length assertions |
 
 ### 10.8 Acceptance
 
@@ -560,7 +570,7 @@ Executive. Not a two-element change.
 | `realtime/multiLoopFanout.test.tsx` | Signature update only — passes `null`, behaviour unchanged. |
 | `theme/ThemeProvider.test.tsx` | Registry gains `neon`; the `defaults to recorder` case becomes `defaults to neon`. |
 | `theme/themeContrast.test.ts:7` | Gate list gains `neon`. **No floor changes.** |
-| `theme/isa101Mapping.test.ts:256` | Expected block list becomes `['recorder','phosphor','isa101','neon']`. |
+| `theme/isa101Mapping.test.ts` | `:256` block list becomes four entries and needs a `names[3]` assertion; `:192-200` and `:213-215` require every new contract token in `ISA101_EXPECTED` and `MAPPING`. |
 | `theme/isa101Mapping.test.ts:193` | Type-token exception list drops `--font-display`, keeping `--font-ui` and `--font-data`; `ISA101_EXPECTED` gains `--font-display`. |
 | `theme/fonts.test.ts:26-27` | `font-display: swap` count 3 → 4; a fourth `@font-face` and its preload are asserted. |
 | `theme/tokenResolve.test.ts` | Runs over `THEME_IDS`, so it picks `neon` up automatically; the four glow tokens join `CONTRACT_TOKENS` and must resolve non-empty in all four themes. |
@@ -577,16 +587,19 @@ else in this work is a move, a deletion or a style change.
 | Spec | Change |
 |---|---|
 | `e2e/login-dashboard.spec.ts` | Remove the `Comandos` button assertion and the `k`-opens-palette step. |
-| `e2e/responsive.spec.ts` | Replace the `Comandos` target-size assertion; add the rail no-scroll assertion at each viewport. |
+| `e2e/responsive.spec.ts` | Replace the `Comandos` target-size assertion; add the rail no-scroll assertion at each viewport. **Also `:36`**, which pins the faceplate to the RIGHT of the trend (`fp.x > t.x + t.width - 1`) — §4.2 moves it left, so it is restated as `fp.x + fp.width < t.x + 1`. Same strict side-by-side relation, opposite order: a restatement, not a weakening. |
 | `e2e/target-size.spec.ts` | Remove `Comandos`; keep `Configurações`. |
-| `e2e/user-role.spec.ts:185` | `menuitemradio` count 3 → 4. |
+| `e2e/user-role.spec.ts` | `:185` `menuitemradio` count 3 → 4; `:165` exact label array gains `Neon`. |
 | `e2e/themes.spec.ts` | `THEMES` loop and `THEME_LABEL` gain `neon`; `recorder is the default when nothing is stored` becomes `neon`; new `dashboard-neon-<width>.png` baselines at all four breakpoints. |
 | `e2e/multitrend.spec.ts` | Unchanged (`getByLabel('Loop 1 · PV')` preserved). New spec for persistence across a reload. |
 
 ### 11.3 `TEST_E2E.md`
 
-The 50-procedure gate is the project's declared stop condition. **Six** procedures are affected —
-four by the UI corrections, two by the theme.
+The 50-procedure gate is the project's declared stop condition. **Seven** procedures are touched:
+**five** have their text re-specified — E2E-006, E2E-036 and E2E-049 by the UI corrections, E2E-045
+and E2E-046 by the theme — and **two** more, E2E-015 and E2E-043, keep their assertions verbatim and
+need only fresh evidence images. The table below has six rows because the last row covers both
+evidence-only procedures.
 
 | # | Procedure | Resolution |
 |---|---|---|
@@ -631,7 +644,8 @@ Ordered. Each step must pass before the next.
    hover; absent on state dots, card borders and headers. Re-check with
    `prefers-reduced-motion: reduce` emulated — no alarm pulse.
 10. New visual baselines `dashboard-neon-<width>.png` at the four `themes.spec.ts` breakpoints.
-11. Manual re-run of the four affected `TEST_E2E.md` procedures with fresh evidence PNGs.
+11. Manual re-run of the **seven** touched `TEST_E2E.md` procedures (§11.3, five re-specified plus
+    two evidence-only) with fresh evidence PNGs.
 12. Full backend suite is **not** re-run: this work touches no Python. Frontend-only.
 
 ## 13. Risks
