@@ -1,21 +1,27 @@
 import type { ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { statusEnvelope } from '@/test/fixtures';
 import { createFakeRealtime, TestProviders } from '@/test/providers';
-import { MAX_SLOTS } from './types';
+import { freeSlot, MAX_SLOTS } from './types';
+import { TREND_SELECTION_KEY } from './trendSelectionStore';
 import { useMultiTrendModel } from './useMultiTrendModel';
 
 const controllerA = { id: 1 };
 const controllerB = { id: 2 };
 
-function setup() {
+/** `null` roster = the stats query has not resolved; nothing is reconciled. */
+function setup(roster: readonly number[] | null = null) {
   const realtime = createFakeRealtime();
   const wrapper = ({ children }: { children: ReactNode }) => (
     <TestProviders realtime={realtime.value}>{children}</TestProviders>
   );
-  return { realtime, ...renderHook(() => useMultiTrendModel(), { wrapper }) };
+  return { realtime, ...renderHook(() => useMultiTrendModel(roster), { wrapper }) };
 }
+
+beforeEach(() => {
+  localStorage.clear();
+});
 
 describe('useMultiTrendModel slot invariants', () => {
   it('assigns a controller with every signal on, then toggles one off', () => {
@@ -136,5 +142,96 @@ describe('useMultiTrendModel live buffers', () => {
     act(() => result.current.toggleSignal(1, 'pv'));
     act(() => result.current.toggleSignal(1, 'pv'));
     expect(result.current.slotSeries[0].data[0]).toEqual([]);
+  });
+});
+
+describe('useMultiTrendModel persistence and reconciliation', () => {
+  it('restores a stored layout on mount', () => {
+    localStorage.setItem(
+      TREND_SELECTION_KEY,
+      JSON.stringify([
+        { controllerId: 3, series: { pv: true, sp: false, co: true } },
+        freeSlot(),
+        freeSlot(),
+        freeSlot(),
+      ]),
+    );
+    const { result } = setup();
+    expect(result.current.slots[0]).toEqual({
+      controllerId: 3,
+      series: { pv: true, sp: false, co: true },
+    });
+    expect(result.current.isSelected(3, 'co')).toBe(true);
+  });
+
+  it('persists every selection change', () => {
+    const { result } = setup();
+    act(() => result.current.assign(1, controllerB));
+    const stored = JSON.parse(localStorage.getItem(TREND_SELECTION_KEY) ?? 'null') as unknown[];
+    expect(stored).toHaveLength(MAX_SLOTS);
+    expect(stored[1]).toEqual({ controllerId: 2, series: { pv: true, sp: true, co: true } });
+  });
+
+  it('releases a restored slot whose loop is absent from the roster', () => {
+    localStorage.setItem(
+      TREND_SELECTION_KEY,
+      JSON.stringify([
+        { controllerId: 3, series: { pv: true, sp: true, co: true } },
+        { controllerId: 1, series: { pv: true, sp: false, co: false } },
+        freeSlot(),
+        freeSlot(),
+      ]),
+    );
+    const { result } = setup([1, 2]);
+    expect(result.current.slots[0]).toEqual(freeSlot());
+    expect(result.current.slots[1].controllerId).toBe(1);
+  });
+
+  it('releases a restored slot that has no signal enabled', () => {
+    localStorage.setItem(
+      TREND_SELECTION_KEY,
+      JSON.stringify([
+        { controllerId: 1, series: { pv: false, sp: false, co: false } },
+        freeSlot(),
+        freeSlot(),
+        freeSlot(),
+      ]),
+    );
+    const { result } = setup([1]);
+    expect(result.current.slots[0]).toEqual(freeSlot());
+  });
+
+  it('reconciles nothing while the roster is still null', () => {
+    localStorage.setItem(
+      TREND_SELECTION_KEY,
+      JSON.stringify([
+        { controllerId: 99, series: { pv: true, sp: true, co: true } },
+        freeSlot(),
+        freeSlot(),
+        freeSlot(),
+      ]),
+    );
+    const { result } = setup(null);
+    expect(result.current.slots[0].controllerId).toBe(99);
+  });
+
+  it('ignores malformed storage and starts from four free slots', () => {
+    localStorage.setItem(TREND_SELECTION_KEY, '{"nope":true}');
+    const { result } = setup();
+    expect(result.current.slots).toEqual([freeSlot(), freeSlot(), freeSlot(), freeSlot()]);
+  });
+
+  it('never restores paused', () => {
+    localStorage.setItem(
+      TREND_SELECTION_KEY,
+      JSON.stringify([
+        { controllerId: 1, series: { pv: true, sp: true, co: true } },
+        freeSlot(),
+        freeSlot(),
+        freeSlot(),
+      ]),
+    );
+    const { result } = setup([1]);
+    expect(result.current.paused).toBe(false);
   });
 });

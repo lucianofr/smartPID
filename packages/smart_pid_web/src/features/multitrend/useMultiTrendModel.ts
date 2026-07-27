@@ -11,6 +11,7 @@ import {
   type SignalKey,
   type TrendSlot,
 } from './types';
+import { readTrendSelection, writeTrendSelection } from './trendSelectionStore';
 
 /**
  * The four-slot multi-trend model (§6.8).
@@ -62,10 +63,10 @@ export interface MultiTrendModel {
   setPxWidth(px: number): void;
 }
 
-export function useMultiTrendModel(): MultiTrendModel {
-  const [slots, setSlots] = useState<TrendSlot[]>(() =>
-    Array.from({ length: MAX_SLOTS }, freeSlot),
-  );
+export function useMultiTrendModel(roster: readonly number[] | null): MultiTrendModel {
+  // Lazily initialised from storage: a layout an operator built must survive a
+  // navigation, a reload and a browser restart (§9.1).
+  const [slots, setSlots] = useState<TrendSlot[]>(readTrendSelection);
   const [paused, setPaused] = useState(false);
   const [pxWidth, setPxWidth] = useState(800);
   const [revision, setRevision] = useState(0);
@@ -104,6 +105,33 @@ export function useMultiTrendModel(): MultiTrendModel {
       }),
     [subscribe],
   );
+
+  useEffect(() => {
+    writeTrendSelection(slots);
+  }, [slots]);
+
+  /**
+   * One-shot reconciliation against the live roster (§9.2). A restored slot for
+   * a loop that no longer exists would render a permanently empty cell, and a
+   * slot with no signal left is not a selection. Gated on `roster !== null`: an
+   * unresolved query must never be read as "every loop is gone".
+   */
+  const reconciled = useRef(false);
+  useEffect(() => {
+    if (roster === null || reconciled.current) return;
+    reconciled.current = true;
+    setSlots((prev) =>
+      prev.map((s) => {
+        if (s.controllerId === null) return s;
+        const silent = !s.series.pv && !s.series.sp && !s.series.co;
+        if (!roster.includes(s.controllerId) || silent) {
+          buffers.current.delete(s.controllerId);
+          return freeSlot();
+        }
+        return s;
+      }),
+    );
+  }, [roster]);
 
   const assign = useCallback((slot: number, controller: { id: number }) => {
     assertSlot(slot);

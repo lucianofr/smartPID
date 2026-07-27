@@ -269,4 +269,21 @@ test.describe('Multi-trend', () => {
     await page.getByRole('button', { name: 'Pausar' }).click();
     await expect(page.getByRole('button', { name: 'Retomar' })).toBeVisible();
   });
+
+  test('a trend selection survives a full page reload', async ({ page }) => {
+    await page.goto('/multitrend');
+
+    await page.getByLabel('Loop 1 · PV').check();
+    await page.getByLabel('Loop 2 · CO').check();
+    await expect(page.getByLabel('Loop 1 · PV')).toBeChecked();
+
+    await page.reload();
+
+    await expect(page.getByLabel('Loop 1 · PV')).toBeChecked();
+    await expect(page.getByLabel('Loop 2 · CO')).toBeChecked();
+    await expect(page.getByLabel('Loop 1 · SP')).not.toBeChecked();
+    expect(
+      await page.evaluate(() => localStorage.getItem('spid.multitrend')),
+    ).not.toBeNull();
+  });
 });

@@ -154,7 +154,7 @@ describe('multi-loop fan-out through the real provider', () => {
   });
 
   it('gives every trend slot its own loop, with no cross-loop bleed', () => {
-    const { result } = renderHook(() => useMultiTrendModel(), {
+    const { result } = renderHook(() => useMultiTrendModel(null), {
       wrapper: ({ children }: { children: ReactNode }) => provider(children),
     });
     act(() => wire().handshake());

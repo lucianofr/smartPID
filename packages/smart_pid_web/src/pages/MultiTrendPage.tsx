@@ -25,7 +25,7 @@ import { useStats } from '@/features/multitrend/useStats';
 
 export function MultiTrendPage() {
   const stats = useStats();
-  const model = useMultiTrendModel();
+  const model = useMultiTrendModel(stats.isPending ? null : stats.loops);
   /** One shared x-range for every occupied cell, for the page's lifetime. */
   const sync = useMemo(() => createTimeSync(), []);
   const [loaded, setLoaded] = useState<HistoryWindow | null>(null);
