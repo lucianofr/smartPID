@@ -1,4 +1,4 @@
-# Design — UI corrections (faceplate rail, nav, trends, icons)
+# Design — UI corrections and the `neon` theme
 
 **Documento:** Design / Spec (saída de brainstorming)
 **Data:** 2026-07-27
@@ -7,6 +7,7 @@
 **Branch:** `docs/web-frontend-rewrite-spec`
 **Baseline:** commit `34c445d` (`test(e2e): E2E-021 passes — 50/50 gate green`)
 **Companion:** [`TEST_E2E.md`](../../../TEST_E2E.md) — acceptance gate
+**Skill:** `ui-ux-pro-max` — the §10 theme is derived from it; queries and rejected recommendations are recorded in §10.1
 
 > Written in English to match the companion rewrite spec. **UI copy stays pt-BR** and existing
 > accessible names are preserved verbatim wherever a test binds to them.
@@ -30,8 +31,17 @@ information-architecture problem rather than a behavioural one:
    shortcut.
 6. `[cfg]` is a bracketed abbreviation, in two distinct places with two distinct destinations.
 
+A seventh item is not a defect but a directive: the delivered look is commercially weak. §10 adds a
+fourth theme — vibrant, neon, glowing — that explicitly discards the ISA-101 premises the other
+themes obey, and makes it the default.
+
 All measurements in this document were taken with CDP against the live instance at
 `http://127.0.0.1:5173` (backend `127.0.0.1:8000`, four loops, simulator running), not estimated.
+Colour figures are computed (WCAG 2.x relative luminance; OKLCH chroma), not eyeballed.
+
+**Scope note.** Sections 4–9 (the UI corrections) and §10 (the theme) are independent: neither
+blocks the other, and they touch disjoint files apart from `Faceplate.tsx`. The implementation plan
+should phase them separately so the corrections can ship without waiting on a font vendoring step.
 
 ## 2. Goals
 
@@ -41,6 +51,8 @@ All measurements in this document were taken with CDP against the live instance 
 - Trend selection survives navigation, reload and browser restart.
 - Every trend cell names its loop.
 - No bracketed-abbreviation controls remain in the chrome.
+- A fourth theme, `neon`, ships as the default: neon palette, semantic glow, its own display face,
+  passing the existing WCAG gate without relaxing a single floor.
 
 ## 3. Non-goals
 
@@ -50,6 +62,10 @@ All measurements in this document were taken with CDP against the live instance 
 - Changing `GET /controllers/stats` to return loop names. The id→tag join happens client-side
   against the already-cached `GET /controllers` query.
 - Any backend change. This work is frontend-only.
+- Restyling `recorder`, `phosphor` or `isa101`. Their values are untouched; they gain only the four
+  glow tokens (as `none`) and an explicit `--font-display` the contract now requires per theme.
+- Scanlines, glitch effects or a CRT overlay. The source skill suggests them; a process display that
+  simulates signal corruption is a support call.
 
 ## 4. Change 1 — Faceplate as a full-height left rail
 
@@ -335,9 +351,202 @@ builds an id→`{ name }` lookup.
 `SeriesSelector.test.tsx` (4 names) and by `e2e/multitrend.spec.ts:150,151,214`. Only visible text
 changes.
 
-## 10. Test impact
+## 10. Change 7 — the `neon` theme
 
-### 10.1 Unit / component (Vitest, 746 passing at baseline)
+### 10.1 Directive and what it displaces
+
+Operator directive, verbatim: a new theme, derived from the `ui-ux-pro-max` skill, **discarding
+every ISA-101 premise**, whose goal is commercial appeal.
+
+The premise being discarded is named in `contract.ts:22` — *"State (gray in normal operation —
+green never means ok)"*. Under ISA-101 the normal state is colourless and saturation is reserved
+for abnormal conditions. `neon` abandons that: `--state-running` becomes neon green.
+
+This is safe to do **because it is an additional theme, not a replacement.** `recorder` and
+`isa101` stay in the picker untouched, so a customer who requires ISA-101 conformance still has a
+conforming surface. That is the entire mitigation, and it is why the directive costs nothing
+irreversible.
+
+**One gate does not fall with ISA-101:** `themeContrast.test.ts` runs WCAG 1.4.3 (4.5:1 text) and
+1.4.11 (3:1 non-text) in CI over every palette in `GateThemeId`. WCAG is a different standard from
+ISA-101, and it is also priority 1 of the skill this theme is derived from. `neon` joins that gate.
+
+Skill provenance (`ui-ux-pro-max`):
+
+| query | result used |
+|---|---|
+| `--design-system "industrial control room HMI dashboard neon glow vibrant dark"` | *Modern Dark (Cinema Mobile)* — deep near-black, glow, avoid pure `#000000` (OLED smear) |
+| `--domain style "dark neon glow cyberpunk premium commercial"` | *Cyberpunk UI* — neon cyan/magenta on `#0D0D0D`; skill rates its own accessibility ⚠ *Limited* |
+| `--domain typography "technical monospace data futuristic"` | Orbitron / JetBrains Mono |
+
+Skill recommendations **not** adopted, with reason: scanlines and glitch keyframes (a process
+display that simulates signal corruption is a support call, not a style); Google Fonts CDN import
+(this product can be deployed on an isolated network — fonts are self-hosted, §10.6); JetBrains
+Mono (Geist Mono is already vendored and already the numeric face; a second mono buys nothing).
+
+### 10.2 Identity
+
+`id: 'neon'`, label `Neon`, and it becomes `DEFAULT_THEME`. The sibling names are instruments
+(Recorder = paper chart recorder, Phosphor = CRT phosphor); `Neon` breaks that pattern deliberately
+because it needs no explanation and matches the directive's own word.
+
+### 10.3 Palette
+
+The 41 non-type contract tokens. `CONTRACT_TOKENS` holds **44** today (41 + the three `--font-*`);
+§10.5 adds four glow tokens, taking it to **48**, and the `[data-theme="neon"]` block declares
+**46** of them — the 41 below, the 4 glow tokens, and `--font-display` (§10.6). `--font-ui` and
+`--font-data` stay in `:root`. Every colour pair below was checked against the 43 assertions
+`themeContrast.test.ts` actually makes; all pass.
+
+| Token | Value | Note |
+|---|---|---|
+| `--bg` | `#07070E` | not `#000000` — pure black smears on OLED |
+| `--surface` | `#101226` | |
+| `--surface-sunk` | `#0A0B18` | chart wells, inputs |
+| `--rule` | `#1E2038` | hairlines, decorative only |
+| `--rule-strong` | `#5A60A8` | control boundaries, ≥3:1 on surface and sunk |
+| `--text` | `#E9ECFF` | 17.12:1 on `--bg` |
+| `--text-soft` | `#A6ADDC` | ≥4.5:1 on all three surfaces |
+| `--text-disabled` | `#5A5F85` | |
+| `--focus-ring` | `#00E5FF` | |
+| `--selection` | `#1B2A5C` | |
+| `--scrim` | `rgba(3,3,8,0.72)` | |
+| `--accent` | `#00E5FF` | |
+| `--accent-hover` | `#66F2FF` | |
+| `--accent-sunk` | `#0088A0` | pressed |
+| `--accent-soft` | `#0A2A38` | tinted accent surface |
+| `--on-accent` | `#04040A` | 13.29:1 on accent |
+| `--alarm-crit` | `#FF2D6F` | 5.60:1 on `--bg` |
+| `--alarm-crit-bg` | `#3A0A1C` | |
+| `--alarm-warn` | `#FFB020` | |
+| `--alarm-warn-bg` | `#3A2600` | |
+| `--alarm-adv` | `#C77DFF` | |
+| `--alarm-adv-bg` | `#28123E` | |
+| `--alarm-log` | `#A6ADDC` | |
+| `--on-alarm` | `#04040A` | ≥4.5:1 on all four fills |
+| `--state-running` | `#39FF88` | **the discarded ISA-101 premise, made visible** |
+| `--state-stopped` | `#A6ADDC` | |
+| `--state-error` | `#FF2D6F` | |
+| `--state-oos` | `#4A4E6E` | contrast-exempt: faded IS the signal |
+| `--trace-pv` | `#00F0FF` | |
+| `--trace-sp` | `#B8BEE8` | |
+| `--trace-co` | `#FFA630` | |
+| `--trend-grid` | `#1A1C33` | |
+| `--trend-axis` | `#5A5F85` | |
+| `--trend-bg` | `#07070E` | |
+| `--trend-pv-width` | `2px` | unchanged from the other themes |
+| `--trend-sp-width` | `1.5px` | |
+| `--trend-co-width` | `1.5px` | |
+| `--trend-sp-dash` | `4 3` | |
+| `--bar-track` | `#12142A` | |
+| `--bar-fill` | `#00E5FF` | |
+| `--bar-marker` | `#FFFFFF` | |
+
+### 10.4 What the palette costs, measured
+
+Discarding "green never means ok" inverts the salience ordering. OKLCH chroma:
+
+| token | chroma | class |
+|---|---|---|
+| `--alarm-crit` `#FF2D6F` | 0.240 | alarm |
+| **`--state-running` `#39FF88`** | **0.221** | chrome |
+| `--alarm-adv` `#C77DFF` | 0.193 | alarm |
+| `--alarm-warn` `#FFB020` | 0.165 | alarm |
+| `--trace-co` `#FFA630` | 0.161 | chrome |
+
+Salience headroom `min(alarm) − max(chrome)` = **−0.056**, against **+0.029** in Phosphor today.
+A steady "running" loop is now louder than an ADVISORY and a WARNING alarm.
+
+This is recorded, not litigated — it is the direct consequence of an explicit instruction. §10.5 is
+the compensating mechanism.
+
+### 10.5 Glow is the salience channel, not decoration
+
+Glow is a visual dimension independent of hue and chroma. Reserving bloom for alarms and focus, and
+denying it to steady state, keeps the alarm the only blooming thing on screen while the chrome stays
+vibrant. This is priority 7 of the source skill: motion and emphasis must convey meaning.
+
+Four new contract tokens. The contract requires every theme to declare every token, so `recorder`,
+`phosphor` and `isa101` declare them too — three lines each.
+
+| Token | `neon` | others |
+|---|---|---|
+| `--glow-alarm` | `0 0 12px rgba(255,45,111,0.55)` | `none` |
+| `--glow-focus` | `0 0 10px rgba(0,229,255,0.65)` | `none` |
+| `--glow-accent` | `0 0 14px rgba(0,229,255,0.45)` | `none` |
+| `--glow-trace` | `8px` | `phosphor: 4px`, `recorder`/`isa101`: `0px` |
+
+Applied to: active and unacknowledged alarm rows, severity badges, the focus ring, the PV trace, and
+primary-button hover/active. **Not** applied to: state dots, body text, card borders, headers, or
+any static chrome.
+
+`--glow-trace` carries `px` so `parseFloat` can read it, matching the existing `--trend-*-width`
+convention that `tokenResolve.test.ts` already asserts.
+
+**This deletes a hardcoded theme name.** `TrendPanel.tsx:170` and `TwinTrend.tsx:73` currently pass
+`glow={theme === 'phosphor'}`. With `--glow-trace` as a token, glow becomes "the token is non-zero",
+and neither component needs to know a theme id. One mechanism instead of two.
+
+Any pulse on unacknowledged alarms must be suppressed under `prefers-reduced-motion`.
+
+### 10.6 Typography
+
+Only `--font-display` becomes per-theme. `--font-ui` (Archivo) and `--font-data` (Geist Mono) stay
+in `tokens.css :root` — numerals and body text are identical in all four themes.
+
+`--font-display` moves out of `:root` into all four `[data-theme]` blocks: three declare the current
+Archivo stack verbatim, `neon` declares `'Orbitron Variable', 'Archivo Variable', system-ui, sans-serif`.
+
+`type-display` reach, so the cost is justified: the wordmark (`AppShell.tsx:89`), every
+`DialogTitle` (`Dialog.tsx:71`), and the `<h1>` of Login, Projects, Settings, Users, Connection and
+Executive. Not a two-element change.
+
+- Vendored as `src/assets/fonts/orbitron-latin-var.woff2`, `wght 400–900`, matching the
+  `archivo-latin-var.woff2` naming convention. **No CDN import** — this product can run on an
+  isolated network, so a Google Fonts `@import` would be a defect, not a style choice.
+- **SIL OFL 1.1.** Redistributable in a commercial product, but the licence file must be committed
+  alongside the font.
+- Preloaded in `index.html` like the other three: `neon` is the default theme, so Orbitron is needed
+  on first paint for a user with no stored preference.
+- `.type-display` keeps `font-stretch: 125%`. Orbitron has no width axis, so it is inert there. Left
+  as-is with a comment rather than introducing a token to express "this face has no width axis" —
+  the token would cost more than the harmless no-op.
+
+### 10.7 Touchpoints
+
+| # | File | Change |
+|---|---|---|
+| 1 | `theme/contract.ts` | `THEME_IDS` gains `'neon'`; `CONTRACT_TOKENS` gains the four glow tokens |
+| 2 | `theme/ThemeProvider.tsx` | `THEMES` gains the entry; `DEFAULT_THEME` becomes `'neon'` |
+| 3 | `theme/themes.css` | new `[data-theme="neon"]` block; glow tokens and `--font-display` added to the other three |
+| 4 | `theme/tokens.css` | `--font-display` removed from `:root` |
+| 5 | `theme/themeContrast.ts` | `GateThemeId` gains `'neon'`; mirrored palette entry |
+| 6 | `theme/themeContrast.test.ts:7` | gate theme list |
+| 7 | `theme/isa101Mapping.test.ts:256` | expects exactly `['recorder','phosphor','isa101']` |
+| 8 | `theme/isa101Mapping.test.ts:193` | type-token exception list drops to `--font-ui`, `--font-data` |
+| 9 | `theme/fonts.test.ts:27` | counts `font-display: swap` — 3 becomes 4 |
+| 10 | `index.html` | static `data-theme`, pre-paint `valid` array and fallback, font preload |
+| 11 | `App.test.tsx:33` | default is no longer `recorder` |
+| 12 | `e2e/themes.spec.ts:28` | `recorder is the default when nothing is stored` |
+| 13 | `e2e/themes.spec.ts` | `THEMES` loop, `THEME_LABEL`, and new `dashboard-neon-<width>.png` baselines |
+| 14 | `e2e/user-role.spec.ts:185` | `menuitemradio` count 3 → 4 |
+| 15 | `features/dashboard/TrendPanel.tsx:170`, `features/simulator/TwinTrend.tsx:73` | drop `theme === 'phosphor'` in favour of the token |
+
+### 10.8 Acceptance
+
+- `themeContrast.test.ts` passes with `neon` in `GateThemeId` — no assertion relaxed, no floor lowered.
+- `tokenResolve.test.ts` resolves all 48 contract tokens non-empty under all four themes.
+- A fresh profile with empty `localStorage` paints `neon` before React mounts, with no flash of
+  another theme.
+- Orbitron renders in the wordmark and dialog titles; numerals stay Geist Mono in all four themes.
+- No network request to `fonts.googleapis.com` or `fonts.gstatic.com` on any route.
+- Glow appears on alarm rows, focus ring, PV trace and primary-button hover; it appears on no state
+  dot, no card border and no header.
+- `prefers-reduced-motion: reduce` suppresses any alarm pulse.
+
+## 11. Test impact
+
+### 11.1 Unit / component (Vitest, 746 passing at baseline)
 
 | File | Change |
 |---|---|
@@ -349,6 +558,13 @@ changes.
 | `features/multitrend/SeriesSelector.test.tsx` | Visible-text assertions updated; the four `getByLabelText('Loop N · SIGNAL')` assertions unchanged. |
 | `features/multitrend/useMultiTrendModel.test.tsx` | Signature update (pass `null`), plus new cases: restore from storage, persist on change, drop an id absent from the roster, ignore malformed storage, `paused` not restored, `null` roster reconciles nothing. |
 | `realtime/multiLoopFanout.test.tsx` | Signature update only — passes `null`, behaviour unchanged. |
+| `theme/ThemeProvider.test.tsx` | Registry gains `neon`; the `defaults to recorder` case becomes `defaults to neon`. |
+| `theme/themeContrast.test.ts:7` | Gate list gains `neon`. **No floor changes.** |
+| `theme/isa101Mapping.test.ts:256` | Expected block list becomes `['recorder','phosphor','isa101','neon']`. |
+| `theme/isa101Mapping.test.ts:193` | Type-token exception list drops `--font-display`, keeping `--font-ui` and `--font-data`; `ISA101_EXPECTED` gains `--font-display`. |
+| `theme/fonts.test.ts:26-27` | `font-display: swap` count 3 → 4; a fourth `@font-face` and its preload are asserted. |
+| `theme/tokenResolve.test.ts` | Runs over `THEME_IDS`, so it picks `neon` up automatically; the four glow tokens join `CONTRACT_TOKENS` and must resolve non-empty in all four themes. |
+| `App.test.tsx:33` | Default `data-theme` becomes `neon`. |
 
 There is no `app/routes.test.*`; `routes.tsx` is covered indirectly through `AppShell.test.tsx`,
 which is where the `Executivo` nav assertion goes.
@@ -356,27 +572,30 @@ which is where the `Executivo` nav assertion goes.
 New logic requiring new tests: trend-selection persistence and roster reconciliation. Everything
 else in this work is a move, a deletion or a style change.
 
-### 10.2 Playwright (79 passing at baseline)
+### 11.2 Playwright (79 passing at baseline)
 
 | Spec | Change |
 |---|---|
 | `e2e/login-dashboard.spec.ts` | Remove the `Comandos` button assertion and the `k`-opens-palette step. |
 | `e2e/responsive.spec.ts` | Replace the `Comandos` target-size assertion; add the rail no-scroll assertion at each viewport. |
 | `e2e/target-size.spec.ts` | Remove `Comandos`; keep `Configurações`. |
-| `e2e/user-role.spec.ts` | Binds by accessible name only — unchanged. |
-| `e2e/themes.spec.ts` | Binds `Configurações` by name — unchanged. |
+| `e2e/user-role.spec.ts:185` | `menuitemradio` count 3 → 4. |
+| `e2e/themes.spec.ts` | `THEMES` loop and `THEME_LABEL` gain `neon`; `recorder is the default when nothing is stored` becomes `neon`; new `dashboard-neon-<width>.png` baselines at all four breakpoints. |
 | `e2e/multitrend.spec.ts` | Unchanged (`getByLabel('Loop 1 · PV')` preserved). New spec for persistence across a reload. |
 
-### 10.3 `TEST_E2E.md`
+### 11.3 `TEST_E2E.md`
 
-The 50-procedure gate is the project's declared stop condition. Four procedures are affected.
+The 50-procedure gate is the project's declared stop condition. **Six** procedures are affected —
+four by the UI corrections, two by the theme.
 
 | # | Procedure | Resolution |
 |---|---|---|
 | **E2E-006** | *Command palette* | **Repurposed.** The feature is removed, so the procedure cannot pass or fail as written. The number is reused for: navigate to the executive dashboard from the top bar. This covers the risk the change actually introduces and keeps the gate at 50. |
 | **E2E-036** | Executive KPIs | Steps say "open `/executive` from wordmark/palette" → becomes "from the top bar". Expected outcome unchanged. |
 | **E2E-049** | Responsive | "≥1024 trend/faceplate side-by-side" remains true (faceplate is now the left column). Gains a **new, stricter** assertion: the faceplate rail's `scrollHeight === clientHeight`. |
-| E2E-015 / E2E-043 | Faceplate consistency / user forbidden | Assertions remain valid; the evidence PNGs must be re-captured against the new layout. |
+| **E2E-045** | *Theme switch and persistence* | Steps cycle `Recorder→Phosphor→ISA-101` and expect "Recorder is default in a fresh browser storage profile". Becomes a four-theme cycle with `Neon` as the fresh-profile default. |
+| **E2E-046** | *Phosphor-only halo and legacy migration* | Expects "static PV halo appears **only in Phosphor**". With `--glow-trace` as a token (§10.5) the halo is present wherever the token is non-zero — Phosphor **and** Neon. Restated as: halo present in Phosphor and Neon, absent in Recorder and ISA-101, still no `shadowBlur`-style frame collapse. The legacy `ocean` migration half is unaffected. |
+| E2E-015 / E2E-043 | Faceplate consistency / user forbidden | Assertions remain valid; the evidence PNGs must be re-captured against the new layout and default theme. |
 
 E2E-006's new text:
 
@@ -386,14 +605,16 @@ E2E-006's new text:
 > **Expected:** `Executivo` is present for both roles and navigates to `/executive`; the wordmark
 > navigates to `/`.
 
-No assertion anywhere in `TEST_E2E.md` is weakened. E2E-049 is strengthened.
+No assertion anywhere in `TEST_E2E.md` is weakened. E2E-049 is strengthened, and E2E-046 becomes a
+token-driven statement instead of a hardcoded theme name — which is the same tightening §10.5 makes
+in the source.
 
-## 11. Verification plan
+## 12. Verification plan
 
 Ordered. Each step must pass before the next.
 
 1. `npm --prefix packages/smart_pid_web run typecheck` and `run lint`.
-2. Vitest full run — must be green, with the amended and new tests described in §10.1.
+2. Vitest full run — must be green, with the amended and new tests described in §11.1.
 3. Playwright — `cd packages/smart_pid_web && env -u CI npx playwright test`. **Not** the `browser`
    tool: it does not deliver CDP input to the page (documented harness defect) and has previously
    produced false "dead control" reports.
@@ -401,10 +622,19 @@ Ordered. Each step must pass before the next.
    asserting `scrollHeight === clientHeight` on the rail and no page-level vertical scrollbar.
 5. Re-confirm §8 after the fifth nav item lands: nav `scrollWidth` should read 236 px at a 320 px
    viewport, with page `scrollWidth - clientWidth` still 0. Any non-zero page overflow is a failure.
-6. Manual re-run of the four affected `TEST_E2E.md` procedures with fresh evidence PNGs.
-7. Full backend suite is **not** re-run: this work touches no Python. Frontend-only.
+6. Theme gate for §10: `themeContrast.test.ts` green with `neon` in `GateThemeId`, and
+   `tokenResolve.test.ts` green for all 48 contract tokens across all four themes.
+7. Fresh-profile paint check: clear `localStorage`, load `/`, confirm `data-theme="neon"` before
+   React mounts and no flash of another theme.
+8. Network check on every route: zero requests to `fonts.googleapis.com` / `fonts.gstatic.com`.
+9. Glow placement audit: bloom present on alarm rows, focus ring, PV trace and primary-button
+   hover; absent on state dots, card borders and headers. Re-check with
+   `prefers-reduced-motion: reduce` emulated — no alarm pulse.
+10. New visual baselines `dashboard-neon-<width>.png` at the four `themes.spec.ts` breakpoints.
+11. Manual re-run of the four affected `TEST_E2E.md` procedures with fresh evidence PNGs.
+12. Full backend suite is **not** re-run: this work touches no Python. Frontend-only.
 
-## 12. Risks
+## 13. Risks
 
 | Risk | Mitigation |
 |---|---|
@@ -414,8 +644,13 @@ Ordered. Each step must pass before the next.
 | `localStorage` restore resurrects a deleted loop | §9.2 reconciles against the live roster before rendering. |
 | Reconciliation misfires while the roster query is pending | §9.2 gates on the roster having loaded. Explicit test case. |
 | Removing `cmdk` or `Command.tsx` breaks an unrelated import | **Verified, not assumed:** `cmdk` is imported only by `components/Command.tsx`, and `Command.tsx` only by `app/AppShell.tsx` and its own test. Both deletions are closed. |
+| Neon chrome buries an alarm — salience headroom is **−0.056** (§10.4) | Accepted consequence of an explicit instruction. Glow (§10.5) is the compensating channel: alarms and focus bloom, steady state never does. If an operator still misses alarms in review, the lever is `--state-running` chroma, not the alarm colours. |
+| A neon palette fails WCAG | Already disproven: the §10.3 palette passes all 43 assertions of the existing gate. No floor is relaxed — a future tweak that fails the gate is rejected by CI, not by review. |
+| Orbitron hurts legibility | It is display-only: wordmark, dialog titles, page `<h1>`. Numerals and body stay Geist Mono / Archivo in every theme (§10.6). |
+| Vendoring a font bloats first paint | One variable `woff2`, latin subset, preloaded because `neon` is the default. `--font-ui` and `--font-data` are unchanged, so the other three themes gain one preload they do not render. Measure; drop the preload if it costs more than it saves. |
+| The OFL licence is not shipped | The licence file is committed next to the font. Called out in §10.6 because it is a legal requirement of a commercial product, not a nicety. |
 
-## 13. Decisions recorded
+## 14. Decisions recorded
 
 | # | Decision | Rationale |
 |---|---|---|
@@ -426,3 +661,10 @@ Ordered. Each step must pass before the next.
 | D5 | `localStorage`, own key, reconciled | Matches `spid.theme`/`spid.preferences`; "persisted" that a reload erases is not persisted. |
 | D6 | Title format `#3 · TIC-E2E` in both chart and selector | Tag for recognition, id to match URLs (`/?loop=3`) and toasts (`Malha #3`) and to disambiguate duplicate tags. |
 | D7 | E2E-006 repurposed rather than deleted | Keeps the gate at 50 and covers the navigation path that replaced the palette. |
+| D8 | A fourth theme, not a restyle of Phosphor | Keeps `recorder` and `isa101` as an untouched conformance path, which is what makes discarding ISA-101 in `neon` reversible and safe. |
+| D9 | `neon` becomes the default | The directive is that the delivered look is weak; a theme nobody selects fixes nothing, and a demo must open on it. |
+| D10 | WCAG gate applies to `neon`; ISA-101 doctrine does not | Different standards. ISA-101 is a domain convention the operator chose to drop; WCAG is the accessibility floor and priority 1 of the source skill. |
+| D11 | Glow is semantic, never decorative | Compensates the inverted chroma ordering without desaturating the chrome, and satisfies the source skill's own priority-7 rule. |
+| D12 | `--glow-trace` as a token replaces `theme === 'phosphor'` | Two components stop hardcoding a theme id; one mechanism serves both the existing Phosphor halo and the new one. |
+| D13 | Only `--font-display` becomes per-theme | Smallest change that buys a distinct face. Numerals are the one thing an HMI must not make exotic, so `--font-data` stays global. |
+| D14 | No CDN font import | The product can be deployed on an isolated network; a CDN dependency would be a runtime failure mode, not a style preference. |
