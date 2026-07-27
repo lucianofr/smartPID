@@ -1,12 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
-import { FIC101, TIC202, faceplate, gotoDashboard } from './helpers/harness';
+import { FIC101, TIC202, emitFrames, faceplate, gotoDashboard, settleForShot } from './helpers/harness';
 
 // §6.8 theme matrix. Three themes ship: recorder (default), phosphor, isa101.
 // MD3 dark/light and Ocean are dropped; Dark Room is superseded by Phosphor, and
 // stored legacy values migrate rather than silently falling back.
 //
-// FUNCTIONAL ONLY — visual baselines are deferred to phase 11, so the old 5x4
-// screenshot matrix (and its snapshots) is gone.
+// Phase 11 adds the terminal visual baseline set: 3 themes x 4 viewports = 12
+// dashboard PNGs here, plus one faceplate PNG in faceplate.spec.ts = 13 total.
+// The obsolete 5x4 matrix (ocean / md3-dark / md3-light / dark-room / isa101)
+// was deleted in 7603b80.
 
 const THEMES = ['recorder', 'phosphor', 'isa101'] as const;
 const LOOPS = [FIC101, TIC202];
@@ -80,3 +82,33 @@ for (const [stored, expected] of LEGACY) {
     expect(persisted, 'the migration is written back once').toBe(expected);
   });
 }
+
+// §6.8 terminal visual baselines. Viewport-sized (not full page), matching the
+// {width}x900 geometry of the pre-rewrite set. UTC is pinned because uPlot's
+// `x: { time: true }` axis formats tick labels in the browser's local zone.
+//
+// `samples: 0` + emitFrames() puts the frame count entirely under this spec's
+// control: the stub's open-time burst races React's mount, so it lands an
+// arbitrary 0-2 samples and the recorder draws no stroke at all. 24 frames of
+// the deterministic PV/CO excursion give the matrix a real trace, without which
+// a §6.3 regression — trace hue, per-series width, or the ISA-only solid SP —
+// would slip past all twelve shots unnoticed.
+test.describe('visual baselines', () => {
+  test.use({ timezoneId: 'UTC' });
+
+  const WIDTHS = [320, 768, 1024, 1440] as const;
+  const FRAMES = 24;
+  const SHOT = { loops: LOOPS, samples: 0, wave: 1, height: 900 } as const;
+
+  for (const theme of THEMES) {
+    for (const width of WIDTHS) {
+      test(`dashboard renders identically under ${theme} at ${width}`, async ({ page }) => {
+        await gotoDashboard(page, { ...SHOT, theme, width });
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        await emitFrames(page, FRAMES);
+        await settleForShot(page);
+        await expect(page).toHaveScreenshot(`dashboard-${theme}-${width}.png`);
+      });
+    }
+  }
+});

@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { FIC101, faceplate, gotoDashboard } from './helpers/harness';
+import { FIC101, emitFrames, faceplate, gotoDashboard, settleForShot } from './helpers/harness';
 
 // Phase 4 — the faceplate is part of the dashboard layout (§6.9), not a dialog:
-// at >=1024 it sits beside the trend at a fixed ~320px. Visual baselines are
-// deferred to phase 11; everything asserted here is functional.
+// at >=1024 it sits beside the trend at a fixed ~320px. Everything asserted in
+// the first five tests is functional; the last one is the 13th and final §6.8
+// visual baseline (phase 11).
 
 test('faceplate renders PV/SP/CO, mode control and the stats block', async ({ page }) => {
   await gotoDashboard(page);
@@ -52,4 +53,15 @@ test('a mode press posts the command for the selected loop', async ({ page }) =>
 test('the manual output is locked while the loop is in AUTO', async ({ page }) => {
   await gotoDashboard(page);
   await expect(faceplate(page, 'FIC-101').getByRole('button', { name: 'Set output' })).toBeDisabled();
+});
+
+test.describe('visual baseline', () => {
+  test.use({ timezoneId: 'UTC' });
+
+  test('the default faceplate matches its recorded appearance', async ({ page }) => {
+    await gotoDashboard(page, { samples: 0, wave: 1 });
+    await emitFrames(page, 24);
+    await settleForShot(page);
+    await expect(faceplate(page, 'FIC-101')).toHaveScreenshot('faceplate-default.png');
+  });
 });
