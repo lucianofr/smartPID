@@ -19,6 +19,7 @@ from smart_pid_domain.exceptions import ControllerNotFoundError, DomainError
 
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import EventBus
+    from smart_pid_core.application.tuning_store import TuningRecommendationStore
     from smart_pid_domain.models.controller import Controller
 
 
@@ -42,10 +43,14 @@ class LoopManager:
         bus: EventBus,
         execution_mode: str = "execute",
         model_dir: Path | None = None,
+        tuning_store: TuningRecommendationStore | None = None,
     ) -> None:
         self._bus = bus
         self._execution_mode = execution_mode
         self._model_dir = model_dir
+        # Shared with the API layer via ``app.state.tuning_store``: the AI
+        # workers produce into it, the command routes read and apply from it.
+        self._tuning_store = tuning_store
         self._loops: dict[int, LoopContext] = {}
 
     def start_loop(
@@ -60,7 +65,7 @@ class LoopManager:
         # AI worker — resume from last AI-computed Ki if available
         ai_worker = AIWorker(
             bus=self._bus, controller=controller, initial_ki=initial_ki,
-            model_dir=self._model_dir,
+            model_dir=self._model_dir, tuning_store=self._tuning_store,
         )
 
         if self._execution_mode == "monitor":
@@ -203,7 +208,7 @@ class LoopManager:
         # Create and start new AI worker
         ctx.ai_worker = AIWorker(
             bus=self._bus, controller=controller, initial_ki=current_ki,
-            model_dir=self._model_dir,
+            model_dir=self._model_dir, tuning_store=self._tuning_store,
         )
         ctx.ai_worker.start()
         logger.info(

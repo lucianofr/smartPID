@@ -3,24 +3,45 @@
 Only runs when the loop is in an automatic mode (AUTO, CAS, RCAS).
 Cadence is determined by ProcessSpeed.ai_period_s — independent of
 STATS publication rate.
+
+Two distinct tuning paths live here and must not be conflated:
+
+1. The **continuous integral nudge** — the engine adjusts only Ki/Ti every
+   ``3 × tss`` and the result goes out on ``ACTION.AI.{cid}``, which
+   ``IOWorker`` writes straight to the PLC for SUPERVISORY loops.
+2. The **full PID retune proposal** — Kp, Ti *and* Td together, synthesised
+   by IMC/lambda tuning from an identified FOPDT model.  A far larger
+   intervention, so it is never written: it lands in the
+   ``TuningRecommendationStore`` as a PENDING recommendation and is applied
+   only after explicit admin confirmation via ``POST /commands/apply-tuning``.
 """
 from __future__ import annotations
 
 import json
 import logging
+import math
 import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import msgpack
 import zmq
 
-from smart_pid_domain.enums import AIEngine, ControllerMode
+from smart_pid_core.domain.services.tuning_recommender import (
+    identify_fopdt,
+    recommend_pid,
+)
+from smart_pid_domain.enums import AIEngine, ControllerMode, IntegralType
+from smart_pid_domain.events import TuningRecommended
+from smart_pid_domain.models.tuning import TuningRecommendation
 
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import EventBus
+    from smart_pid_core.application.tuning_store import TuningRecommendationStore
+    from smart_pid_core.domain.services.tuning_recommender import TuningProposal
     from smart_pid_domain.models.controller import Controller
 
 logger = logging.getLogger(__name__)
@@ -31,6 +52,34 @@ _AUTO_MODES = frozenset({
     ControllerMode.CAS,
     ControllerMode.RCAS,
 })
+
+# --- Steady-state observation gates for process-gain identification -------
+# "At rest" means PV and CO have both stopped moving — NOT that PV sits on SP.
+# A loop holding a steady offset (P-dominant, or integral held off by a
+# downstream limit) is a perfectly valid operating point for reading a
+# steady-state gain, and excluding it would leave the richest data unused.
+#
+# PV quiescence: the error excursion over the whole stats window, as a
+# fraction of span.  Valid as a PV test only while SP is fixed, which
+# `_SS_SP_HOLD_TSS` enforces.
+_SS_PKPK_FRAC = 0.02
+# CO quiescence: mean |dCO| per scan, in % of output range.  The plant only
+# reveals its steady-state gain once the valve has stopped moving.
+_SS_CO_TV_PCT = 0.1
+# The setpoint must have been unchanged for this many TSS, so the stats
+# window contains no SP-step transient.
+_SS_SP_HOLD_TSS = 1.0
+_SS_SP_MOVE_FRAC = 0.001
+_SS_MIN_SAMPLES = 10
+# Observations are bucketed by operating point so that sitting at one CO for
+# an hour cannot swamp the fit with duplicates of the same point.
+_SS_CO_BUCKET_PCT = 2.0
+_SS_MAX_POINTS = 8
+# Fit-quality gates. Too few operating points, too little CO travel, or a weak
+# correlation all mean "gain unknown" — never "gain = whatever the noise says".
+_GAIN_MIN_POINTS = 3
+_GAIN_MIN_CO_SPREAD_PCT = 2.0
+_GAIN_MIN_ABS_R = 0.9
 
 
 class AIWorker:
@@ -46,6 +95,7 @@ class AIWorker:
         controller: Controller,
         initial_ki: float | None = None,
         model_dir: Path | None = None,
+        tuning_store: TuningRecommendationStore | None = None,
     ) -> None:
         self._bus = bus
         self._controller = controller
@@ -74,6 +124,23 @@ class AIWorker:
         self._paused = False
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        # --- Full-retune producer state (worker thread only) --------------
+        # Injected directly rather than published on a bus topic: delivery is
+        # then synchronous and total.  A bus round-trip would need a new
+        # consumer thread and would inherit the ZeroMQ slow-joiner race the
+        # rest of this file already works around (see `set_paused`), which for
+        # a once-per-3×tss message means silently losing whole proposals.
+        self._tuning_store = tuning_store
+        # Steady-state (CO%, PV%) observations, keyed by CO operating-point
+        # bucket -> (co_pct, pv_pct, monotonic_ts).
+        self._ss_points: dict[int, tuple[float, float, float]] = {}
+        self._last_ss_record_mono: float = 0.0
+        # SP-hold tracking: a stats window straddling an SP step says nothing
+        # about whether the process itself has settled.
+        self._observed_sp: float | None = None
+        self._sp_changed_mono: float = 0.0
+        self._last_proposal: TuningProposal | None = None
+        self._last_retune_skip: str | None = None
 
     @property
     def controller_id(self) -> int:
@@ -184,6 +251,248 @@ class AIWorker:
             return False
         return mode in _AUTO_MODES
 
+    # ------------------------------------------------------------------
+    # Full PID retune proposal (confirm-gated) — producer side
+    # ------------------------------------------------------------------
+
+    def _observe_steady_state(self) -> None:
+        """Record a settled (CO %, PV %) pair for steady-state gain identification.
+
+        The only process gain this daemon can honestly observe is the
+        steady-state one, read off pairs of settled operating points::
+
+            K = d(PV %) / d(CO %)
+
+        "Settled" means PV and CO have both stopped moving — deliberately not
+        "PV is on setpoint".  A loop parked at a steady offset still sits on
+        the process curve, and on many real loops (P-dominant tuning, or an
+        integral held off by a downstream limit) that is the *only* place
+        distinct operating points ever appear.
+
+        Three conditions must hold together:
+
+        * the setpoint has been unchanged for at least one TSS, so the stats
+          window contains no SP-step transient (without this the error-based
+          PV test below would be reading SP movement, not PV movement);
+        * the error excursion across the window is within ``_SS_PKPK_FRAC`` of
+          span — with SP fixed this is exactly "PV is not moving", and it
+          stops an oscillating loop passing through PV = SP from posing as a
+          steady state;
+        * CO travel averages under ``_SS_CO_TV_PCT`` per scan, i.e. the valve
+          has stopped moving, so PV is responding to nothing still in flight.
+
+        Successive records are spaced by at least one TSS so the stats window
+        has fully refreshed between them.  Pairs are bucketed by CO so that
+        dwelling at one operating point cannot flood the fit with duplicates;
+        each bucket keeps its freshest observation and the oldest bucket is
+        evicted at capacity.
+        """
+        stats = self._latest_stats
+        if not self._has_telemetry or stats is None or not self._is_auto_mode():
+            return
+        span = self._controller.pv_scale.span
+        if span <= 0.0:
+            return
+
+        now = time.monotonic()
+        tss_s = max(self._controller.tss_s, 1e-3)
+
+        sp = self._last_sp
+        if (
+            self._observed_sp is None
+            or abs(sp - self._observed_sp) > _SS_SP_MOVE_FRAC * span
+        ):
+            self._observed_sp = sp
+            self._sp_changed_mono = now
+        if now - self._sp_changed_mono < _SS_SP_HOLD_TSS * tss_s:
+            return
+
+        if now - self._last_ss_record_mono < tss_s:
+            return
+        if float(stats.get("sample_count", 0.0)) < _SS_MIN_SAMPLES:
+            return
+        if float(stats.get("pk_pk_error", span)) > _SS_PKPK_FRAC * span:
+            return
+        if float(stats.get("tv_per_sample", 100.0)) > _SS_CO_TV_PCT:
+            return
+
+        co_pct = self._last_co
+        pv_pct = (self._last_pv - self._controller.pv_scale.eu_min) / span * 100.0
+        self._last_ss_record_mono = now
+        bucket = int(co_pct // _SS_CO_BUCKET_PCT)
+        self._ss_points[bucket] = (co_pct, pv_pct, now)
+        if len(self._ss_points) > _SS_MAX_POINTS:
+            oldest = min(self._ss_points, key=lambda k: self._ss_points[k][2])
+            del self._ss_points[oldest]
+
+    def _estimate_process_gain(self) -> float | None:
+        """Least-squares slope of PV % against CO % over the settled points.
+
+        Returns ``None`` — meaning "gain unknown", never a fabricated value —
+        unless the observations actually support a slope: at least
+        ``_GAIN_MIN_POINTS`` distinct operating points, at least
+        ``_GAIN_MIN_CO_SPREAD_PCT`` of CO travel between the extremes, and a
+        Pearson correlation of at least ``_GAIN_MIN_ABS_R``.
+
+        The correlation gate is what makes this honest under closed-loop
+        control: while the setpoint is held constant PV stays pinned at SP
+        whatever the load does to CO, so the points carry no gain information
+        and ``r`` collapses.  Only genuine operating-point moves produce a
+        correlated PV/CO cloud.
+        """
+        points = [(co, pv) for co, pv, _ts in self._ss_points.values()]
+        n = len(points)
+        if n < _GAIN_MIN_POINTS:
+            return None
+        co_values = [co for co, _pv in points]
+        if max(co_values) - min(co_values) < _GAIN_MIN_CO_SPREAD_PCT:
+            return None
+
+        pv_values = [pv for _co, pv in points]
+        co_mean = sum(co_values) / n
+        pv_mean = sum(pv_values) / n
+        s_co = sum((c - co_mean) ** 2 for c in co_values)
+        s_pv = sum((p - pv_mean) ** 2 for p in pv_values)
+        s_copv = sum(
+            (c - co_mean) * (p - pv_mean) for c, p in zip(co_values, pv_values, strict=True)
+        )
+        if s_co <= 0.0 or s_pv <= 0.0:
+            return None
+        r = s_copv / math.sqrt(s_co * s_pv)
+        if abs(r) < _GAIN_MIN_ABS_R:
+            return None
+        return s_copv / s_co
+
+    def _skip_retune(self, reason: str) -> None:
+        """Log why no retune was proposed, once per change of reason.
+
+        "Why is there no recommendation for this loop?" is the first question
+        anyone asks, and silence is a bad answer.  Edge-triggered so a loop
+        that will never identify does not fill the log.
+        """
+        if reason != self._last_retune_skip:
+            self._last_retune_skip = reason
+            logger.info(
+                "tuning_retune_skip cid=%d reason=%s points=%d",
+                self.controller_id, reason, len(self._ss_points),
+            )
+
+    def _maybe_recommend_retune(self, pub) -> None:  # noqa: ANN001
+        """Synthesise a full PID retune and park it in the store, if warranted.
+
+        Nothing is written to the process here.  The proposal becomes a
+        PENDING ``TuningRecommendation`` that an admin must confirm through
+        ``POST /commands/apply-tuning/{id}``, where it is clamped again to the
+        loop's ``max_tuning_change_pct`` before any write-back.
+
+        Skipped for GAIN_KI loops: the IMC rule yields an integral *time* in
+        seconds, and this codebase defines no Ti→Ki unit convention, so
+        writing it into a Ki-holding node would silently corrupt the tuning.
+        """
+        if self._tuning_store is None:
+            return
+        if self._controller.integral_type != IntegralType.TIME_TI:
+            self._skip_retune("integral_type_not_time_ti")
+            return
+
+        gain = self._estimate_process_gain()
+        if gain is None:
+            self._skip_retune("gain_unidentifiable")
+            return
+        model = identify_fopdt(
+            tss_s=self._controller.tss_s,
+            dead_time_s=self._ai_config.dead_time_l,
+            gain=gain,
+        )
+        if model is None:
+            self._skip_retune("model_unidentifiable")
+            return
+
+        current_kp = self._controller.pid_params.gain
+        current_ti = self._ki_current  # live Ti, incl. any AI/DCS adjustment
+        current_td = self._controller.pid_params.rate
+        proposal = recommend_pid(
+            model=model,
+            objective=self._ai_config.objective,
+            current_kp=current_kp,
+            current_ti=current_ti,
+            current_td=current_td,
+            limit_min=self._ai_config.limit_min,
+            limit_max=self._ai_config.limit_max,
+        )
+        if proposal is None:
+            self._skip_retune("not_materially_different")
+            return
+
+        # Anti-churn: reuse the recommender's own material-difference gate to
+        # compare against what we last published. A fresh proposal within the
+        # threshold of the standing one is not worth re-raising.
+        if self._last_proposal is not None and recommend_pid(
+            model=model,
+            objective=self._ai_config.objective,
+            current_kp=self._last_proposal.kp,
+            current_ti=self._last_proposal.ti,
+            current_td=self._last_proposal.td,
+            limit_min=self._ai_config.limit_min,
+            limit_max=self._ai_config.limit_max,
+        ) is None:
+            self._skip_retune("unchanged_since_last_proposal")
+            return
+        self._last_retune_skip = None
+
+        timestamp = time.time()
+        rec = TuningRecommendation(
+            id=uuid4(),
+            controller_id=self.controller_id,
+            current_kp=current_kp,
+            current_ti=current_ti,
+            current_td=current_td,
+            recommended_kp=proposal.kp,
+            recommended_ti=proposal.ti,
+            recommended_td=proposal.td,
+            reason=proposal.reason,
+            timestamp=timestamp,
+        )
+        self._tuning_store.put(rec)
+        self._last_proposal = proposal
+
+        event = TuningRecommended(
+            controller_id=self.controller_id,
+            current_kp=current_kp,
+            current_ti=current_ti,
+            current_td=current_td,
+            recommended_kp=proposal.kp,
+            recommended_ti=proposal.ti,
+            recommended_td=proposal.td,
+            reason=proposal.reason,
+            timestamp=timestamp,
+        )
+        # Informational only. Deliberately NOT on ACTION.AI.*, which IOWorker
+        # writes straight to the PLC — a full retune must never take that path.
+        pub.send(
+            f"EVENT.TUNING_REC.{self.controller_id}".encode(),
+            msgpack.packb({
+                "controller_id": event.controller_id,
+                "event_id": str(event.event_id),
+                "recommendation_id": str(rec.id),
+                "current_kp": event.current_kp,
+                "current_ti": event.current_ti,
+                "current_td": event.current_td,
+                "recommended_kp": event.recommended_kp,
+                "recommended_ti": event.recommended_ti,
+                "recommended_td": event.recommended_td,
+                "reason": event.reason,
+                "timestamp": event.timestamp,
+            }),
+        )
+        logger.info(
+            "tuning_recommended cid=%d K=%.4f tau=%.2f L=%.2f lambda=%.2f "
+            "Kp %.4f->%.4f Ti %.3f->%.3f Td %.3f->%.3f",
+            self.controller_id, model.gain, model.tau_s, model.dead_time_s,
+            proposal.lambda_s, current_kp, proposal.kp,
+            current_ti, proposal.ti, current_td, proposal.td,
+        )
+
     def _run(self) -> None:
         telem_sub = self._bus.create_subscriber(
             f"TELEMETRY.{self.controller_id}".encode()
@@ -221,6 +530,12 @@ class AIWorker:
                 # Authoritative loop mode from the PID worker
                 self._drain_status(status_sub)
 
+                # Sample the process for FOPDT gain identification. Runs on
+                # every pass, not just the AI tick: the (CO, PV) pairs it
+                # needs only appear while the loop sits at a settled
+                # operating point, which is a transient condition.
+                self._observe_steady_state()
+
                 # Check if it's time to run AI
                 now = time.monotonic()
                 if now < next_run:
@@ -244,6 +559,10 @@ class AIWorker:
                         self._last_mode,
                     )
                     continue
+
+                # Full PID retune proposal (Kp + Ti + Td). Confirm-gated —
+                # this only fills the recommendation store, it never writes.
+                self._maybe_recommend_retune(pub)
 
                 # Sync ki_current from OPC-UA only when the DCS value changed
                 # externally (manual tuning or DCS clamping).  Re-reading the

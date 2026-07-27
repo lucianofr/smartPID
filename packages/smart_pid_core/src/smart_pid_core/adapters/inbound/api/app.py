@@ -34,6 +34,7 @@ from smart_pid_core.adapters.inbound.api.ws.realtime import (
     RealtimeBridge,
     register_realtime_ws,
 )
+from smart_pid_core.application.tuning_store import TuningRecommendationStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
@@ -97,6 +98,7 @@ def create_app(
     audit_repo: AuditRepository | None = None,
     system_event_repo: SystemEventRepository | None = None,
     event_bus: EventBus | None = None,
+    tuning_store: TuningRecommendationStore | None = None,
 ) -> FastAPI:
     """Build and configure the FastAPI application."""
     app = FastAPI(title="Smart PID API", version="2.0.0", lifespan=_lifespan)
@@ -119,6 +121,12 @@ def create_app(
     app.state.system_event_repo = system_event_repo
     app.state.event_bus = event_bus
     app.state.execution_mode = settings.execution_mode
+    # Tuning recommendations. Always a real store, even when the caller does
+    # not supply one (tests, monitor-only apps): the command routes then read
+    # an empty store instead of branching on a missing attribute.
+    app.state.tuning_store = (
+        tuning_store if tuning_store is not None else TuningRecommendationStore()
+    )
 
     # RealtimeWS fan-out: one ConnectionManager + one EventBus->WS bridge.
     # The bridge only exists when there is a bus to drain; its start/stop is

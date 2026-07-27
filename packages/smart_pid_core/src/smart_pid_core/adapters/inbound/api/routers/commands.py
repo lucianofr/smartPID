@@ -1,6 +1,7 @@
 """Command router — setpoint, mode, output, and optimizer changes."""
 
 import json
+import time
 from dataclasses import replace
 from typing import Annotated
 
@@ -24,6 +25,7 @@ from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository  # noqa: TC001
 from smart_pid_core.application.event_bus import EventBus  # noqa: TC001
 from smart_pid_core.application.loop_manager import LoopManager
+from smart_pid_core.application.tuning_store import TuningRecommendationStore
 from smart_pid_core.application.workers.system_event_worker import (  # noqa: TC001
     SystemEventWorker,
 )
@@ -40,7 +42,8 @@ from smart_pid_domain.dtos.commands import (
     SetpointCommand,
     TuningCommand,
 )
-from smart_pid_domain.enums import AuditAction, ControllerMode
+from smart_pid_domain.enums import AuditAction, ControllerMode, TuningRecStatus
+from smart_pid_domain.events import TuningApplied
 
 router = APIRouter()
 
@@ -283,6 +286,19 @@ async def write_tuning(
     )
 
 
+def _get_tuning_store(request: Request) -> TuningRecommendationStore:
+    """Return the app's recommendation store, creating one if absent.
+
+    ``create_app`` always installs a store; the fallback only covers apps
+    assembled by hand in tests, and keeps both routes on a single code path.
+    """
+    store = getattr(request.app.state, "tuning_store", None)
+    if store is None:
+        store = TuningRecommendationStore()
+        request.app.state.tuning_store = store
+    return store
+
+
 @router.get("/tuning-recommendations/{controller_id}")
 async def get_tuning_recommendation(
     controller_id: int,
@@ -292,13 +308,13 @@ async def get_tuning_recommendation(
     """Return the current tuning recommendation for a controller."""
     from smart_pid_domain.dtos.ai import TuningRecommendationResponse
 
-    recs: dict = getattr(request.app.state, "tuning_recommendations", {})
-    rec = recs.get(controller_id)
-    if rec is None:
+    tracked = _get_tuning_store(request).get(controller_id)
+    if tracked is None:
         raise HTTPException(
             status_code=404,
             detail=f"No tuning recommendation for controller {controller_id}",
         )
+    rec = tracked.recommendation
     return TuningRecommendationResponse(
         controller_id=rec.controller_id,
         current_kp=rec.current_kp,
@@ -309,7 +325,9 @@ async def get_tuning_recommendation(
         recommended_td=rec.recommended_td,
         reason=rec.reason,
         timestamp=rec.timestamp,
-        status=rec.status,
+        # Lifecycle status lives on the tracked wrapper, not the frozen
+        # domain record: the UI gates its Apply button on `pending`.
+        status=tracked.status,
         source=getattr(rec, "source", None),
     ).model_dump()
 
@@ -324,11 +342,11 @@ async def apply_tuning(
     sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
 ) -> dict:
     """Apply a pending tuning recommendation to the DCS via OPC-UA."""
-    # Get pending recommendation
-    recs: dict = getattr(request.app.state, "tuning_recommendations", {})
-    rec = recs.get(controller_id)
-    if rec is None:
+    store = _get_tuning_store(request)
+    tracked = store.get(controller_id)
+    if tracked is None or tracked.status != TuningRecStatus.PENDING:
         raise HTTPException(status_code=404, detail="No pending tuning recommendation")
+    rec = tracked.recommendation
 
     # Check external PID mode
     opcua = getattr(request.app.state, "opcua_adapter", None)
@@ -352,13 +370,48 @@ async def apply_tuning(
         rec_td=rec.recommended_td,
         max_pct=ctrl.max_tuning_change_pct,
     )
+    clamped = (
+        kp != rec.recommended_kp
+        or ti != rec.recommended_ti
+        or td != rec.recommended_td
+    )
 
     # Write to DCS
     if opcua is not None:
         opcua.write_pid_params(controller_id, kp, ti, td)
 
-    # Clear recommendation
-    recs.pop(controller_id, None)
+    # Consume the recommendation: it stays visible with status=applied so the
+    # UI can show the outcome instead of the entry vanishing into a 404.
+    store.mark_applied(controller_id, user.user_id)
+
+    bus = getattr(request.app.state, "event_bus", None)
+    if bus is not None:
+        event = TuningApplied(
+            controller_id=controller_id,
+            recommendation_id=rec.id,
+            applied_kp=kp,
+            applied_ti=ti,
+            applied_td=td,
+            clamped=clamped,
+            timestamp=time.time(),
+        )
+        pub = bus.create_publisher()
+        try:
+            pub.send(
+                f"EVENT.TUNING_APPLIED.{controller_id}".encode(),
+                msgpack.packb({
+                    "controller_id": event.controller_id,
+                    "event_id": str(event.event_id),
+                    "recommendation_id": str(event.recommendation_id),
+                    "applied_kp": event.applied_kp,
+                    "applied_ti": event.applied_ti,
+                    "applied_td": event.applied_td,
+                    "clamped": event.clamped,
+                    "timestamp": event.timestamp,
+                }),
+            )
+        finally:
+            pub.close()
 
     # Audit + broadcast
     await audit_and_broadcast(
@@ -378,9 +431,5 @@ async def apply_tuning(
         "applied_kp": kp,
         "applied_ti": ti,
         "applied_td": td,
-        "clamped": (
-            kp != rec.recommended_kp
-            or ti != rec.recommended_ti
-            or td != rec.recommended_td
-        ),
+        "clamped": clamped,
     }

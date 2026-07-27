@@ -1,7 +1,8 @@
 """Tests for monitor-mode gating on /commands endpoints and apply-tuning."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+import time
+import uuid
 from unittest.mock import MagicMock
 
 import pytest
@@ -22,17 +23,23 @@ from smart_pid_core.domain.services.pid_engine import PIDEngine
 from smart_pid_core.domain.services.pid_mode_manager import ModeManager
 from smart_pid_domain.enums import ControllerMode
 from smart_pid_domain.models.controller import Controller, PIDParams
+from smart_pid_domain.models.tuning import TuningRecommendation
 
 
-@dataclass
-class _FakeRec:
-    """Minimal tuning recommendation for testing."""
-    current_kp: float = 1.0
-    current_ti: float = 10.0
-    current_td: float = 0.5
-    recommended_kp: float = 1.2
-    recommended_ti: float = 9.0
-    recommended_td: float = 0.6
+def _make_rec(controller_id: int = 1) -> TuningRecommendation:
+    """A pending recommendation as the AI worker would produce it."""
+    return TuningRecommendation(
+        id=uuid.uuid4(),
+        controller_id=controller_id,
+        current_kp=1.0,
+        current_ti=10.0,
+        current_td=0.5,
+        recommended_kp=1.2,
+        recommended_ti=9.0,
+        recommended_td=0.6,
+        reason="IMC/lambda retune",
+        timestamp=time.time(),
+    )
 
 
 @pytest.fixture
@@ -255,7 +262,7 @@ class TestApplyTuning:
             audit_repo=execute_deps["audit_repo"],
             opcua_adapter=mock_opcua,
         )
-        app.state.tuning_recommendations = {cid: _FakeRec()}
+        app.state.tuning_store.put(_make_rec(cid))
 
         headers = {
             "Authorization": "Bearer " + create_access_token(
@@ -288,7 +295,7 @@ class TestApplyTuning:
             audit_repo=execute_deps["audit_repo"],
             opcua_adapter=mock_opcua,
         )
-        app.state.tuning_recommendations = {cid: _FakeRec()}
+        app.state.tuning_store.put(_make_rec(cid))
 
         headers = {
             "Authorization": "Bearer " + create_access_token(

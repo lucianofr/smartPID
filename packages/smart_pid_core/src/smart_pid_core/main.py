@@ -23,6 +23,7 @@ from smart_pid_core.application.daemon_state import DaemonState
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.application.telemetry_publisher import TelemetryPublisher
+from smart_pid_core.application.tuning_store import TuningRecommendationStore
 from smart_pid_core.config import CoreSettings
 from smart_pid_domain.enums import UserRole
 
@@ -279,10 +280,14 @@ async def run_daemon(settings: CoreSettings) -> None:
     bus = EventBus()
     bus.start()
     model_dir = settings.db_path.parent / "models"
+    # One store shared by the producers (AIWorker, via LoopManager) and the
+    # consumers (the /commands tuning routes, via app.state).
+    tuning_store = TuningRecommendationStore()
     loop_manager = LoopManager(
         bus=bus,
         execution_mode=settings.execution_mode,
         model_dir=model_dir,
+        tuning_store=tuning_store,
     )
     logger.info("event_bus_started")
 
@@ -502,6 +507,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         system_event_repo=system_event_repo,
         project_service=project_service,
         event_bus=bus,
+        tuning_store=tuning_store,
     )
 
     # Set export_worker on app.state so the export router can use it
