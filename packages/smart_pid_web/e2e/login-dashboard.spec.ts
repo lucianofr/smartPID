@@ -34,7 +34,7 @@ test('login then dashboard receives a status frame', async ({ page }) => {
   await expect(faceplate(page, 'PIC-005')).toBeVisible();
 });
 
-test('the shell exposes registry navigation, the palette and logout', async ({ page }) => {
+test('the shell exposes registry navigation and logout', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel('Usuário').fill('admin');
   await page.getByLabel('Senha').fill('pw');
@@ -42,15 +42,12 @@ test('the shell exposes registry navigation, the palette and logout', async ({ p
   await expect(page.getByText('PIC-005').first()).toBeVisible();
 
   await expect(page.getByRole('link', { name: 'Loops' })).toHaveAttribute('href', '/');
-  await expect(page.getByRole('button', { name: 'Comandos' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Configurações' })).toBeVisible();
 
-  // `k` outside an editable field opens the command palette.
+  // The palette is gone: a bare `k` over a live process must do nothing.
   await page.getByText('PIC-005').first().click();
   await page.keyboard.press('k');
-  await expect(page.getByRole('dialog', { name: 'Paleta de comandos' })).toBeVisible();
-  await expect(page.getByText('Ir para Malhas')).toBeVisible();
-  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Sair' }).click();
   await expect(page).toHaveURL(/\/login/);

@@ -145,12 +145,9 @@ describe('ExecutiveDashboardPage', () => {
 });
 
 describe('/executive registration', () => {
-  it('is reachable from the palette but stays out of the operator top bar', () => {
+  it('is reachable from the wordmark but stays out of the operator top bar', () => {
     const route = appRoutes.find((r) => r.path === '/executive');
-    expect(route?.command).toEqual({
-      label: 'Painel executivo',
-      keywords: ['executivo', 'kpi', 'roi'],
-    });
+    expect(route).toBeDefined();
     expect(route?.nav).toBeUndefined();
     expect(route?.cfg).toBeUndefined();
     expect(route?.adminOnly).toBeUndefined();

@@ -4,7 +4,7 @@ import { endpoints } from '@/api/endpoints';
 import type { Role } from '@/api/types';
 import { createFakeRealtime, TestProviders, type FakeRealtime } from '@/test/providers';
 import { AppShell } from './AppShell';
-import { appRoutes, cfgRoutes, commandRoutes, navRoutes } from './routes';
+import { appRoutes, cfgRoutes, navRoutes } from './routes';
 
 function renderShell(realtime?: FakeRealtime) {
   return render(
@@ -48,20 +48,23 @@ describe('appRoutes registry', () => {
     const root = appRoutes.find((r) => r.path === '/');
     expect(root).toBeDefined();
     expect(root?.nav).toEqual({ label: 'Loops', order: 10 });
-    expect(root?.command?.label).toBe('Ir para Malhas');
   });
 
-  it('sorts nav, cfg and command projections by order', () => {
+  it('sorts nav and cfg projections by order', () => {
     const routes = [
-      { path: '/b', element: () => null, nav: { label: 'B', order: 20 }, command: { label: 'B' } },
-      { path: '/a', element: () => null, nav: { label: 'A', order: 10 }, command: { label: 'A' } },
-      { path: '/c', element: () => null, cfg: { label: 'C', order: 30 }, command: { label: 'C' } },
-      { path: '/d', element: () => null, cfg: { label: 'D', order: 5 }, command: { label: 'D' } },
-      { path: '/e', element: () => null, command: { label: 'E' } },
+      { path: '/b', element: () => null, nav: { label: 'B', order: 20 } },
+      { path: '/a', element: () => null, nav: { label: 'A', order: 10 } },
+      { path: '/c', element: () => null, cfg: { label: 'C', order: 30 } },
+      { path: '/d', element: () => null, cfg: { label: 'D', order: 5 } },
     ];
     expect(navRoutes(routes).map((r) => r.nav.label)).toEqual(['A', 'B']);
     expect(cfgRoutes(routes).map((r) => r.cfg.label)).toEqual(['D', 'C']);
-    expect(commandRoutes(routes).map((r) => r.command.label)).toEqual(['A', 'B', 'D', 'C', 'E']);
+  });
+
+  it('carries no command-palette metadata on any route', () => {
+    for (const route of appRoutes) {
+      expect(route).not.toHaveProperty('command');
+    }
   });
 });
 
@@ -69,7 +72,7 @@ describe('AppShell', () => {
   it('renders registry-backed top navigation and logout', () => {
     renderShell();
     expect(screen.getByRole('link', { name: 'Loops' })).toHaveAttribute('href', '/');
-    expect(screen.getByRole('button', { name: 'Comandos' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Comandos' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Configurações' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Sair' })).toBeVisible();
     expect(screen.getByText('conteúdo')).toBeVisible();
@@ -80,30 +83,6 @@ describe('AppShell', () => {
     renderShell();
     fireEvent.click(screen.getByRole('button', { name: 'Sair' }));
     expect(sessionStorage.getItem('smart-pid-token')).toBeNull();
-  });
-
-  it('opens the command palette with the bare k key', () => {
-    renderShell();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    fireEvent.keyDown(document.body, { key: 'k' });
-    expect(screen.getByRole('dialog', { name: 'Paleta de comandos' })).toBeVisible();
-    expect(screen.getByText('Ir para Malhas')).toBeVisible();
-  });
-
-  it('ignores k typed inside an editable field', () => {
-    renderShell();
-    const input = document.createElement('input');
-    document.body.appendChild(input);
-    input.focus();
-    fireEvent.keyDown(input, { key: 'k' });
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    input.remove();
-  });
-
-  it('ignores k when it carries a modifier', () => {
-    renderShell();
-    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('switches the persisted theme from the cfg menu', async () => {

@@ -29,19 +29,17 @@ const UsersPage = lazyPage(() => import('@/pages/UsersPage'), (m) => m.UsersPage
 
 /**
  * Single route/navigation registry (§6.9). Every later phase appends ONE
- * literal here — the top bar, the `[cfg]` menu and the `[k]` palette are all
- * projections of this array, so nothing has to be wired in three places.
+ * literal here — the top bar and the configuration menu are both projections of
+ * this array, so nothing has to be wired in two places.
  */
 export interface AppRoute {
   path: string;
   element: ComponentType;
   adminOnly?: boolean;
-  /** Top-bar entry (`Loops · Trends · Alarms · Sim`). */
+  /** Top-bar entry (`Loops · Trends · Alarms · Sim · Executivo`). */
   nav?: { label: string; order: number };
-  /** `[cfg]` menu entry (Projects, Settings, Connection, Users — phase 10). */
+  /** Configuration-menu entry (Projects, Settings, Connection, Users). */
   cfg?: { label: string; order: number };
-  /** `[k]` command-palette entry. */
-  command?: { label: string; keywords?: readonly string[] };
 }
 
 export const appRoutes: AppRoute[] = [
@@ -49,91 +47,65 @@ export const appRoutes: AppRoute[] = [
     path: '/',
     element: DashboardPage,
     nav: { label: 'Loops', order: 10 },
-    command: { label: 'Ir para Malhas', keywords: ['loops', 'malhas'] },
   },
   {
     path: '/multitrend',
     element: MultiTrendPage,
     nav: { label: 'Trends', order: 20 },
-    command: { label: 'Ir para Trends', keywords: ['trend', 'tendência'] },
   },
   {
     path: '/alarms',
     element: AlarmsPage,
     nav: { label: 'Alarms', order: 30 },
-    command: { label: 'Ir para Alarmes', keywords: ['alarmes'] },
   },
   {
     path: '/simulator',
     element: SimulatorPage,
     nav: { label: 'Sim', order: 40 },
-    command: { label: 'Ir para Simulador', keywords: ['sim', 'twin', 'simulador'] },
   },
   {
-    // Command-only: the buyer view stays out of the operator's top bar, which
-    // is Loops · Trends · Alarms · Sim. The wordmark and `[k]` reach it.
     path: '/executive',
     element: ExecutiveDashboardPage,
-    command: { label: 'Painel executivo', keywords: ['executivo', 'kpi', 'roi'] },
   },
-  // Phase 10 — the `[cfg]` administration group. Every entry is `adminOnly`:
+  // The configuration-menu administration group. Every entry is `adminOnly`:
   // the routers behind them are `require_admin`, so a `user` who reached one
   // would only collect 403s. RouteGuard sends them back to the dashboard and
-  // AppShell drops the menu/palette entries entirely.
+  // AppShell drops the menu entries entirely.
   {
     path: '/projects',
     element: ProjectsPage,
     adminOnly: true,
     cfg: { label: 'Projects', order: 10 },
-    command: { label: 'Ir para Projetos', keywords: ['projeto', 'spid'] },
   },
   {
     path: '/settings',
     element: SettingsPage,
     adminOnly: true,
     cfg: { label: 'Settings', order: 20 },
-    command: { label: 'Ir para Configurações', keywords: ['config', 'preferências'] },
   },
   {
     path: '/connection',
     element: ConnectionPage,
     adminOnly: true,
     cfg: { label: 'Connection', order: 30 },
-    command: { label: 'Ir para Conexão', keywords: ['opc', 'opcua', 'conexão', 'tags'] },
   },
   {
     path: '/users',
     element: UsersPage,
     adminOnly: true,
     cfg: { label: 'Users', order: 40 },
-    command: { label: 'Ir para Usuários', keywords: ['usuário', 'conta', 'perfil'] },
   },
 ];
 
 type WithNav = AppRoute & { nav: NonNullable<AppRoute['nav']> };
 type WithCfg = AppRoute & { cfg: NonNullable<AppRoute['cfg']> };
-type WithCommand = AppRoute & { command: NonNullable<AppRoute['command']> };
 
 /** Top-bar entries, ascending `nav.order`. */
 export function navRoutes(routes: readonly AppRoute[] = appRoutes): WithNav[] {
   return routes.filter((r): r is WithNav => r.nav !== undefined).sort((a, b) => a.nav.order - b.nav.order);
 }
 
-/** `[cfg]` menu entries, ascending `cfg.order`. */
+/** Configuration-menu entries, ascending `cfg.order`. */
 export function cfgRoutes(routes: readonly AppRoute[] = appRoutes): WithCfg[] {
   return routes.filter((r): r is WithCfg => r.cfg !== undefined).sort((a, b) => a.cfg.order - b.cfg.order);
-}
-
-/**
- * Palette entries: nav order first, then cfg order, then registration order —
- * the palette mirrors the visible IA instead of inventing a third ranking.
- */
-export function commandRoutes(routes: readonly AppRoute[] = appRoutes): WithCommand[] {
-  const rank = (r: AppRoute): number =>
-    r.nav !== undefined ? r.nav.order : r.cfg !== undefined ? 1000 + r.cfg.order : Number.MAX_SAFE_INTEGER;
-  return routes
-    .filter((r): r is WithCommand => r.command !== undefined)
-    .map((r, i) => ({ r, i }))
-    .sort((a, b) => rank(a.r) - rank(b.r) || a.i - b.i)
-    .map(({ r }) => r);
 }

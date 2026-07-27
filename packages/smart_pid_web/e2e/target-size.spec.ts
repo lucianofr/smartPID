@@ -16,7 +16,6 @@ test.describe('target size (>=44x44)', () => {
 
   test('shell chrome clears the floor', async ({ page }) => {
     await assertMinTarget(page.getByRole('link', { name: 'Loops' }), SPEC_MIN);
-    await assertMinTarget(page.getByRole('button', { name: 'Comandos' }), SPEC_MIN);
     await assertMinTarget(page.getByRole('button', { name: 'Configurações' }), SPEC_MIN);
     await assertMinTarget(page.getByRole('button', { name: 'Sair' }), SPEC_MIN);
   });
