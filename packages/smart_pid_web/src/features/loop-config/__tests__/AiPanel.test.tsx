@@ -235,24 +235,4 @@ describe('AiPanel', () => {
     expect(log).toHaveTextContent('estabilizou');
   });
 
-  it('offers the three engines and the guardrail band', async () => {
-    renderAi();
-    const engine = await screen.findByLabelText('Motor');
-    expect(within(engine).getAllByRole('option').map((o) => o.textContent)).toEqual([
-      'NONE',
-      'FUZZY',
-      'RL',
-    ]);
-    expect(screen.getByLabelText('Tempo morto L')).toBeInTheDocument();
-    expect(screen.getByLabelText('Limite mín.')).toBeInTheDocument();
-    expect(screen.getByLabelText('Limite máx.')).toBeInTheDocument();
-    expect(screen.getByLabelText('Velocidade do processo')).toBeInTheDocument();
-  });
-
-  it('refuses to save an inverted guardrail band', async () => {
-    renderAi();
-    fireEvent.change(await screen.findByLabelText('Limite mín.'), { target: { value: '500' } });
-    expect(await screen.findByText('Limite mínimo deve ser menor que o máximo')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Salvar IA' })).toBeDisabled();
-  });
 });

@@ -1,37 +1,21 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/api/queryKeys';
 import { useCan } from '@/auth/useCan';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
-import { Field, Input } from '@/components/Field';
 import { toast } from '@/components/Toast';
-import type { AiConfigDto, AiStatus } from '@/api/types';
+import type { AiStatus } from '@/api/types';
 import type { AiData } from '@/lib/envelope';
-import { cn } from '@/lib/utils';
 import { useRealtime } from '@/realtime/useRealtime';
-import { useControllers } from '@/features/dashboard/useControllers';
 import { ConfirmApplyTuningDialog } from './ConfirmApplyTuningDialog';
 import { applyTuning, type AiAction } from './commandApi';
 import { tuningRecommendationKey, useAiAction, useAiStatus, useTuningRecommendation } from './useAiControls';
-import {
-  AI_ENGINES,
-  OBJECTIVES,
-  PROCESS_SPEEDS,
-  type AiConfigForm,
-  type AiEngine,
-  type ControlObjective,
-  type ProcessSpeed,
-} from './types';
-import { useUpdateControllerMutation } from './useCommands';
-import { hasErrors, validateAiConfig } from './validation';
 
 export interface AiPanelProps {
   controllerId: number;
   tag: string;
 }
-
-type AiForm = AiConfigForm & { objective: ControlObjective; speed: ProcessSpeed };
 
 /** Ring buffer for the terminal box — an unbounded log would grow all shift. */
 const MAX_LOG_LINES = 100;
@@ -64,12 +48,6 @@ export function aiLifecycle(status: AiStatus | undefined): AiLifecycle {
   return status.paused ? 'PAUSE' : 'RUN';
 }
 
-const SELECT_CLASS = cn(
-  'numeric min-h-11 w-full rounded-control border border-rule-strong bg-surface-sunk px-2 py-1',
-  'text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-  'disabled:cursor-not-allowed disabled:text-text-disabled',
-);
-
 function logLine(env: AiData): string {
   const stamp = env.timestamp.length > 0 ? env.timestamp : '—';
   return `${stamp}  ${env.engine}  γ=${env.gamma}  Ki=${env.new_ki}  ${env.reasoning}`;
@@ -89,24 +67,12 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
 
   const visible = canControl || canTune;
 
-  const controllers = useControllers();
   const status = useAiStatus(controllerId, visible);
   const recommendation = useTuningRecommendation(controllerId, canTune);
   const aiAction = useAiAction();
-  const updateController = useUpdateControllerMutation();
   const queryClient = useQueryClient();
   const ai = useRealtime<AiData>(controllerId, 'ai');
 
-  const engineId = useId();
-  const objectiveId = useId();
-  const speedId = useId();
-  const deadTimeId = useId();
-  const limitMinId = useId();
-  const limitMaxId = useId();
-
-  // Persisted config is the baseline; `draft` is only what the operator has
-  // touched, so a save (or a resync) shows through without stomping an edit.
-  const [draft, setDraft] = useState<Partial<AiForm>>({});
   const [lines, setLines] = useState<readonly string[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [applyError, setApplyError] = useState<string | undefined>(undefined);
@@ -128,19 +94,6 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
     if (box !== null) box.scrollTop = box.scrollHeight;
   }, [lines]);
 
-  // Schema defaults, not assumptions: a roster row may predate `ai_config`.
-  const controller = controllers.data?.find((c) => c.id === controllerId);
-  const persisted = controller?.ai_config as Partial<AiConfigDto> | undefined;
-  const form: AiForm = {
-    engine: (persisted?.engine as AiEngine | undefined) ?? 'NONE',
-    objective: (persisted?.objective as ControlObjective | undefined) ?? 'DISTURBANCE_REJECTION',
-    speed: (controller?.process_speed as ProcessSpeed | undefined) ?? 'MEDIUM',
-    dead_time_l: persisted?.dead_time_l ?? 1,
-    limit_min: persisted?.limit_min ?? 0.1,
-    limit_max: persisted?.limit_max ?? 100,
-    ...draft,
-  };
-  const errors = validateAiConfig(form);
   const rec = recommendation.data;
   const pendingRecommendation = rec !== undefined && rec.status === 'pending';
 
@@ -197,135 +150,6 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
           </span>
         </div>
       </header>
-
-      {canTune ? (
-        <div className="flex flex-col gap-2">
-          <Field label="Motor" htmlFor={engineId}>
-            <select
-              id={engineId}
-              className={SELECT_CLASS}
-              value={form.engine}
-              onChange={(e) => setDraft((p) => ({ ...p, engine: e.target.value as AiEngine }))}
-            >
-              {AI_ENGINES.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Objetivo" htmlFor={objectiveId}>
-            <select
-              id={objectiveId}
-              className={SELECT_CLASS}
-              value={form.objective}
-              onChange={(e) =>
-                setDraft((p) => ({ ...p, objective: e.target.value as ControlObjective }))
-              }
-            >
-              {OBJECTIVES.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Velocidade do processo" htmlFor={speedId}>
-            <select
-              id={speedId}
-              className={SELECT_CLASS}
-              value={form.speed}
-              onChange={(e) => setDraft((p) => ({ ...p, speed: e.target.value as ProcessSpeed }))}
-            >
-              {PROCESS_SPEEDS.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Tempo morto L" htmlFor={deadTimeId} error={errors.dead_time_l}>
-            <Input
-              id={deadTimeId}
-              type="number"
-              inputMode="decimal"
-              className="numeric px-2 py-1"
-              value={form.dead_time_l}
-              invalid={errors.dead_time_l !== undefined}
-              onChange={(e) => setDraft((p) => ({ ...p, dead_time_l: Number(e.target.value) }))}
-            />
-          </Field>
-
-          <div className="flex gap-2">
-            <Field
-              label="Limite mín."
-              htmlFor={limitMinId}
-              error={errors.limit_min}
-              className="min-w-0 flex-1"
-            >
-              <Input
-                id={limitMinId}
-                type="number"
-                inputMode="decimal"
-                className="numeric px-2 py-1"
-                value={form.limit_min}
-                invalid={errors.limit_min !== undefined}
-                onChange={(e) => setDraft((p) => ({ ...p, limit_min: Number(e.target.value) }))}
-              />
-            </Field>
-            <Field
-              label="Limite máx."
-              htmlFor={limitMaxId}
-              error={errors.limit_max}
-              className="min-w-0 flex-1"
-            >
-              <Input
-                id={limitMaxId}
-                type="number"
-                inputMode="decimal"
-                className="numeric px-2 py-1"
-                value={form.limit_max}
-                invalid={errors.limit_max !== undefined}
-                onChange={(e) => setDraft((p) => ({ ...p, limit_max: Number(e.target.value) }))}
-              />
-            </Field>
-          </div>
-
-          <Button
-            variant="secondary"
-            disabled={hasErrors(errors) || updateController.isPending}
-            onClick={() =>
-              updateController.mutate(
-                {
-                  id: controllerId,
-                  patch: {
-                    process_speed: form.speed,
-                    ai_config: {
-                      engine: form.engine,
-                      objective: form.objective,
-                      dead_time_l: form.dead_time_l,
-                      limit_min: form.limit_min,
-                      limit_max: form.limit_max,
-                    },
-                  },
-                },
-                // Saved values now come back through the roster query.
-                { onSuccess: () => setDraft({}) },
-              )
-            }
-          >
-            Salvar IA
-          </Button>
-          {updateController.error !== null ? (
-            <p role="alert" className="text-xs font-medium text-alarm-crit">
-              {updateController.error.detail}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
 
       {canControl ? (
         <div role="group" aria-label="Ciclo do otimizador" className="flex gap-2">

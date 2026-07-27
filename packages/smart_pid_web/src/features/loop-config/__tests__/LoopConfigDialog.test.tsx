@@ -304,3 +304,81 @@ describe('LoopConfigDialog — OPC-UA tag picker', () => {
     }
   });
 });
+
+describe('LoopConfigDialog — AI Optimization section', () => {
+  it('offers the three engines and the guardrail band', async () => {
+    renderDialog();
+    const engine = await screen.findByLabelText('Motor');
+    expect(within(engine).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'NONE',
+      'FUZZY',
+      'RL',
+    ]);
+    expect(screen.getByLabelText('Tempo morto L')).toBeInTheDocument();
+    expect(screen.getByLabelText('Limite mín.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Limite máx.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Velocidade do processo')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'AI Optimization' })).toBeVisible();
+  });
+
+  it('has no second save button of its own', async () => {
+    renderDialog();
+    await screen.findByLabelText('Motor');
+    expect(screen.queryByRole('button', { name: 'Salvar IA' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Salvar' })).toHaveLength(1);
+  });
+
+  it('refuses to save an inverted guardrail band', async () => {
+    renderDialog({
+      ai_config: {
+        dead_time_l: 1,
+        engine: 'FUZZY',
+        limit_max: 100,
+        limit_min: 0.1,
+        objective: 'DISTURBANCE_REJECTION',
+        rl_fallback_kd: 0.2,
+        rl_fallback_kp: 0.6,
+        rl_learning_rate: 0.0003,
+        rl_train_interval: 32,
+      },
+    });
+    fireEvent.change(await screen.findByLabelText('Limite mín.'), { target: { value: '500' } });
+    expect(await screen.findByText('Limite mínimo deve ser menor que o máximo')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('disables the AI fields for a read-only user', async () => {
+    renderDialog({}, 'user');
+    expect(await screen.findByLabelText('Motor')).toBeDisabled();
+    expect(screen.getByLabelText('Objetivo')).toBeDisabled();
+    expect(screen.getByLabelText('Velocidade do processo')).toBeDisabled();
+    expect(screen.getByLabelText('Tempo morto L')).toBeDisabled();
+    expect(screen.getByLabelText('Limite mín.')).toBeDisabled();
+    expect(screen.getByLabelText('Limite máx.')).toBeDisabled();
+  });
+
+  it('sends ai_config and process_speed in the single PATCH', async () => {
+    const { onClose } = renderDialog();
+    fireEvent.change(await screen.findByLabelText('Motor'), { target: { value: 'FUZZY' } });
+    fireEvent.change(screen.getByLabelText('Objetivo'), { target: { value: 'SP_TRACKING' } });
+    fireEvent.change(screen.getByLabelText('Velocidade do processo'), { target: { value: 'FAST' } });
+    fireEvent.change(screen.getByLabelText('Tempo morto L'), { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(fetchMock.mock.calls).toHaveLength(1);
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string) as {
+      process_speed: string;
+      ai_config: Record<string, unknown>;
+    };
+    expect(body.process_speed).toBe('FAST');
+    expect(body.ai_config).toEqual({
+      engine: 'FUZZY',
+      objective: 'SP_TRACKING',
+      dead_time_l: 4,
+      limit_min: 0.1,
+      limit_max: 100,
+    });
+  });
+});

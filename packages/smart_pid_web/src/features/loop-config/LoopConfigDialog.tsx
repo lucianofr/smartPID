@@ -12,6 +12,7 @@ import {
 import { Field, Input } from '@/components/Field';
 import { toast } from '@/components/Toast';
 import type {
+  AiConfigDto,
   ControllerResponse,
   OpcuaNode,
   ScaleConfigDto,
@@ -23,16 +24,19 @@ import {
   INTEGRAL_TYPES,
   PID_STRUCTURES,
   SHED_OPTIONS,
+  type AiEngine,
+  type ControlObjective,
   type ExecutionMode,
   type LimitsForm,
   type PidParamsForm,
+  type ProcessSpeed,
 } from './types';
 import {
   useCreateControllerMutation,
   useDeleteControllerMutation,
   useUpdateControllerMutation,
 } from './useCommands';
-import { hasErrors, validateLimits, validatePidParams } from './validation';
+import { hasErrors, validateAiConfig, validateLimits, validatePidParams } from './validation';
 import {
   NODE_ID_FIELDS,
   NodeIdField,
@@ -40,6 +44,7 @@ import {
   TagPickerDialog,
   type NodeIdKey,
 } from './TagPicker';
+import { AiConfigSection } from './AiConfigSection';
 
 /**
  * Sections the DCS owns while the loop is SUPERVISORY. Smart PID only watches
@@ -210,12 +215,21 @@ type Draft = {
   max_tuning_change_pct: number;
   low_cut: number;
   ff_gain: number;
+  process_speed: ProcessSpeed;
+  ai: {
+    engine: AiEngine;
+    objective: ControlObjective;
+    dead_time_l: number;
+    limit_min: number;
+    limit_max: number;
+  };
 };
 
 function toDraft(c: ControllerResponse): Draft {
   const pid = c.pid_params ?? { gain: 1, reset: 10, rate: 0, alpha: 0.125, deadband: 0 };
   const pv = c.pv_scale ?? { eu_min: 0, eu_max: 100, unit: '' };
   const tags = c.tag_bindings;
+  const ai = c.ai_config as Partial<AiConfigDto> | undefined;
   return {
     name: c.name,
     description: c.description ?? '',
@@ -248,6 +262,14 @@ function toDraft(c: ControllerResponse): Draft {
     max_tuning_change_pct: c.max_tuning_change_pct ?? 10,
     low_cut: c.low_cut ?? 0,
     ff_gain: c.ff_gain ?? 1,
+    process_speed: (c.process_speed as ProcessSpeed | undefined) ?? 'MEDIUM',
+    ai: {
+      engine: (ai?.engine as AiEngine | undefined) ?? 'NONE',
+      objective: (ai?.objective as ControlObjective | undefined) ?? 'DISTURBANCE_REJECTION',
+      dead_time_l: ai?.dead_time_l ?? 1,
+      limit_min: ai?.limit_min ?? 0.1,
+      limit_max: ai?.limit_max ?? 100,
+    },
   };
 }
 
@@ -272,7 +294,17 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
   const isDdc = draft.execution_mode === 'DDC';
   const pidErrors = isDdc ? validatePidParams(draft.pid) : {};
   const limitErrors = isDdc ? validateLimits(draft.limits) : {};
-  const blocked = hasErrors(pidErrors) || hasErrors(limitErrors) || draft.name.trim() === '';
+  const aiErrors = validateAiConfig({
+    engine: draft.ai.engine,
+    dead_time_l: draft.ai.dead_time_l,
+    limit_min: draft.ai.limit_min,
+    limit_max: draft.ai.limit_max,
+  });
+  const blocked =
+    hasErrors(pidErrors) ||
+    hasErrors(limitErrors) ||
+    hasErrors(aiErrors) ||
+    draft.name.trim() === '';
 
   const patchPid = (key: keyof PidParamsForm, value: number): void =>
     setDraft((p) => ({ ...p, pid: { ...p.pid, [key]: value } }));
@@ -301,6 +333,14 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
           execution_mode: draft.execution_mode,
           scan_rate_s: draft.scan_rate_s,
           tag_bindings: { ...controller.tag_bindings, ...draft.bindings },
+          process_speed: draft.process_speed,
+          ai_config: {
+            engine: draft.ai.engine,
+            objective: draft.ai.objective,
+            dead_time_l: draft.ai.dead_time_l,
+            limit_min: draft.ai.limit_min,
+            limit_max: draft.ai.limit_max,
+          },
           ...(isDdc
             ? {
                 pid_params: draft.pid,
@@ -564,6 +604,26 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
           </>
         ) : null}
 
+        {/* Not DDC-gated: these fields are what SETS the optimizer state, and
+            the optimizer runs for a SUPERVISORY loop too. */}
+        <Section label="AI Optimization">
+          <AiConfigSection
+            value={{ ...draft.ai, speed: draft.process_speed }}
+            errors={aiErrors}
+            disabled={readOnly}
+            onChange={(patch) =>
+              setDraft((p) => {
+                const { speed, ...ai } = patch;
+                return {
+                  ...p,
+                  process_speed: speed ?? p.process_speed,
+                  ai: { ...p.ai, ...ai },
+                };
+              })
+            }
+          />
+        </Section>
+
         {update.error !== null ? (
           <p role="alert" className="text-sm font-medium text-alarm-crit">
             {update.error.detail}
@@ -653,7 +713,7 @@ export function NewLoopDialog({ open, onClose, onCreated }: NewLoopDialogProps) 
         <DialogHeader>
           <DialogTitle>Nova malha</DialogTitle>
           <DialogDescription>
-            O restante da configuração fica disponível no [cfg] da malha criada.
+            O restante da configuração fica disponível em Configurar na malha criada.
           </DialogDescription>
         </DialogHeader>
 
