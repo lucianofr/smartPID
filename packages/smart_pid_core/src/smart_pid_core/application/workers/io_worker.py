@@ -48,6 +48,7 @@ class IOWorker:
         self._thread: threading.Thread | None = None
         self._last_params_read: float = 0.0
         self._cached_params: dict[int, dict] = {}  # cid -> {kp, ti, td}
+        self._last_skip_log: dict[int, float] = {}  # cid -> monotonic ts
 
     def add_controller(self, controller_id: int) -> None:
         """Register an additional controller for scanning."""
@@ -145,8 +146,20 @@ class IOWorker:
                             **self._cached_params.get(cid, {}),
                         })
                         pub.send(topic, payload)
-                    except (KeyError, ConnectionError):
-                        pass
+                    except (KeyError, ConnectionError) as exc:
+                        # These are *expected* transiently (controller not yet
+                        # registered, link still coming up) but a permanent one
+                        # silently freezes telemetry forever, which is
+                        # indistinguishable from a dead process. Log the first
+                        # occurrence per controller and then every 60s.
+                        now = time.monotonic()
+                        last = self._last_skip_log.get(cid, 0.0)
+                        if now - last >= 60.0:
+                            self._last_skip_log[cid] = now
+                            logger.warning(
+                                "io_worker_telemetry_skipped controller_id=%s %s: %s",
+                                cid, type(exc).__name__, exc,
+                            )
                     except Exception:
                         logger.exception(
                             "io_worker_read_error controller_id=%s", cid,

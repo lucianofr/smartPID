@@ -208,25 +208,33 @@ def register_realtime_ws(app: FastAPI) -> None:
         await websocket.accept()
 
         # First-message auth: first frame MUST be {"type":"auth","token":"<JWT>"}.
+        async def _reject() -> None:
+            # The peer may already be gone (it hung up, or we raced a close).
+            # Calling close() twice raises "Unexpected ASGI message
+            # 'websocket.close'" and buries the real reason in a traceback.
+            if websocket.application_state is WebSocketState.CONNECTED:
+                with contextlib.suppress(RuntimeError):
+                    await websocket.close(code=_WS_CLOSE_AUTH)
+
         try:
             first = await websocket.receive_json()
         except (WebSocketDisconnect, ValueError):
-            await websocket.close(code=_WS_CLOSE_AUTH)
+            await _reject()
             return
 
         token = first.get("token") if isinstance(first, dict) else None
         if first.get("type") != "auth" or not token or not _origin_allowed(origin, allowed):
-            await websocket.close(code=_WS_CLOSE_AUTH)
+            await _reject()
             return
         try:
             payload = decode_access_token(token, secret=settings.jwt_secret)
         except Exception:  # noqa: BLE001 — any JWT error => reject
-            await websocket.close(code=_WS_CLOSE_AUTH)
+            await _reject()
             return
         if payload.get("role") not in _VALID_ROLES:
             # Legacy vocabulary ("ADMIN"/"SUPERVISOR"/"OPERATOR") => forced
             # re-login (spec §9.5) — REST and WS cut over together.
-            await websocket.close(code=_WS_CLOSE_AUTH)
+            await _reject()
             return
 
         await websocket.send_json({"type": "auth_ok"})

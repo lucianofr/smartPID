@@ -25,7 +25,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
-      '/ws': { target: 'http://127.0.0.1:8000', ws: true, changeOrigin: true },
+      // NO changeOrigin here: the backend authorises the WebSocket upgrade
+      // against the browser's Origin (allowed_ws_origins). Rewriting it to the
+      // proxy target makes every dev-server socket fail auth with close 4401.
+      '/ws': { target: 'http://127.0.0.1:8000', ws: true },
     },
   },
 });
