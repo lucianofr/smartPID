@@ -231,7 +231,13 @@ class IOWorker:
                 )
 
     def _drain_and_write_bkcal(self, action_sub) -> None:
-        """Drain ACTION.CTRL.* messages from bus and write BKCAL_OUT to OPC-UA."""
+        """Drain ACTION.CTRL.* and push the control action back to the DCS.
+
+        For a DDC loop SmartPID owns the algorithm, so the computed CO MUST be
+        written to the output node — without this the daemon computes an output
+        it never applies and the loop does not actually control. SUPERVISORY
+        loops are skipped: the DCS runs their PID and a CO write would fight it.
+        """
         while True:
             msg = action_sub.recv(timeout_ms=0)
             if msg is None:
@@ -240,10 +246,23 @@ class IOWorker:
             try:
                 data = msgpack.unpackb(payload)
                 cid = data["controller_id"]
+                if str(data.get("execution_mode", "")).upper().endswith("DDC"):
+                    co = data.get("co", {})
+                    co_val = float(co["value"]) if isinstance(co, dict) else float(co)
+                    self._opcua.write_output(cid, co_val)
                 bkcal_out = self._deserialize_bkcal_out(data)
                 self._opcua.write_bkcal_out(cid, bkcal_out)
-            except (KeyError, ConnectionError):
-                pass
+            except (KeyError, ConnectionError) as exc:
+                # Same trap as the telemetry path: a permanent failure here
+                # means the loop silently stops actuating. Log it, throttled.
+                now = time.monotonic()
+                key = -int(data.get("controller_id", 0)) if isinstance(data, dict) else -1
+                if now - self._last_skip_log.get(key, 0.0) >= 60.0:
+                    self._last_skip_log[key] = now
+                    logger.warning(
+                        "io_worker_control_write_skipped %s: %s",
+                        type(exc).__name__, exc,
+                    )
             except Exception:
                 logger.exception("io_worker_bkcal_write_error")
 
