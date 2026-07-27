@@ -71,18 +71,18 @@ export function useMultiTrendModel(): MultiTrendModel {
   const [revision, setRevision] = useState(0);
 
   const buffers = useRef(new Map<number, WindowBuffer>());
-  // The subscription is registered once per `status` identity; slot/pause state
-  // is read through refs so a selection change never drops a frame.
+  // The subscription is registered once (the relay identity is stable); slot
+  // and pause state are read through refs so a selection change never drops a frame.
   const slotsRef = useRef(slots);
   slotsRef.current = slots;
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
-  const status = useRealtime<StatusData>(null, 'status');
+  const { subscribe } = useRealtime<StatusData>(null, 'status');
 
   useEffect(
     () =>
-      status.subscribe((env) => {
+      subscribe((env) => {
         if (pausedRef.current) return;
         const loopId = env.loop_id;
         if (loopId === null) return;
@@ -102,7 +102,7 @@ export function useMultiTrendModel(): MultiTrendModel {
           setRevision((r) => r + 1);
         }
       }),
-    [status],
+    [subscribe],
   );
 
   const assign = useCallback((slot: number, controller: { id: number }) => {

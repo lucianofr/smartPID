@@ -76,7 +76,7 @@ export function useAlarmCounts(): AlarmCounts {
     queryKey: queryKeys.alarmsActive,
     queryFn: () => endpoints.activeAlarms(),
   });
-  const alarms = useRealtime<AlarmEventData>(null, 'alarm');
+  const { subscribe } = useRealtime<AlarmEventData>(null, 'alarm');
   const [points, setPoints] = useState<ReadonlyMap<string, AlarmPoint>>(() => new Map());
   const [lastEvent, setLastEvent] = useState<AlarmEventData | null>(null);
 
@@ -86,7 +86,7 @@ export function useAlarmCounts(): AlarmCounts {
 
   useEffect(
     () =>
-      alarms.subscribe((env) => {
+      subscribe((env) => {
         const event = env.data;
         setLastEvent(event);
         setPoints((prev) => {
@@ -100,7 +100,7 @@ export function useAlarmCounts(): AlarmCounts {
           return next;
         });
       }),
-    [alarms],
+    [subscribe],
   );
 
   return useMemo(() => {

@@ -28,6 +28,14 @@ export interface RealtimeContextValue {
   /** Live render allowed — resync (§7) has completed. */
   live: boolean;
   subscribe(type: RealtimeType, handler: Handler): () => void;
+  /**
+   * Push the cached last frame of `type` (one per loop) into `handler`, the
+   * same §7 late-subscriber guarantee `subscribe` gives. Exposed separately so
+   * a relay registered *after* its owning `subscribe` call — which is every
+   * consumer of `useRealtime().subscribe`, since React runs the hook's own
+   * effect first — can still be handed the frames it missed.
+   */
+  replay(type: RealtimeType, handler: Handler): void;
   lastSeenTs(type: RealtimeType): number | null;
 }
 
@@ -76,6 +84,10 @@ export function RealtimeProvider({ token, resync, onAuthExpired, children }: Rea
     return () => {
       set.delete(handler);
     };
+  }, []);
+
+  const replay = useCallback((type: RealtimeType, handler: Handler) => {
+    frames.current.replay(type, handler);
   }, []);
 
   const lastSeenTs = useCallback(
@@ -206,9 +218,10 @@ export function RealtimeProvider({ token, resync, onAuthExpired, children }: Rea
       connected: phase === 'live' || phase === 'resyncing',
       live: phase === 'live',
       subscribe,
+      replay,
       lastSeenTs,
     }),
-    [phase, subscribe, lastSeenTs],
+    [phase, subscribe, replay, lastSeenTs],
   );
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;
 }

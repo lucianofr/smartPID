@@ -35,8 +35,8 @@ export function useTrendWindow(
   maxSeconds: number,
   pxWidth: number,
 ): TrendWindow {
-  const status = useRealtime<StatusData>(controllerId, 'status');
-  const ai = useRealtime<AiData>(controllerId, 'ai');
+  const { subscribe: subscribeStatus } = useRealtime<StatusData>(controllerId, 'status');
+  const { subscribe: subscribeAi } = useRealtime<AiData>(controllerId, 'ai');
   const bufferRef = useRef<WindowBuffer | null>(null);
   const [, setRevision] = useState(0);
   const [aiTicks, setAiTicks] = useState<number[]>([]);
@@ -61,7 +61,7 @@ export function useTrendWindow(
 
   useEffect(
     () =>
-      status.subscribe((env) => {
+      subscribeStatus((env) => {
         const t = statusTimestampToEpoch(env.data.timestamp) ?? env.ts;
         const pushed = bufferRef.current?.push(t, [
           env.data.pv.value,
@@ -70,16 +70,16 @@ export function useTrendWindow(
         ]);
         if (pushed === true) setRevision((r) => r + 1);
       }),
-    [status],
+    [subscribeStatus],
   );
 
   useEffect(
     () =>
-      ai.subscribe((env) => {
+      subscribeAi((env) => {
         const t = statusTimestampToEpoch(env.data.timestamp) ?? env.ts;
         setAiTicks((prev) => [...prev, t]);
       }),
-    [ai],
+    [subscribeAi],
   );
 
   const buffer = bufferRef.current;

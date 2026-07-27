@@ -47,12 +47,12 @@ export const DEFAULT_ALARM_FILTERS: AlarmFilters = {
 /** Refetch the authoritative list when the wire says something changed. */
 function useAlarmRealtimeSync(): void {
   const queryClient = useQueryClient();
-  const alarms = useRealtime<AlarmEventData>(null, 'alarm');
+  const { subscribe } = useRealtime<AlarmEventData>(null, 'alarm');
   const pending = useRef<number | undefined>(undefined);
 
-  // Unmount-only: the subscribe effect below re-runs on every frame (the hook
-  // result is re-memoised per envelope), and clearing there would starve the
-  // coalescing window forever under a sustained flood.
+  // Unmount-only: the relay identity is stable, but clearing the timer inside
+  // the subscribe effect would still starve the coalescing window whenever
+  // that effect re-ran, and the pending refetch must outlive a re-registration.
   useEffect(
     () => () => {
       window.clearTimeout(pending.current);
@@ -63,14 +63,14 @@ function useAlarmRealtimeSync(): void {
 
   useEffect(
     () =>
-      alarms.subscribe(() => {
+      subscribe(() => {
         if (pending.current !== undefined) return;
         pending.current = window.setTimeout(() => {
           pending.current = undefined;
           void queryClient.invalidateQueries({ queryKey: queryKeys.alarmsActive });
         }, REFETCH_COALESCE_MS);
       }),
-    [alarms, queryClient],
+    [subscribe, queryClient],
   );
 }
 

@@ -104,17 +104,17 @@ export function useStats(): UseStatsResult {
 
 /** Latest STATS payload per loop, replaced in place as frames arrive. */
 function useRealtimeStats(): ReadonlyMap<number, StatsData> {
-  const stream = useRealtime<StatsData>(null, 'stats');
+  const { subscribe } = useRealtime<StatsData>(null, 'stats');
   const [live, setLive] = useState<ReadonlyMap<number, StatsData>>(() => new Map());
 
   useEffect(
     () =>
-      stream.subscribe((env) => {
+      subscribe((env) => {
         const loopId = env.loop_id;
         if (loopId === null) return;
         setLive((prev) => new Map(prev).set(loopId, env.data));
       }),
-    [stream],
+    [subscribe],
   );
 
   return live;
