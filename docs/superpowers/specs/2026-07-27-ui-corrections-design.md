@@ -258,8 +258,17 @@ which is today's behaviour.
 `AppShell`: the wordmark `NavLink` target changes from `/executive` to `/`. With a visible nav entry
 the wordmark link is redundant, and pointing the brand at the landing route is the convention.
 
-The nav container is already `overflow-x-auto`; the 320 px floor must be re-verified (§11) because
-a fifth item was added and commit `bab300a` fixed a 4 px header overflow at that width.
+**320 px floor — measured, not deferred.** At 320 px the nav is already a horizontal scroller today:
+`clientWidth` 61 px against `scrollWidth` 188 px (4 links × 44 px + 3 gaps × 4 px), while
+`header.scrollWidth === header.clientWidth === 320` and page `scrollWidth - clientWidth === 0`. Flex
+shrinks every link to its `min-w-11` (44 px) touch floor, and `overflow-x-auto` absorbs the rest. A
+fifth link takes `scrollWidth` to 236 px inside the same 61 px window — **structurally identical, no
+page overflow introduced.** The `bab300a` regression is not reachable this way, because the nav, not
+the header, is what gives.
+
+Observation, deliberately not fixed here: a 61 px window onto a 188 px strip is a poor nav at 320 px.
+That is pre-existing and orthogonal to this work. E2E-049 only requires no horizontal page overflow
+at 320 px, which holds before and after.
 
 ## 9. Change 6 — Trends: persisted selection and titled cells
 
@@ -390,7 +399,8 @@ Ordered. Each step must pass before the next.
    produced false "dead control" reports.
 4. CDP measurement sweep for §4.4: 16 combinations (4 viewports × 2 roles × banner on/off),
    asserting `scrollHeight === clientHeight` on the rail and no page-level vertical scrollbar.
-5. Header horizontal-overflow check at 320 px width with the fifth nav item (§8).
+5. Re-confirm §8 after the fifth nav item lands: nav `scrollWidth` should read 236 px at a 320 px
+   viewport, with page `scrollWidth - clientWidth` still 0. Any non-zero page overflow is a failure.
 6. Manual re-run of the four affected `TEST_E2E.md` procedures with fresh evidence PNGs.
 7. Full backend suite is **not** re-run: this work touches no Python. Frontend-only.
 
