@@ -81,7 +81,11 @@ export function AppShell({ children }: AppShellProps) {
         <NavLink
           to="/executive"
           className={cn(
-            'type-display shrink-0 rounded-control px-1 text-sm uppercase tracking-widest text-text',
+            // min-w-0 + truncate: at the §6.9 320px floor the wordmark, nav and
+            // action cluster together exceed the viewport and the page gained a
+            // horizontal scrollbar. The brand is the only element here that can
+            // give way — nav already scrolls and the actions are load-bearing.
+            'type-display min-w-0 shrink truncate rounded-control px-1 text-sm uppercase tracking-widest text-text',
             'outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
           )}
         >
