@@ -24,8 +24,12 @@ export const HISTORY_UNITS: readonly HistoryUnit[] = ['segundo', 'minuto', 'hora
 const UNIT_SECONDS: Record<HistoryUnit, number> = { segundo: 1, minuto: 60, hora: 3600 };
 const SECONDS_PER_HOUR = 3600;
 
-/** Row cap: ~1 Hz over 24 h, well past any window the form can request. */
-export const HISTORY_LIMIT = 100_000;
+/**
+ * Row cap. MUST NOT exceed the backend's `le=10000` on GET /history/{id}
+ * (history.py); a larger value is rejected with 422 and the window never
+ * loads. At 1 Hz this still covers ~2.7 h, past every window the form offers.
+ */
+export const HISTORY_LIMIT = 10_000;
 
 export interface HistoryWindow {
   controllerId: number;
