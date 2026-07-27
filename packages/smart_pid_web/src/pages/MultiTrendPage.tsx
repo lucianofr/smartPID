@@ -11,7 +11,7 @@ import { StatsPanel } from '@/features/multitrend/StatsPanel';
 import { createTimeSync } from '@/features/multitrend/timeSync';
 import { exportRange, useHistory, type HistoryWindow } from '@/features/multitrend/useHistory';
 import { useMultiTrendModel } from '@/features/multitrend/useMultiTrendModel';
-import { useStats } from '@/features/multitrend/useStats';
+import { useStats, type UseStatsResult } from '@/features/multitrend/useStats';
 
 /**
  * Multi-trend workspace (§6.8).
@@ -23,9 +23,23 @@ import { useStats } from '@/features/multitrend/useStats';
  * and nothing to score.
  */
 
+/**
+ * Roster the model may safely reconcile a persisted layout against (§9.2).
+ *
+ * `null` while pending OR errored: a fetch error must never read as "every
+ * loop is gone" — that would permanently wipe an operator's saved trend
+ * layout for a transient backend hiccup, not an actual roster change. Only a
+ * genuinely resolved, successful roster reconciles.
+ */
+export function reconcilableRoster(
+  stats: Pick<UseStatsResult, 'isPending' | 'isError' | 'loops'>,
+): readonly number[] | null {
+  return stats.isPending || stats.isError ? null : stats.loops;
+}
+
 export function MultiTrendPage() {
   const stats = useStats();
-  const model = useMultiTrendModel(stats.isPending ? null : stats.loops);
+  const model = useMultiTrendModel(reconcilableRoster(stats));
   /** One shared x-range for every occupied cell, for the page's lifetime. */
   const sync = useMemo(() => createTimeSync(), []);
   const [loaded, setLoaded] = useState<HistoryWindow | null>(null);
