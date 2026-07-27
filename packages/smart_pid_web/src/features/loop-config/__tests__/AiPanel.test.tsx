@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { endpoints } from '@/api/endpoints';
 import { queryKeys } from '@/api/queryKeys';
-import type { Role } from '@/api/types';
+import type { AiStatus, Role } from '@/api/types';
 import type { AiData, RealtimeEnvelope } from '@/lib/envelope';
 import { makeController } from '@/test/fixtures';
 import { createFakeRealtime, createQueryClient, TestProviders } from '@/test/providers';
@@ -49,8 +49,26 @@ function aiEvent(seq: number, overrides: Partial<AiData> = {}): RealtimeEnvelope
   };
 }
 
+/** Backend default: an engine configured but never started. */
+const aiStatus = (overrides: Partial<AiStatus> = {}): AiStatus => ({
+  controller_id: 5,
+  engine: 'FUZZY',
+  objective: 'SP_TRACKING',
+  speed: 'MEDIUM',
+  current_ki: 0.03,
+  last_gamma: null,
+  enabled: false,
+  paused: false,
+  ...overrides,
+});
+
 function renderAi(
-  options: { role?: Role; recommendation?: TuningRecommendation; engine?: string } = {},
+  options: {
+    role?: Role;
+    recommendation?: TuningRecommendation;
+    engine?: string;
+    status?: Partial<AiStatus>;
+  } = {},
 ) {
   const role = options.role ?? 'admin';
   sessionStorage.setItem('smart-pid-token', 'jwt');
@@ -59,15 +77,7 @@ function renderAi(
   controller.ai_config = { ...controller.ai_config, engine: options.engine ?? 'FUZZY' };
   const queryClient = createQueryClient();
   queryClient.setQueryData(queryKeys.controllers, [controller]);
-  queryClient.setQueryData(queryKeys.aiStatus(5), {
-    controller_id: 5,
-    engine: 'FUZZY',
-    objective: 'SP_TRACKING',
-    speed: 'MEDIUM',
-    current_ki: 0.03,
-    last_gamma: null,
-    enabled: false,
-  });
+  queryClient.setQueryData(queryKeys.aiStatus(5), { ...aiStatus(), ...options.status });
   if (options.recommendation !== undefined) {
     queryClient.setQueryData(tuningRecommendationKey(5), options.recommendation);
   }
@@ -125,6 +135,55 @@ describe('AiPanel', () => {
 
     // AUTO/MAN is a separate concern: no mode command may ride along.
     expect(postedPaths().some((p) => p.includes('/commands/mode'))).toBe(false);
+  });
+
+  // E2E-022. `enabled` alone cannot express three states: a paused engine is
+  // still `enabled`, so `enabled ? RUN : STOP` reports PAUSE as RUN.
+  it.each([
+    { enabled: false, paused: false, state: 'STOP' },
+    { enabled: false, paused: true, state: 'STOP' },
+    { enabled: true, paused: false, state: 'RUN' },
+    { enabled: true, paused: true, state: 'PAUSE' },
+  ])('reads $state from enabled=$enabled paused=$paused', async ({ enabled, paused, state }) => {
+    renderAi({ status: { enabled, paused } });
+    const badge = await screen.findByTestId('ai-lifecycle');
+    expect(badge).toHaveAttribute('data-state', state);
+    // Text, not colour: the code itself must be legible in the header.
+    expect(badge).toHaveTextContent(state);
+    for (const other of ['RUN', 'PAUSE', 'STOP'].filter((s) => s !== state)) {
+      expect(badge).not.toHaveTextContent(other);
+    }
+  });
+
+  it('announces the paused hold in pt-BR, not by tone alone', async () => {
+    renderAi({ status: { enabled: true, paused: true } });
+    const badge = await screen.findByTestId('ai-lifecycle');
+    expect(badge).toHaveAttribute('role', 'status');
+    expect(badge).toHaveTextContent('otimizador pausado');
+  });
+
+  it('flips RUN → PAUSE once the status refetch lands after Pause', async () => {
+    renderAi({ status: { enabled: true, paused: false } });
+    expect(await screen.findByTestId('ai-lifecycle')).toHaveAttribute('data-state', 'RUN');
+
+    // The refetch `useAiAction` triggers is the only channel the state travels on.
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const body =
+        (init?.method ?? 'GET') === 'GET' && String(input).endsWith('/ai/status')
+          ? aiStatus({ enabled: true, paused: true })
+          : { ok: true };
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('ai-lifecycle')).toHaveAttribute('data-state', 'PAUSE'),
+    );
   });
 
   it('keeps Apply tuning inert until a recommendation is pending', async () => {

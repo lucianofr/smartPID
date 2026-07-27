@@ -2,10 +2,11 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/api/queryKeys';
 import { useCan } from '@/auth/useCan';
+import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Field, Input } from '@/components/Field';
 import { toast } from '@/components/Toast';
-import type { AiConfigDto } from '@/api/types';
+import type { AiConfigDto, AiStatus } from '@/api/types';
 import type { AiData } from '@/lib/envelope';
 import { cn } from '@/lib/utils';
 import { useRealtime } from '@/realtime/useRealtime';
@@ -40,6 +41,28 @@ const AI_ACTIONS: readonly { action: AiAction; label: string }[] = [
   { action: 'pause', label: 'Pause' },
   { action: 'stop', label: 'Stop' },
 ];
+
+/**
+ * The optimizer has THREE states but the DTO carries two booleans, so a naive
+ * `enabled ? RUN : STOP` reports a paused engine as running. `paused` is only
+ * meaningful while `enabled`; a status we cannot read at all is not a running
+ * optimizer, so it reads STOP.
+ *
+ * Tone is the second channel, never the first: the code itself is the state
+ * (§8.2 — colour never alone), mirrored on `data-state` for the e2e gate.
+ */
+export type AiLifecycle = 'RUN' | 'PAUSE' | 'STOP';
+
+const AI_LIFECYCLE: Record<AiLifecycle, { tone: 'accent' | 'warn' | 'neutral'; label: string }> = {
+  RUN: { tone: 'accent', label: 'otimizador em execução' },
+  PAUSE: { tone: 'warn', label: 'otimizador pausado' },
+  STOP: { tone: 'neutral', label: 'otimizador parado' },
+};
+
+export function aiLifecycle(status: AiStatus | undefined): AiLifecycle {
+  if (status === undefined || !status.enabled) return 'STOP';
+  return status.paused ? 'PAUSE' : 'RUN';
+}
 
 const SELECT_CLASS = cn(
   'numeric min-h-11 w-full rounded-control border border-rule-strong bg-surface-sunk px-2 py-1',
@@ -144,6 +167,9 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
   const engine = live?.engine ?? status.data?.engine ?? '—';
   const ki = live?.new_ki ?? status.data?.current_ki ?? null;
   const gamma = live?.gamma ?? status.data?.last_gamma ?? null;
+  // Lifecycle comes from /ai/status only: LOG.AI events carry no run state, so
+  // a stale event must never keep the badge reading RUN after a Stop.
+  const lifecycle = aiLifecycle(status.data);
 
   return (
     <section
@@ -151,13 +177,25 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
       data-testid="ai-panel"
       className="flex flex-col gap-2 border-t border-rule pt-3"
     >
-      <header className="flex items-baseline justify-between gap-2">
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-2xs font-medium uppercase tracking-wider text-text-soft">
           Otimização IA
         </h3>
-        <span className="numeric text-2xs text-text-soft">
-          {engine} · Ki {ki ?? '—'} · γ {gamma ?? '—'}
-        </span>
+        <div className="flex items-baseline gap-2">
+          <Badge
+            tone={AI_LIFECYCLE[lifecycle].tone}
+            role="status"
+            aria-live="polite"
+            data-testid="ai-lifecycle"
+            data-state={lifecycle}
+          >
+            {lifecycle}
+            <span className="sr-only">{` — ${AI_LIFECYCLE[lifecycle].label}`}</span>
+          </Badge>
+          <span className="numeric text-2xs text-text-soft">
+            {engine} · Ki {ki ?? '—'} · γ {gamma ?? '—'}
+          </span>
+        </div>
       </header>
 
       {canTune ? (
