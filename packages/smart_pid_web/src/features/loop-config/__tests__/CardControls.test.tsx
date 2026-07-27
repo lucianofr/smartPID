@@ -116,3 +116,61 @@ describe('CardControls', () => {
     expect(denied.container.querySelector('[data-testid="card-controls"]')).toBeNull();
   });
 });
+
+/**
+ * §9 makes `user` the OPERATOR role, and the backend agrees — it answers 200 to
+ * mode/setpoint/output from an `operador` token. The suite above drives every
+ * write as `admin` and the one `user` test only asserts the controls RENDER, so
+ * a capability regression that left the buttons on screen but stopped the wire
+ * would pass it. These drive the writes as `user` and assert the call.
+ */
+describe('CardControls — the user role commands the loop', () => {
+  it('writes a setpoint', async () => {
+    const setpoint = vi.spyOn(endpoints, 'setSetpoint').mockResolvedValue({ ok: true });
+    renderControls({}, 'user');
+
+    fireEvent.change(await screen.findByRole('spinbutton', { name: 'Setpoint' }), {
+      target: { value: '57' },
+    });
+    const button = screen.getByRole('button', { name: 'Set setpoint' });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+
+    await waitFor(() => expect(setpoint).toHaveBeenCalledWith(5, 57));
+  });
+
+  it('writes a block mode', async () => {
+    const setMode = vi.spyOn(endpoints, 'setMode').mockResolvedValue({ ok: true });
+    renderControls({}, 'user');
+
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Mode' }), {
+      target: { value: 'MAN' },
+    });
+
+    await waitFor(() => expect(setMode).toHaveBeenCalledWith(5, 'MAN'));
+  });
+
+  it('writes a manual output in MAN', async () => {
+    const setOutput = vi.spyOn(endpoints, 'setOutput').mockResolvedValue({ ok: true });
+    renderControls({ mode: 'MAN' }, 'user');
+
+    const button = await screen.findByRole('button', { name: 'Set output' });
+    expect(button).toBeEnabled();
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Saída' }), {
+      target: { value: '12' },
+    });
+    fireEvent.click(button);
+
+    await waitFor(() => expect(setOutput).toHaveBeenCalledWith(5, 12));
+  });
+
+  it('disables Set setpoint only while the box is empty, not because of the role', async () => {
+    renderControls({}, 'user');
+    const input = await screen.findByRole('spinbutton', { name: 'Setpoint' });
+    // The reported "user cannot set SP" symptom is this empty-input guard.
+    expect(screen.getByRole('button', { name: 'Set setpoint' })).toBeDisabled();
+
+    fireEvent.change(input, { target: { value: '40' } });
+    expect(screen.getByRole('button', { name: 'Set setpoint' })).toBeEnabled();
+  });
+});

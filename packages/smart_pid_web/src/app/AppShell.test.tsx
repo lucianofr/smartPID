@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { endpoints } from '@/api/endpoints';
+import type { Role } from '@/api/types';
 import { TestProviders } from '@/test/providers';
 import { AppShell } from './AppShell';
 import { appRoutes, cfgRoutes, commandRoutes, navRoutes } from './routes';
@@ -12,6 +14,24 @@ function renderShell() {
       </AppShell>
     </TestProviders>,
   );
+}
+
+/**
+ * Same shell with a resolved session role. `AuthProvider` derives every
+ * capability from `GET /auth/me`, so the role has to arrive that way — seeding
+ * the token alone leaves `user` null, which is the deny-everything case.
+ */
+function renderShellAs(role: Role) {
+  sessionStorage.setItem('smart-pid-token', 'jwt');
+  vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
+  vi.spyOn(endpoints, 'projectList').mockResolvedValue({ projects: [] });
+  return renderShell();
+}
+
+/** Radix opens on pointerdown/keyboard, never on a synthetic click. */
+async function openCfgMenu() {
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Configurações' }), { key: 'Enter' });
+  return screen.findByRole('menu');
 }
 
 beforeEach(() => {
@@ -96,5 +116,64 @@ describe('AppShell', () => {
       expect(document.documentElement.getAttribute('data-theme')).toBe('phosphor'),
     );
     expect(localStorage.getItem('spid.theme')).toBe('phosphor');
+  });
+});
+
+/**
+ * The `[cfg]` menu is the ONLY route to the theme picker, so "hide the admin
+ * entries" must never degrade into "the menu does not open". Every assertion
+ * here is pinned to the `user` role on purpose: the suite above renders with no
+ * session at all, and `admin` sees a different menu — neither would notice a
+ * regression that strands a real operator with no way to change theme.
+ */
+describe('AppShell — [cfg] menu role gating', () => {
+  it('opens for a user and offers every theme, with no Administração section', async () => {
+    renderShellAs('user');
+    // Wait for /auth/me: before it resolves the role is null and the menu is
+    // indistinguishable from the deny case.
+    await waitFor(() => expect(endpoints.me).toHaveBeenCalled());
+
+    const trigger = screen.getByRole('button', { name: 'Configurações' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    const menu = await openCfgMenu();
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    expect(within(menu).getByText('Tema')).toBeVisible();
+    expect(within(menu).getAllByRole('menuitemradio').map((i) => i.textContent)).toEqual([
+      'Recorder',
+      'Phosphor',
+      'ISA-101',
+    ]);
+
+    expect(within(menu).queryByText('Administração')).not.toBeInTheDocument();
+    for (const label of ['Projects', 'Settings', 'Connection', 'Users']) {
+      expect(within(menu).queryByRole('menuitem', { name: label })).not.toBeInTheDocument();
+    }
+  });
+
+  it('lets a user actually apply a theme through that menu', async () => {
+    renderShellAs('user');
+    await waitFor(() => expect(endpoints.me).toHaveBeenCalled());
+
+    const menu = await openCfgMenu();
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'ISA-101' }));
+
+    await waitFor(() =>
+      expect(document.documentElement.getAttribute('data-theme')).toBe('isa101'),
+    );
+    expect(localStorage.getItem('spid.theme')).toBe('isa101');
+  });
+
+  it('keeps the admin section for an admin', async () => {
+    renderShellAs('admin');
+    await waitFor(() => expect(endpoints.me).toHaveBeenCalled());
+
+    const menu = await openCfgMenu();
+    await within(menu).findByText('Administração');
+    expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(3);
+    for (const label of ['Projects', 'Settings', 'Connection', 'Users']) {
+      expect(within(menu).getByRole('menuitem', { name: label })).toBeVisible();
+    }
   });
 });

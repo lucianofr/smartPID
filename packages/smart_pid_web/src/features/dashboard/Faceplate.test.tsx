@@ -142,3 +142,44 @@ describe('Faceplate', () => {
     );
   });
 });
+
+/**
+ * `posts the mode command…` above runs as admin, and the user-role test beside
+ * it only asserts the buttons are VISIBLE. An enabled AUTO/MAN pair that no
+ * longer reaches the wire for an operator would satisfy both. This does not.
+ */
+describe('Faceplate — the user role commands the loop', () => {
+  it('posts AUTO and MAN from the mode buttons', async () => {
+    const setMode = vi.spyOn(endpoints, 'setMode').mockResolvedValue({ ok: true });
+    renderFaceplate('user');
+
+    const auto = await screen.findByRole('button', { name: 'AUTO' });
+    expect(auto).toBeEnabled();
+    fireEvent.click(auto);
+    await waitFor(() => expect(setMode).toHaveBeenCalledWith(5, 'AUTO'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'MAN' }));
+    await waitFor(() => expect(setMode).toHaveBeenCalledWith(5, 'MAN'));
+  });
+
+  it('posts the typed setpoint and the manual output', async () => {
+    const setSetpoint = vi.spyOn(endpoints, 'setSetpoint').mockResolvedValue({ ok: true });
+    const setOutput = vi.spyOn(endpoints, 'setOutput').mockResolvedValue({ ok: true });
+    const { realtime } = renderFaceplate('user');
+
+    fireEvent.change(await screen.findByLabelText('Setpoint'), { target: { value: '57' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Set setpoint' }));
+    await waitFor(() => expect(setSetpoint).toHaveBeenCalledWith(5, 57));
+
+    act(() => {
+      realtime.emit(statusEnvelope(5, 1, { mode: 'MAN' }));
+    });
+    const output = screen.getByRole('button', { name: 'Set output' });
+    await waitFor(() => expect(output).toBeEnabled());
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Saída' }), {
+      target: { value: '12' },
+    });
+    fireEvent.click(output);
+    await waitFor(() => expect(setOutput).toHaveBeenCalledWith(5, 12));
+  });
+});
