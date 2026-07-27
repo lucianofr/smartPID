@@ -1284,6 +1284,11 @@ export interface components {
             /** Last Gamma */
             last_gamma?: number | null;
             objective: components["schemas"]["ControlObjective"];
+            /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
             speed: components["schemas"]["ProcessSpeed"];
         };
         /** AITuningLogEntry */

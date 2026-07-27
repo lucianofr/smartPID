@@ -43,6 +43,9 @@ class AIStatusResponse(BaseModel):
     current_ki: float
     last_gamma: float | None = None
     enabled: bool = True
+    # Distinguishes RUN from PAUSE: `enabled` alone cannot express the
+    # three-state RUN/PAUSE/STOP lifecycle the HMI drives.
+    paused: bool = False
 
 
 class AIConfigUpdateRequest(BaseModel):

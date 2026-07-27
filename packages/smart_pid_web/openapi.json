@@ -115,6 +115,11 @@
           "objective": {
             "$ref": "#/components/schemas/ControlObjective"
           },
+          "paused": {
+            "default": false,
+            "title": "Paused",
+            "type": "boolean"
+          },
           "speed": {
             "$ref": "#/components/schemas/ProcessSpeed"
           }

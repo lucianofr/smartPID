@@ -71,6 +71,7 @@ class AIWorker:
         # Master optimizer enable (ENABLE_OPTIMIZER). Seeded from the persisted
         # per-loop flag and toggled at runtime via CMD.AI start/stop.
         self._enabled = controller.optimization_enabled
+        self._paused = False
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -141,6 +142,15 @@ class AIWorker:
     def is_enabled(self) -> bool:
         return self._enabled
 
+    @property
+    def is_paused(self) -> bool:
+        """Paused holds the optimizer off without discarding its state.
+
+        Distinct from stopped: `stop` disables the optimizer, `pause` suspends
+        it so `start` resumes from the same tuning rather than re-learning.
+        """
+        return self._paused
+
     def set_enabled(self, enabled: bool) -> None:
         """Toggle the optimizer enable flag directly (thread-safe via GIL).
 
@@ -156,6 +166,15 @@ class AIWorker:
     def update_tss(self, tss_s: float) -> None:
         """Hot-reload AI period when TSS changes. Thread-safe via GIL."""
         self._ai_period_s = 3.0 * tss_s
+
+    def set_paused(self, paused: bool) -> None:
+        """Set the pause hold directly, mirroring `set_enabled`.
+
+        The REST handlers publish CMD.AI *and* call this: a per-request
+        publisher that is closed immediately can lose its first message to the
+        ZeroMQ slow-joiner race, which made pause/resume non-deterministic.
+        """
+        self._paused = paused
 
     def _is_auto_mode(self) -> bool:
         """Return True if the last known controller mode allows AI tuning."""
@@ -200,8 +219,8 @@ class AIWorker:
 
                 next_run = now + self._ai_period_s
 
-                # Skip if disabled via CMD.AI stop
-                if not self._enabled:
+                # Skip if disabled via CMD.AI stop, or held by CMD.AI pause
+                if not self._enabled or self._paused:
                     continue
 
                 # Only compute if we have telemetry AND mode is automatic
@@ -348,9 +367,16 @@ class AIWorker:
                 action = data.get("action", "")
                 if action == "start":
                     self._enabled = True
+                    self._paused = False
                     logger.info("ai_worker_enabled cid=%d", self.controller_id)
+                elif action == "pause":
+                    # Previously unhandled: the router published this and
+                    # returned 200, but the optimizer kept running.
+                    self._paused = True
+                    logger.info("ai_worker_paused cid=%d", self.controller_id)
                 elif action == "stop":
                     self._enabled = False
+                    self._paused = False
                     logger.info("ai_worker_disabled cid=%d", self.controller_id)
             except Exception:
                 pass

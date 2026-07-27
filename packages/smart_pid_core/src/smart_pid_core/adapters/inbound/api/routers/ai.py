@@ -68,10 +68,15 @@ async def get_ai_status(
         )
     return AIStatusResponse(
         controller_id=controller_id,
+        # `engine` is required on AIStatusResponse and was never passed, so
+        # this endpoint raised a Pydantic ValidationError -> 500 on every call
+        # and the HMI could never show AI state.
+        engine=worker._ai_config.engine,
         objective=worker._ai_config.objective,
         speed=worker._controller.process_speed,
         current_ki=worker._ki_current,
         enabled=worker.is_enabled,
+        paused=worker.is_paused,
     )
 
 
@@ -114,6 +119,11 @@ async def start_ai(
         f"controller:{controller_id}",
         json.dumps({"action": "start"}),
     )
+    # Set directly first: the CMD below travels on a publisher created and
+    # closed within this request, which can lose its first message to the
+    # ZeroMQ slow-joiner race. The bus send is kept for other subscribers.
+    worker.set_enabled(True)
+    worker.set_paused(False)
     pub = bus.create_publisher()
     cmd = {"controller_id": controller_id, "action": "start"}
     pub.send(f"CMD.AI.{controller_id}".encode(), msgpack.packb(cmd))
@@ -145,6 +155,8 @@ async def stop_ai(
         f"controller:{controller_id}",
         json.dumps({"action": "stop"}),
     )
+    worker.set_enabled(False)
+    worker.set_paused(False)
     pub = bus.create_publisher()
     cmd = {"controller_id": controller_id, "action": "stop"}
     pub.send(f"CMD.AI.{controller_id}".encode(), msgpack.packb(cmd))
@@ -176,6 +188,7 @@ async def pause_ai(
         f"controller:{controller_id}",
         json.dumps({"action": "pause"}),
     )
+    worker.set_paused(True)
     pub = bus.create_publisher()
     cmd = {"controller_id": controller_id, "action": "pause"}
     pub.send(f"CMD.AI.{controller_id}".encode(), msgpack.packb(cmd))
