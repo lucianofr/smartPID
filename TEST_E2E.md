@@ -89,11 +89,11 @@ Open Chrome at `http://127.0.0.1:5173`. Create `test-evidence/` in the worktree 
 - **Evidence:** `test-evidence/E2E-005-top-nav.png`
 - **Result:** [x] PASS [ ] FAIL
 
-#### E2E-006 — Command palette
-- **Steps:** Press `k` outside a field; search `alarm`; activate `Ir para Alarmes`; repeat while cursor is inside an input.
-- **Expected:** Palette opens and navigates to `/alarms`; typing `k` inside a field enters text and does not open the palette.
-- **Evidence:** `test-evidence/E2E-006-command-palette.png`
-- **Result:** [x] PASS [ ] FAIL
+#### E2E-006 — Executive dashboard from the top bar
+- **Steps:** As `admin` and as `operador`, click `Executivo` in the top bar; confirm the route; click the wordmark.
+- **Expected:** `Executivo` is present for both roles and navigates to `/executive`; the wordmark navigates to `/`.
+- **Evidence:** `test-evidence/E2E-006-executive-nav.png`
+- **Result:** [ ] PASS [ ] FAIL
 
 #### E2E-007 — Configuration menu
 - **Steps:** As admin click `Configurações` (`[cfg]`).
@@ -280,10 +280,10 @@ Open Chrome at `http://127.0.0.1:5173`. Create `test-evidence/` in the worktree 
 - **Result:** [x] PASS [ ] FAIL
 
 #### E2E-036 — Executive KPIs
-- **Steps:** Let loops run; open `/executive` from wordmark/palette.
+- **Steps:** Let loops run; open `/executive` from the top bar.
 - **Expected:** AUTO %, AI coverage, average IAE and variability contain real non-placeholder values; no NaN/blank.
 - **Evidence:** `test-evidence/E2E-036-executive-kpis.png`
-- **Result:** [x] PASS [ ] FAIL
+- **Result:** [ ] PASS [ ] FAIL
 
 #### E2E-037 — Bad actors, ROI, health
 - **Steps:** Inspect ranking; click its first row; return; inspect AI ROI and backend health.
@@ -362,10 +362,10 @@ Open Chrome at `http://127.0.0.1:5173`. Create `test-evidence/` in the worktree 
 - **Result:** [x] PASS [ ] FAIL
 
 #### E2E-049 — Four responsive breakpoints
-- **Steps:** Use CDP viewports 1440×900, 1024×768, 768×900, 320×800; capture dashboard at each.
-- **Expected:** ≥1024 trend/faceplate side-by-side; <1024 faceplate stacks; <768 cards scroll and alarm count chip replaces full footer; 320 retains monitoring, ACK and SP input without horizontal page overflow.
+- **Steps:** Use CDP viewports 1920×1080, 1600×900, 1440×900, 1024×768, 768×900, 320×800; capture dashboard at each. At every viewport ≥1024, for roles `admin` and `operador`, with and without the simulator banner, evaluate `const fp = document.querySelector('aside[aria-label^="Faceplate"]'); fp.scrollHeight === fp.clientHeight` and `document.documentElement.scrollHeight === document.documentElement.clientHeight`.
+- **Expected:** ≥1024 trend/faceplate side-by-side, the faceplate being the full-height LEFT column; <1024 faceplate stacks under the trend; <768 cards scroll and alarm count chip replaces full footer; 320 retains monitoring, ACK and SP input without horizontal page overflow. **New, stricter:** the faceplate rail's `scrollHeight === clientHeight` and the page has no vertical scrollbar in all 16 viewport×role×banner combinations. Every interactive target inside the rail stays ≥44×44 CSS px.
 - **Evidence:** `test-evidence/E2E-049-responsive.png`
-- **Result:** [x] PASS [ ] FAIL
+- **Result:** [ ] PASS [ ] FAIL
 
 #### E2E-050 — Keyboard, focus, and target size
 - **Steps:** At 1440 and 320 tab through login, top bar, card/config, trend controls, faceplate and footer; use CDP bounding boxes for representative buttons/inputs.
@@ -382,7 +382,7 @@ Open Chrome at `http://127.0.0.1:5173`. Create `test-evidence/` in the worktree 
 | E2E-003 | Protected deep link | PASS | `E2E-003-deep-link.png` |  |
 | E2E-004 | Logout invalidates session | PASS | `E2E-004-logout.png` |  |
 | E2E-005 | Top navigation | PASS | `E2E-005-top-nav.png` |  |
-| E2E-006 | Command palette | PASS | `E2E-006-command-palette.png` |  |
+| E2E-006 | Executive dashboard from the top bar | PENDING | `E2E-006-executive-nav.png` | Repurposed: the command palette was removed; the number now covers the navigation path that replaced it |
 | E2E-007 | Configuration menu | PASS | `E2E-007-cfg-menu.png` |  |
 | E2E-008 | Start internal simulator | PASS | `E2E-008-start-simulator.png` | Simulator opt-in via SPID_SIMULATOR_ENABLED |
 | E2E-009 | Create controller bound to twin | PASS | `E2E-009-create-controller.png` | POST /controllers 201, card renders, dialog closes. Bug fixed earlier in run: DDC loops were never actuated (execution_mode + bindings) |
@@ -412,7 +412,7 @@ Open Chrome at `http://127.0.0.1:5173`. Create `test-evidence/` in the worktree 
 | E2E-033 | Server export | PASS | `E2E-033-server-export.png` | Singular controller_id; job reached done/100; 17,971-row CSV delivered |
 | E2E-034 | Simulator dynamics | PASS | `E2E-034-sim-dynamics.png` |  |
 | E2E-035 | Simulator disturbance | PASS | `E2E-035-sim-disturbance.png` |  |
-| E2E-036 | Executive KPIs | PASS | `E2E-036-executive-kpis.png` | Feature added: /system/status now publishes CPU and memory (psutil, soft dep) |
+| E2E-036 | Executive KPIs | PENDING | `E2E-036-executive-kpis.png` | Steps restated: `/executive` is opened from the top bar. Expected outcome unchanged. Feature added earlier: /system/status publishes CPU and memory (psutil, soft dep) |
 | E2E-037 | Executive details | PASS | `E2E-037-executive-details.png` | ROI shows an explicit insufficient-data state rather than a fabricated number |
 | E2E-038 | OPC-UA connection | PASS | `E2E-038-opcua.png` |  |
 | E2E-039 | Tag browse/search | PASS | `E2E-039-tag-browser.png` |  |
@@ -425,7 +425,7 @@ Open Chrome at `http://127.0.0.1:5173`. Create `test-evidence/` in the worktree 
 | E2E-046 | Halo/migration | PASS | `E2E-046-halo-migration.png` |  |
 | E2E-047 | Backend outage/resync | PASS | `E2E-047-resync.png` | **Safety fix** (94b90d5): HMI showed stale PV as live and never recovered. Socket stayed OPEN with no close event, and resync fanned /ai/status via Promise.all where 404 is by design, so recovery was structurally impossible. Now: assertive SEM CONEXÃO banner, values marked (desatualizado), auto-reconnect + resync, 0 reloads. |
 | E2E-048 | Invalid token | PASS | `E2E-048-invalid-token.png` |  |
-| E2E-049 | Responsive breakpoints | PASS | `E2E-049-responsive.png` | Bug fixed: header overflowed 4 px at the 320 px floor |
+| E2E-049 | Responsive breakpoints | PENDING | `E2E-049-responsive.png` | Strengthened: faceplate rail `scrollHeight === clientHeight` across 16 combinations. Bug fixed earlier: header overflowed 4 px at the 320 px floor |
 | E2E-050 | Keyboard/focus/targets | PASS | `E2E-050-a11y.png` | Focus ring 2 px at 16.46:1 / 12.88:1 / 8.21:1; 38/40 targets >=44 px, two documented exemptions |
 
 ## Acceptance rule
