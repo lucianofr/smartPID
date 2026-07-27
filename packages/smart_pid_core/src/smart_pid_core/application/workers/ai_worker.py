@@ -194,6 +194,14 @@ class AIWorker:
         stats_sub = self._bus.create_subscriber(
             f"STATS.{self.controller_id}".encode()
         )
+        # The PID worker publishes the loop's OWN mode on STATUS. That is the
+        # authoritative value: for a DDC loop SmartPID owns the mode, and even
+        # for SUPERVISORY the PID worker has already synced it from telemetry.
+        # Relying on the TELEMETRY copy alone left the AI permanently skipped,
+        # because that field is UNKNOWN whenever mode_int_map is unset.
+        status_sub = self._bus.create_subscriber(
+            f"STATUS.{self.controller_id}".encode()
+        )
         pub = self._bus.create_publisher()
         time.sleep(0.02)
 
@@ -209,6 +217,9 @@ class AIWorker:
 
                 # Drain latest stats snapshot from StatsWorker
                 self._drain_stats(stats_sub)
+
+                # Authoritative loop mode from the PID worker
+                self._drain_status(status_sub)
 
                 # Check if it's time to run AI
                 now = time.monotonic()
@@ -423,6 +434,24 @@ class AIWorker:
         except Exception:
             logger.warning("rl_state_load_failed cid=%d", self.controller_id, exc_info=True)
 
+    def _drain_status(self, sub) -> None:  # noqa: ANN001
+        """Take the loop's authoritative mode from the PID worker's STATUS.
+
+        Overrides the PLC-sourced mode carried on TELEMETRY, which is UNKNOWN
+        whenever `mode_int_map` is unset and is the wrong owner for DDC loops.
+        """
+        while True:
+            msg = sub.recv(timeout_ms=0)
+            if msg is None:
+                break
+            _topic, payload = msg
+            try:
+                mode = msgpack.unpackb(payload).get("mode")
+                if mode:
+                    self._last_mode = mode
+            except Exception:  # noqa: BLE001 — a bad frame must not stop tuning
+                pass
+
     def _drain_telemetry(self, sub) -> None:
         while True:
             msg = sub.recv(timeout_ms=0)
@@ -438,7 +467,12 @@ class AIWorker:
                 self._last_sp = sp_raw["value"] if isinstance(sp_raw, dict) else float(sp_raw)
                 self._last_co = co_raw["value"] if isinstance(co_raw, dict) else float(co_raw)
                 self._last_integral = float(data.get("integral_val", 0.0))
-                self._last_mode = data.get("mode", "")
+                # PLC-sourced mode. Only trust it as a fallback: it is
+                # UNKNOWN whenever mode_int_map is unset, and for a DDC loop
+                # SmartPID owns the mode anyway. _drain_status() overrides
+                # this with the PID worker's authoritative value.
+                if not self._last_mode or self._last_mode == "UNKNOWN":
+                    self._last_mode = data.get("mode", "")
                 self._has_telemetry = True
 
                 # Always sync Ki/Ti from the latest OPC-UA read.
