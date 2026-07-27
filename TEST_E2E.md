@@ -187,7 +187,7 @@ Open Chrome at `http://127.0.0.1:5173`. Create `test-evidence/` in the worktree 
 - **Steps:** Click `Apply tuning`; verify no write yet; click `Confirm Write`.
 - **Expected:** Confirmation dialog is explicit; apply request occurs only after confirmation; success invalidates/refetches tuning.
 - **Evidence:** `test-evidence/E2E-021-tuning-confirm.png`
-- **Result:** [ ] PASS [ ] FAIL — **BLOCKED**: feature has no producer (see notes)
+- **Result:** [x] PASS [ ] FAIL
 
 #### E2E-022 — AI configuration and lifecycle
 - **Steps:** Choose FUZZY, an objective, process speed, dead time, min/max guardrails; save; click `Start`, `Pause`, `Stop`.
@@ -397,7 +397,7 @@ Open Chrome at `http://127.0.0.1:5173`. Create `test-evidence/` in the worktree 
 | E2E-018 | Supervisory visibility | PASS | `E2E-018-supervisory.png` |  |
 | E2E-019 | DDC visibility and scan rate | PASS | `E2E-019-ddc.png` |  |
 | E2E-020 | Tag mapping browser | PASS | `E2E-020-tag-mapping.png` | Bug fixed: tag picker existed only on /connection; now per-field in loop config |
-| E2E-021 | Tuning confirmation | BLOCKED | `E2E-021-tuning-confirm.png` | **BLOCKED — not a failure.** TuningRecommendationStore is never instantiated and TuningRecommendation is never constructed; the store, route, button and confirm dialog all exist but no producer does. When the optimizer should *propose* rather than *apply* is a product decision, not a defect fix. |
+| E2E-021 | Tuning confirmation | PASS | `E2E-021-tuning-confirm.png` | **Producer implemented** (66b8bd4): `TuningRecommendation` had no writer anywhere in the tree, so both routes read an ad-hoc dict that stayed empty. Added an IMC/lambda FOPDT recommender + AI-worker producer. Live: identified K=+0.7992 vs the twin's true 0.8 (0.1% error); dialog shows Kp 1->0.8689, Ti 12.75->1.25, Td 0->0.3; **zero** apply requests before confirmation, exactly one after; clamped server-side to kp=0.9/ti=11.475 and written to the real OPC-UA target; non-admin 403; re-apply 404. |
 | E2E-022 | AI configuration/lifecycle | PASS | `E2E-022-ai-lifecycle.png` | Bug fixed: /ai/status returned 500 (engine never passed); pause was a silent no-op |
 | E2E-023 | AI explanation log | PASS | `E2E-023-ai-log.png` | Verified live: first tuning entry within 10 s once the AI mode gate was fixed |
 | E2E-024 | Quiet alarm footer | PASS | `E2E-024-quiet-footer.png` |  |
@@ -441,7 +441,7 @@ Open Chrome at `http://127.0.0.1:5173`. Create `test-evidence/` in the worktree 
 
 ## Run summary — 2026-07-27
 
-**Result: 49 PASS / 0 FAIL / 1 BLOCKED (E2E-021).** All 50 evidence files present (3.7 MB).
+**Result: 50 PASS / 0 FAIL / 0 BLOCKED.** All 50 evidence files present.
 
 Executed against the real stack: FastAPI daemon on `:8000` with `SPID_EXECUTION_MODE=execute`, the
 internal OPC-UA simulator on `:4849` driving four DDC twins, real SQLite, real WebSocket, Vite on
@@ -466,14 +466,31 @@ internal OPC-UA simulator on `:4849` driving four DDC twins, real SQLite, real W
 Six of these made a feature *silently never run* while the suite stayed green. Two (10, 11) are
 safety- or security-grade.
 
-### E2E-021 — blocked, not failed
+### E2E-021 — was blocked, now implemented and passing
 
-`TuningRecommendationStore` is never instantiated and `TuningRecommendation` is never constructed
-anywhere in the tree. The store class, the `/commands/tuning-recommendations/{id}` route, the
-`Apply tuning` button and the confirm dialog all exist; the producer does not. The AI applies `Ki`
-directly via `ACTION.AI` and never proposes. Deciding *when* the optimizer should propose instead of
-apply — what triggers it, what expiry, which engine — is a product decision, so this was left
-flagged rather than invented.
+I first recorded this as blocked on a product decision. That was **too conservative**: `PRD.md`-41
+states the requirement outright — *"backend-generated tuning recommendations surfaced per loop"* —
+with PRD-34 (confirm-gated) and PRD-35 (clamped server-side) pinning the rest. So it was a missing
+implementation, not an open question, and I built it.
+
+The whole surface already existed — `TuningRecommendation`, `TuningRecommended`/`TuningApplied`,
+`TuningRecommendationStore`, the guardrails, both routes, the hook and the confirm dialog. Only the
+**producer** was absent, so the routes read an ad-hoc `app.state.tuning_recommendations` dict that
+nothing ever wrote to.
+
+Added a pure IMC/lambda recommender over a FOPDT model
+(`domain/services/tuning_recommender.py`), plus a producer in the AI worker that identifies the
+process gain by least squares over settled (CO %, PV %) pairs. It refuses to guess: at least three
+distinct CO buckets, at least 2 %CO of travel and |r| >= 0.9, otherwise no proposal. Under a held
+setpoint the correlation legitimately collapses and it stays silent.
+
+This is kept strictly separate from the continuous integral nudge, which `docs/smartPIDv2.md` line 64
+sanctions writing straight to the PLC. A full Kp+Ti+Td retune is a much larger intervention, which is
+exactly why `apply_tuning` is admin-only, checks the external PID is in AUTO, and clamps.
+
+Live verification: identified **K=+0.7992** against the simulator's true **0.8**. Hand-checked the
+rule — tau=(4.0-1.0)/4=0.75, lambda=max(0.25, 0.8)=0.8, Kp=2.5/(2*0.7992*1.8)=0.86895, Ti=1.25,
+Td=0.30 — all three match the served payload exactly.
 
 ### Corrections to my own findings
 
