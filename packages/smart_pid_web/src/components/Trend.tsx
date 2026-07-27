@@ -231,9 +231,21 @@ export function Trend({
     plotRef.current?.setData(aligned);
   }, [aligned]);
 
-  // Pen tip / AI ticks / glow changes need only a redraw, not a rebuild.
+  /**
+   * Pen tip / AI ticks / glow are painted by the `draw` hook, so a bare repaint
+   * is all they need — and it MUST be `redraw(false)`.
+   *
+   * `redraw()` (rebuildPaths defaulted on) synchronously re-issues
+   * `setScale('x', scales.x.min, scales.x.max)`, which overwrites the x range
+   * `setData` queued one effect earlier (uPlot commits on a microtask, so the
+   * good range is still pending when this effect runs). The plot is built
+   * before the first realtime frame, so that pending-clobbering range is
+   * `[null, null]` — and uPlot's `snapTimeX` maps a null range straight back to
+   * `[null, null]`, so the x scale can never re-acquire one. Every
+   * `valToPosX()` then returns NaN and the canvas paints nothing at all.
+   */
   useEffect(() => {
-    plotRef.current?.redraw();
+    plotRef.current?.redraw(false);
   }, [penTip, aiTicks, glow]);
 
   return (

@@ -12,6 +12,10 @@ if (typeof HTMLCanvasElement !== 'undefined') {
 }
 
 // Disable uPlot in jsdom; its deferred canvas path renderer expects a native context.
+// CONSEQUENCE: no test using this setup can observe chart geometry — a recorder
+// that strokes every point at NaN looks identical to one that works. Trend.tsx
+// shipped blank behind a green suite because of exactly that. Geometry is
+// covered by Trend.geometry.test.tsx, which installs its own recording canvas.
 if (typeof window !== 'undefined' && /jsdom/i.test(window.navigator.userAgent)) {
   HTMLCanvasElement.prototype.getContext = (() => null) as unknown as typeof HTMLCanvasElement.prototype.getContext;
 }
@@ -61,4 +65,5 @@ if (!Element.prototype.hasPointerCapture) {
 // uPlot performs async path building (Path2D, clip/fill) after the component's
 // synchronous mount returns; jsdom lacks Path2D. The errors surface as
 // vitest "Errors" (not failures) — the actual test outcomes stay green.
-// They are an artifact of the test environment, never a Trend bug.
+// Green here says the environment tolerated the chart, NOT that the chart drew
+// anything: see the CONSEQUENCE note above.
