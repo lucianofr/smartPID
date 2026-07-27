@@ -18,6 +18,7 @@ from smart_pid_core.adapters.inbound.api.ws.realtime import (
     map_topic_to_envelope,
     register_realtime_ws,
 )
+from smart_pid_core.adapters.outbound.user_repo import User
 
 
 class FakeSocket:
@@ -240,7 +241,29 @@ _SECRET = "test-secret"
 _ALLOWED_ORIGIN = "http://127.0.0.1:5173"
 
 
-def _make_app() -> FastAPI:
+class _StubUserRepo:
+    """The slice of ``UserRepository`` the WS auth path uses.
+
+    The socket handshake resolves its token against the live user store like
+    every REST route does, so the harness needs a store — but these tests are
+    about the transport, not about SQLite.
+    """
+
+    def __init__(self, users: dict[int, User]) -> None:
+        self._users = users
+
+    async def get_by_id(self, user_id: int) -> User | None:
+        return self._users.get(user_id)
+
+
+def _stored(uid: int, username: str, role: str, *, active: bool = True) -> User:
+    return User(
+        id=uid, username=username, password_hash="x",
+        role=role, created_at="", active=active,
+    )
+
+
+def _make_app(users: dict[int, User] | None = None) -> FastAPI:
     app = FastAPI()
 
     class _Settings:
@@ -249,6 +272,9 @@ def _make_app() -> FastAPI:
 
     app.state.settings = _Settings()
     app.state.realtime_manager = ConnectionManager()
+    app.state.user_repo = _StubUserRepo(
+        {1: _stored(1, "admin", "admin")} if users is None else users
+    )
     register_realtime_ws(app)
     return app
 
@@ -310,6 +336,34 @@ def test_ws_rejects_legacy_role_token() -> None:
             with pytest.raises(WebSocketDisconnect) as exc:
                 ws.receive_text()
         assert exc.value.code == 4401, f"role={legacy!r} must close 4401"
+
+
+def test_ws_rejects_token_for_deactivated_user() -> None:
+    """E2E-044, socket edition: a soft-deleted account must lose its live
+    telemetry feed immediately, not when its 8h token finally expires."""
+    app = _make_app({1: _stored(1, "admin", "admin", active=False)})
+    client = TestClient(app)
+    with client.websocket_connect(
+        "/ws/realtime", headers={"origin": _ALLOWED_ORIGIN}
+    ) as ws:
+        ws.send_json({"type": "auth", "token": _good_token()})
+        with pytest.raises(WebSocketDisconnect) as exc:
+            ws.receive_text()
+    assert exc.value.code == 4401
+
+
+def test_ws_rejects_token_for_unknown_subject() -> None:
+    """A correctly-signed token whose subject is not in the store is not a
+    principal — the socket resolves against the store, not the claims."""
+    app = _make_app({})
+    client = TestClient(app)
+    with client.websocket_connect(
+        "/ws/realtime", headers={"origin": _ALLOWED_ORIGIN}
+    ) as ws:
+        ws.send_json({"type": "auth", "token": _good_token()})
+        with pytest.raises(WebSocketDisconnect) as exc:
+            ws.receive_text()
+    assert exc.value.code == 4401
 
 
 def test_ws_accepts_valid_token_and_broadcast_reaches_client() -> None:

@@ -18,8 +18,7 @@ import msgpack  # type: ignore[import-untyped]
 from fastapi import FastAPI, WebSocket
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
-from smart_pid_core.adapters.inbound.api.auth import decode_access_token
-from smart_pid_domain.enums import UserRole
+from smart_pid_core.adapters.inbound.api.dependencies import resolve_token_principal
 
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import BusSubscriber, EventBus
@@ -27,7 +26,6 @@ if TYPE_CHECKING:
 _ALLOWED_ORIGIN_DEFAULT = "http://127.0.0.1:5173"
 _WS_CLOSE_AUTH = 4401
 _LOSSLESS_QUEUE_MAX = 256
-_VALID_ROLES = frozenset(role.value for role in UserRole)
 
 
 class _Sendable(Protocol):
@@ -226,14 +224,16 @@ def register_realtime_ws(app: FastAPI) -> None:
         if first.get("type") != "auth" or not token or not _origin_allowed(origin, allowed):
             await _reject()
             return
-        try:
-            payload = decode_access_token(token, secret=settings.jwt_secret)
-        except Exception:  # noqa: BLE001 — any JWT error => reject
-            await _reject()
-            return
-        if payload.get("role") not in _VALID_ROLES:
-            # Legacy vocabulary ("ADMIN"/"SUPERVISOR"/"OPERATOR") => forced
-            # re-login (spec §9.5) — REST and WS cut over together.
+        principal = await resolve_token_principal(
+            token,
+            settings=settings,
+            user_repo=websocket.app.state.user_repo,
+        )
+        if principal is None:
+            # Bad/expired token, a legacy role vocabulary (spec §9.5 — REST
+            # and WS cut over together), or a subject that has since been
+            # deleted or deactivated. Telemetry is not readable by a
+            # revoked account just because its token has not expired yet.
             await _reject()
             return
 

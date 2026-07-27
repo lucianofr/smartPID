@@ -28,6 +28,11 @@ async def app_fixture(tmp_path):
     user_db_path = tmp_path / "users.db"
     user_repo = UserRepository(user_db_path)
     await user_repo.initialize()
+    # Authorization re-reads the stored record on every request (E2E-044),
+    # so the two principals these tests mint tokens for have to exist — and
+    # their ids have to differ, since the role now comes from the row.
+    await user_repo.create("sup1", "x", "admin")   # id 1
+    await user_repo.create("op1", "x", "user")     # id 2
     alarm_repo = AlarmRepository(repo.session_factory)
     audit_repo = AuditRepository(repo.session_factory)
     bus = EventBus(url_prefix=f"inproc://test_audit_api_{uuid.uuid4().hex[:8]}")
@@ -74,7 +79,7 @@ def test_get_audit_rejects_user_role(app_fixture):
     app, audit_repo, settings = app_fixture
     client = TestClient(app, base_url="http://127.0.0.1")
     token = create_access_token(
-        user_id=1, username="op1", role="user",
+        user_id=2, username="op1", role="user",
         secret=settings.jwt_secret, expiry_hours=1,
     )
     now = datetime.now(tz=UTC)

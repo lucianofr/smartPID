@@ -49,13 +49,60 @@ def get_settings(request: Request) -> CoreSettings:
     return request.app.state.settings
 
 
-def get_current_user(request: Request) -> UserClaims:
-    """Extract and validate JWT from Authorization header.
+async def resolve_token_principal(
+    token: str,
+    *,
+    settings: CoreSettings,
+    user_repo: UserRepository,
+) -> UserClaims | None:
+    """Resolve a bearer token to the CURRENT stored principal, or ``None``.
 
-    Any failure — bad signature, expiry, missing claims, or a legacy role
-    vocabulary ("ADMIN"/"SUPERVISOR"/"OPERATOR") — yields 401 so the client
-    performs a single forced re-login (spec §9.5). Legacy claims are never
-    mapped to the new roles.
+    The JWT is an *authentication* credential only: it proves which user is
+    calling. Authorization is a property of the stored user record and is
+    re-read on every request, so an admin's demotion or deactivation takes
+    effect on the very next call instead of after the token's 8h lifetime
+    (E2E-044 — a demoted admin could otherwise mint a permanent backdoor
+    account that outlived their own session).
+
+    Returns ``None`` — each caller signals rejection in its own protocol —
+    when the token is unusable for any reason:
+
+    * bad signature, expiry, or missing/malformed claims;
+    * a legacy role vocabulary ("ADMIN"/"SUPERVISOR"/"OPERATOR"). That claim
+      is validated purely as a *token-format marker*: its presence means a
+      pre-cutover token, which is rejected wholesale so the client performs a
+      single forced re-login (spec §9.5). The value is never mapped, and it
+      is never used to authorize;
+    * the subject no longer exists, has been deactivated, or carries a stored
+      role outside the two-role model.
+    """
+    try:
+        payload = decode_access_token(token, secret=settings.jwt_secret)
+        UserClaims(
+            user_id=payload["sub"],
+            username=payload["username"],
+            role=payload["role"],  # strict: only "admin" | "user" validate
+        )
+    except Exception:
+        # jwt.PyJWTError, KeyError, pydantic.ValidationError — all unusable.
+        return None
+
+    user = await user_repo.get_by_id(payload["sub"])
+    if user is None or not user.active:
+        return None
+    try:
+        role = UserRole(user.role)
+    except ValueError:
+        return None
+    return UserClaims(user_id=user.id, username=user.username, role=role)
+
+
+async def get_current_user(request: Request) -> UserClaims:
+    """Authenticate the caller and return their CURRENT claims.
+
+    Single upstream of every ``require_*`` gate, so refreshing the role here
+    is what makes revocation immediate everywhere. Any failure is a 401 so
+    the client performs one forced re-login.
     """
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
@@ -63,21 +110,17 @@ def get_current_user(request: Request) -> UserClaims:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or invalid Authorization header",
         )
-    token = auth_header.removeprefix("Bearer ")
-    settings: CoreSettings = request.app.state.settings
-    try:
-        payload = decode_access_token(token, secret=settings.jwt_secret)
-        return UserClaims(
-            user_id=payload["sub"],
-            username=payload["username"],
-            role=payload["role"],  # strict: only "admin" | "user" validate
-        )
-    except Exception:
-        # jwt.PyJWTError, KeyError, pydantic.ValidationError — all 401.
+    principal = await resolve_token_principal(
+        auth_header.removeprefix("Bearer "),
+        settings=request.app.state.settings,
+        user_repo=request.app.state.user_repo,
+    )
+    if principal is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
-        ) from None
+        )
+    return principal
 
 
 def require_user(

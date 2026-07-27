@@ -57,8 +57,11 @@ async def monitor_deps(tmp_path):
         execution_mode="monitor",
     )  # type: ignore[call-arg]
 
+    # Both principals must exist: authorization reads the role off the stored
+    # record on every request (E2E-044), not off the token claim.
     admin_hash = hash_password("admin")
-    await user_repo.create("admin", admin_hash, "admin")
+    await user_repo.create("admin", admin_hash, "admin")      # id 1
+    await user_repo.create("operator", admin_hash, "user")    # id 2
 
     yield {
         "repo": repo,
