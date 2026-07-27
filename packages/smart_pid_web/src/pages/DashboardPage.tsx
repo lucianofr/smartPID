@@ -19,10 +19,12 @@ import { cn } from '@/lib/utils';
 /**
  * Operational dashboard (§6.9).
  *
- * Layout contract: a single non-wrapping card strip on top — wrapping would
- * push the trend below the fold — then trend + ~320 px faceplate side by side
- * at ≥1024 (trend keeps ≥65% at 1440) and stacked below it, over a persistent
- * alarm footer that collapses to a count chip under 768.
+ * Layout contract (§4): at ≥1024 the page is two columns — a full-height
+ * ~320 px faceplate rail on the left, the non-wrapping card strip and the trend
+ * stacked in the right column (trend keeps ≥65% at 1440). Below 1024 the three
+ * bands stack in DOM order (cards, trend, faceplate) and the page scrolls. The
+ * simulation banner and the alarm footer stay full width: they are page-level
+ * bands, not loop detail. The alarm footer collapses to a count chip under 768.
  *
  * `/?loop=<id>` preselects one loop: it is the landing target of the executive
  * dashboard's bad-actor rows (phase 9). The param seeds the initial selection
@@ -89,65 +91,71 @@ export function DashboardPage() {
       {/* A model driving the plant is a fact the Loops page must not hide.
           Cache-only read: the §7 resync already primes the twin snapshot. */}
       {twinRunning ? <SimulationModeBanner running /> : null}
-      <section
-        aria-label="Malhas"
-        className={cn(
-          'relative shrink-0 border-b border-rule',
-          'after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-8',
-          'after:bg-[linear-gradient(to_right,transparent,var(--bg))]',
-        )}
-      >
-        {newLoopButton !== null ? (
-          <div className="flex justify-end px-3 pt-2">{newLoopButton}</div>
-        ) : null}
-        <ul className="flex flex-nowrap gap-3 overflow-x-auto p-3">
-          {controllers.data.map((controller) => {
-            const status = statuses.get(controller.id) ?? null;
-            const selectedHere = controller.id === selected.id;
-            return (
-              <li
-                key={controller.id}
-                className={cn('flex', selectedHere && 'outline outline-2 outline-focus-ring')}
-              >
-                <LoopCard
-                  controller={controller}
-                  status={status}
-                  onOpenConfig={setConfigId}
-                  stale={stale}
-                  controlsSlot={
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        aria-label={`Abrir ${controller.name}`}
-                        aria-pressed={selectedHere}
-                        onClick={() => setSelectedId(controller.id)}
-                      >
-                        Abrir
-                      </Button>
-                      {/* Only the open loop carries the mode switch: the strip
-                          must not offer the same command on every card. */}
-                      {selectedHere ? (
-                        <CardControls
-                          controllerId={controller.id}
-                          mode={status?.mode ?? controller.mode}
-                          controls={['mode']}
-                        />
-                      ) : null}
-                    </div>
-                  }
-                />
-              </li>
-            );
-          })}
-        </ul>
-      </section>
-
       <div
         data-testid="dashboard-detail"
         className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden"
       >
-        <TrendPanel controllerId={selected.id} scale={pvScale(selected)} />
+        {/* Right-hand column in DOM order so the stacked (<1024) reading order
+            stays cards → trend → faceplate; `lg:order-first` on the rail is what
+            puts the faceplate on the left once the row exists. */}
+        <div className="flex min-w-0 flex-col max-lg:shrink-0 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
+          <section
+            aria-label="Malhas"
+            className={cn(
+              'relative shrink-0 border-b border-rule',
+              'after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-8',
+              'after:bg-[linear-gradient(to_right,transparent,var(--bg))]',
+            )}
+          >
+            {newLoopButton !== null ? (
+              <div className="flex justify-end px-3 pt-2">{newLoopButton}</div>
+            ) : null}
+            <ul className="flex flex-nowrap gap-3 overflow-x-auto p-3">
+              {controllers.data.map((controller) => {
+                const status = statuses.get(controller.id) ?? null;
+                const selectedHere = controller.id === selected.id;
+                return (
+                  <li
+                    key={controller.id}
+                    className={cn('flex', selectedHere && 'outline outline-2 outline-focus-ring')}
+                  >
+                    <LoopCard
+                      controller={controller}
+                      status={status}
+                      onOpenConfig={setConfigId}
+                      stale={stale}
+                      controlsSlot={
+                        <div className="flex flex-col gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            aria-label={`Abrir ${controller.name}`}
+                            aria-pressed={selectedHere}
+                            onClick={() => setSelectedId(controller.id)}
+                          >
+                            Abrir
+                          </Button>
+                          {/* Only the open loop carries the mode switch: the strip
+                              must not offer the same command on every card. */}
+                          {selectedHere ? (
+                            <CardControls
+                              controllerId={controller.id}
+                              mode={status?.mode ?? controller.mode}
+                              controls={['mode']}
+                            />
+                          ) : null}
+                        </div>
+                      }
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+
+          <TrendPanel controllerId={selected.id} scale={pvScale(selected)} />
+        </div>
+
         <Faceplate
           controllerId={selected.id}
           tag={selected.name}

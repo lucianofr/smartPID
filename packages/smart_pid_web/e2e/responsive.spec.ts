@@ -29,16 +29,41 @@ async function box(locator: Locator): Promise<Box> {
 }
 
 test.describe('responsive dashboard (§6.9)', () => {
-  test('trend and faceplate split at >=1024 and stack below it', async ({ page }) => {
+  test('faceplate is the left rail at >=1024 and stacks under the trend below it', async ({
+    page,
+  }) => {
     await gotoDashboard(page, { loops: LOOPS, width: 1280, height: 900 });
     let t = await box(trend(page));
     let fp = await box(faceplate(page, 'FIC-101'));
-    expect(fp.x, 'faceplate sits to the right of the trend').toBeGreaterThan(t.x + t.width - 1);
+    expect(fp.x + fp.width, 'faceplate sits to the left of the trend').toBeLessThan(t.x + 1);
 
     await page.setViewportSize({ width: 900, height: 900 });
     t = await box(trend(page));
     fp = await box(faceplate(page, 'FIC-101'));
     expect(fp.y, 'faceplate stacks under the trend').toBeGreaterThanOrEqual(t.y + t.height - 1);
+  });
+
+  test('the faceplate rail never scrolls at any supported desktop viewport', async ({ page }) => {
+    const sizes = [
+      { width: 1920, height: 1080 },
+      { width: 1600, height: 900 },
+      { width: 1440, height: 900 },
+      { width: 1024, height: 768 },
+    ];
+    for (const role of ['admin', 'user'] as const) {
+      for (const { width, height } of sizes) {
+        await gotoDashboard(page, { loops: LOOPS, width, height, role });
+        const railOverflow = await faceplate(page, 'FIC-101').evaluate(
+          (el) => el.scrollHeight - el.clientHeight,
+        );
+        expect(railOverflow, `rail scroll at ${role} ${width}x${height}`).toBeLessThanOrEqual(0);
+
+        const pageOverflow = await page.evaluate(
+          () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
+        );
+        expect(pageOverflow, `page scroll at ${role} ${width}x${height}`).toBeLessThanOrEqual(0);
+      }
+    }
   });
 
   test('the faceplate holds ~320px and the trend keeps >=65% at 1440', async ({ page }) => {
@@ -102,7 +127,7 @@ test.describe('responsive dashboard (§6.9)', () => {
     await gotoDashboard(page, { loops: LOOPS, width: 768, height: 1100 });
 
     await assertMinTarget(page.getByRole('link', { name: 'Loops' }), TARGET_MIN);
-    await assertMinTarget(page.getByRole('button', { name: 'Comandos' }), TARGET_MIN);
+    await assertMinTarget(page.getByRole('button', { name: 'Configurações' }), TARGET_MIN);
     await assertMinTarget(page.getByRole('button', { name: 'Sair' }), TARGET_MIN);
     await assertMinTarget(page.getByRole('button', { name: 'ACK ALL' }), TARGET_MIN);
     await assertMinTarget(loopCard(page, 'FIC-101').getByRole('button', { name: 'Abrir FIC-101' }), TARGET_MIN);

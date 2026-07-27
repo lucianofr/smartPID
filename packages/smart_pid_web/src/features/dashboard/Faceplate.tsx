@@ -85,7 +85,7 @@ export function Faceplate({
   return (
     <aside
       aria-label={`Faceplate ${tag}`}
-      className="flex w-full shrink-0 flex-col gap-3 border-rule bg-surface p-3 lg:w-80 lg:overflow-y-auto lg:border-l"
+      className="flex w-full shrink-0 flex-col gap-2 border-rule bg-surface p-2 lg:order-first lg:w-80 lg:overflow-y-auto lg:border-r"
     >
       <header className="flex items-start justify-between gap-2">
         <div className="min-w-0">

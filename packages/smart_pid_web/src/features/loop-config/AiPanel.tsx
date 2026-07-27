@@ -8,6 +8,7 @@ import { toast } from '@/components/Toast';
 import type { AiStatus } from '@/api/types';
 import type { AiData } from '@/lib/envelope';
 import { useRealtime } from '@/realtime/useRealtime';
+import { cn } from '@/lib/utils';
 import { ConfirmApplyTuningDialog } from './ConfirmApplyTuningDialog';
 import { applyTuning, type AiAction } from './commandApi';
 import { tuningRecommendationKey, useAiAction, useAiStatus, useTuningRecommendation } from './useAiControls';
@@ -128,7 +129,7 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
     <section
       aria-label="Otimização IA"
       data-testid="ai-panel"
-      className="flex flex-col gap-2 border-t border-rule pt-3"
+      className="flex min-h-0 flex-1 flex-col gap-2 border-t border-rule pt-3"
     >
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-2xs font-medium uppercase tracking-wider text-text-soft">
@@ -151,31 +152,51 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
         </div>
       </header>
 
-      {canControl ? (
-        <div role="group" aria-label="Ciclo do otimizador" className="flex gap-2">
-          {AI_ACTIONS.map(({ action, label }) => (
+      {/* One row, not two: the second row cost 52 px of a rail that must not
+          scroll (§4.3). Every button keeps the Button base min-h-11 floor. */}
+      {canControl || canTune ? (
+        <div className="flex gap-2">
+          {canControl ? (
+            <div role="group" aria-label="Ciclo do otimizador" className="flex flex-1 gap-2">
+              {AI_ACTIONS.map(({ action, label }) => (
+                <Button
+                  key={action}
+                  size="sm"
+                  className="flex-1"
+                  disabled={aiAction.isPending}
+                  onClick={() =>
+                    aiAction.mutate(
+                      { id: controllerId, action },
+                      {
+                        onError: () =>
+                          toast({
+                            title: 'Comando de IA recusado',
+                            description: `Malha ${tag}`,
+                            tone: 'crit',
+                          }),
+                      },
+                    )
+                  }
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          ) : null}
+          {canTune ? (
             <Button
-              key={action}
+              variant="secondary"
               size="sm"
               className="flex-1"
-              disabled={aiAction.isPending}
-              onClick={() =>
-                aiAction.mutate(
-                  { id: controllerId, action },
-                  {
-                    onError: () =>
-                      toast({
-                        title: 'Comando de IA recusado',
-                        description: `Malha ${tag}`,
-                        tone: 'crit',
-                      }),
-                  },
-                )
-              }
+              disabled={!pendingRecommendation}
+              onClick={() => {
+                setApplyError(undefined);
+                setConfirmOpen(true);
+              }}
             >
-              {label}
+              Apply tuning
             </Button>
-          ))}
+          ) : null}
         </div>
       ) : null}
 
@@ -184,7 +205,12 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
         role="log"
         aria-label="LOG.AI"
         aria-live="polite"
-        className="numeric max-h-32 overflow-y-auto rounded-control bg-surface-sunk p-2 text-2xs text-text-soft"
+        className={cn(
+          'numeric min-h-8 flex-1 overflow-y-auto rounded-control bg-surface-sunk p-2',
+          // Stacked (<1024) the rail has no bounded height, so the log needs its
+          // own cap or 100 buffered lines would push the page open.
+          'max-lg:max-h-32 text-2xs text-text-soft',
+        )}
       >
         {lines.length === 0 ? (
           <p>Sem eventos de IA.</p>
@@ -196,19 +222,6 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
           ))
         )}
       </div>
-
-      {canTune ? (
-        <Button
-          variant="secondary"
-          disabled={!pendingRecommendation}
-          onClick={() => {
-            setApplyError(undefined);
-            setConfirmOpen(true);
-          }}
-        >
-          Apply tuning
-        </Button>
-      ) : null}
 
       {canTune && rec !== undefined ? (
         <ConfirmApplyTuningDialog
