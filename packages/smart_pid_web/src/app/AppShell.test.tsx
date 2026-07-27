@@ -104,6 +104,30 @@ describe('AppShell', () => {
     expect(trigger.querySelector('svg')).not.toBeNull();
     expect(trigger.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });
+
+  it('offers the executive dashboard in the top bar and points the wordmark at the root', () => {
+    renderShell();
+    const nav = screen.getByRole('navigation', { name: 'Navegação principal' });
+    expect(within(nav).getAllByRole('link').map((l) => l.textContent)).toEqual([
+      'Loops',
+      'Trends',
+      'Alarms',
+      'Sim',
+      'Executivo',
+    ]);
+    expect(within(nav).getByRole('link', { name: 'Executivo' })).toHaveAttribute(
+      'href',
+      '/executive',
+    );
+    expect(screen.getByRole('link', { name: 'Smart PID' })).toHaveAttribute('href', '/');
+  });
+
+  it('keeps the executive entry for a user role', async () => {
+    renderShellAs('user');
+    await waitFor(() => expect(endpoints.me).toHaveBeenCalled());
+    const nav = screen.getByRole('navigation', { name: 'Navegação principal' });
+    expect(within(nav).getByRole('link', { name: 'Executivo' })).toBeVisible();
+  });
 });
 
 /**

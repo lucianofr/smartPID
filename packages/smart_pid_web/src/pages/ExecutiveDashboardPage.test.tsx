@@ -145,10 +145,10 @@ describe('ExecutiveDashboardPage', () => {
 });
 
 describe('/executive registration', () => {
-  it('is reachable from the wordmark but stays out of the operator top bar', () => {
+  it('is reachable from the top bar, both consultative and unrestricted', () => {
     const route = appRoutes.find((r) => r.path === '/executive');
     expect(route).toBeDefined();
-    expect(route?.nav).toBeUndefined();
+    expect(route?.nav).toEqual({ label: 'Executivo', order: 50 });
     expect(route?.cfg).toBeUndefined();
     expect(route?.adminOnly).toBeUndefined();
   });

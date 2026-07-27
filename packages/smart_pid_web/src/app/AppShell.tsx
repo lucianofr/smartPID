@@ -42,9 +42,10 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg text-text">
       <header className="flex shrink-0 items-center gap-2 border-b border-rule bg-surface px-3 py-1.5">
-        {/* The wordmark is the plant-wide entry point (phase 9 executive view). */}
+        {/* With `Executivo` visible in the nav the wordmark link is redundant as
+            a route to it; the brand points at the landing route instead. */}
         <NavLink
-          to="/executive"
+          to="/"
           className={cn(
             // min-w-0 + truncate: at the §6.9 320px floor the wordmark, nav and
             // action cluster together exceed the viewport and the page gained a

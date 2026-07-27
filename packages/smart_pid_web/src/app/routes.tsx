@@ -64,8 +64,11 @@ export const appRoutes: AppRoute[] = [
     nav: { label: 'Sim', order: 40 },
   },
   {
+    // Last in the bar: Loops is the operator's routine surface, the executive
+    // view is consultative. Not `adminOnly` — both roles keep it, as today.
     path: '/executive',
     element: ExecutiveDashboardPage,
+    nav: { label: 'Executivo', order: 50 },
   },
   // The configuration-menu administration group. Every entry is `adminOnly`:
   // the routers behind them are `require_admin`, so a `user` who reached one
