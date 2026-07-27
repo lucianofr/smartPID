@@ -96,6 +96,14 @@ describe('AppShell', () => {
     );
     expect(localStorage.getItem('spid.theme')).toBe('phosphor');
   });
+
+  it('labels the configuration trigger with a gear icon, not a bracketed glyph', () => {
+    renderShell();
+    const trigger = screen.getByRole('button', { name: 'Configurações' });
+    expect(trigger).toHaveTextContent('');
+    expect(trigger.querySelector('svg')).not.toBeNull();
+    expect(trigger.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+  });
 });
 
 /**

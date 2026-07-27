@@ -81,4 +81,12 @@ describe('LoopCard', () => {
     );
     expect(container.querySelector('canvas')).toBeNull();
   });
+
+  it('labels the config button with a slider icon, not a bracketed glyph', () => {
+    render(<LoopCard controller={controller} status={status} onOpenConfig={vi.fn()} />);
+    const config = screen.getByRole('button', { name: 'Configurar PIC-005' });
+    expect(config).toHaveTextContent('');
+    expect(config.querySelector('svg')).not.toBeNull();
+    expect(config.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+  });
 });

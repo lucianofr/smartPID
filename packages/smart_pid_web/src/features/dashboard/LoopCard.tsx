@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { SlidersHorizontal } from 'lucide-react';
 import { AnalogBar, type AnalogBarAlarm } from '@/components/AnalogBar';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
@@ -103,6 +104,8 @@ export function LoopCard({
 
       {controlsSlot}
 
+      {/* A distinct glyph from the top bar's gear: both are on screen at once
+          and they configure different things (the app vs this loop). */}
       <Button
         variant="ghost"
         size="sm"
@@ -110,9 +113,7 @@ export function LoopCard({
         aria-label={`Configurar ${controller.name}`}
         onClick={() => onOpenConfig(controller.id)}
       >
-        <span aria-hidden="true" className="numeric text-xs">
-          [cfg]
-        </span>
+        <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
       </Button>
     </div>
   );

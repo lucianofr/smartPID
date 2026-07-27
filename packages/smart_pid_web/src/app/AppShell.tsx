@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { Settings } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/Button';
 import {
@@ -71,9 +72,7 @@ export function AppShell({ children }: AppShellProps) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" aria-label="Configurações">
-                <span aria-hidden="true" className="numeric text-xs">
-                  [cfg]
-                </span>
+                <Settings className="h-4 w-4" aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
