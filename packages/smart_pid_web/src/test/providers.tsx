@@ -31,14 +31,22 @@ export interface FakeRealtime {
 }
 
 export function createFakeRealtime(
-  overrides: Partial<Pick<RealtimeContextValue, 'phase' | 'connected' | 'live'>> = {},
+  overrides: Partial<
+    Pick<RealtimeContextValue, 'phase' | 'connected' | 'live' | 'stale' | 'staleSince'>
+  > = {},
 ): FakeRealtime {
   const subs = new Map<RealtimeType, Set<(env: AnyEnvelope) => void>>();
   const frames = createFrameCache();
+  // `stale` defaults to the honest derivation of `staleSince`, so a test that
+  // only sets one of them cannot end up with a fake claiming both fresh and
+  // frozen.
+  const staleSince = overrides.staleSince ?? null;
   const value: RealtimeContextValue = {
     phase: overrides.phase ?? 'live',
     connected: overrides.connected ?? true,
     live: overrides.live ?? true,
+    stale: overrides.stale ?? staleSince !== null,
+    staleSince,
     subscribe(type, handler) {
       const set = subs.get(type) ?? new Set();
       set.add(handler);

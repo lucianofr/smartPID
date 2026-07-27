@@ -7,6 +7,12 @@ export interface UseRealtimeResult<T> {
   connected: boolean;
   /** Resync complete — safe to render live values (§8). */
   live: boolean;
+  /**
+   * The bus went quiet past the liveness deadline: `last` is the newest frame
+   * ever received, NOT the current plant state (E2E-047). Render it marked, or
+   * not at all — never as a live value.
+   */
+  stale: boolean;
   /** Latest envelope for (loopId, type); null before the first one. */
   last: RealtimeEnvelope<T> | null;
   /**
@@ -28,7 +34,7 @@ export function useRealtime<T = unknown>(
 ): UseRealtimeResult<T> {
   const ctx = useContext(RealtimeContext);
   if (!ctx) throw new Error('useRealtime must be used within RealtimeProvider');
-  const { connected, live, subscribe, replay } = ctx;
+  const { connected, live, stale, subscribe, replay } = ctx;
 
   const [last, setLast] = useState<RealtimeEnvelope<T> | null>(null);
   // Late external subscribers still see events that arrive between render and
@@ -70,7 +76,7 @@ export function useRealtime<T = unknown>(
   );
 
   return useMemo(
-    () => ({ connected, live, last, subscribe: relay }),
-    [connected, live, last, relay],
+    () => ({ connected, live, stale, last, subscribe: relay }),
+    [connected, live, stale, last, relay],
   );
 }

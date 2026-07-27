@@ -109,6 +109,7 @@ export function Faceplate({
           scale={scale}
           size="faceplate"
           decimals={decimals}
+          stale={status.stale}
         />
         <AnalogBar
           label="SP"
@@ -116,6 +117,7 @@ export function Faceplate({
           scale={scale}
           size="faceplate"
           decimals={decimals}
+          stale={status.stale}
         />
         <AnalogBar
           label="CO"
@@ -123,16 +125,28 @@ export function Faceplate({
           scale={CO_SCALE}
           size="faceplate"
           decimals={decimals}
+          stale={status.stale}
         />
       </div>
 
       <div className="flex items-end justify-between gap-2 border-t border-rule pt-2">
-        <Readout label="IAE" value={stats.last?.data.iae ?? null} decimals={1} size="sm" />
+        <Readout
+          label="IAE"
+          value={stats.last?.data.iae ?? null}
+          decimals={1}
+          size="sm"
+          stale={stats.stale}
+        />
         <div className="flex flex-col gap-0.5">
           <span className="text-2xs font-medium uppercase tracking-wider text-text-soft">
             2σ/Range
           </span>
-          <span className="numeric text-sm font-medium text-text">
+          <span
+            className={cn(
+              'numeric text-sm font-medium',
+              stats.stale ? 'text-text-disabled' : 'text-text',
+            )}
+          >
             {formatPercent(stats.last?.data.variability_range ?? null)}
           </span>
         </div>

@@ -173,6 +173,12 @@ export async function stubWebSocket(page: Page, options: SocketOptions = {}): Pr
 
       class StubWS extends EventTarget {
         static live: StubWS | null = null;
+        /**
+         * Upstream is down: the browser gets an immediate 1006 instead of an
+         * open socket. Measured against the real stack — with the daemon
+         * killed, a fresh socket through the Vite proxy closes 1006 in ~2 ms.
+         */
+        static blocked = false;
         url: string;
         readyState = 1;
         seq = 0;
@@ -180,9 +186,17 @@ export async function stubWebSocket(page: Page, options: SocketOptions = {}): Pr
         onopen: (() => void) | null = null;
         onmessage: ((e: MessageEvent) => void) | null = null;
         onclose: ((e: { code: number }) => void) | null = null;
+        heartbeat: ReturnType<typeof setInterval> | undefined;
         constructor(url: string) {
           super();
           this.url = url;
+          if (StubWS.blocked) {
+            setTimeout(() => {
+              this.readyState = 3;
+              this.onclose?.({ code: 1006 });
+            }, 0);
+            return;
+          }
           StubWS.live = this;
           setTimeout(() => this.onopen?.(), 0);
         }
@@ -190,8 +204,13 @@ export async function stubWebSocket(page: Page, options: SocketOptions = {}): Pr
          * Emit `count` status frames starting at frame index `from`, one
          * monotonic second apart. An explicit `from` makes a re-send byte
          * identical, which is what lets `emitFrames` probe idempotently.
+         *
+         * A CLOSED socket delivers nothing, like the real thing: without this,
+         * the socket StrictMode's first mount throws away keeps talking and
+         * the client can never observe an outage.
          */
         emit(count: number, from = this.frame): void {
+          if (this.readyState !== 1) return;
           for (let n = 0; n < count; n += 1) {
             const i = from + n;
             this.frame = i + 1;
@@ -225,14 +244,35 @@ export async function stubWebSocket(page: Page, options: SocketOptions = {}): Pr
           }
         }
         send(): void {
+          if (this.readyState !== 1) return;
           setTimeout(() => {
             this.onmessage?.(
               new MessageEvent('message', { data: JSON.stringify({ type: 'auth_ok' }) }),
             );
             this.emit(arg.samples);
+            // The daemon publishes STATUS continuously (~1 Hz per loop). A
+            // fixture that fires a burst and then goes quiet forever is a
+            // BROKEN backend, and the client is now honest enough to say so
+            // (E2E-047 liveness) — without this every long spec would drift
+            // into the stale banner and shift its own layout mid-assertion.
+            //
+            // The keep-alive re-sends the NEWEST frame: identical `t`, which
+            // `windowBuffer.push` rejects as non-increasing, so the trend
+            // window, the plotted sample count and every visual baseline are
+            // untouched. Only the liveness clock moves.
+            this.heartbeat = setInterval(() => {
+              this.emit(1, this.frame === 0 ? 0 : this.frame - 1);
+            }, 2000);
           }, 0);
         }
+        /** Upstream stopped publishing — the socket may or may not notice. */
+        stopHeartbeat(): void {
+          clearInterval(this.heartbeat);
+          this.heartbeat = undefined;
+        }
         close(): void {
+          this.stopHeartbeat();
+          this.readyState = 3;
           this.onclose?.({ code: 1000 });
         }
       }
@@ -245,6 +285,36 @@ export async function stubWebSocket(page: Page, options: SocketOptions = {}): Pr
       // @ts-expect-error test hook
       window.__spidEmitFrames = (count: number, from?: number) =>
         StubWS.live?.emit(count, from);
+
+      // ---- E2E-047 outage controls -------------------------------------
+      // A backend outage has two shapes and the client must survive both: the
+      // socket that closes, and the socket that stays open and goes quiet.
+      // These three hooks let a spec drive either one, plus the plant moving
+      // underneath while the operator is disconnected.
+
+      /**
+       * Upstream up/down. Down stops the keep-alive on the LIVE socket without
+       * closing it — the E2E-047 shape: open, silent, no `close`, no `error` —
+       * and makes every reconnect attempt close 1006.
+       */
+      // @ts-expect-error test hook
+      window.__spidBlockSocket = (blocked: boolean) => {
+        StubWS.blocked = blocked;
+        if (blocked) StubWS.live?.stopHeartbeat();
+      };
+      /** Drop the live socket with an explicit code (1006 = abnormal). */
+      // @ts-expect-error test hook
+      window.__spidCloseSocket = (code: number) => {
+        const live = StubWS.live;
+        live?.stopHeartbeat();
+        live?.onclose?.({ code });
+      };
+      /** Move the plant. Subsequent frames carry the new value. */
+      // @ts-expect-error test hook
+      window.__spidSetPv = (id: number, pv: number) => {
+        const loop = arg.loops.find((l) => l.id === id);
+        if (loop) loop.pv = pv;
+      };
     },
     { loops, samples, wave },
   );

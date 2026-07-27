@@ -11,13 +11,16 @@ const CONTROLLERS = [
   makeController({ id: 2, name: 'TIC-202', description: 'Temp' }),
 ];
 
-function renderDashboard(controllers = CONTROLLERS, path = '/') {
+function renderDashboard(
+  controllers = CONTROLLERS,
+  path = '/',
+  realtime = createFakeRealtime(),
+) {
   sessionStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: 'admin', role: 'admin' });
   const queryClient = createQueryClient();
   queryClient.setQueryData(queryKeys.controllers, controllers);
   queryClient.setQueryData(queryKeys.alarmsActive, []);
-  const realtime = createFakeRealtime();
   return {
     ...render(
       <TestProviders queryClient={queryClient} realtime={realtime.value} initialEntries={[path]}>
@@ -121,5 +124,22 @@ describe('DashboardPage', () => {
       controllers: {},
     });
     expect(await screen.findByRole('status', { name: 'Simulation mode' })).toBeVisible();
+  });
+
+  /**
+   * E2E-047 — the whole defect in one assertion: the last frame is still on
+   * screen (blanking it would be worse), but nothing about it may read as the
+   * plant's current state.
+   */
+  it('marks every card reading as not current once the bus goes quiet', () => {
+    const frozen = createFakeRealtime({ stale: true, staleSince: Date.now() - 30_000 });
+    renderDashboard(CONTROLLERS, '/', frozen);
+    act(() => {
+      frozen.emit(statusEnvelope(1, 1, { pv: ff(11.5) }));
+    });
+    const [first] = within(screen.getByRole('region', { name: 'Malhas' })).getAllByRole('listitem');
+    const pv = within(first).getByRole('meter', { name: 'PV' });
+    expect(pv).toHaveAttribute('aria-valuenow', '11.5');
+    expect(pv).toHaveAttribute('aria-valuetext', expect.stringContaining('desatualizado'));
   });
 });

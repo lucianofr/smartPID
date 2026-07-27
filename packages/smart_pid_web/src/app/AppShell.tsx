@@ -24,6 +24,7 @@ import { useTheme, type ThemeId } from '@/theme/ThemeProvider';
 import { cn } from '@/lib/utils';
 import { WelcomeGate } from '@/features/projects/WelcomeGate';
 import { appRoutes, cfgRoutes, commandRoutes, navRoutes } from './routes';
+import { ConnectionBanner } from './ConnectionBanner';
 
 export interface AppShellProps {
   children?: ReactNode;
@@ -152,6 +153,10 @@ export function AppShell({ children }: AppShellProps) {
           </Button>
         </div>
       </header>
+
+      {/* Directly under the top bar and above every route: whether the numbers
+          below are current is the first thing an operator must be able to read. */}
+      <ConnectionBanner />
 
       <main className="flex min-h-0 flex-1 flex-col">{children}</main>
 

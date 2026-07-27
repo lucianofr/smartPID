@@ -2,13 +2,13 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { endpoints } from '@/api/endpoints';
 import type { Role } from '@/api/types';
-import { TestProviders } from '@/test/providers';
+import { createFakeRealtime, TestProviders, type FakeRealtime } from '@/test/providers';
 import { AppShell } from './AppShell';
 import { appRoutes, cfgRoutes, commandRoutes, navRoutes } from './routes';
 
-function renderShell() {
+function renderShell(realtime?: FakeRealtime) {
   return render(
-    <TestProviders>
+    <TestProviders realtime={realtime?.value}>
       <AppShell>
         <p>conteúdo</p>
       </AppShell>
@@ -116,6 +116,34 @@ describe('AppShell', () => {
       expect(document.documentElement.getAttribute('data-theme')).toBe('phosphor'),
     );
     expect(localStorage.getItem('spid.theme')).toBe('phosphor');
+  });
+});
+
+/**
+ * E2E-047 — the shell is where "are these numbers current?" gets answered. It
+ * has to be on screen on every route, not only on the dashboard, so it is
+ * asserted here rather than in a page test.
+ */
+describe('AppShell — connection state', () => {
+  it('stays out of the way while the bus is delivering', () => {
+    renderShell(createFakeRealtime());
+    expect(screen.queryByTestId('connection-banner')).not.toBeInTheDocument();
+  });
+
+  it('shows the offline banner above the route content when the link drops', () => {
+    renderShell(createFakeRealtime({ phase: 'connecting', connected: false, live: false }));
+    const banner = screen.getByTestId('connection-banner');
+    expect(banner).toHaveTextContent('SEM CONEXÃO');
+    // Above the route content in DOM order — an operator scanning top-down
+    // reads the warning before the values it applies to.
+    expect(banner.compareDocumentPosition(screen.getByText('conteúdo'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it('warns even while the socket still calls itself live but has gone quiet', () => {
+    renderShell(createFakeRealtime({ stale: true, staleSince: Date.now() - 30_000 }));
+    expect(screen.getByTestId('connection-banner')).toHaveTextContent('DADOS DESATUALIZADOS');
   });
 });
 

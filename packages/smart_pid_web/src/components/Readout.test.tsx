@@ -19,4 +19,19 @@ describe('Readout', () => {
     render(<Readout label="CO" value={null} />);
     expect(screen.getByText('—')).toBeInTheDocument();
   });
+
+  it('a stale value is dimmed, marked and announced as not current (E2E-047)', () => {
+    render(<Readout label="IAE" value={12.4} stale />);
+    expect(screen.getByText('12.4').className).toContain('text-text-disabled');
+    expect(screen.getByText('*')).toBeInTheDocument();
+    // Real text in the accessible name, not an aria-label on a role=generic span.
+    expect(screen.getByText('desatualizado')).toBeInTheDocument();
+  });
+
+  it('a fresh value carries no stale marking', () => {
+    render(<Readout label="IAE" value={12.4} />);
+    expect(screen.getByText('12.4').className).toContain('text-text');
+    expect(screen.queryByText('*')).not.toBeInTheDocument();
+    expect(screen.queryByText('desatualizado')).not.toBeInTheDocument();
+  });
 });

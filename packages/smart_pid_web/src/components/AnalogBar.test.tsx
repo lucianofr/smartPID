@@ -37,4 +37,30 @@ describe('AnalogBar', () => {
     expect(screen.getByText('—')).toBeInTheDocument();
     expect(screen.getByRole('meter', { name: 'CO' })).toHaveAttribute('aria-valuetext', 'sem dados');
   });
+
+  /**
+   * E2E-047 — a frozen reading must never be presented as the current one.
+   * These three channels are independent on purpose: ink for a glance, the
+   * `*` mark for a colour-blind or dimmed screen, `aria-valuetext` for a
+   * screen reader.
+   */
+  it('a stale reading is dimmed, marked and announced as such', () => {
+    render(<AnalogBar label="PV" value={150.2} scale={scale} stale />);
+    const meter = screen.getByRole('meter', { name: 'PV' });
+    expect(meter).toHaveAttribute('aria-valuetext', '150.2 °C (desatualizado)');
+    expect(meter).toHaveAttribute('aria-valuenow', '150.2'); // the value is kept, not blanked
+    expect(screen.getByText('*')).toBeInTheDocument();
+    expect(screen.getByText('150.2').className).toContain('text-text-disabled');
+  });
+
+  it('a stale reading stops asserting an alarm level it can no longer see', () => {
+    render(<AnalogBar label="PV" value={100} scale={scale} alarm="crit" stale />);
+    expect(screen.getByTestId('analog-bar-fill').style.background).toBe('var(--text-disabled)');
+  });
+
+  it('a fresh reading carries no stale marking', () => {
+    render(<AnalogBar label="PV" value={150.2} scale={scale} />);
+    expect(screen.getByRole('meter', { name: 'PV' })).toHaveAttribute('aria-valuetext', '150.2 °C');
+    expect(screen.queryByText('*')).not.toBeInTheDocument();
+  });
 });

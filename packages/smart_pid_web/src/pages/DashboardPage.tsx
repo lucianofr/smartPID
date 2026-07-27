@@ -13,6 +13,7 @@ import { LoopConfigDialog, NewLoopDialog } from '@/features/loop-config/LoopConf
 import { SimulationModeBanner } from '@/features/simulator/SimulationModeBanner';
 import { useTwinRunning } from '@/features/simulator/useSimulatorStatus';
 import { useCan } from '@/auth/useCan';
+import { useConnectionStatus } from '@/realtime/useConnectionStatus';
 import { cn } from '@/lib/utils';
 
 /**
@@ -31,6 +32,7 @@ export function DashboardPage() {
   const controllers = useControllers();
   const statuses = useLoopStatuses();
   const canManage = useCan('controllers.manage');
+  const { stale } = useConnectionStatus();
   const twinRunning = useTwinRunning();
   const [params] = useSearchParams();
   const [selectedId, setSelectedId] = useState<number | null>(() => {
@@ -111,6 +113,7 @@ export function DashboardPage() {
                   controller={controller}
                   status={status}
                   onOpenConfig={setConfigId}
+                  stale={stale}
                   controlsSlot={
                     <div className="flex flex-col gap-2">
                       <Button

@@ -56,10 +56,23 @@ export function createResyncRunner(deps: {
       queryClient.setQueryData(queryKeys.alarmsResyncHistory, history);
     }
 
+    // A loop with optimization off has no AI worker, and `/ai/status` answers
+    // 404 by design (ai.py:54-60). Letting that reject the fan-out took the
+    // WHOLE resync down, and §8 recycles the socket on a failed resync — so on
+    // the live 4-loop plant (one AI worker, three 404s) reconnect became an
+    // endless connect → resync → 404 → close loop and the session NEVER came
+    // back without a page reload. AI status is decoration; plant state is not.
+    // Anything else (5xx, transport) still fails: the backend is not healthy.
     await Promise.all(
       controllers.map(async (c) => {
-        const status = await client.aiStatus(c.id);
-        queryClient.setQueryData(queryKeys.aiStatus(c.id), status);
+        try {
+          const status = await client.aiStatus(c.id);
+          queryClient.setQueryData(queryKeys.aiStatus(c.id), status);
+        } catch (e) {
+          if (!(e instanceof ApiError) || (e.kind !== 'not-found' && e.kind !== 'forbidden')) {
+            throw e;
+          }
+        }
       }),
     );
 

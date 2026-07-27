@@ -13,6 +13,8 @@ export interface LoopCardProps {
   onOpenConfig(id: number): void;
   /** Phase 5 mounts `CardControls` here. */
   controlsSlot?: ReactNode;
+  /** The realtime bus went quiet — mark every reading as not current (E2E-047). */
+  stale?: boolean;
 }
 
 /**
@@ -44,10 +46,18 @@ const MODE_TONE: Record<string, 'neutral' | 'accent' | 'warn'> = {
  * single horizontal scroller and wrapping would push the trend below the fold.
  * No sparkline: the trend panel is the only chart on this page.
  */
-export function LoopCard({ controller, status, onOpenConfig, controlsSlot }: LoopCardProps) {
+export function LoopCard({
+  controller,
+  status,
+  onOpenConfig,
+  controlsSlot,
+  stale = false,
+}: LoopCardProps) {
   const scale = pvScale(controller);
   const decimals = 1;
-  const alarm = qualityAlarm(status?.pv);
+  // A frozen frame cannot certify fieldbus quality either: fall back to the
+  // neutral border rather than keep asserting the pre-outage alarm level.
+  const alarm = stale ? 'normal' : qualityAlarm(status?.pv);
   const mode = status?.mode ?? controller.mode;
 
   return (
@@ -74,9 +84,22 @@ export function LoopCard({ controller, status, onOpenConfig, controlsSlot }: Loo
         scale={scale}
         alarm={alarm}
         decimals={decimals}
+        stale={stale}
       />
-      <AnalogBar label="SP" value={status?.sp.value ?? null} scale={scale} decimals={decimals} />
-      <AnalogBar label="CO" value={status?.co.value ?? null} scale={CO_SCALE} decimals={decimals} />
+      <AnalogBar
+        label="SP"
+        value={status?.sp.value ?? null}
+        scale={scale}
+        decimals={decimals}
+        stale={stale}
+      />
+      <AnalogBar
+        label="CO"
+        value={status?.co.value ?? null}
+        scale={CO_SCALE}
+        decimals={decimals}
+        stale={stale}
+      />
 
       {controlsSlot}
 

@@ -95,4 +95,36 @@ describe('createResyncRunner', () => {
       createResyncRunner({ queryClient: qc, api })({ lastSeenAlarmTs: null }),
     ).rejects.toMatchObject({ status: 500 });
   });
+
+  /**
+   * E2E-047 — measured on the live 4-loop plant: only loop 1 had an AI worker,
+   * so `/controllers/{2,3,4}/ai/status` answered 404 by design (ai.py:54-60),
+   * the fan-out rejected, §8 recycled the socket on the failed resync, and the
+   * session never came back without a page reload.
+   */
+  it('tolerates a loop with no AI worker — 404 must not wedge the whole resync', async () => {
+    const api = fakeApi({
+      aiStatus: vi.fn().mockImplementation((id: number) =>
+        id === 1
+          ? Promise.resolve({ controller_id: 1, enabled: true })
+          : Promise.reject(new ApiError(404, 'not-found', `No AI worker for controller ${id}`)),
+      ),
+    });
+    await expect(
+      createResyncRunner({ queryClient: qc, api })({ lastSeenAlarmTs: null }),
+    ).resolves.toBeUndefined();
+    // Plant state still primed; only the missing AI panel data is absent.
+    expect(qc.getQueryData(queryKeys.controllers)).toEqual([{ id: 1 }, { id: 2 }]);
+    expect(qc.getQueryData(queryKeys.aiStatus(1))).toEqual({ controller_id: 1, enabled: true });
+    expect(qc.getQueryData(queryKeys.aiStatus(2))).toBeUndefined();
+  });
+
+  it('still rejects when AI status fails for a reason that means the backend is unwell', async () => {
+    const api = fakeApi({
+      aiStatus: vi.fn().mockRejectedValue(new ApiError(500, 'server', 'boom')),
+    });
+    await expect(
+      createResyncRunner({ queryClient: qc, api })({ lastSeenAlarmTs: null }),
+    ).rejects.toMatchObject({ status: 500 });
+  });
 });
