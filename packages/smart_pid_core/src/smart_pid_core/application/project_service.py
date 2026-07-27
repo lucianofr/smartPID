@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -22,6 +23,16 @@ if TYPE_CHECKING:
 # path. Length is capped to keep names well within filesystem limits.
 _MAX_PROJECT_NAME_LEN = 128
 _PROJECT_NAME_RE = re.compile(rf"^[A-Za-z0-9._\- ]{{1,{_MAX_PROJECT_NAME_LEN}}}$")
+
+# Every SQLite database starts with this; a cheap first gate on an upload that
+# claims to be a .spid archive.
+_SQLITE_MAGIC = b"SQLite format 3\x00"
+
+
+def _read_prefix(path: Path, size: int) -> bytes:
+    """Read the first ``size`` bytes of ``path`` (blocking; call in a thread)."""
+    with path.open("rb") as fh:
+        return fh.read(size)
 
 
 class ProjectService:
@@ -134,15 +145,28 @@ class ProjectService:
         self._start_db_worker()
         return await self.get_current()
 
-    async def import_project(self, name: str, data: bytes) -> ProjectResponse:
-        """Import an uploaded .spid file into the projects directory."""
+    async def import_project(self, name: str, source: Path) -> ProjectResponse:
+        """Install a staged upload as ``name`` and make it the active project.
+
+        ``source`` is a fully-received staging file produced by the API layer,
+        not a buffer: an import of any size costs one chunk of memory. It is
+        validated as a real archive and then *moved* into place, so a rejected
+        upload never becomes a project. The move is an ``os.replace`` within
+        ``projects_dir``, hence same-filesystem and atomic.
+        """
         dest = self._safe_project_path(name)
         if dest.exists():
             raise FileExistsError(f"Project '{name}' already exists")
-        dest.write_bytes(data)
+        await self._assert_valid_archive(source)
+        os.replace(source, dest)
         self._stop_simulator()
         await self._stop_db_worker()
         await self._repo.reopen(dest)
+        # The archive still carries the name it was exported under, but the
+        # project is identified by the file it landed in — without this,
+        # /project/current and the import response echo the donor's name while
+        # /project/list shows the requested one.
+        await self._repo.set_meta("nome", name)
         await self._load_simulator_configs()
         await self._start_control_loops()
         await self._load_opcua_endpoint()
@@ -150,6 +174,51 @@ class ProjectService:
             self._daemon_state.set_active_project(name)
         self._start_db_worker()
         return await self.get_current()
+
+    async def _assert_valid_archive(self, source: Path) -> None:
+        """Reject anything the daemon could not actually run as a project.
+
+        Import re-points the live repository at the uploaded file, so a bad
+        archive does not merely fail — it takes the running plant down with it,
+        after the switch, with no project left to serve. So the check is not a
+        sniff test: it performs the same open-and-read the install is about to
+        perform, on the staging copy, where failure costs nothing.
+
+        Three gates, cheapest first:
+        1. the SQLite header, which rejects anything that is not a database;
+        2. a ``Controladores`` table, which rejects databases that are not
+           projects (bootstrap would otherwise silently adopt a foreign file by
+           creating the missing tables);
+        3. a real repository open plus ``list_all()``, which is the operation
+           ``reopen`` will run and the one that fails on a project written by
+           an incompatible schema version.
+        """
+        from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+
+        header = await asyncio.to_thread(_read_prefix, source, len(_SQLITE_MAGIC))
+        if header != _SQLITE_MAGIC:
+            raise ValueError("Not a valid .spid project archive")
+        try:
+            async with (
+                aiosqlite.connect(source) as db,
+                db.execute("SELECT COUNT(*) FROM Controladores"),
+            ):
+                pass
+        except Exception as exc:
+            raise ValueError("Not a valid .spid project archive") from exc
+
+        probe = SQLiteRepository(source)
+        try:
+            await probe.initialize()
+            await probe.list_all()
+        except Exception as exc:
+            raise ValueError(
+                f"Project archive cannot be read by this version: {exc}"
+            ) from exc
+        finally:
+            # Disposing the probe engine drops the -wal/-shm siblings it made
+            # beside the staging file, so the move below carries the whole DB.
+            await probe.close()
 
     async def prepare_download(self) -> Path:
         """Checkpoint engine A, then return the live .spid path for streaming.

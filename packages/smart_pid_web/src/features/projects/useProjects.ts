@@ -65,12 +65,17 @@ export function useDeleteProject(): UseMutationResult<ProjectMeta | void, ApiErr
 /**
  * §11 taxonomy → operator language. The backend raises exactly two 409s here
  * (`Project 'x' already exists` from new/import, `Cannot delete the active
- * project 'x'` from delete — project_service.py:106,141,169), so both get a
- * real pt-BR reason; an unforeseen conflict still echoes the server detail
- * rather than collapsing into "falhou".
+ * project 'x'` from delete — project_service.py), so both get a real pt-BR
+ * reason; an unforeseen conflict still echoes the server detail rather than
+ * collapsing into "falhou".
+ *
+ * Import adds a third refusal: 507 when the projects volume is too full to
+ * stage the archive. That is an operator-actionable server condition, not a
+ * bad file, so it must not be phrased like one.
  */
 export function projectErrorMessage(error: ApiError, fallback: string): string {
   if (error.status === 413) return 'O arquivo excede o tamanho máximo aceito pelo servidor.';
+  if (error.status === 507) return 'Sem espaço em disco no servidor para receber o arquivo.';
   if (error.status === 400) return 'Arquivo .spid inválido.';
   if (error.kind === 'conflict') {
     if (/already exists/i.test(error.detail)) return 'Já existe um projeto com esse nome.';

@@ -161,8 +161,10 @@ export const endpoints = {
   openProject: (name: string) => api.post<ProjectMeta>('/project/open', { name }),
 
   /**
-   * Multipart upload. 413 when it exceeds `max_upload_bytes` (50 MB default),
-   * 400 when the archive is not a valid `.spid` — both are user-facing states.
+   * Multipart upload, streamed to disk server-side — the ceiling is
+   * `max_upload_bytes` (2 GiB default, sized to clear what `downloadProject`
+   * emits for a plant with history). 413 above it, 507 when the server volume
+   * is too full, 400 when the archive is not a valid `.spid`.
    */
   importProject: (file: File, name?: string) => {
     const form = new FormData();

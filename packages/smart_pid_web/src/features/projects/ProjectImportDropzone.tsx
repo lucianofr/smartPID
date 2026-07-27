@@ -7,9 +7,10 @@ import { projectErrorMessage, useImportProject } from './useProjects';
 /**
  * `.spid` upload (§9 `projects.manage`, admin-only).
  *
- * The two refusals the backend really produces are distinct states, not one
- * "upload failed": 413 means the archive is bigger than `max_upload_bytes`
- * (50 MB by default) and 400 means it is not a valid project archive.
+ * The refusals the backend really produces are distinct states, not one
+ * "upload failed": 413 means the archive is bigger than `max_upload_bytes`,
+ * 507 means the server has no room to stage it, and 400 means it is not a
+ * valid project archive.
  */
 export function ProjectImportDropzone() {
   const canManage = useCan('projects.manage');

@@ -10,6 +10,29 @@ from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.application.project_service import ProjectService
 
 
+async def _make_archive(path, *, nome: str | None = None):
+    """Write a minimal but genuine .spid archive at ``path`` and return it.
+
+    Import validates its input, so tests can no longer hand it arbitrary bytes
+    unless that is the thing under test.
+    """
+    async with aiosqlite.connect(path) as db:
+        await db.execute(
+            "CREATE TABLE IF NOT EXISTS Controladores "
+            "(id INTEGER PRIMARY KEY, nome TEXT NOT NULL)"
+        )
+        if nome is not None:
+            await db.execute(
+                "CREATE TABLE IF NOT EXISTS Projeto_Meta "
+                "(chave TEXT PRIMARY KEY, valor TEXT NOT NULL)"
+            )
+            await db.execute(
+                "INSERT INTO Projeto_Meta (chave, valor) VALUES ('nome', ?)", (nome,)
+            )
+        await db.commit()
+    return path
+
+
 @pytest.fixture
 async def projects_dir(tmp_path):
     d = tmp_path / "projects"
@@ -116,26 +139,82 @@ async def test_open_project_not_found(service):
 
 @pytest.mark.asyncio
 async def test_import_project(service, projects_dir):
-    # Create a valid .spid in memory
-    src = projects_dir.parent / "source.spid"
-    async with aiosqlite.connect(src) as db:
-        await db.execute(
-            "CREATE TABLE IF NOT EXISTS Controladores "
-            "(id INTEGER PRIMARY KEY, nome TEXT NOT NULL)"
-        )
-        await db.commit()
-    data = src.read_bytes()
+    src = await _make_archive(projects_dir.parent / "source.spid")
 
-    result = await service.import_project("imported", data)
+    result = await service.import_project("imported", src)
     assert result.name == "imported"
     assert (projects_dir / "imported.spid").exists()
+    # Installed by move, not copy — the staging file is consumed.
+    assert not src.exists()
 
+
+@pytest.mark.asyncio
+async def test_import_project_returns_requested_name_not_archive_name(
+    service, projects_dir,
+):
+    """The archive remembers its old name; the response must not echo it."""
+    src = await _make_archive(projects_dir.parent / "donor.spid", nome="donor-plant")
+
+    result = await service.import_project("renamed", src)
+    assert result.name == "renamed"
+    assert (await service.get_current()).name == "renamed"
+
+
+@pytest.mark.asyncio
+async def test_import_project_rejects_non_sqlite_payload(service, projects_dir):
+    junk = projects_dir.parent / "junk.spid"
+    junk.write_bytes(b"not-a-db" * 64)
+    with pytest.raises(ValueError, match="valid .spid"):
+        await service.import_project("junk", junk)
+    assert not (projects_dir / "junk.spid").exists()
+
+
+@pytest.mark.asyncio
+async def test_import_project_rejects_sqlite_without_project_schema(
+    service, projects_dir,
+):
+    """A real database that is not a project must not become the active one."""
+    foreign = projects_dir.parent / "foreign.spid"
+    async with aiosqlite.connect(foreign) as db:
+        await db.execute("CREATE TABLE Unrelated (id INTEGER PRIMARY KEY)")
+        await db.commit()
+    with pytest.raises(ValueError, match="valid .spid"):
+        await service.import_project("foreign", foreign)
+    assert not (projects_dir / "foreign.spid").exists()
+
+
+
+@pytest.mark.asyncio
+async def test_import_project_rejects_archive_the_daemon_cannot_read(
+    service, projects_dir,
+):
+    """A project-shaped archive with the wrong column set must not install.
+
+    This one bit for real: the table-exists check passed, the file was moved
+    into place, the live repository was re-pointed at it, and only then did
+    ``list_all()`` fail — leaving the daemon serving 500s with no way back.
+    """
+    stale = projects_dir.parent / "stale.spid"
+    async with aiosqlite.connect(stale) as db:
+        # Plausible, but missing every column added since it was written.
+        await db.execute(
+            "CREATE TABLE Controladores (id INTEGER PRIMARY KEY, nome TEXT NOT NULL)"
+        )
+        await db.execute("INSERT INTO Controladores (nome) VALUES ('LOOP-01')")
+        await db.commit()
+
+    with pytest.raises(ValueError, match="cannot be read"):
+        await service.import_project("stale", stale)
+    assert not (projects_dir / "stale.spid").exists()
+    # The live project is untouched — the archive never became active.
+    assert (await service.get_current()).name == "active"
 
 @pytest.mark.asyncio
 async def test_import_project_conflict(service, projects_dir):
     (projects_dir / "dup.spid").write_bytes(b"")
+    src = await _make_archive(projects_dir.parent / "dupsrc.spid")
     with pytest.raises(FileExistsError):
-        await service.import_project("dup", b"data")
+        await service.import_project("dup", src)
 
 
 @pytest.mark.asyncio
@@ -204,10 +283,13 @@ async def test_open_project_rejects_unsafe_name(service, name):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("name", _MALICIOUS_NAMES)
 async def test_import_project_rejects_unsafe_name(service, projects_dir, name):
+    src = await _make_archive(projects_dir.parent / "unsafe-src.spid")
     with pytest.raises(ValueError):
-        await service.import_project(name, b"data")
+        await service.import_project(name, src)
     escaped = projects_dir.parent.parent / "etc" / "passwd.spid"
     assert not escaped.exists()
+    # The name is rejected before the archive is touched, so nothing is consumed.
+    assert src.exists()
 
 
 @pytest.mark.asyncio
@@ -270,15 +352,7 @@ async def test_open_project_saves_daemon_state(
 async def test_import_project_saves_daemon_state(
     service_with_state, projects_dir, daemon_state,
 ):
-    import aiosqlite as _aiosqlite
+    src = await _make_archive(projects_dir.parent / "imp.spid")
 
-    src = projects_dir.parent / "imp.spid"
-    async with _aiosqlite.connect(src) as db:
-        await db.execute(
-            "CREATE TABLE IF NOT EXISTS Controladores "
-            "(id INTEGER PRIMARY KEY, nome TEXT NOT NULL)"
-        )
-        await db.commit()
-
-    await service_with_state.import_project("imp_state", src.read_bytes())
+    await service_with_state.import_project("imp_state", src)
     assert daemon_state.active_project == "imp_state"

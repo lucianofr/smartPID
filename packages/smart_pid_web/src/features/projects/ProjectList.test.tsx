@@ -182,6 +182,16 @@ describe('ProjectImportDropzone', () => {
     ).toBeVisible();
   });
 
+  it('distinguishes a full server volume (507) from a bad archive', async () => {
+    vi.spyOn(endpoints, 'importProject').mockRejectedValue(
+      new ApiError(507, 'server', 'Not enough free space on the projects volume'),
+    );
+    upload(await renderDropzone());
+    expect(
+      await screen.findByText('Sem espaço em disco no servidor para receber o arquivo.'),
+    ).toBeVisible();
+  });
+
   it('offers no upload control to a user', async () => {
     mockSession('user');
     render(
