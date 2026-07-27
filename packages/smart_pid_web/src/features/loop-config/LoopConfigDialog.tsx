@@ -11,7 +11,12 @@ import {
 } from '@/components/Dialog';
 import { Field, Input } from '@/components/Field';
 import { toast } from '@/components/Toast';
-import type { ControllerResponse, ScaleConfigDto, TagBindingsDto } from '@/api/types';
+import type {
+  ControllerResponse,
+  OpcuaNode,
+  ScaleConfigDto,
+  TagBindingsDto,
+} from '@/api/types';
 import { cn } from '@/lib/utils';
 import {
   EXECUTION_MODES,
@@ -28,6 +33,13 @@ import {
   useUpdateControllerMutation,
 } from './useCommands';
 import { hasErrors, validateLimits, validatePidParams } from './validation';
+import {
+  NODE_ID_FIELDS,
+  NodeIdField,
+  nodeIdLabel,
+  TagPickerDialog,
+  type NodeIdKey,
+} from './TagPicker';
 
 /**
  * Sections the DCS owns while the loop is SUPERVISORY. Smart PID only watches
@@ -253,6 +265,8 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
 
   const [draft, setDraft] = useState<Draft>(() => toDraft(controller));
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /** Which binding the open tag picker writes to; `null` = picker closed. */
+  const [picking, setPicking] = useState<NodeIdKey | null>(null);
 
   const readOnly = !canManage;
   const isDdc = draft.execution_mode === 'DDC';
@@ -264,6 +278,18 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
     setDraft((p) => ({ ...p, pid: { ...p.pid, [key]: value } }));
   const patchLimit = (key: keyof LimitsForm, value: number): void =>
     setDraft((p) => ({ ...p, limits: { ...p.limits, [key]: value } }));
+  const patchBinding = (key: NodeIdKey, value: string): void =>
+    setDraft((p) => ({ ...p, bindings: { ...p.bindings, [key]: value } }));
+
+  /**
+   * The picker never decides the target — `picking` is the field whose own
+   * button opened it, so a browse started from CO can only ever land in CO.
+   */
+  const bindPickedNode = (node: OpcuaNode): void => {
+    if (picking === null) return;
+    patchBinding(picking, node.node_id);
+    setPicking(null);
+  };
 
   const save = (): void => {
     update.mutate(
@@ -336,30 +362,16 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
             disabled={readOnly}
             onChange={(v) => setDraft((p) => ({ ...p, scan_rate_s: v }))}
           />
-          <TextField
-            label="NodeID PV"
-            value={draft.bindings.node_id_pv}
-            disabled={readOnly}
-            onChange={(v) => setDraft((p) => ({ ...p, bindings: { ...p.bindings, node_id_pv: v } }))}
-          />
-          <TextField
-            label="NodeID SP"
-            value={draft.bindings.node_id_sp}
-            disabled={readOnly}
-            onChange={(v) => setDraft((p) => ({ ...p, bindings: { ...p.bindings, node_id_sp: v } }))}
-          />
-          <TextField
-            label="NodeID CO"
-            value={draft.bindings.node_id_co}
-            disabled={readOnly}
-            onChange={(v) => setDraft((p) => ({ ...p, bindings: { ...p.bindings, node_id_co: v } }))}
-          />
-          <TextField
-            label="NodeID Ti"
-            value={draft.bindings.node_id_ti}
-            disabled={readOnly}
-            onChange={(v) => setDraft((p) => ({ ...p, bindings: { ...p.bindings, node_id_ti: v } }))}
-          />
+          {NODE_ID_FIELDS.map(({ key, label }) => (
+            <NodeIdField
+              key={key}
+              label={label}
+              value={draft.bindings[key]}
+              disabled={readOnly}
+              onChange={(v) => patchBinding(key, v)}
+              onBrowse={canManage ? () => setPicking(key) : undefined}
+            />
+          ))}
         </div>
 
         {isDdc ? (
@@ -579,6 +591,14 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
           ) : null}
         </DialogFooter>
       </DialogContent>
+
+      {canManage ? (
+        <TagPickerDialog
+          field={nodeIdLabel(picking)}
+          onSelect={bindPickedNode}
+          onClose={() => setPicking(null)}
+        />
+      ) : null}
 
       {canManage ? (
         <DeleteConfirm
