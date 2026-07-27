@@ -3,6 +3,7 @@ import type { ExportRequest } from '@/api/types';
 import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/MissingState';
 import { AlarmFooterBar } from '@/features/dashboard/AlarmFooterBar';
+import { useControllers } from '@/features/dashboard/useControllers';
 import { ExportButton } from '@/features/multitrend/ExportButton';
 import { HistoryQuery } from '@/features/multitrend/HistoryQuery';
 import { MultiTrendChart } from '@/features/multitrend/MultiTrendChart';
@@ -39,6 +40,18 @@ export function reconcilableRoster(
 
 export function MultiTrendPage() {
   const stats = useStats();
+  // Already cached — the dashboard runs the same `queryKeys.controllers` query.
+  // The id→tag join is client-side by design: /controllers/stats stays lean.
+  const controllers = useControllers();
+  const loopLabel = useMemo(() => {
+    const byId = new Map<number, string>();
+    for (const c of controllers.data ?? []) byId.set(c.id, c.name);
+    // Never blank: an unloaded or deleted loop still reads `Loop {id}`.
+    return (loopId: number): string => {
+      const name = byId.get(loopId);
+      return name === undefined ? `Loop ${loopId}` : `#${loopId} · ${name}`;
+    };
+  }, [controllers.data]);
   const model = useMultiTrendModel(reconcilableRoster(stats));
   /** One shared x-range for every occupied cell, for the page's lifetime. */
   const sync = useMemo(() => createTimeSync(), []);
@@ -77,15 +90,19 @@ export function MultiTrendPage() {
             ) : (
               model.slots.map((slot, index) =>
                 slot.controllerId === null ? null : (
-                  <MultiTrendChart
-                    key={slot.controllerId}
-                    id={`slot-${index}`}
-                    testId={`multitrend-slot-${index}`}
-                    ariaLabel={`Tendência Loop ${slot.controllerId}`}
-                    series={model.slotSeries[index]}
-                    sync={sync}
-                    onPxWidth={model.setPxWidth}
-                  />
+                  <div key={slot.controllerId} className="flex min-w-0 flex-col gap-1">
+                    <h2 className="numeric truncate text-2xs uppercase tracking-wider text-text-soft">
+                      {loopLabel(slot.controllerId)}
+                    </h2>
+                    <MultiTrendChart
+                      id={`slot-${index}`}
+                      testId={`multitrend-slot-${index}`}
+                      ariaLabel={`Tendência ${loopLabel(slot.controllerId)}`}
+                      series={model.slotSeries[index]}
+                      sync={sync}
+                      onPxWidth={model.setPxWidth}
+                    />
+                  </div>
                 ),
               )
             )}
@@ -102,6 +119,7 @@ export function MultiTrendPage() {
         <aside aria-label="Controles de tendência" className="flex min-w-0 flex-col gap-3">
           <SeriesSelector
             loops={stats.loops}
+            loopLabel={loopLabel}
             isSelected={model.isSelected}
             isFull={model.isFull}
             occupiedLoops={occupiedLoops}

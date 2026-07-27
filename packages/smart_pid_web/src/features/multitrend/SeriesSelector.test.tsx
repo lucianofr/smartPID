@@ -7,6 +7,7 @@ function renderSelector(overrides: Partial<SeriesSelectorProps> = {}) {
   render(
     <SeriesSelector
       loops={[1, 2]}
+      loopLabel={(id) => (id === 1 ? '#1 · FIC-101' : `Loop ${id}`)}
       isSelected={() => false}
       isFull={false}
       occupiedLoops={[]}
@@ -48,5 +49,15 @@ describe('SeriesSelector', () => {
     renderSelector({ loops: [] });
     expect(screen.getByText('Nenhuma malha disponível.')).toBeVisible();
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+  });
+
+  it('shows the loop title as visible text while the accessible name stays frozen', () => {
+    renderSelector();
+    expect(screen.getByText('#1 · FIC-101')).toBeVisible();
+    // Loop 2 has no name yet — the row must never go blank.
+    expect(screen.getByText('Loop 2')).toBeVisible();
+    for (const name of ['Loop 1 · PV', 'Loop 1 · SP', 'Loop 1 · CO', 'Loop 2 · CO']) {
+      expect(screen.getByLabelText(name)).toBeInTheDocument();
+    }
   });
 });

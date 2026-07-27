@@ -2,9 +2,13 @@ import { cn } from '@/lib/utils';
 import { SIGNALS, type Signal } from './types';
 
 /**
- * Flat (loop × signal) checkbox grid over the four-slot model. The accessible
- * name `Loop {id} · {SIGNAL}` is frozen by the multitrend E2E; the visible text
- * is the short signal tag, which the accessible name contains (WCAG 2.5.3).
+ * Flat (loop × signal) checkbox grid over the four-slot model.
+ *
+ * The checkbox accessible name `Loop {id} · {SIGNAL}` is FROZEN by the
+ * multitrend E2E and by this file's own suite; only the row title changes to
+ * `#3 · TIC-E2E` so the selector and the grid map onto each other by sight.
+ * The visible signal text is the short tag, which the accessible name contains
+ * (WCAG 2.5.3).
  *
  * A loop that holds no slot when the grid is already full is disabled rather
  * than silently ignored — the ceiling has to be visible, not surprising.
@@ -19,6 +23,8 @@ const SWATCH: Record<Signal, string> = {
 export interface SeriesSelectorProps {
   /** Controller ids offered, ascending. */
   loops: readonly number[];
+  /** Row title, `#3 · TIC-E2E`; the caller falls back to `Loop {id}`. */
+  loopLabel(loopId: number): string;
   isSelected(loopId: number, signal: Signal): boolean;
   /** Every slot taken — loops outside `occupiedLoops` can no longer be added. */
   isFull: boolean;
@@ -28,6 +34,7 @@ export interface SeriesSelectorProps {
 
 export function SeriesSelector({
   loops,
+  loopLabel,
   isSelected,
   isFull,
   occupiedLoops,
@@ -45,11 +52,12 @@ export function SeriesSelector({
             <div key={loopId} className="flex flex-wrap items-center gap-3">
               <span
                 className={cn(
-                  'numeric w-16 shrink-0 text-xs',
+                  // w-28 fits `#3 · TIC-E2E`; w-16 clipped it.
+                  'numeric w-28 shrink-0 truncate text-xs',
                   locked ? 'text-text-disabled' : 'text-text-soft',
                 )}
               >
-                Loop {loopId}
+                {loopLabel(loopId)}
               </span>
               {SIGNALS.map((signal) => (
                 <label
