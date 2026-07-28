@@ -24,32 +24,58 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        'fixed left-1/2 top-1/2 z-50 flex w-full max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col gap-3',
-        'rounded-card border border-rule-strong bg-surface p-6 text-text outline-none',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-      <DialogPrimitive.Close
-        aria-label="Fechar"
+>(({ className, children, onOpenAutoFocus, onCloseAutoFocus, ...props }, ref) => {
+  // Radix's default close-focus behavior refocuses `context.triggerRef.current`,
+  // which is only populated by an actual <DialogTrigger>. Every production
+  // dialog in this app is opened via externally-controlled `open` state with no
+  // <DialogTrigger> in the tree, so that ref stays null and focus falls through
+  // to <body>. Fix: capture whatever had focus right before this content mounts
+  // (inside onOpenAutoFocus, which Radix's FocusScope fires synchronously before
+  // it moves focus into the dialog — see node_modules/@radix-ui/react-focus-scope
+  // dist/index.mjs, the AUTOFOCUS_ON_MOUNT dispatch happens before focusFirst()),
+  // then restore it ourselves on close. Works for both the external-state
+  // pattern and real <DialogTrigger> usage, since either way the trigger is
+  // document.activeElement at mount time.
+  const restoreFocusRef = React.useRef<HTMLElement | null>(null);
+  return (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        ref={ref}
+        onOpenAutoFocus={(event) => {
+          restoreFocusRef.current =
+            document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          onOpenAutoFocus?.(event);
+        }}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event);
+          if (!event.defaultPrevented) {
+            event.preventDefault();
+            restoreFocusRef.current?.focus();
+          }
+        }}
         className={cn(
-          'absolute right-1 top-1 inline-flex min-h-11 min-w-11 items-center justify-center',
-          'text-text-soft outline-none transition-colors hover:text-text',
-          'focus-visible:ring-2 focus-visible:ring-focus-ring',
+          'fixed left-1/2 top-1/2 z-50 flex w-full max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col gap-3',
+          'rounded-card border border-rule-strong bg-surface p-6 text-text outline-none',
+          className,
         )}
+        {...props}
       >
-        <X className="h-4 w-4" aria-hidden="true" />
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPortal>
-));
+        {children}
+        <DialogPrimitive.Close
+          aria-label="Fechar"
+          className={cn(
+            'absolute right-1 top-1 inline-flex min-h-11 min-w-11 items-center justify-center',
+            'text-text-soft outline-none transition-colors hover:text-text',
+            'focus-visible:ring-2 focus-visible:ring-focus-ring',
+          )}
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+        </DialogPrimitive.Close>
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
