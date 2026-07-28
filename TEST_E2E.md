@@ -361,7 +361,7 @@ Open Chrome at `http://127.0.0.1:5173`. Create `test-evidence/` in the worktree 
 - **Evidence:** `test-evidence/E2E-048-invalid-token.png`
 - **Result:** [x] PASS [ ] FAIL
 
-#### E2E-049 — Four responsive breakpoints
+#### E2E-049 — Six responsive breakpoints
 - **Steps:** Use CDP viewports 1920×1080, 1600×900, 1440×900, 1024×768, 768×900, 320×800; capture dashboard at each. At every viewport ≥1024, for roles `admin` and `operador`, with and without the simulator banner, evaluate `const fp = document.querySelector('aside[aria-label^="Faceplate"]'); fp.scrollHeight === fp.clientHeight` and `document.documentElement.scrollHeight === document.documentElement.clientHeight`.
 - **Expected:** ≥1024 trend/faceplate side-by-side, the faceplate being the full-height LEFT column; <1024 faceplate stacks under the trend; <768 cards scroll and alarm count chip replaces full footer; 320 retains monitoring, ACK and SP input without horizontal page overflow. **New, stricter:** the faceplate rail's `scrollHeight === clientHeight` and the page has no vertical scrollbar in all 16 viewport×role×banner combinations. Every interactive target inside the rail stays ≥44×44 CSS px.
 - **Evidence:** `test-evidence/E2E-049-responsive.png`
