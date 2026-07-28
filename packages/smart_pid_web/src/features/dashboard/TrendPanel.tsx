@@ -10,7 +10,7 @@ import {
 } from '@/components/Select';
 import { Switch } from '@/components/Switch';
 import { Trend, type TrendSeriesData } from '@/components/Trend';
-import { useTheme } from '@/theme/ThemeProvider';
+import { useGlowTrace } from '@/theme/useGlowTrace';
 import type { Scale } from '@/lib/scale';
 import { cn } from '@/lib/utils';
 import { CO_SCALE, useControllers } from './useControllers';
@@ -58,11 +58,12 @@ const NUMBER_INPUT = 'w-20 px-2 py-1 text-xs';
 
 /**
  * Recorder strip for the selected loop (§6.7/§6.9): live window, pen tip at the
- * true latest sample, AI ticks in `--accent`, and the Phosphor halo pass. The
- * `ctx.shadowBlur` path stays banned — the halo lives in `Trend`.
+ * true latest sample, AI ticks in `--accent`, and the halo pass on PV whenever
+ * `--glow-trace` is non-zero (§10.5). The `ctx.shadowBlur` path stays banned —
+ * the halo lives in `Trend`.
  */
 export function TrendPanel({ controllerId, scale }: TrendPanelProps) {
-  const { theme } = useTheme();
+  const glow = useGlowTrace();
   const controllers = useControllers();
   const tag = controllers.data?.find((c) => c.id === controllerId)?.name ?? `#${controllerId}`;
 
@@ -167,7 +168,7 @@ export function TrendPanel({ controllerId, scale }: TrendPanelProps) {
           coAxis={autoScale ? { unit: CO_SCALE.unit } : { min: coMin, max: coMax, unit: CO_SCALE.unit }}
           penTip={penTip}
           aiTicks={aiTicks}
-          glow={theme === 'phosphor'}
+          glow={glow}
           height={280}
         />
       </div>

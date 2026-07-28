@@ -5,7 +5,7 @@ import { useTrendWindow } from '@/features/dashboard/useTrendWindow';
 import { formatTimestamp } from '@/lib/format';
 import type { StatusData } from '@/lib/envelope';
 import { useRealtime } from '@/realtime/useRealtime';
-import { useTheme } from '@/theme/ThemeProvider';
+import { useGlowTrace } from '@/theme/useGlowTrace';
 import { toTwinPoint, TWIN_WINDOW_SECONDS } from './twinTrend';
 
 export interface TwinTrendProps {
@@ -26,7 +26,7 @@ const PLOT_HEIGHT = 320;
  * apart.
  */
 export function TwinTrend({ controllerId }: TwinTrendProps) {
-  const { theme } = useTheme();
+  const glow = useGlowTrace();
   const plotRef = useRef<HTMLDivElement>(null);
   const [pxWidth, setPxWidth] = useState(800);
 
@@ -70,7 +70,7 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
           coAxis={{ unit: '%' }}
           penTip={penTip}
           aiTicks={aiTicks}
-          glow={theme === 'phosphor'}
+          glow={glow}
           height={PLOT_HEIGHT}
         />
       </div>

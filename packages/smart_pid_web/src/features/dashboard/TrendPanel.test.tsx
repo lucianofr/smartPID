@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { queryKeys } from '@/api/queryKeys';
 import { makeController } from '@/test/fixtures';
@@ -79,7 +79,13 @@ describe('TrendPanel', () => {
     expect(screen.getByLabelText('CO máximo')).toHaveValue(100);
   });
 
-  it('turns the phosphor halo on with the theme and off otherwise', () => {
+  it('turns the halo on from --glow-trace, never from a theme id', async () => {
+    const style = document.createElement('style');
+    style.textContent =
+      '[data-theme="recorder"] { --glow-trace: 0px; } [data-theme="neon"] { --glow-trace: 8px; }';
+    document.head.appendChild(style);
+
+    localStorage.setItem('spid.theme', 'recorder');
     const recorder = renderPanel();
     expect(recorder.getByRole('img', { name: 'Tendência PIC-005' })).toHaveAttribute(
       'data-glow',
@@ -87,12 +93,25 @@ describe('TrendPanel', () => {
     );
     recorder.unmount();
 
-    localStorage.setItem('spid.theme', 'phosphor');
+    localStorage.setItem('spid.theme', 'neon');
     renderPanel();
-    expect(screen.getByRole('img', { name: 'Tendência PIC-005' })).toHaveAttribute(
-      'data-glow',
-      'on',
+    await waitFor(() =>
+      expect(screen.getByRole('img', { name: 'Tendência PIC-005' })).toHaveAttribute(
+        'data-glow',
+        'on',
+      ),
     );
+
+    style.remove();
+  });
+
+  it('names no theme in its source — the halo is token-driven (§10.5/D12)', () => {
+    const code = (file: string): string =>
+      readFileSync(resolve(here, file), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    expect(code('TrendPanel.tsx')).not.toContain("'phosphor'");
+    expect(code('../simulator/TwinTrend.tsx')).not.toContain("'phosphor'");
   });
 
   it('exports a CSV blob named after the loop', () => {

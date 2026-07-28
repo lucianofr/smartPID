@@ -39,7 +39,7 @@ export interface TrendProps {
   penTip?: TrendPenTip | null;
   /** AI intervention timestamps (unix seconds) ticked on the time axis (§6.7). */
   aiTicks?: readonly number[];
-  /** Phosphor halo pass on PV (§6.7). Caller decides (phase 4: theme === 'phosphor'). */
+  /** Static halo pass on PV (§6.7). Caller decides from `--glow-trace` (§10.5). */
   glow?: boolean;
   height?: number;
   className?: string;
@@ -80,7 +80,7 @@ function drawAiTicks(u: uPlot, ticks: readonly number[], color: string): void {
 }
 
 /**
- * §6.7 Phosphor halo: re-stroke the PV path 2× wider at low alpha, then crisp
+ * §6.7 halo: re-stroke the PV path 2× wider at low alpha, then crisp
  * on top. ctx.shadowBlur is BANNED from the per-frame path (cost scales with
  * path length × radius at 60 fps) — never introduce it here.
  */
