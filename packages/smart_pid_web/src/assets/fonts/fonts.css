@@ -22,3 +22,13 @@
   font-style: normal;
   font-display: swap;
 }
+/* §10.6 display face for the neon theme. wght only: Orbitron has no width
+ * axis, so .type-display's `font-stretch: 125%` is inert under neon — left as
+ * a harmless no-op rather than paying for a token that says "no width axis". */
+@font-face {
+  font-family: 'Orbitron Variable';
+  src: url('./orbitron-latin-var.woff2') format('woff2-variations');
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
