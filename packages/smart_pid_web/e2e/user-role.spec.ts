@@ -162,7 +162,12 @@ test('user opens the [cfg] menu, gets every theme and no Administração', async
   const menu = page.getByRole('menu');
   await expect(menu).toBeVisible();
   await expect(menu.getByText('Tema')).toBeVisible();
-  await expect(menu.getByRole('menuitemradio')).toHaveText(['Recorder', 'Phosphor', 'ISA-101']);
+  await expect(menu.getByRole('menuitemradio')).toHaveText([
+    'Recorder',
+    'Phosphor',
+    'ISA-101',
+    'Neon',
+  ]);
 
   // The menu is the only route to the theme picker, so hiding the admin block
   // must not cost a user the ability to change theme.
@@ -182,7 +187,7 @@ test('admin keeps the Administração block in the same [cfg] menu', async ({ pa
   await page.getByRole('button', { name: 'Configurações' }).click();
   const menu = page.getByRole('menu');
   await expect(menu.getByText('Administração')).toBeVisible();
-  await expect(menu.getByRole('menuitemradio')).toHaveCount(3);
+  await expect(menu.getByRole('menuitemradio')).toHaveCount(4);
   for (const label of ['Projects', 'Settings', 'Connection', 'Users']) {
     await expect(menu.getByRole('menuitem', { name: label })).toBeVisible();
   }
