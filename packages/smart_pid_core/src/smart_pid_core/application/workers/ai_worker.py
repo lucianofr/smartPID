@@ -122,6 +122,7 @@ class AIWorker:
         # per-loop flag and toggled at runtime via CMD.AI start/stop.
         self._enabled = controller.optimization_enabled
         self._paused = False
+        self._cycles_since_save = 0  # RL state is persisted every N cycles, not every one
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         # --- Full-retune producer state (worker thread only) --------------
@@ -169,12 +170,13 @@ class AIWorker:
         elif self._ai_config.engine == AIEngine.RL:
             from smart_pid_core.domain.services.rl_engine import RLEngine
 
-            engine = RLEngine(algorithm="SAC")
-            # Apply per-controller RL config from ai_config
-            engine._fallback._kp = self._ai_config.rl_fallback_kp
-            engine._fallback._kd = self._ai_config.rl_fallback_kd
-            engine._train_interval = self._ai_config.rl_train_interval
-            return engine
+            return RLEngine(
+                algorithm="SAC",
+                learning_rate=self._ai_config.rl_learning_rate,
+                fallback_kp=self._ai_config.rl_fallback_kp,
+                fallback_kd=self._ai_config.rl_fallback_kd,
+                train_interval=self._ai_config.rl_train_interval,
+            )
         return None
 
     def start(self) -> None:
@@ -631,6 +633,7 @@ class AIWorker:
                         limit_min=self._ai_config.limit_min,
                         limit_max=self._ai_config.limit_max,
                         integral_type=self._integral_type,
+                        stats=self._latest_stats,
                     )
                     new_ki = decision.new_ki
                     gamma_value = decision.gamma
@@ -672,8 +675,13 @@ class AIWorker:
                     msgpack.packb(log_data),
                 )
 
-                # Persist RL state after each AI cycle
-                self._save_rl_state()
+                # Persist RL state periodically -- it's an I/O-heavy JSON
+                # dump of the replay buffer + model weights, not needed
+                # every cycle. stop() still saves unconditionally.
+                self._cycles_since_save += 1
+                if self._cycles_since_save >= 10:
+                    self._cycles_since_save = 0
+                    self._save_rl_state()
             except zmq.ZMQError:
                 break
             except Exception:

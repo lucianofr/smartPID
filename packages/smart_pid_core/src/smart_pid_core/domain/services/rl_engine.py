@@ -1,6 +1,6 @@
 """Reinforcement Learning engine for Ki optimization.
 
-Uses stable-baselines3 (SAC or PPO) with lazy imports.
+Uses stable-baselines3 (SAC) with lazy imports.
 Falls back to a proportional baseline policy when sb3 is unavailable or untrained.
 """
 from __future__ import annotations
@@ -28,9 +28,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Observation space bounds for normalization: [error, delta_error, CO, integral_val]
-# Each normalized to [-1, 1]
-OBS_DIM = 4
+# Observation space bounds for normalization:
+# [error, delta_error, CO, integral_val, ti_norm]
+# Each normalized to [-1, 1]. ti_norm is the actuated Ti/Ki value's
+# log-scale position within [limit_min, limit_max] — without it, identical
+# (error, delta_error, CO, integral_val) tuples can map to wildly different
+# correct actions depending on the current Ti, breaking the Markov property.
+OBS_DIM = 5
 ACTION_DIM = 1
 
 # ── Reward Design Philosophy ─────────────────────────────────────────
@@ -47,6 +51,13 @@ ACTION_DIM = 1
 # └─────────────────────┴──────────────────┴──────────────┴────────────┘
 #
 # All errors are normalized to [-1, +1] of span before entering here.
+#
+# Two reward paths feed compute_gamma:
+#   1. compute_reward_from_stats() — preferred. Built from a StatsWorker
+#      window (IAE/oscillation/TV KPIs covering everything that happened
+#      between AI decisions).
+#   2. compute_reward() / the point-sample functions below — fallback when
+#      no windowed stats are available yet (aliased, instantaneous only).
 
 _SURGE_DEADBAND = 0.02  # 2% of span — free floating zone
 
@@ -145,6 +156,7 @@ def compute_reward_surge_level(
     co: float,
     prev_co: float | None,
     step: int,
+    prev_delta_co: float | None = None,
 ) -> float:
     """Reward for SURGE_LEVEL (Buffer Tank / Averaging Level Control).
 
@@ -156,6 +168,11 @@ def compute_reward_surge_level(
       - Error outside deadband → escalating penalty (approaching limits)
       - CO direction change penalty (chattering is the worst outcome)
     KPIs: TV, valve reversals, time inside deadband
+
+    Pure function: the caller (RLEngine) is responsible for tracking
+    ``prev_delta_co`` across calls per-instance. Storing it on this
+    function's own `__dict__` (the old approach) would leak state across
+    every controller/thread sharing the process.
     """
     # Valve stability — DOMINANT reward component
     stability = 0.0
@@ -164,12 +181,9 @@ def compute_reward_surge_level(
         # Exponential reward: 1.0 when perfectly still, decays with movement
         stability = 1.5 * math.exp(-8.0 * co_change)
         # Extra penalty for valve direction reversal (chattering)
-        if hasattr(compute_reward_surge_level, "_prev_delta_co"):
-            prev_delta = compute_reward_surge_level._prev_delta_co
-            curr_delta = co - prev_co
-            if prev_delta * curr_delta < 0:  # sign changed = reversal
-                stability -= 0.5
-        compute_reward_surge_level._prev_delta_co = co - prev_co
+        curr_delta = co - prev_co
+        if prev_delta_co is not None and prev_delta_co * curr_delta < 0:
+            stability -= 0.5
 
     # Deadband: zero penalty inside ±2% of span
     error_penalty = 0.0
@@ -180,6 +194,50 @@ def compute_reward_surge_level(
         error_penalty = -3.0 * excess * excess
 
     return stability + error_penalty
+
+
+def compute_reward_from_stats(
+    stats: dict[str, float],
+    span: float,
+    objective: ControlObjective,
+) -> float | None:
+    """Reward computed from a StatsWorker window (IAE/oscillation/TV KPIs).
+
+    Unlike the point-sample reward functions above, this sees everything
+    that happened between AI decisions — oscillation, valve travel, mean
+    error — instead of a single instantaneous sample (fixes reward
+    aliasing). Returns None when the window is too small or span is
+    invalid, so the caller falls back to the point-sample reward.
+    """
+    from smart_pid_domain.enums import ControlObjective as CO
+
+    if stats.get("sample_count", 0) < 10 or span <= 0:
+        return None
+
+    mae_n = stats.get("mean_abs_error", 0.0) / span  # mean |error|, fraction of span
+    osc = stats.get("osc", 0.0)  # oscillation score in [0, 1]
+    tv_s = stats.get("tv_per_sample", 0.0) / 100.0  # mean |ΔCO| per sample, fraction of output
+
+    settle_bonus = 0.5 if mae_n < 0.005 else 0.0
+
+    if objective == CO.DISTURBANCE_REJECTION:
+        w_mae = 2.5  # DR: punish offset hardest
+        w_osc = 1.0  # moderate oscillation penalty
+        w_tv = 0.1  # let the valve fight disturbances freely
+        reward = -w_mae * mae_n - w_osc * osc - w_tv * tv_s + settle_bonus
+    elif objective == CO.SURGE_LEVEL:
+        w_tv = 1.5  # valve calm is the dominant term
+        w_excess = 3.0  # quadratic penalty once outside the error deadband
+        w_osc = 0.3  # secondary oscillation penalty
+        excess = max(0.0, mae_n - 0.02)
+        reward = w_tv * math.exp(-8.0 * tv_s) - w_excess * excess * excess - w_osc * osc
+    else:  # SP_TRACKING (default)
+        w_mae = 2.0  # fast convergence to setpoint
+        w_osc = 0.8  # moderate oscillation penalty
+        w_tv = 0.3  # moderate TV penalty
+        reward = -w_mae * mae_n - w_osc * osc - w_tv * tv_s + settle_bonus
+
+    return max(-5.0, min(2.0, reward))
 
 
 class _FallbackPolicy:
@@ -273,14 +331,26 @@ class _FallbackPolicy:
 
 
 class RLEngine:
-    """RL-based Ki optimizer using SAC or PPO.
+    """RL-based Ki optimizer using SAC.
 
     Pure domain service -- lazy imports sb3 only when training or loading.
-    When sb3 is unavailable or no model is trained, falls back to a
-    proportional baseline policy.
+    When sb3 is unavailable or the policy has not trained enough to be
+    trusted, falls back to a proportional baseline policy.
     """
 
-    def __init__(self, algorithm: str = "SAC") -> None:
+    _MIN_TRAINS_BEFORE_POLICY = 3  # online training rounds before the neural policy is trusted
+
+    def __init__(
+        self,
+        algorithm: str = "SAC",
+        learning_rate: float = 3e-4,
+        fallback_kp: float = 0.6,
+        fallback_kd: float = 0.2,
+        train_interval: int = 32,
+    ) -> None:
+        if algorithm != "SAC":
+            logger.warning("rl_unsupported_algorithm %s, using SAC", algorithm)
+            algorithm = "SAC"
         self._algorithm = algorithm
         self._model = None
         self._sb3_available: bool | None = None
@@ -288,11 +358,13 @@ class RLEngine:
         self._reward_steps = 0
         self._total_reward = 0.0
         self._step_count = 0
+        self._steps_in_error = 0  # cycles the loop has spent outside the error band
 
         # Experience buffer for online training
         self._last_observation: list[float] | None = None
         self._last_action: float | None = None
         self._prev_co: float | None = None
+        self._prev_delta_co: float | None = None
 
         # Replay buffer for online training (stores transitions)
         self._replay_buffer: deque[tuple[list[float], float, float, list[float], bool]] = (
@@ -300,12 +372,15 @@ class RLEngine:
         )
 
         # Fallback policy
-        self._fallback = _FallbackPolicy()
+        self._fallback = _FallbackPolicy(kp=fallback_kp, kd=fallback_kd)
 
         # Training config
+        self._learning_rate = learning_rate
         self._train_batch_size = 64
-        self._train_interval = 32  # Train every N steps
+        self._train_interval = train_interval  # Train every N steps
         self._min_buffer_size = 128  # Minimum transitions before training
+        self._train_success_count = 0
+        self._train_fail_logged = False
 
     @property
     def algorithm(self) -> str:
@@ -340,6 +415,20 @@ class RLEngine:
                 self._sb3_available = False
         return self._sb3_available
 
+    def _policy_ready(self) -> bool:
+        """True once the SAC policy has trained enough to be trusted.
+
+        A freshly constructed sb3 model is randomly initialized; letting it
+        drive Ti immediately makes gamma a random walk bounded only by
+        limit_min/limit_max. Require several successful online-training
+        rounds first (or a model loaded from a prior run, which is already
+        trained and has zero online rounds yet in this process).
+        """
+        return self._model is not None and (
+            self._train_success_count >= self._MIN_TRAINS_BEFORE_POLICY
+            or (self._is_trained and self._train_success_count == 0)
+        )
+
     def _normalize_observation(
         self,
         error: float,
@@ -347,8 +436,18 @@ class RLEngine:
         span: float,
         co: float,
         integral_val: float,
+        ki_current: float,
+        limit_min: float,
+        limit_max: float,
     ) -> list[float]:
-        """Normalize observation to [-1, 1] range."""
+        """Normalize observation to [-1, 1] range.
+
+        5-dim: [error, delta_error, CO, integral_val, ti_norm]. ti_norm is
+        the current Ti/Ki's log-scale position within [limit_min,
+        limit_max] — without it, identical (error, delta_error, CO,
+        integral_val) tuples can require wildly different correct actions
+        depending on where Ti currently sits, breaking the Markov property.
+        """
         if span > 0:
             error_norm = max(-1.0, min(1.0, error / span))
             delta_error_norm = max(-1.0, min(1.0, delta_error / span))
@@ -357,7 +456,13 @@ class RLEngine:
             delta_error_norm = 0.0
         co_norm = max(-1.0, min(1.0, (co - 50.0) / 50.0))  # [0,100] -> [-1,1]
         integral_norm = max(-1.0, min(1.0, integral_val / 100.0))
-        return [error_norm, delta_error_norm, co_norm, integral_norm]
+        if limit_min > 0 and limit_max > limit_min:
+            ratio = math.log(max(ki_current, limit_min) / limit_min)
+            ti_norm = 2.0 * ratio / math.log(limit_max / limit_min) - 1.0
+            ti_norm = max(-1.0, min(1.0, ti_norm))
+        else:
+            ti_norm = 0.0
+        return [error_norm, delta_error_norm, co_norm, integral_norm, ti_norm]
 
     def compute_reward(
         self,
@@ -382,16 +487,20 @@ class RLEngine:
         from smart_pid_domain.enums import ControlObjective as CO
 
         if objective == CO.SURGE_LEVEL:
-            return compute_reward_surge_level(
-                error, delta_error, co, self._prev_co, self._step_count
+            reward = compute_reward_surge_level(
+                error, delta_error, co, self._prev_co, self._steps_in_error,
+                self._prev_delta_co,
             )
+            if self._prev_co is not None:
+                self._prev_delta_co = co - self._prev_co
+            return reward
         elif objective == CO.DISTURBANCE_REJECTION:
             return compute_reward_disturbance_rejection(
-                error, delta_error, co, self._prev_co, self._step_count
+                error, delta_error, co, self._prev_co, self._steps_in_error
             )
         else:
             return compute_reward_sp_tracking(
-                error, delta_error, co, self._prev_co, self._step_count
+                error, delta_error, co, self._prev_co, self._steps_in_error
             )
 
     def compute_gamma(
@@ -407,6 +516,7 @@ class RLEngine:
         limit_min: float,
         limit_max: float,
         integral_type: str = "TIME_TI",
+        stats: dict[str, float] | None = None,
     ) -> AIDecision:
         """Compute gamma from RL model or fallback policy.
 
@@ -421,19 +531,36 @@ class RLEngine:
             speed: Process speed for speed factor.
             limit_min: Minimum allowed Ki.
             limit_max: Maximum allowed Ki.
+            integral_type: "GAIN_KI" or "TIME_TI".
+            stats: Latest StatsWorker window snapshot (IAE/oscillation/TV
+                KPIs). When present, the reward is computed from this
+                window instead of the aliased instantaneous point sample.
 
         Returns:
             AIDecision with gamma, new Ki, reasoning, and debug info.
         """
         observation = self._normalize_observation(
-            error, delta_error, span, co, integral_val
+            error, delta_error, span, co, integral_val, ki_current, limit_min, limit_max
         )
 
-        # Compute reward for the previous step (if we have prior observation)
+        # Track how long the loop has been outside a small error band —
+        # event-relative (not wall-clock) time escalation for reward shaping.
+        if abs(observation[0]) >= 0.01:
+            self._steps_in_error += 1
+        else:
+            self._steps_in_error = 0
+
+        # Compute reward for the previous step (if we have prior observation).
+        # Prefer windowed loop KPIs over the aliased point-sample reward when
+        # a StatsWorker snapshot is available.
         if self._last_observation is not None:
-            reward = self.compute_reward(
-                observation[0], observation[1], co, span, objective
-            )
+            reward = None
+            if stats is not None:
+                reward = compute_reward_from_stats(stats, span, objective)
+            if reward is None:
+                reward = self.compute_reward(
+                    observation[0], observation[1], co, span, objective
+                )
             self._total_reward += reward
             self._reward_steps += 1
 
@@ -447,25 +574,37 @@ class RLEngine:
             ))
 
         # Get action from model or fallback
-        if self._model is not None:
+        if self._policy_ready():
+            assert self._model is not None  # _policy_ready() already checked this
             import numpy as np
 
             obs_array = np.array(observation, dtype=np.float32)
-            action, _ = self._model.predict(obs_array, deterministic=True)
-            gamma = (
-                float(action[0]) if hasattr(action, "__getitem__") else float(action)
-            )
-            gamma = max(-1.0, min(1.0, gamma))
-            reasoning = (
-                f"RL({self._algorithm}): obs={_fmt_obs(observation)}, "
-                f"gamma={gamma:.4f}"
-            )
+            try:
+                action, _ = self._model.predict(obs_array, deterministic=False)
+                gamma = (
+                    float(action[0]) if hasattr(action, "__getitem__") else float(action)
+                )
+                gamma = max(-1.0, min(1.0, gamma))
+                reasoning = (
+                    f"RL({self._algorithm}): obs={_fmt_obs(observation)}, "
+                    f"gamma={gamma:.4f}, trained={self._train_success_count}"
+                )
+            except Exception:
+                logger.warning(
+                    "rl_model_predict_failed \u2014 discarding model", exc_info=True
+                )
+                self._model = None
+                gamma = self._fallback.predict(observation)
+                reasoning = (
+                    f"RL(fallback): obs={_fmt_obs(observation)}, "
+                    f"gamma={gamma:.4f}, trained={self._train_success_count}"
+                )
         else:
             # Fallback: proportional baseline policy
             gamma = self._fallback.predict(observation)
             reasoning = (
                 f"RL(fallback): obs={_fmt_obs(observation)}, "
-                f"gamma={gamma:.4f}"
+                f"gamma={gamma:.4f}, trained={self._train_success_count}"
             )
 
         # Store for next step's reward computation
@@ -529,10 +668,14 @@ class RLEngine:
         try:
             self._online_train_sb3()
         except Exception:
-            logger.debug("rl_online_train_failed", exc_info=True)
+            if not self._train_fail_logged:
+                logger.warning("rl_online_train_failed", exc_info=True)
+                self._train_fail_logged = True
+            else:
+                logger.debug("rl_online_train_failed", exc_info=True)
 
     def _online_train_sb3(self) -> None:
-        """Run online training with sb3 model (SAC or PPO)."""
+        """Run online training with the sb3 SAC model."""
         import numpy as np
 
         if self._model is None:
@@ -545,15 +688,13 @@ class RLEngine:
         if len(buffer_list) < self._train_batch_size:
             return
 
-        if self._algorithm == "SAC":
-            self._train_sac(buffer_list, np)
-        else:
-            self._train_ppo(buffer_list, np)
-
+        self._train_sac(buffer_list, np)
+        self._train_success_count += 1
         self._is_trained = True
         logger.debug(
-            "rl_online_train algo=%s step=%d buffer=%d",
+            "rl_online_train algo=%s step=%d buffer=%d trained=%d",
             self._algorithm, self._step_count, len(self._replay_buffer),
+            self._train_success_count,
         )
 
     def _train_sac(self, buffer_list: list, np) -> None:  # noqa: ANN001
@@ -569,48 +710,14 @@ class RLEngine:
             )
         self._model.train(gradient_steps=4, batch_size=self._train_batch_size)
 
-    def _train_ppo(self, buffer_list: list, np) -> None:  # noqa: ANN001
-        """On-policy PPO: fill rollout buffer and call learn().
-
-        PPO uses a RolloutBuffer (on-policy), not a ReplayBuffer.
-        We collect the last N transitions as a mini-rollout.
-        """
-        rollout = self._model.rollout_buffer
-        rollout.reset()
-
-        batch = buffer_list[-self._train_batch_size:]
-        for obs, action, reward, _next_obs, _done in batch:
-            rollout.add(
-                obs=np.array(obs, dtype=np.float32).reshape(1, -1),
-                action=np.array([action], dtype=np.float32).reshape(1, -1),
-                reward=np.array([reward], dtype=np.float32),
-                episode_start=np.array([False]),
-                value=self._model.policy.predict_values(
-                    self._model.policy.obs_to_tensor(
-                        np.array(obs, dtype=np.float32).reshape(1, -1)
-                    )[0]
-                ),
-                log_prob=np.array([0.0], dtype=np.float32),
-            )
-
-        # Compute returns and advantages
-        last_obs = np.array(batch[-1][3], dtype=np.float32).reshape(1, -1)
-        last_value = self._model.policy.predict_values(
-            self._model.policy.obs_to_tensor(last_obs)[0]
-        )
-        rollout.compute_returns_and_advantage(
-            last_values=last_value, dones=np.array([False]),
-        )
-
-        # Run PPO update
-        self._model.train()
-
     def _init_sb3_model(self) -> None:
-        """Initialize a new sb3 model for online training."""
+        """Initialize a new sb3 SAC model for online training."""
         try:
             import gymnasium as gym
             import numpy as np
             from gymnasium import spaces
+            from stable_baselines3 import SAC
+            from stable_baselines3.common.utils import configure_logger  # type: ignore
 
             obs_space = spaces.Box(
                 low=-1.0, high=1.0, shape=(OBS_DIM,), dtype=np.float32
@@ -638,26 +745,21 @@ class RLEngine:
 
             env = _DummyEnv()
 
-            if self._algorithm == "SAC":
-                from stable_baselines3 import SAC
-
-                self._model = SAC(
-                    "MlpPolicy",
-                    env,
-                    learning_rate=3e-4,
-                    buffer_size=10_000,
-                    batch_size=self._train_batch_size,
-                    verbose=0,
-                )
-            else:
-                from stable_baselines3 import PPO
-
-                self._model = PPO(
-                    "MlpPolicy",
-                    env,
-                    learning_rate=3e-4,
-                    verbose=0,
-                )
+            self._model = SAC(
+                "MlpPolicy",
+                env,
+                learning_rate=self._learning_rate,
+                buffer_size=10_000,
+                batch_size=self._train_batch_size,
+                verbose=0,
+            )
+            # BaseAlgorithm.train() reads the `logger` property, which sb3
+            # only assigns inside set_logger()/_setup_learn() (the latter
+            # only called by learn()) — never in __init__. Without this,
+            # the first online-train call raises AttributeError, which was
+            # previously swallowed by _try_online_train's except clause.
+            assert self._model is not None  # just assigned above
+            self._model.set_logger(configure_logger(verbose=0))
             logger.info("rl_model_initialized algorithm=%s", self._algorithm)
         except ImportError:
             logger.debug("sb3/gymnasium not available, using fallback policy")
@@ -681,14 +783,9 @@ class RLEngine:
                 "stable-baselines3 not installed. "
                 "Install with: pip install smart-pid-core[ai]"
             )
-        if self._algorithm == "SAC":
-            from stable_baselines3 import SAC
+        from stable_baselines3 import SAC
 
-            self._model = SAC.load(str(path))
-        else:
-            from stable_baselines3 import PPO
-
-            self._model = PPO.load(str(path))
+        self._model = SAC.load(str(path))
         self._is_trained = True
         logger.info("rl_model_loaded path=%s", str(path))
 
@@ -697,7 +794,9 @@ class RLEngine:
         self._last_observation = None
         self._last_action = None
         self._prev_co = None
+        self._prev_delta_co = None
         self._step_count = 0
+        self._steps_in_error = 0
         self._fallback.reset()
 
     def save_state(self, model_dir: Path) -> dict:
@@ -723,6 +822,7 @@ class RLEngine:
         ]
 
         return {
+            "version": 2,
             "algorithm": self._algorithm,
             "model_path": model_path,
             "is_trained": self._is_trained,
@@ -739,6 +839,13 @@ class RLEngine:
 
     def load_state(self, state: dict, model_dir: Path | None = None) -> None:
         """Restore engine state from a previously saved dict."""
+        if state.get("version") != 2:
+            # Older state predates the 5-dim observation / stats-reward /
+            # policy-gate changes — discard rather than resume with a
+            # replay buffer built against the old 4-dim observation space.
+            logger.info("rl_state_version_mismatch \u2014 discarding persisted RL state")
+            return
+
         self._step_count = state.get("step_count", 0)
         self._reward_steps = state.get("reward_steps", 0)
         self._total_reward = state.get("total_reward", 0.0)
