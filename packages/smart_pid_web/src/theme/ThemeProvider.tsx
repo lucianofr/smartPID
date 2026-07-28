@@ -7,6 +7,9 @@ export const THEMES: ReadonlyArray<{ id: ThemeId; label: string }> = [
   { id: 'recorder', label: 'Recorder' },
   { id: 'phosphor', label: 'Phosphor' },
   { id: 'isa101', label: 'ISA-101' },
+  // §10.2: the siblings are instruments (paper chart recorder, CRT phosphor).
+  // Neon breaks that pattern on purpose — it needs no explanation.
+  { id: 'neon', label: 'Neon' },
 ];
 
 export const STORAGE_KEY = 'spid.theme';

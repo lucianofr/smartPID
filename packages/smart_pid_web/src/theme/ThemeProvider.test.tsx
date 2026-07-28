@@ -28,9 +28,10 @@ beforeEach(() => {
   document.documentElement.removeAttribute('data-theme');
 });
 
-describe('theme registry (spec §6.8)', () => {
-  it('ships exactly recorder, phosphor, isa101 — recorder default', () => {
-    expect(THEMES.map((t) => t.id)).toEqual(['recorder', 'phosphor', 'isa101']);
+describe('theme registry (spec §6.8 + §10.2)', () => {
+  it('ships exactly recorder, phosphor, isa101, neon — recorder still default', () => {
+    expect(THEMES.map((t) => t.id)).toEqual(['recorder', 'phosphor', 'isa101', 'neon']);
+    expect(THEMES.map((t) => t.label)).toEqual(['Recorder', 'Phosphor', 'ISA-101', 'Neon']);
     expect(DEFAULT_THEME).toBe('recorder');
     expect(STORAGE_KEY).toBe('spid.theme');
   });
@@ -47,9 +48,12 @@ describe('resolveStoredTheme — every §6.8 migration row', () => {
     expect(LEGACY_THEME_MAP[legacy]).toBe(target);
   });
 
-  it.each([['recorder'], ['phosphor'], ['isa101']] as const)('valid %s passes through', (id) => {
-    expect(resolveStoredTheme(id)).toBe(id);
-  });
+  it.each([['recorder'], ['phosphor'], ['isa101'], ['neon']] as const)(
+    'valid %s passes through',
+    (id) => {
+      expect(resolveStoredTheme(id)).toBe(id);
+    },
+  );
 
   it('unknown and null fall to recorder', () => {
     expect(resolveStoredTheme('banana')).toBe('recorder');

@@ -2,7 +2,7 @@
  * §6.4 token contract (normative). All themes define ALL of these names.
  * Components consume ONLY these custom properties (guarded by token-guard.test.ts).
  */
-export const THEME_IDS = ['recorder', 'phosphor', 'isa101'] as const;
+export const THEME_IDS = ['recorder', 'phosphor', 'isa101', 'neon'] as const;
 export type ContractThemeId = (typeof THEME_IDS)[number];
 
 export const CONTRACT_TOKENS = [

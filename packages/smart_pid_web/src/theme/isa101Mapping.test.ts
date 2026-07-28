@@ -266,13 +266,15 @@ describe('the retokenisation is finished', () => {
     expect(themesCss).not.toContain('INTERIM');
   });
 
-  it('all three themes declare the identical token vocabulary (single §6.4 set)', () => {
+  it('all four themes declare the identical token vocabulary (single §6.4 set)', () => {
     const blocks = [...themesCss.matchAll(/\[data-theme="([a-z0-9-]+)"\]\s*\{([\s\S]*?)\n\}/g)];
-    expect(blocks.map((b) => b[1])).toEqual(['recorder', 'phosphor', 'isa101']);
+    expect(blocks.map((b) => b[1])).toEqual(['recorder', 'phosphor', 'isa101', 'neon']);
     const names = blocks.map(
       (b) => [...b[2].matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]).sort(),
     );
+    expect(names[0]).toHaveLength(46); // 41 palette + 4 glow + --font-display
     expect(names[1]).toEqual(names[0]);
     expect(names[2]).toEqual(names[0]);
+    expect(names[3]).toEqual(names[0]);
   });
 });

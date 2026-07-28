@@ -89,3 +89,46 @@
   --glow-trace: 0px;        /* §10.5 ISA-101 chrome does not bloom */
   --font-display: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
+
+/*
+ * Neon (§10) — the fourth theme, and the default from §10.2. Derived from the
+ * ui-ux-pro-max skill, deliberately DISCARDING the ISA-101 premise recorded at
+ * contract.ts:22 ("green never means ok"): --state-running is neon green here.
+ * That is safe only because recorder and isa101 stay in the picker untouched,
+ * so a customer who needs ISA-101 conformance still has a conforming surface.
+ *
+ * WCAG does NOT fall with ISA-101. Every pair below passes all 43 assertions of
+ * themeContrast.test.ts; tightest margins are --alarm-crit on --alarm-crit-bg
+ * (4.72:1, floor 3.0) and --rule-strong on --surface (3.23:1, floor 3.0).
+ *
+ * Salience headroom min(alarm chroma) - max(chrome chroma) is -0.056 (§10.4):
+ * a running loop is louder than an ADVISORY. Glow (§10.5) is the compensating
+ * channel — alarms and focus bloom, steady chrome never does.
+ */
+[data-theme="neon"] {
+  --bg: #07070E;            /* not #000000 — pure black smears on OLED */
+  --surface: #101226;
+  --surface-sunk: #0A0B18;  /* chart wells, inputs */
+  --rule: #1E2038;          /* hairlines, decorative only */
+  --rule-strong: #5A60A8;   /* control boundaries — 3.23:1 on surface, 3.42:1 on sunk */
+  --text: #E9ECFF;  --text-soft: #A6ADDC;  --text-disabled: #5A5F85;
+  --focus-ring: #00E5FF;  --selection: #1B2A5C;  --scrim: rgba(3,3,8,0.72);
+  --accent: #00E5FF;  --accent-hover: #66F2FF;  --accent-sunk: #0088A0;
+  --accent-soft: #0A2A38;  --on-accent: #04040A;                /* 13.29:1 */
+  --alarm-crit: #FF2D6F;  --alarm-crit-bg: #3A0A1C;             /* 5.60:1 on bg */
+  --alarm-warn: #FFB020;  --alarm-warn-bg: #3A2600;
+  --alarm-adv:  #C77DFF;  --alarm-adv-bg:  #28123E;
+  --alarm-log:  #A6ADDC;  --on-alarm: #04040A;                  /* >=5.70:1 on all four fills */
+  --state-running: #39FF88;  --state-stopped: #A6ADDC;          /* the discarded premise, made visible */
+  --state-error: #FF2D6F;    --state-oos: #4A4E6E;              /* oos is contrast-exempt: faded IS the signal */
+  --trace-pv: #00F0FF;  --trace-sp: #B8BEE8;  --trace-co: #FFA630;
+  --trend-grid: #1A1C33;  --trend-axis: #5A5F85;  --trend-bg: #07070E;
+  --trend-pv-width: 2px;  --trend-sp-width: 1.5px;  --trend-co-width: 1.5px;
+  --trend-sp-dash: 4 3;
+  --bar-track: #12142A;  --bar-fill: #00E5FF;  --bar-marker: #FFFFFF;
+  --glow-alarm: 0 0 12px rgba(255,45,111,0.55);
+  --glow-focus: 0 0 10px rgba(0,229,255,0.65);
+  --glow-accent: 0 0 14px rgba(0,229,255,0.45);
+  --glow-trace: 8px;
+  --font-display: 'Orbitron Variable', 'Archivo Variable', system-ui, sans-serif;
+}

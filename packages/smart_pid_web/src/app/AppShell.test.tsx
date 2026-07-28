@@ -183,6 +183,7 @@ describe('AppShell — [cfg] menu role gating', () => {
       'Recorder',
       'Phosphor',
       'ISA-101',
+      'Neon',
     ]);
 
     expect(within(menu).queryByText('Administração')).not.toBeInTheDocument();
@@ -210,7 +211,7 @@ describe('AppShell — [cfg] menu role gating', () => {
 
     const menu = await openCfgMenu();
     await within(menu).findByText('Administração');
-    expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(3);
+    expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(4);
     for (const label of ['Projects', 'Settings', 'Connection', 'Users']) {
       expect(within(menu).getByRole('menuitem', { name: label })).toBeVisible();
     }
