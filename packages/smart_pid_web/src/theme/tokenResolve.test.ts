@@ -67,4 +67,17 @@ describe('§6.4 token contract resolves under every [data-theme]', () => {
       }
     }
   });
+
+  it('--font-display is per-theme while --font-ui and --font-data stay global', () => {
+    const tokensCss = readFileSync(resolve(process.cwd(), 'src/theme/tokens.css'), 'utf8');
+    expect(tokensCss).not.toMatch(/--font-display\s*:/);
+    expect(tokensCss).toMatch(/--font-ui\s*:/);
+    expect(tokensCss).toMatch(/--font-data\s*:/);
+
+    const archivo = "'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif";
+    for (const id of ['recorder', 'phosphor', 'isa101']) {
+      document.documentElement.setAttribute('data-theme', id);
+      expect(resolved('--font-display'), id).toBe(archivo);
+    }
+  });
 });

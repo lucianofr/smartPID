@@ -6,8 +6,10 @@
  * (§6.2: system-ui / ui-monospace, minor reflow on first paint accepted).
  */
 :root {
-  /* Type faces (§6.2). --font-display is Archivo used at wdth 125 via .type-display. */
-  --font-display: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Type faces (§6.2). --font-display is PER-THEME (§10.6) and lives in
+   * themes.css: numerals and body text are identical in all four themes, the
+   * display face is not. Recorder/Phosphor/ISA-101 declare Archivo at wdth 125
+   * via .type-display; neon declares Orbitron. */
   --font-ui: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-data: 'Geist Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
 

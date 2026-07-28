@@ -120,6 +120,8 @@ const MAPPING: Record<string, OldToken | typeof DERIVED> = {
   '--glow-focus': DERIVED,
   '--glow-accent': DERIVED,
   '--glow-trace': DERIVED,
+  // Type — per-theme since §10.6; ISA-101 keeps the Archivo stack.
+  '--font-display': DERIVED,
 };
 
 /** Every §6.4 color/geometry token and its exact final ISA-101 value. */
@@ -169,6 +171,7 @@ const ISA101_EXPECTED: Record<string, string> = {
   '--glow-focus': '0 0 #0000',
   '--glow-accent': '0 0 #0000',
   '--glow-trace': '0px',
+  '--font-display': "'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif",
 };
 
 const CSS_FILES = ['src/theme/tokens.css', 'src/theme/themes.css'];
@@ -199,7 +202,10 @@ describe('ISA-101 computed style matches the recorded mapping', () => {
   });
 
   it('covers every §6.4 token (type tokens excepted — they live in :root)', () => {
-    const typeTokens = ['--font-display', '--font-ui', '--font-data'];
+    // §10.6: --font-display moved into the [data-theme] blocks, so ISA-101 now
+    // pins it like any other per-theme value. Only --font-ui / --font-data
+    // remain in :root and stay excepted.
+    const typeTokens = ['--font-ui', '--font-data'];
     const covered = new Set(Object.keys(ISA101_EXPECTED));
     const uncovered = CONTRACT_TOKENS.filter(
       (t) => !covered.has(t) && !typeTokens.includes(t),

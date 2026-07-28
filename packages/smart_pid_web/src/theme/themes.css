@@ -27,6 +27,7 @@
   --bar-track: #EEF1F5;  --bar-fill: #5A6875;  --bar-marker: #16202B;
   --glow-alarm: 0 0 #0000;  --glow-focus: 0 0 #0000;  --glow-accent: 0 0 #0000;
   --glow-trace: 0px;        /* §10.5 no halo on paper */
+  --font-display: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 [data-theme="phosphor"] {
@@ -52,6 +53,7 @@
   --bar-track: #0E141C;  --bar-fill: #5E7080;  --bar-marker: #8FB6D6;
   --glow-alarm: 0 0 #0000;  --glow-focus: 0 0 #0000;  --glow-accent: 0 0 #0000;
   --glow-trace: 4px;        /* §10.5 the CRT halo, formerly `theme === 'phosphor'` */
+  --font-display: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 /*
@@ -85,4 +87,5 @@
   --bar-track: #252526;  --bar-fill: #9A9A9A;  --bar-marker: #CCCCCC;
   --glow-alarm: 0 0 #0000;  --glow-focus: 0 0 #0000;  --glow-accent: 0 0 #0000;
   --glow-trace: 0px;        /* §10.5 ISA-101 chrome does not bloom */
+  --font-display: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
