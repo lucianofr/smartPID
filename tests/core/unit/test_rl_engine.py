@@ -20,11 +20,13 @@ class TestRLEngineInit:
         engine = RLEngine()
         assert engine.algorithm == "SAC"
 
-    def test_ppo_algorithm(self):
+    def test_unsupported_algorithm_coerces_to_sac(self, caplog):
         from smart_pid_core.domain.services.rl_engine import RLEngine
 
-        engine = RLEngine(algorithm="PPO")
-        assert engine.algorithm == "PPO"
+        with caplog.at_level("WARNING"):
+            engine = RLEngine(algorithm="PPO")
+        assert engine.algorithm == "SAC"
+        assert "rl_unsupported_algorithm" in caplog.text
 
     def test_initial_counters_are_zero(self):
         from smart_pid_core.domain.services.rl_engine import RLEngine
@@ -246,6 +248,49 @@ class TestComputeGammaSpeedFactors:
         assert abs(ki_fast - 10.0) > abs(ki_medium - 10.0)
 
 
+class TestEventRelativeTimeEscalation:
+    """steps_in_error should track consecutive out-of-band cycles, not wall-clock step_count."""
+
+    def test_steps_in_error_resets_on_near_zero_error(self):
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        engine = RLEngine()
+        # 5 cycles with a large error -> steps_in_error should climb to 5.
+        for _ in range(5):
+            engine.compute_gamma(
+                error=20.0, delta_error=0.0, ki_current=1.0, span=100.0,
+                co=50.0, integral_val=0.0,
+                objective=ControlObjective.SP_TRACKING,
+                speed=ProcessSpeed.MEDIUM,
+                limit_min=0.1, limit_max=100.0,
+                integral_type='GAIN_KI',
+            )
+        assert engine._steps_in_error == 5
+
+        # 1 cycle with near-zero error -> counter resets to 0.
+        engine.compute_gamma(
+            error=0.001, delta_error=0.0, ki_current=1.0, span=100.0,
+            co=50.0, integral_val=0.0,
+            objective=ControlObjective.SP_TRACKING,
+            speed=ProcessSpeed.MEDIUM,
+            limit_min=0.1, limit_max=100.0,
+            integral_type='GAIN_KI',
+        )
+        assert engine._steps_in_error == 0
+
+        # Large error again -> counter climbs from 0, not from 6 (step_count).
+        engine.compute_gamma(
+            error=20.0, delta_error=0.0, ki_current=1.0, span=100.0,
+            co=50.0, integral_val=0.0,
+            objective=ControlObjective.SP_TRACKING,
+            speed=ProcessSpeed.MEDIUM,
+            limit_min=0.1, limit_max=100.0,
+            integral_type='GAIN_KI',
+        )
+        assert engine._steps_in_error == 1
+        assert engine.step_count == 7
+
+
 class TestRewardFunctions:
     """Test reward computation for different objectives."""
 
@@ -343,6 +388,40 @@ class TestRewardFunctions:
         )
         # No stability reward, only IAE penalty outside deadband
         assert reward < 0.0
+
+    def test_surge_level_reversal_penalizes_with_explicit_prev_delta(self):
+        from smart_pid_core.domain.services.rl_engine import compute_reward_surge_level
+
+        # Same |co - prev_co| in both cases; only the reversal differs.
+        reward_no_reversal = compute_reward_surge_level(
+            error=0.0, delta_error=0.0, co=52.0, prev_co=50.0, step=0, prev_delta_co=2.0,
+        )
+        reward_reversal = compute_reward_surge_level(
+            error=0.0, delta_error=0.0, co=48.0, prev_co=50.0, step=0, prev_delta_co=2.0,
+        )
+        assert reward_reversal < reward_no_reversal
+
+    def test_surge_level_no_cross_engine_contamination(self):
+        """Two RLEngine instances must track prev_delta_co independently."""
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        engine1 = RLEngine()
+        engine2 = RLEngine()
+        engine1._prev_co = 50.0
+        engine1._prev_delta_co = 5.0  # engine1 "remembers" co was rising
+        engine2._prev_co = 50.0
+        engine2._prev_delta_co = None  # engine2 has no history
+
+        # Same current step for both: co drops from 50 to 45.
+        r1 = engine1.compute_reward(0.0, 0.0, 45.0, 100.0, ControlObjective.SURGE_LEVEL)
+        r2 = engine2.compute_reward(0.0, 0.0, 45.0, 100.0, ControlObjective.SURGE_LEVEL)
+
+        # engine1 sees a reversal (prev_delta_co=+5 vs curr_delta=-5) -> penalized.
+        # engine2 has no prior delta -> no reversal penalty.
+        assert r1 < r2
+        # Each instance updated its OWN state, proving no shared module state.
+        assert engine1._prev_delta_co == pytest.approx(-5.0)
+        assert engine2._prev_delta_co == pytest.approx(-5.0)
 
 
 class TestComputeRewardMethod:
@@ -455,6 +534,9 @@ class TestObservationNormalization:
             span=100.0,
             co=150.0,  # Exceeds [0, 100]
             integral_val=500.0,
+            ki_current=50.0,
+            limit_min=1.0,
+            limit_max=100.0,
         )
         for v in obs:
             assert -1.0 <= v <= 1.0
@@ -464,7 +546,8 @@ class TestObservationNormalization:
 
         engine = RLEngine()
         obs = engine._normalize_observation(
-            error=10.0, delta_error=5.0, span=0.0, co=50.0, integral_val=0.0
+            error=10.0, delta_error=5.0, span=0.0, co=50.0, integral_val=0.0,
+            ki_current=10.0, limit_min=1.0, limit_max=100.0,
         )
         assert obs[0] == 0.0
         assert obs[1] == 0.0
@@ -473,13 +556,56 @@ class TestObservationNormalization:
         from smart_pid_core.domain.services.rl_engine import RLEngine
 
         engine = RLEngine()
+        # ki_current=10 is the geometric midpoint of [1, 100] -> ti_norm == 0
         obs = engine._normalize_observation(
-            error=10.0, delta_error=-5.0, span=100.0, co=50.0, integral_val=50.0
+            error=10.0, delta_error=-5.0, span=100.0, co=50.0, integral_val=50.0,
+            ki_current=10.0, limit_min=1.0, limit_max=100.0,
         )
         assert obs[0] == pytest.approx(0.1)   # 10/100
         assert obs[1] == pytest.approx(-0.05)  # -5/100
         assert obs[2] == pytest.approx(0.0)   # (50-50)/50
         assert obs[3] == pytest.approx(0.5)   # 50/100
+        assert obs[4] == pytest.approx(0.0)   # geometric midpoint of [1, 100]
+
+    def test_ti_norm_at_limit_min(self):
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        engine = RLEngine()
+        obs = engine._normalize_observation(
+            error=0.0, delta_error=0.0, span=100.0, co=50.0, integral_val=0.0,
+            ki_current=1.0, limit_min=1.0, limit_max=100.0,
+        )
+        assert obs[4] == pytest.approx(-1.0)
+
+    def test_ti_norm_at_limit_max(self):
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        engine = RLEngine()
+        obs = engine._normalize_observation(
+            error=0.0, delta_error=0.0, span=100.0, co=50.0, integral_val=0.0,
+            ki_current=100.0, limit_min=1.0, limit_max=100.0,
+        )
+        assert obs[4] == pytest.approx(1.0)
+
+    def test_ti_norm_at_geometric_midpoint(self):
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        engine = RLEngine()
+        obs = engine._normalize_observation(
+            error=0.0, delta_error=0.0, span=100.0, co=50.0, integral_val=0.0,
+            ki_current=10.0, limit_min=1.0, limit_max=100.0,
+        )
+        assert obs[4] == pytest.approx(0.0)
+
+    def test_ti_norm_zero_when_limit_min_is_zero(self):
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        engine = RLEngine()
+        obs = engine._normalize_observation(
+            error=0.0, delta_error=0.0, span=100.0, co=50.0, integral_val=0.0,
+            ki_current=50.0, limit_min=0.0, limit_max=100.0,
+        )
+        assert obs[4] == pytest.approx(0.0)
 
 
 class TestReplayBuffer:
@@ -612,3 +738,237 @@ class TestFallbackOscillationDetector:
             prev_err = err
         # Ti should have increased significantly from 1.0
         assert ti > 5.0, f"Ti={ti} should have increased from 1.0 with oscillation"
+
+
+class TestStatsReward:
+    """compute_reward_from_stats() -- windowed-KPI reward, and its wiring."""
+
+    def _stats(self, **overrides):
+        base = {
+            "sample_count": 50,
+            "mean_abs_error": 1.0,
+            "osc": 0.1,
+            "tv_per_sample": 2.0,
+            "recent_pk_pk_error": 1.0,
+        }
+        base.update(overrides)
+        return base
+
+    def test_sample_count_too_small_returns_none(self):
+        from smart_pid_core.domain.services.rl_engine import compute_reward_from_stats
+
+        stats = self._stats(sample_count=5)
+        reward = compute_reward_from_stats(
+            stats, span=100.0, objective=ControlObjective.SP_TRACKING
+        )
+        assert reward is None
+
+    def test_zero_span_returns_none(self):
+        from smart_pid_core.domain.services.rl_engine import compute_reward_from_stats
+
+        stats = self._stats()
+        reward = compute_reward_from_stats(
+            stats, span=0.0, objective=ControlObjective.SP_TRACKING
+        )
+        assert reward is None
+
+    @pytest.mark.parametrize(
+        "objective",
+        [
+            ControlObjective.SP_TRACKING,
+            ControlObjective.DISTURBANCE_REJECTION,
+            ControlObjective.SURGE_LEVEL,
+        ],
+    )
+    def test_worse_kpis_give_strictly_lower_reward(self, objective):
+        from smart_pid_core.domain.services.rl_engine import compute_reward_from_stats
+
+        good = self._stats(mean_abs_error=0.1, osc=0.0, tv_per_sample=0.5)
+        bad = self._stats(mean_abs_error=20.0, osc=0.9, tv_per_sample=40.0)
+        r_good = compute_reward_from_stats(good, span=100.0, objective=objective)
+        r_bad = compute_reward_from_stats(bad, span=100.0, objective=objective)
+        assert r_good is not None
+        assert r_bad is not None
+        assert r_bad < r_good
+
+    def test_compute_gamma_uses_stats_reward_when_provided(self):
+        from smart_pid_core.domain.services.rl_engine import (
+            RLEngine,
+            compute_reward_from_stats,
+        )
+
+        engine = RLEngine()
+        engine.compute_gamma(
+            error=5.0, delta_error=1.0, ki_current=1.0, span=100.0,
+            co=50.0, integral_val=0.0,
+            objective=ControlObjective.SP_TRACKING,
+            speed=ProcessSpeed.MEDIUM,
+            limit_min=0.1, limit_max=100.0,
+            integral_type='GAIN_KI',
+        )
+        stats = self._stats(mean_abs_error=0.1, osc=0.0, tv_per_sample=0.5)
+        engine.compute_gamma(
+            error=3.0, delta_error=-2.0, ki_current=1.05, span=100.0,
+            co=52.0, integral_val=5.0,
+            objective=ControlObjective.SP_TRACKING,
+            speed=ProcessSpeed.MEDIUM,
+            limit_min=0.1, limit_max=100.0,
+            integral_type='GAIN_KI',
+            stats=stats,
+        )
+        stored_reward = engine._replay_buffer[-1][2]
+        expected = compute_reward_from_stats(
+            stats, span=100.0, objective=ControlObjective.SP_TRACKING
+        )
+        assert stored_reward == pytest.approx(expected)
+
+    def test_save_state_includes_version_2(self, tmp_path):
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        engine = RLEngine()
+        state = engine.save_state(tmp_path)
+        assert state["version"] == 2
+
+    def test_load_state_discards_version_1_state(self, tmp_path):
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        engine = RLEngine()
+        old_state = {
+            "algorithm": "SAC",
+            "model_path": "",
+            "is_trained": False,
+            "step_count": 10,
+            "reward_steps": 5,
+            "total_reward": 1.0,
+            "replay_buffer": [
+                {
+                    "obs": [0.0, 0.0, 0.0, 0.0, 0.0],
+                    "action": 0.0,
+                    "reward": 0.0,
+                    "next_obs": [0.0, 0.0, 0.0, 0.0, 0.0],
+                    "done": False,
+                }
+            ],
+            "fallback": {"integral": 0.0, "error_signs": [], "recent_errors": []},
+        }
+        engine.load_state(old_state, tmp_path)
+        assert len(engine._replay_buffer) == 0
+
+
+class TestPolicyGate:
+    """The neural policy must not drive Ti until it has demonstrably trained."""
+
+    def test_untrained_model_uses_fallback(self):
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        engine = RLEngine()
+        engine._model = object()  # any non-None stub; untrained
+        engine._train_success_count = 0
+        engine._is_trained = False
+
+        decision = engine.compute_gamma(
+            error=5.0, delta_error=0.0, ki_current=1.0, span=100.0,
+            co=50.0, integral_val=0.0,
+            objective=ControlObjective.SP_TRACKING,
+            speed=ProcessSpeed.MEDIUM,
+            limit_min=0.1, limit_max=100.0,
+            integral_type='GAIN_KI',
+        )
+        assert decision.reasoning.startswith("RL(fallback)")
+
+    def test_sufficiently_trained_model_is_used(self):
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        class _StubModel:
+            def predict(self, obs, deterministic=False):
+                return [0.2], None
+
+        engine = RLEngine()
+        engine._model = _StubModel()
+        engine._train_success_count = 3
+
+        decision = engine.compute_gamma(
+            error=5.0, delta_error=0.0, ki_current=1.0, span=100.0,
+            co=50.0, integral_val=0.0,
+            objective=ControlObjective.SP_TRACKING,
+            speed=ProcessSpeed.MEDIUM,
+            limit_min=0.1, limit_max=100.0,
+            integral_type='GAIN_KI',
+        )
+        assert decision.reasoning.startswith("RL(SAC)")
+
+    def test_loaded_model_with_zero_online_trains_is_used(self):
+        """A model restored from disk (is_trained=True) is trusted with 0 online rounds."""
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        class _StubModel:
+            def predict(self, obs, deterministic=False):
+                return [0.2], None
+
+        engine = RLEngine()
+        engine._model = _StubModel()
+        engine._is_trained = True
+        engine._train_success_count = 0
+
+        decision = engine.compute_gamma(
+            error=5.0, delta_error=0.0, ki_current=1.0, span=100.0,
+            co=50.0, integral_val=0.0,
+            objective=ControlObjective.SP_TRACKING,
+            speed=ProcessSpeed.MEDIUM,
+            limit_min=0.1, limit_max=100.0,
+            integral_type='GAIN_KI',
+        )
+        assert decision.reasoning.startswith("RL(SAC)")
+
+    def test_constructor_params_propagate(self):
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        engine = RLEngine(
+            fallback_kp=0.9, fallback_kd=0.4, train_interval=7, learning_rate=1e-3,
+        )
+        assert engine._fallback._kp == pytest.approx(0.9)
+        assert engine._fallback._kd == pytest.approx(0.4)
+        assert engine._train_interval == 7
+        assert engine._learning_rate == pytest.approx(1e-3)
+
+    def test_train_failure_logs_warning_once_then_debug(self, caplog, monkeypatch):
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        engine = RLEngine()
+        monkeypatch.setattr(engine, "_check_sb3", lambda: True)
+
+        def _boom():
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(engine, "_online_train_sb3", _boom)
+
+        with caplog.at_level("DEBUG"):
+            engine._try_online_train()
+            engine._try_online_train()
+
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1
+
+    def test_model_predict_failure_discards_model_and_falls_back(self):
+        """A stale/incompatible model must not wedge the loop into permanent errors."""
+        from smart_pid_core.domain.services.rl_engine import RLEngine
+
+        class _BrokenModel:
+            def predict(self, obs, deterministic=False):
+                raise ValueError("shape mismatch")
+
+        engine = RLEngine()
+        engine._model = _BrokenModel()
+        engine._train_success_count = 3
+
+        decision = engine.compute_gamma(
+            error=5.0, delta_error=0.0, ki_current=1.0, span=100.0,
+            co=50.0, integral_val=0.0,
+            objective=ControlObjective.SP_TRACKING,
+            speed=ProcessSpeed.MEDIUM,
+            limit_min=0.1, limit_max=100.0,
+            integral_type='GAIN_KI',
+        )
+        assert decision is not None
+        assert decision.reasoning.startswith("RL(fallback)")
+        assert engine._model is None
