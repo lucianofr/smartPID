@@ -1,0 +1,19 @@
+{
+  "afterRec": {
+    "controller_id": 4,
+    "current_kp": 0.15,
+    "current_ti": 18.6540470123291,
+    "current_td": 0,
+    "recommended_kp": 1.890020527499728,
+    "recommended_ti": 15.5,
+    "recommended_td": 0.9354838709677419,
+    "reason": "Sintonia IMC/lambda sobre modelo FOPDT (K=+1.2 %PV/%CO, tau=14.5 s, L=2 s); objetivo DISTURBANCE_REJECTION -> lambda=4.833 s. Kp 0.15->1.89, Ti 18.65->15.5 s, Td 0->0.9355 s.",
+    "timestamp": 1785236310.8086708,
+    "status": "applied",
+    "source": null
+  },
+  "applyPosts": [
+    "http://127.0.0.1:5173/api/commands/apply-tuning/4"
+  ],
+  "recGets": 3
+}

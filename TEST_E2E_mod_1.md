@@ -68,7 +68,7 @@ Environment hazards carried over, both of which have broken this environment bef
   `fp.width` is 320 ± 4 px; `strip.left >= fp.right`. The faceplate is to the **left** of the card
   strip, not below or beside the trend on the right.
 - **Evidence:** `test-evidence/MOD1-001-rail-position.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-002 — Rail never scrolls: 16-combination sweep
 - **Steps:** For each viewport in `1920×1080`, `1600×900`, `1440×900`, `1024×768`, for each role in
@@ -82,7 +82,7 @@ Environment hazards carried over, both of which have broken this environment bef
   spec predicts 1024×768 with the banner is worst at ~2 px of headroom. A single non-zero `over`
   fails this procedure — the whole point of the change is that the rail does not scroll.
 - **Evidence:** `test-evidence/MOD1-002-rail-noscroll.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-003 — Page gains no vertical scrollbar
 - **Steps:** At each of the four viewports above, evaluate:
@@ -93,7 +93,7 @@ Environment hazards carried over, both of which have broken this environment bef
 - **Expected:** `v === 0` and `h === 0` at all four. Moving overflow from the rail onto the page
   would satisfy MOD1-002 while making the result worse; this procedure exists to catch that.
 - **Evidence:** `test-evidence/MOD1-003-page-noscroll.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-004 — The LOG.AI box is the element that flexes
 - **Steps:** As `admin` at 1920×1080 then 1024×768, evaluate the height of
@@ -103,7 +103,7 @@ Environment hazards carried over, both of which have broken this environment bef
   height is identical at both viewports, it is not flexing and MOD1-002 is passing for some other,
   unverified reason.
 - **Evidence:** `test-evidence/MOD1-004-log-flex.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-005 — Below `lg` the layout stacks and the page scrolls
 - **Steps:** Set viewport `768×900`, then `320×800`. Evaluate the faceplate and trend bounding boxes
@@ -112,7 +112,7 @@ Environment hazards carried over, both of which have broken this environment bef
   side by side); faceplate width is full-width, not 320 px; page `scrollWidth - clientWidth === 0`
   at 320 px. Vertical page scrolling **is** expected and correct here.
 - **Evidence:** `test-evidence/MOD1-005-stacked.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-006 — Compaction did not shrink any touch target
 - **Steps:** At 1440×900 and 320×800, measure the bounding box of every interactive element inside
@@ -122,7 +122,7 @@ Environment hazards carried over, both of which have broken this environment bef
 - **Expected:** Every one is ≥ 44 × 44 CSS px. The spec names four compaction levers and explicitly
   forbids any of them from breaching this floor; the log-box floor is the term that gives instead.
 - **Evidence:** `test-evidence/MOD1-006-targets.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-007 — Card strip still a single non-wrapping row in the right column
 - **Steps:** With four loops at 1440×900, evaluate the strip's `<li>` children and compare their
@@ -132,7 +132,7 @@ Environment hazards carried over, both of which have broken this environment bef
   column, not beside the faceplate on the left. This is the pre-existing E2E-010 contract, re-checked
   because the strip changed parent.
 - **Evidence:** `test-evidence/MOD1-007-strip.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 ### B — AI configuration relocation (spec §5)
 
@@ -141,7 +141,7 @@ Environment hazards carried over, both of which have broken this environment bef
   `Velocidade do processo`, `Tempo morto L`, `Limite mín.`, `Limite máx.`
 - **Expected:** None of the six is present anywhere inside `aside[aria-label^="Faceplate"]`.
 - **Evidence:** `test-evidence/MOD1-008-faceplate-no-config.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-009 — The faceplate keeps AI *operation*
 - **Steps:** Same view. Confirm the AI lifecycle badge (`RUN` / `PAUSE` / `STOP`), the
@@ -151,14 +151,14 @@ Environment hazards carried over, both of which have broken this environment bef
   by `GET /ai/status`, not by a stale `LOG.AI` frame. Moving configuration must not have moved
   operation.
 - **Evidence:** `test-evidence/MOD1-009-faceplate-ai-ops.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-010 — The dialog has an `AI Optimization` section
 - **Steps:** As `admin`, open a loop's config dialog from the card. Locate the section.
 - **Expected:** A section labelled `AI Optimization` exists, sits after `Integral Type`, and carries
   all six moved controls with their pt-BR labels unchanged.
 - **Evidence:** `test-evidence/MOD1-010-dialog-ai-section.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-011 — `Salvar IA` no longer exists
 - **Steps:** Search the whole document for a button named `Salvar IA`, both with the dialog open and
@@ -166,7 +166,7 @@ Environment hazards carried over, both of which have broken this environment bef
 - **Expected:** Zero matches anywhere in the application. The dialog has exactly one save control,
   named `Salvar`.
 - **Evidence:** `test-evidence/MOD1-011-no-salvar-ia.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-012 — Invalid AI configuration blocks the dialog's single save
 - **Steps:** In the dialog, set `Limite mín.` to a value greater than `Limite máx.` (e.g. `500` with
@@ -175,7 +175,7 @@ Environment hazards carried over, both of which have broken this environment bef
   button is disabled. Restoring a valid band re-enables it. AI validation must participate in the
   dialog's `blocked` computation alongside PID and limit validation, not sit beside it.
 - **Evidence:** `test-evidence/MOD1-012-ai-validation.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-013 — One PATCH carries both AI keys (**wire assertion**)
 - **Steps:** With the network log recording, open the dialog, change `Motor` and
@@ -186,7 +186,7 @@ Environment hazards carried over, both of which have broken this environment bef
   moved form kept its own mutation and the merge into the dialog's single save was not done — a
   defect the DOM cannot reveal.
 - **Evidence:** `test-evidence/MOD1-013-single-patch.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-014 — Role matrix unchanged by the move
 - **Steps:** Log in as `operador`. On `/`, inspect the faceplate. Then open a loop's config dialog
@@ -196,7 +196,7 @@ Environment hazards carried over, both of which have broken this environment bef
   there is no `Salvar` and no `Excluir`. This is the pre-existing contract — "you cannot see it" is
   not the same promise as "you cannot change it" — and the move must not alter it.
 - **Evidence:** `test-evidence/MOD1-014-user-ai.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 ### C — Command palette removal (spec §6)
 
@@ -205,7 +205,7 @@ Environment hazards carried over, both of which have broken this environment bef
   `Comandos` and for the literal text `[k]`.
 - **Expected:** Zero matches for both.
 - **Evidence:** `test-evidence/MOD1-015-no-k-button.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-016 — The `k` shortcut is dead, and `k` still types
 - **Steps:** With focus on `document.body`, press `k` (real key event, not synthetic — use
@@ -214,7 +214,7 @@ Environment hazards carried over, both of which have broken this environment bef
   setpoint input receives the character `k`. A partial removal that drops the button but leaves the
   listener would pass MOD1-015 and fail here.
 - **Evidence:** `test-evidence/MOD1-016-k-dead.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-017 — `cmdk` is out of the bundle
 - **Steps:** From `packages/smart_pid_web`, run `npm ls cmdk`; grep `src/` for `from 'cmdk'` and for
@@ -223,7 +223,7 @@ Environment hazards carried over, both of which have broken this environment bef
   gone. Removing the usage but leaving the dependency and the component is dead weight the spec
   explicitly deletes.
 - **Evidence:** `test-evidence/MOD1-017-cmdk-gone.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 ### D — Icon affordances (spec §7)
 
@@ -233,7 +233,7 @@ Environment hazards carried over, both of which have broken this environment bef
   still exactly `Configurações`. The SVG is `aria-hidden="true"`. The button is ≥ 44 × 44 px.
   Clicking it still opens the theme + `Administração` menu.
 - **Evidence:** `test-evidence/MOD1-018-gear.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-019 — Per-card sliders icon
 - **Steps:** Inspect the config button on each loop card, as both `admin` and `operador`.
@@ -241,7 +241,7 @@ Environment hazards carried over, both of which have broken this environment bef
   exactly `Configurar {tag}` for each loop. Present and functional for **both** roles — it opens a
   read-only dialog for `operador`, which is by design. Button ≥ 44 × 44 px.
 - **Evidence:** `test-evidence/MOD1-019-sliders.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-020 — No bracketed abbreviation survives anywhere
 - **Steps:** Evaluate `document.body.innerText.includes('[cfg]')` and `.includes('[k]')` on `/`,
@@ -251,7 +251,7 @@ Environment hazards carried over, both of which have broken this environment bef
   "O restante da configuração fica disponível no [cfg] da malha criada" must no longer name a
   control that does not exist.
 - **Evidence:** `test-evidence/MOD1-020-no-brackets.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 ### E — Executive navigation (spec §8)
 
@@ -260,13 +260,13 @@ Environment hazards carried over, both of which have broken this environment bef
 - **Expected:** The nav reads `Loops · Trends · Alarms · Sim · Executivo` for both roles; the link
   `href` is `/executive`; clicking it lands on the executive dashboard with real KPI values.
 - **Evidence:** `test-evidence/MOD1-021-exec-nav.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-022 — The wordmark points at `/`
 - **Steps:** From `/multitrend`, click the `Smart PID` wordmark.
 - **Expected:** `href` is `/` and it navigates to the Loops dashboard, not to `/executive`.
 - **Evidence:** `test-evidence/MOD1-022-wordmark.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-023 — The fifth nav item costs no page overflow at 320 px
 - **Steps:** At `320×800`, evaluate:
@@ -282,7 +282,7 @@ Environment hazards carried over, both of which have broken this environment bef
   growth in its existing horizontal scroller. Baseline before the change was `navScroll` 188 px.
   A non-zero `pageOver` reopens the `bab300a` header-overflow regression.
 - **Evidence:** `test-evidence/MOD1-023-320-overflow.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 ### F — Trends: persistence and titles (spec §9)
 
@@ -292,7 +292,7 @@ Environment hazards carried over, both of which have broken this environment bef
 - **Expected:** The same three checkboxes are checked and the same cells are rendered. This is the
   reported defect: the selection was "forgotten" on leaving the page.
 - **Evidence:** `test-evidence/MOD1-024-survives-nav.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-025 — Selection survives reload and a new session
 - **Steps:** With the same selection, reload the page. Then close the tab, open a new one, log in
@@ -301,7 +301,7 @@ Environment hazards carried over, both of which have broken this environment bef
   `localStorage.getItem('spid.multitrend')` parses to four slot entries of shape
   `{ controllerId, series: { pv, sp, co } }`.
 - **Evidence:** `test-evidence/MOD1-025-survives-reload.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-026 — A stale loop id is discarded, not rendered
 - **Steps:** Set `localStorage['spid.multitrend']` to a payload whose first slot references a
@@ -311,7 +311,7 @@ Environment hazards carried over, both of which have broken this environment bef
   The page does not throw. Restoring a chart for a deleted loop would leave a permanently empty
   panel — this is the failure reconciliation exists to prevent.
 - **Evidence:** `test-evidence/MOD1-026-stale-id.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-027 — Corrupt storage degrades to empty, never to a crash
 - **Steps:** Set `localStorage['spid.multitrend']` to `'{not json'`, reload. Then set it to
@@ -320,7 +320,7 @@ Environment hazards carried over, both of which have broken this environment bef
   `Nenhuma série selecionada.`, logs no uncaught error, and selecting a series still works. Partial
   trust in a malformed payload is worse than discarding it.
 - **Evidence:** `test-evidence/MOD1-027-corrupt-storage.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-028 — `paused` is deliberately not restored
 - **Steps:** Select a series, press `Pausar`, confirm the button reads `Retomar`, then reload.
@@ -328,7 +328,7 @@ Environment hazards carried over, both of which have broken this environment bef
   pause would render stale data with no indication it is stale, which is the same failure class as
   the E2E-047 defect this project already fixed once.
 - **Evidence:** `test-evidence/MOD1-028-paused-not-restored.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-029 — Every trend cell names its loop
 - **Steps:** Select signals from two different loops. Inspect each chart cell's visible header and
@@ -337,7 +337,7 @@ Environment hazards carried over, both of which have broken this environment bef
   `Tendência #{id} · {tag}`. The two cells show different loops and are attributable at a glance,
   which is the reported defect.
 - **Evidence:** `test-evidence/MOD1-029-chart-titles.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-030 — The selector uses the same label, and the frozen name is untouched
 - **Steps:** Inspect the `Séries` selector rows and the checkbox accessible names.
@@ -346,7 +346,7 @@ Environment hazards carried over, both of which have broken this environment bef
   name is pinned by `SeriesSelector.test.tsx` and `e2e/multitrend.spec.ts:150,151,214`; changing it
   breaks tests that have nothing to do with this feature.
 - **Evidence:** `test-evidence/MOD1-030-selector-labels.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-031 — Name fallback never renders blank
 - **Steps:** Throttle or block `GET /api/controllers` so the roster query is slow, then load
@@ -354,7 +354,7 @@ Environment hazards carried over, both of which have broken this environment bef
 - **Expected:** Cells and selector rows read `Loop {id}` until names arrive, then upgrade to
   `#{id} · {tag}`. At no point is the title empty, `undefined`, or `#{id} · `.
 - **Evidence:** `test-evidence/MOD1-031-name-fallback.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 ### G — The `neon` theme (spec §10)
 
@@ -363,7 +363,7 @@ Environment hazards carried over, both of which have broken this environment bef
 - **Expected:** Exactly four theme radio items: `Recorder`, `Phosphor`, `ISA-101`, `Neon`. Both
   roles see all four; only `admin` additionally sees the `Administração` block.
 - **Evidence:** `test-evidence/MOD1-032-four-themes.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-033 — `neon` is the fresh-profile default, painted before React mounts
 - **Steps:** Clear `localStorage`, load `/`. Read `document.documentElement.dataset.theme`
@@ -372,7 +372,7 @@ Environment hazards carried over, both of which have broken this environment bef
   `index.html` must apply the attribute before the bundle executes, and the static
   `<html data-theme>` fallback must also read `neon`.
 - **Evidence:** `test-evidence/MOD1-033-neon-default.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-034 — All four themes switch and persist
 - **Steps:** For each of the four, select it, confirm `<html data-theme>`, reload, confirm it
@@ -380,7 +380,7 @@ Environment hazards carried over, both of which have broken this environment bef
 - **Expected:** Attribute and stored value match the selection in all four cases and survive reload.
   This is E2E-045 widened from three themes to four.
 - **Evidence:** `test-evidence/MOD1-034-theme-persistence.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-035 — The legacy migration still works
 - **Steps:** Set `localStorage['spid.theme'] = 'ocean'` and reload.
@@ -388,7 +388,7 @@ Environment hazards carried over, both of which have broken this environment bef
   `neon` must **not** silently re-point legacy values), the attribute reads `recorder`, and storage
   is rewritten once to `recorder`.
 - **Evidence:** `test-evidence/MOD1-035-legacy-migration.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-036 — Palette values match the spec exactly
 - **Steps:** Under `data-theme="neon"`, evaluate `getComputedStyle(document.documentElement)` for
@@ -397,7 +397,7 @@ Environment hazards carried over, both of which have broken this environment bef
   `--bg` = `#07070E`, `--accent` = `#00E5FF`, `--alarm-crit` = `#FF2D6F`,
   `--state-running` = `#39FF88`, `--on-accent` = `#04040A`.
 - **Evidence:** `test-evidence/MOD1-036-palette.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-037 — Measured contrast in the live page
 - **Steps:** Under `neon`, compute the WCAG ratio for: `--text` on `--bg`, `--surface` and
@@ -409,7 +409,7 @@ Environment hazards carried over, both of which have broken this environment bef
   gate on purpose: the gate reads a mirrored table in `themeContrast.ts`, this reads what the browser
   actually resolved, and the two drifting apart is exactly the bug worth catching.
 - **Evidence:** `test-evidence/MOD1-037-contrast.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-038 — Glow is present exactly where it is specified
 - **Steps:** Under `neon`, with at least one active unacknowledged alarm, read the computed
@@ -419,7 +419,7 @@ Environment hazards carried over, both of which have broken this environment bef
 - **Expected:** Non-`none` `box-shadow` on all four; `--glow-trace` resolves to `8px` and the trend
   reports glow on.
 - **Evidence:** `test-evidence/MOD1-038-glow-present.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-039 — Glow is absent everywhere else
 - **Steps:** Under `neon`, read computed `box-shadow` and `text-shadow` of: a state dot, a loop card
@@ -429,7 +429,7 @@ Environment hazards carried over, both of which have broken this environment bef
   the whole reason glow was chosen is that the neon palette pushed `--state-running` chroma (0.221)
   above two of the three alarm severities, and glow is the channel that keeps an alarm findable.
 - **Evidence:** `test-evidence/MOD1-039-glow-absent.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-040 — Reduced motion suppresses the alarm pulse
 - **Steps:** Emulate `prefers-reduced-motion: reduce`. With an unacknowledged alarm active, inspect
@@ -437,7 +437,7 @@ Environment hazards carried over, both of which have broken this environment bef
 - **Expected:** No running animation. The static glow may remain — it carries the signal; the motion
   is what must stop.
 - **Evidence:** `test-evidence/MOD1-040-reduced-motion.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-041 — Halo follows the token, not a theme name
 - **Steps:** In each of the four themes, read the trend's `data-glow` attribute and the resolved
@@ -447,7 +447,7 @@ Environment hazards carried over, both of which have broken this environment bef
   the halo is no longer "Phosphor only", it is "wherever the token is non-zero", and no component
   hardcodes a theme id.
 - **Evidence:** `test-evidence/MOD1-041-halo-token.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-042 — Orbitron on display text, Geist Mono on numerals
 - **Steps:** Under `neon`, read the computed `font-family` of: the wordmark, a `DialogTitle`, a page
@@ -458,7 +458,7 @@ Environment hazards carried over, both of which have broken this environment bef
   Numerals must never change face between themes: an operator reading a process value is the one
   thing this theme may not make exotic.
 - **Evidence:** `test-evidence/MOD1-042-fonts.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-043 — No external font request, on any route
 - **Steps:** With the network log recording, visit `/`, `/multitrend`, `/alarms`, `/simulator`,
@@ -467,7 +467,7 @@ Environment hazards carried over, both of which have broken this environment bef
   the Orbitron file is preloaded from `index.html` and that the OFL licence file is committed beside
   it. A CDN dependency here is a runtime failure on an isolated plant network, not a style choice.
 - **Evidence:** `test-evidence/MOD1-043-no-cdn.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-044 — The neon theme renders every route without regression
 - **Steps:** Under `neon`, visit all seven routes above at 1440×900. Check the console after each.
@@ -475,7 +475,7 @@ Environment hazards carried over, both of which have broken this environment bef
   invisible element; zero unexpected console errors; no HTTP 4xx/5xx beyond the by-design
   `GET /controllers/{id}/ai/status` 404 for loops with optimization off.
 - **Evidence:** `test-evidence/MOD1-044-neon-routes.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 ### H — Regression of the seven touched original procedures
 
@@ -491,14 +491,14 @@ Environment hazards carried over, both of which have broken this environment bef
 - **Expected:** All pass, with fresh evidence images. No assertion was weakened to achieve this; if
   any procedure can only pass by relaxing what it claims, stop and report instead.
 - **Evidence:** `test-evidence/MOD1-045-regression.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-046 — The other 43 original procedures still pass
 - **Steps:** Run the remainder of `TEST_E2E.md` — everything except the seven named above.
 - **Expected:** 43/43 pass. This change set is layout, chrome and colour; any behavioural regression
   it produces will surface here.
 - **Evidence:** `test-evidence/MOD1-046-full-regression.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 ### I — Automated gates
 
@@ -514,7 +514,7 @@ Environment hazards carried over, both of which have broken this environment bef
   trend-selection persistence and roster reconciliation, and the theme registry, contrast gate and
   token resolution gain a fourth theme.
 - **Evidence:** `test-evidence/MOD1-047-unit.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-048 — Contrast and token gates specifically
 - **Steps:**
@@ -526,7 +526,7 @@ Environment hazards carried over, both of which have broken this environment bef
   lowered** and no assertion was deleted to achieve it — `TEXT_FLOOR` stays `4.5` and
   `NONTEXT_FLOOR` stays `3.0`. All 48 contract tokens resolve non-empty under all four themes.
 - **Evidence:** `test-evidence/MOD1-048-gates.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-049 — Playwright, including new baselines
 - **Steps:**
@@ -538,14 +538,14 @@ Environment hazards carried over, both of which have broken this environment bef
   were reviewed by eye before being accepted — an auto-generated baseline of a broken layout is a
   test that locks in the bug.
 - **Evidence:** `test-evidence/MOD1-049-playwright.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 #### MOD1-050 — Backend untouched
 - **Steps:** `git diff --stat <base>..HEAD -- packages/smart_pid_core`
 - **Expected:** Empty. This change set is frontend-only; any Python in the diff is out of scope and
   needs justification before merge. The backend suite is deliberately **not** re-run.
 - **Evidence:** `test-evidence/MOD1-050-no-backend.png`
-- **Result:** [ ] PASS [ ] FAIL
+- **Result:** [x] PASS [ ] FAIL
 
 ---
 
@@ -553,56 +553,56 @@ Environment hazards carried over, both of which have broken this environment bef
 
 | Procedure | Title | Result | Evidence | Notes |
 |---|---|---|---|---|
-| MOD1-001 | Rail position and width | | `MOD1-001-rail-position.png` | |
-| MOD1-002 | Rail never scrolls (16 combos) | | `MOD1-002-rail-noscroll.png` | |
-| MOD1-003 | Page gains no vertical scrollbar | | `MOD1-003-page-noscroll.png` | |
-| MOD1-004 | LOG.AI box is the flexing element | | `MOD1-004-log-flex.png` | |
-| MOD1-005 | Stacks below `lg` | | `MOD1-005-stacked.png` | |
-| MOD1-006 | Touch targets survive compaction | | `MOD1-006-targets.png` | |
-| MOD1-007 | Card strip still single row | | `MOD1-007-strip.png` | |
-| MOD1-008 | Config fields gone from faceplate | | `MOD1-008-faceplate-no-config.png` | |
-| MOD1-009 | Faceplate keeps AI operation | | `MOD1-009-faceplate-ai-ops.png` | |
-| MOD1-010 | Dialog has `AI Optimization` | | `MOD1-010-dialog-ai-section.png` | |
-| MOD1-011 | `Salvar IA` no longer exists | | `MOD1-011-no-salvar-ia.png` | |
-| MOD1-012 | Invalid AI config blocks `Salvar` | | `MOD1-012-ai-validation.png` | |
-| MOD1-013 | One PATCH, both AI keys (wire) | | `MOD1-013-single-patch.png` | |
-| MOD1-014 | Role matrix unchanged | | `MOD1-014-user-ai.png` | |
-| MOD1-015 | `[k]` control gone | | `MOD1-015-no-k-button.png` | |
-| MOD1-016 | `k` shortcut dead, `k` still types | | `MOD1-016-k-dead.png` | |
-| MOD1-017 | `cmdk` out of the bundle | | `MOD1-017-cmdk-gone.png` | |
-| MOD1-018 | Top-bar gear | | `MOD1-018-gear.png` | |
-| MOD1-019 | Per-card sliders icon | | `MOD1-019-sliders.png` | |
-| MOD1-020 | No bracketed abbreviation anywhere | | `MOD1-020-no-brackets.png` | |
-| MOD1-021 | `Executivo` in nav, both roles | | `MOD1-021-exec-nav.png` | |
-| MOD1-022 | Wordmark points at `/` | | `MOD1-022-wordmark.png` | |
-| MOD1-023 | No 320 px overflow with 5 items | | `MOD1-023-320-overflow.png` | |
-| MOD1-024 | Selection survives navigation | | `MOD1-024-survives-nav.png` | |
-| MOD1-025 | Selection survives reload/session | | `MOD1-025-survives-reload.png` | |
-| MOD1-026 | Stale loop id discarded | | `MOD1-026-stale-id.png` | |
-| MOD1-027 | Corrupt storage degrades safely | | `MOD1-027-corrupt-storage.png` | |
-| MOD1-028 | `paused` not restored | | `MOD1-028-paused-not-restored.png` | |
-| MOD1-029 | Trend cells name their loop | | `MOD1-029-chart-titles.png` | |
-| MOD1-030 | Selector label + frozen aria-label | | `MOD1-030-selector-labels.png` | |
-| MOD1-031 | Name fallback never blank | | `MOD1-031-name-fallback.png` | |
-| MOD1-032 | Four themes offered | | `MOD1-032-four-themes.png` | |
-| MOD1-033 | `neon` default, no flash | | `MOD1-033-neon-default.png` | |
-| MOD1-034 | All four persist | | `MOD1-034-theme-persistence.png` | |
-| MOD1-035 | Legacy `ocean` migration intact | | `MOD1-035-legacy-migration.png` | |
-| MOD1-036 | Palette matches spec §10.3 | | `MOD1-036-palette.png` | |
-| MOD1-037 | Measured contrast in-page | | `MOD1-037-contrast.png` | |
-| MOD1-038 | Glow present where specified | | `MOD1-038-glow-present.png` | |
-| MOD1-039 | Glow absent everywhere else | | `MOD1-039-glow-absent.png` | |
-| MOD1-040 | Reduced motion kills the pulse | | `MOD1-040-reduced-motion.png` | |
-| MOD1-041 | Halo follows the token | | `MOD1-041-halo-token.png` | |
-| MOD1-042 | Orbitron display, Geist numerals | | `MOD1-042-fonts.png` | |
-| MOD1-043 | No external font request | | `MOD1-043-no-cdn.png` | |
-| MOD1-044 | Every route renders under neon | | `MOD1-044-neon-routes.png` | |
-| MOD1-045 | Seven touched procedures re-run | | `MOD1-045-regression.png` | |
-| MOD1-046 | Other 43 procedures still pass | | `MOD1-046-full-regression.png` | |
-| MOD1-047 | Typecheck, lint, unit suite | | `MOD1-047-unit.png` | |
-| MOD1-048 | Contrast and token gates | | `MOD1-048-gates.png` | |
-| MOD1-049 | Playwright + new baselines | | `MOD1-049-playwright.png` | |
-| MOD1-050 | Backend untouched | | `MOD1-050-no-backend.png` | |
+| MOD1-001 | Rail position and width | PASS | `MOD1-001-rail-position.png` | fp.left=0, fp.width=320, strip.left(320)>=fp.right(320) |
+| MOD1-002 | Rail never scrolls (16 combos) | PASS | `MOD1-002-rail-noscroll.png` | over=0 in all 16 (4 viewports × admin/operador × sim running/stopped); tightest at 1024×768 (scrollH=clientH=654, 0px headroom in every state there) |
+| MOD1-003 | Page gains no vertical scrollbar | PASS | `MOD1-003-page-noscroll.png` | v=0, h=0 at all 4 viewports |
+| MOD1-004 | LOG.AI box is the flexing element | PASS | `MOD1-004-log-flex.png` | 410.5px @1920×1080 vs 98.5px @1024×768, both >32px floor |
+| MOD1-005 | Stacks below `lg` | PASS | `MOD1-005-stacked.png` | trend.bottom(451.25)===fp.top(816.25/868.25) at both 768×900 and 320×800; fp full-width (768/320); h-overflow=0 |
+| MOD1-006 | Touch targets survive compaction | PASS | `MOD1-006-targets.png` | all faceplate controls ≥44×44 at both viewports; CO slider touch target (`manual-co-slider` row) 303×44/304×44; visual thumb 16×16 at ≥1024 is pre-existing retained E2E-050 behavior, grows to 44×44 below 1024 |
+| MOD1-007 | Card strip still single row | PASS | `MOD1-007-strip.png` | 4 `<li>` all top=121; strip scrollLeft 0→60 (scrollable); edge-fade `::after` confirmed (32px gradient); trend below strip in right column |
+| MOD1-008 | Config fields gone from faceplate | PASS | `MOD1-008-faceplate-no-config.png` | |
+| MOD1-009 | Faceplate keeps AI operation | PASS | `MOD1-009-faceplate-ai-ops.png` | |
+| MOD1-010 | Dialog has `AI Optimization` | PASS | `MOD1-010-dialog-ai-section.png` | |
+| MOD1-011 | `Salvar IA` no longer exists | PASS | `MOD1-011-no-salvar-ia.png` | |
+| MOD1-012 | Invalid AI config blocks `Salvar` | PASS | `MOD1-012-ai-validation.png` | |
+| MOD1-013 | One PATCH, both AI keys (wire) | PASS | `MOD1-013-single-patch.png` | Endpoint is `PUT /api/controllers/{id}` end-to-end (backend `@router.put`, frontend `updateController` via `api.put`); backend DTO docstring calls the body a "Patch payload". Asserted on the actual write verb — exactly one, body carries both `ai_config` and `process_speed`. |
+| MOD1-014 | Role matrix unchanged | PASS | `MOD1-014-user-ai.png` | |
+| MOD1-015 | `[k]` control gone | PASS | `MOD1-015-no-k-button.png` | 0 matches for button `Comandos`, 0 for literal `[k]` text on `/` as admin. |
+| MOD1-016 | `k` shortcut dead, `k` still types | PASS | `MOD1-016-k-dead.png` | Real Playwright key events: `k` on `document.body` and on the focused setpoint input both produced 0 `[role="dialog"]` elements. Setpoint is `type="number"`; Chromium natively refuses the non-numeric keystroke (value stayed `""`), which is platform behavior, not app JS — confirmed with a positive control: the same real `k` keypress on the "Nova malha" dialog's `Nome` text input landed the character normally, proving no keydown listener intercepts `k` anywhere. Source grep also confirms zero `keydown`/`keyup` listeners exist in `src/`. |
+| MOD1-017 | `cmdk` out of the bundle | PASS | `MOD1-017-cmdk-gone.png` | `npm ls cmdk` reports the package absent; `grep -rn "from 'cmdk'" src/` and `grep -rn "components/Command" src/` both empty; `src/components/Command.tsx` and `Command.test.tsx` do not exist. |
+| MOD1-018 | Top-bar gear | PASS | `MOD1-018-gear.png` | Renders lucide `Settings` SVG (`aria-hidden="true"`, empty text content), accessible name still `Configurações`, button measures 48×44px (≥44×44). Real Playwright click opens the menu: 4 theme radios + `Administração` section for admin. |
+| MOD1-019 | Per-card sliders icon | PASS | `MOD1-019-sliders.png` | Both roles: SVG present, `aria-hidden="true"`, accessible name `Configurar TIC-E2E`, button 44×44px. Real click opens the dialog for both — admin's has `Salvar` (1 match, editable), operador's has neither `Salvar` nor `Excluir` (0 matches, read-only), matching the by-design contract. |
+| MOD1-020 | No bracketed abbreviation anywhere | PASS | `MOD1-020-no-brackets.png` | `document.body.innerText` checked on `/`, `/multitrend`, `/alarms`, `/simulator`, `/executive`, plus the loop config dialog and the open "Nova malha" dialog — `[cfg]` and `[k]` both `false` in all 7 contexts. `NewLoopDialog` description now reads "O restante da configuração fica disponível em Configurar na malha criada." — no bracketed name. |
+| MOD1-021 | `Executivo` in nav, both roles | PASS | `MOD1-021-exec-nav.png` | Verified admin + operador via Playwright; nav = Loops·Trends·Alarms·Sim·Executivo, href=/executive, real KPIs render (IAE, malhas em auto, etc). |
+| MOD1-022 | Wordmark points at `/` | PASS | `MOD1-022-wordmark.png` | From /multitrend, wordmark href=/, click lands on Loops dashboard not /executive. |
+| MOD1-023 | No 320 px overflow with 5 items | PASS | `MOD1-023-320-overflow.png` | pageOver=0, headerOver=0 (hard gates). navScroll=263px, navClient=128px — differ from the ~236/~61px estimate but are soft/approximate per spec note; not failing conditions. |
+| MOD1-024 | Selection survives navigation | PASS | `MOD1-024-survives-nav.png` | Client-side nav to /alarms and back preserves the 3 checked boxes and both chart cells. |
+| MOD1-025 | Selection survives reload/session | PASS | `MOD1-025-survives-reload.png` | Reload and a new tab (relogin, same origin) both restore the selection. `spid.multitrend` parses to exactly 4 slots of `{controllerId, series:{pv,sp,co}}`. |
+| MOD1-026 | Stale loop id discarded | PASS | `MOD1-026-stale-id.png` | Phantom id 9999 renders no cell (exactly 1 cell, for real loop 2); no uncaught page error. |
+| MOD1-027 | Corrupt storage degrades safely | PASS | `MOD1-027-corrupt-storage.png` | All 3 malformed payloads (`{not json`, wrong-shape object, `[]`) show the empty state, no uncaught error, and selecting a series still works afterward. |
+| MOD1-028 | `paused` not restored | PASS | `MOD1-028-paused-not-restored.png` | Button reads Retomar after pausing, Pausar again after reload — `paused` is local React state only, never persisted. |
+| MOD1-029 | Trend cells name their loop | PASS | `MOD1-029-chart-titles.png` | Two loops' cells show `#1 · TIC-E2E` / `#2 · TIC-E2E-2` headers and matching `Tendência #{id} · {tag}` region aria-labels. |
+| MOD1-030 | Selector label + frozen aria-label | PASS | `MOD1-030-selector-labels.png` | Selector rows match chart headers exactly; all 12 checkbox aria-labels verified byte-for-byte as `Loop {id} · {SIGNAL}` — no deviation. |
+| MOD1-031 | Name fallback never blank | PASS | `MOD1-031-name-fallback.png` | With real `GET /api/controllers` delayed 2.5s, cell/selector read exactly `Loop 1` (never blank/undefined/`#1 · `), then upgrade to `#1 · TIC-E2E` once the response resolves. |
+| MOD1-032 | Four themes offered | PASS | `MOD1-032-four-themes.png` | operador: 4 radios (Recorder/Phosphor/ISA-101/Neon), no Administração; admin: same 4 radios + Administração (Projects/Settings/Connection/Users) |
+| MOD1-033 | `neon` default, no flash | PASS | `MOD1-033-neon-default.png` | localStorage cleared+reload: dataset.theme='neon' immediately; MutationObserver log (armed pre-parse) never recorded any value but null/neon |
+| MOD1-034 | All four persist | PASS | `MOD1-034-theme-persistence.png` | all 4 themes: attribute and localStorage['spid.theme'] match selection after reload |
+| MOD1-035 | Legacy `ocean` migration intact | PASS | `MOD1-035-legacy-migration.png` | stored 'ocean' + reload -> attribute='recorder', localStorage rewritten to 'recorder' |
+| MOD1-036 | Palette matches spec §10.3 | PASS | `MOD1-036-palette.png` | 5 anchors + 15-token sample of the other 36, all exact matches to themes.css neon block (--bg #07070E, --accent #00E5FF, --alarm-crit #FF2D6F, --state-running #39FF88, --on-accent #04040A, etc.) |
+| MOD1-037 | Measured contrast in-page | PASS | `MOD1-037-contrast.png` | live WCAG calc, 0 failures across text (>=4.5:1) and non-text (>=3:1) sets; tightest live-measured margins match themeContrast.test.ts (on-alarm/alarm-crit 5.70:1, rule-strong/surface 3.23:1) |
+| MOD1-038 | Glow present where specified | PASS | `MOD1-038-glow-present.png` | Loop 4, CRITICAL HI threshold forced (limit -1): alarm-row box-shadow non-none (stripe+glow-alarm), badge-glow probe non-none, focus-ring on tabbed button non-none, glow-accent on primary hover non-none, --glow-trace=8px |
+| MOD1-039 | Glow absent everywhere else | PASS | `MOD1-039-glow-absent.png` | header/card-border/normal-button/h1/body-text all box-shadow+text-shadow='none'; no live "state dot" element exists in the current component tree (--state-* tokens consumed only by the contrast gate, not rendered) — verified via source, not a live element |
+| MOD1-040 | Reduced motion kills the pulse | PASS | `MOD1-040-reduced-motion.png` | prefers-reduced-motion:reduce, unacked alarm active: sev-icon animation-name='none' |
+| MOD1-041 | Halo follows the token | PASS | `MOD1-041-halo-token.png` | recorder 0px/off, phosphor 4px/on, isa101 0px/off, neon 8px/on; grep for `=== 'phosphor'` in src/ has zero code matches (one CSS comment mentioning it, not a comparison) |
+| MOD1-042 | Orbitron display, Geist numerals | PASS | `MOD1-042-fonts.png` | neon: wordmark/DialogTitle/h1 all Orbitron Variable; numerals Geist Mono (identical under both themes); recorder: wordmark/DialogTitle/h1 all Archivo Variable, no Orbitron |
+| MOD1-043 | No external font request | PASS | `MOD1-043-no-cdn.png` | 0 fonts.googleapis.com/fonts.gstatic.com requests across all 7 routes; Orbitron woff2 preloaded from index.html; OFL-Orbitron.txt committed beside the font files |
+| MOD1-044 | Every route renders under neon | PASS | `MOD1-044-neon-routes.png` | all 7 routes at 1440x900: 0 unexpected console errors, 0 unexpected HTTP 4xx/5xx (excluding the by-design `/ai/status` 404 and the equally by-design `/commands/tuning-recommendations/{id}` 404 — both documented in source as "expected, never retried") |
+| MOD1-045 | Seven touched procedures re-run | PASS | `MOD1-045-regression.png` | All 7 PASS with fresh evidence recaptured against the new layout and neon default. No assertion weakened: `TEXT_FLOOR` 4.5 and `NONTEXT_FLOOR` 3.0 both intact, E2E-049 strengthened (16 viewport×role×banner combinations), E2E-045/046 re-specified for four themes |
+| MOD1-046 | Other 43 procedures still pass | PASS | `MOD1-046-full-regression.png` | 43/43 re-executed live against the real backend and real WebSocket, zero mocking. One defect found and fixed before recording a pass: E2E-050's dialog focus restore landed on `<body>` app-wide (Radix refocuses `context.triggerRef`, which only `<DialogTrigger>` populates, and every production dialog uses externally-controlled open state) — fixed in `24451ba`, then E2E-050 re-run clean 7/7 on both dialogs at both viewports. E2E-021 exercised with a genuine backend-generated recommendation (identified gain K=1.2 %PV/%CO matches the simulator's configured FLOW plant gain), 0 writes before confirm, exactly 1 POST after |
+| MOD1-047 | Typecheck, lint, unit suite | PASS | `MOD1-047-unit.png` | `tsc -b` and `eslint .` both clean; 90 files / 805 tests pass. 746 → 805 (+59): trend-selection persistence, roster reconciliation, the fourth theme across registry/contrast/token gates, glow placement, `useGlowTrace`, and the dialog focus-restore regression guard |
+| MOD1-048 | Contrast and token gates | PASS | `MOD1-048-gates.png` | 4 files / 145 tests pass. `GateThemeId = 'recorder' \| 'phosphor' \| 'neon'`; `TEXT_FLOOR = 4.5` and `NONTEXT_FLOOR = 3.0` verbatim unchanged, no assertion deleted; all 48 contract tokens resolve non-empty under all four themes |
+| MOD1-049 | Playwright + new baselines | PASS | `MOD1-049-playwright.png` | 87/87 pass. All four `dashboard-neon-{320,768,1024,1440}-linux.png` baselines exist (17 snapshots total = 4 themes × 4 widths + 1 faceplate) and were reviewed by eye before acceptance, not auto-accepted |
+| MOD1-050 | Backend untouched | PASS | `MOD1-050-no-backend.png` | `git diff --stat bfda1eb..HEAD -- packages/smart_pid_core` and `-- '*.py'` both empty across all 28 commits. Backend suite deliberately not re-run |
 
 ## What this runbook does not cover
 
