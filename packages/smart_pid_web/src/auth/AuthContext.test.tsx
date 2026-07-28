@@ -1,6 +1,6 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, render, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createElement, type ReactNode } from 'react';
+import { createElement, useEffect, type ReactNode } from 'react';
 import { AuthProvider, useAuth } from './AuthContext';
 import { api } from '../api/client';
 
@@ -94,6 +94,45 @@ describe('AuthProvider', () => {
 
     await waitFor(() => expect(result.current.user?.role).toBe('user'));
     expect(onPermissionDenied).toHaveBeenCalledTimes(1);
+  });
+
+  it('wires setAuthHooks synchronously in render — a descendant mount effect never observes the pre-auth default (regression: Task 11 reload race)', async () => {
+    // React commits a child's mount effects BEFORE its parent's. If
+    // `setAuthHooks(...)` ever moves back into an AuthProvider `useEffect`,
+    // a descendant's own mount effect fires first and races ahead of it —
+    // exactly the window that caused the spurious reload-logout this test
+    // guards against. Wiring the hooks in the render body (current fix)
+    // guarantees they are live before React begins mounting any descendant,
+    // regardless of effect order.
+    sessionStorage.setItem('smart-pid-token', 't-race');
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/probe')
+          ? json({ ok: true })
+          : json({ user_id: 9, username: 'race', role: 'user' }),
+      ),
+    );
+
+    function Consumer() {
+      useEffect(() => {
+        // Fires as a CHILD mount effect — the earliest point a descendant
+        // can issue an authenticated request during a cold reload.
+        void api.get('/probe');
+      }, []);
+      return null;
+    }
+
+    render(createElement(AuthProvider, null, createElement(Consumer)));
+
+    await waitFor(() => {
+      const probeCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/probe'));
+      expect(probeCall).toBeDefined();
+    });
+    const [, probeInit] = fetchMock.mock.calls.find(([url]) => String(url).includes('/probe'))!;
+    const headers = (probeInit as RequestInit).headers as Record<string, string>;
+    // The pre-auth default (`getToken: () => null`) sends no Authorization
+    // header at all — that absence is what a reverted useEffect would produce.
+    expect(headers.Authorization).toBe('Bearer t-race');
   });
 
   it('useAuth outside the provider throws', () => {
