@@ -1,19 +1,30 @@
 import { expect, test, type Page } from '@playwright/test';
 import { FIC101, TIC202, emitFrames, faceplate, gotoDashboard, settleForShot } from './helpers/harness';
 
-// §6.8 + §10 theme matrix. Four themes ship: recorder, phosphor, isa101 and
-// neon — neon is the default (§10.2). MD3 dark/light and Ocean are dropped;
-// Dark Room is superseded by Phosphor, and stored legacy values migrate rather
-// than silently falling back (a stored `ocean` still resolves to recorder).
+// §6.8 + §10 theme matrix. Six themes ship. `optimizer` and `optimizer-dark`
+// are the smartPID Optimizer design system (directions 1a and 1b of the imported
+// design document); `optimizer` is the default. Recorder, phosphor, isa101 and
+// neon stay as instrument skins — a customer who needs ISA-101 conformance still
+// has a conforming surface. MD3 dark/light and Ocean are dropped; Dark Room is
+// superseded by Phosphor, and stored legacy values migrate rather than silently
+// falling back (a stored `ocean` still resolves to recorder).
 //
-// Visual baseline set: 4 themes x 4 viewports = 16 dashboard PNGs here, plus
-// one faceplate PNG in faceplate.spec.ts = 17 total. The obsolete 5x4 matrix
-// (ocean / md3-dark / md3-light / dark-room / isa101) was deleted in 7603b80.
+// Visual baseline set: 6 themes x 4 viewports = 24 dashboard PNGs here, plus one
+// faceplate PNG in faceplate.spec.ts = 25 total.
 
-const THEMES = ['recorder', 'phosphor', 'isa101', 'neon'] as const;
+const THEMES = [
+  'optimizer',
+  'optimizer-dark',
+  'recorder',
+  'phosphor',
+  'isa101',
+  'neon',
+] as const;
 const LOOPS = [FIC101, TIC202];
 
 const THEME_LABEL: Record<(typeof THEMES)[number], string> = {
+  optimizer: 'Optimizer',
+  'optimizer-dark': 'Optimizer Dark',
   recorder: 'Recorder',
   phosphor: 'Phosphor',
   isa101: 'ISA-101',
@@ -22,13 +33,16 @@ const THEME_LABEL: Record<(typeof THEMES)[number], string> = {
 
 async function selectTheme(page: Page, theme: (typeof THEMES)[number]): Promise<void> {
   await page.getByRole('button', { name: 'Configurações' }).click();
-  await page.getByRole('menuitemradio', { name: THEME_LABEL[theme] }).click();
+  // `Optimizer` is a prefix of `Optimizer Dark`, so the radio lookup has to be
+  // exact or the first click lands on whichever the accessible-name matcher
+  // reaches first.
+  await page.getByRole('menuitemradio', { name: THEME_LABEL[theme], exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
 }
 
-test('neon is the default when nothing is stored', async ({ page }) => {
+test('optimizer is the default when nothing is stored', async ({ page }) => {
   await gotoDashboard(page, { loops: LOOPS });
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'neon');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'optimizer');
   // The pre-paint script in index.html and the static attribute agree, so the
   // stored value is only written once the operator picks something.
   expect(await page.evaluate(() => localStorage.getItem('spid.theme'))).toBeNull();
@@ -56,9 +70,34 @@ for (const theme of THEMES) {
   });
 }
 
+// The design system is the product's own face, so the brand layer has to survive
+// a theme swap: the wordmark and the KPI band are present under every palette,
+// painted from that palette's own brand tokens.
+test('the brand layer is present under every theme', async ({ page }) => {
+  await gotoDashboard(page, { loops: LOOPS });
+
+  for (const theme of THEMES) {
+    if ((await page.locator('html').getAttribute('data-theme')) !== theme) {
+      await selectTheme(page, theme);
+    }
+    await expect(
+      page.getByRole('link', { name: 'smartPID Optimizer' }),
+      `${theme} wordmark`,
+    ).toBeVisible();
+    await expect(
+      page.getByRole('group', { name: 'Indicadores gerais' }),
+      `${theme} KPI band`,
+    ).toBeVisible();
+  }
+});
+
 // §10.5/D12: the halo is "--glow-trace is non-zero", not "the theme is Phosphor".
-// Phosphor declares 4px and Neon 8px; Recorder and ISA-101 declare 0px.
+// Phosphor declares 4px and Neon 8px; every other palette declares 0px — the two
+// Optimizer themes included, because the design system carries salience with
+// elevation and hue rather than with bloom.
 const GLOW_TRACE: Record<(typeof THEMES)[number], { token: string; glow: 'on' | 'off' }> = {
+  optimizer: { token: '0px', glow: 'off' },
+  'optimizer-dark': { token: '0px', glow: 'off' },
   recorder: { token: '0px', glow: 'off' },
   phosphor: { token: '4px', glow: 'on' },
   isa101: { token: '0px', glow: 'off' },
@@ -89,7 +128,7 @@ const LEGACY: ReadonlyArray<readonly [string, string]> = [
   ['md3-dark', 'recorder'],
   ['md3-light', 'recorder'],
   ['ocean', 'recorder'],
-  ['not-a-theme', 'neon'],
+  ['not-a-theme', 'optimizer'],
 ];
 
 for (const [stored, expected] of LEGACY) {
@@ -110,7 +149,7 @@ for (const [stored, expected] of LEGACY) {
 // arbitrary 0-2 samples and the recorder draws no stroke at all. 24 frames of
 // the deterministic PV/CO excursion give the matrix a real trace, without which
 // a §6.3 regression — trace hue, per-series width, or the ISA-only solid SP —
-// would slip past all sixteen shots unnoticed.
+// would slip past all twenty-four shots unnoticed.
 test.describe('visual baselines', () => {
   test.use({ timezoneId: 'UTC' });
 

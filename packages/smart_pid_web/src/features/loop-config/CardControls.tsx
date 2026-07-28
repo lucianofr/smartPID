@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { useCan } from '@/auth/useCan';
 import { Button } from '@/components/Button';
-import { Field, Input } from '@/components/Field';
+import { Input } from '@/components/Field';
 import { toast } from '@/components/Toast';
 import { cn } from '@/lib/utils';
 import { CONTROLLER_MODES, type ControllerMode, type Range } from './types';
@@ -36,6 +36,23 @@ const SELECT_CLASS = cn(
   'text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
   'disabled:cursor-not-allowed disabled:text-text-disabled',
 );
+
+/**
+ * Direction 1a entry row: label left, right-aligned mono field, write button.
+ * `Field` is not used here — its stacked label/control is the wrong axis for
+ * this row, and the 320px rail has no budget for the extra line. The `<label
+ * htmlFor>` binding, the `${id}-err` alert id and the accessible names are
+ * reproduced verbatim, so `getByLabel('Setpoint')` / `getByLabel('Saída')` and
+ * the aria-describedby wiring are unchanged.
+ *
+ * The mock draws a 30px field; `min-h-11` (44px) from `Input` stands, because
+ * these are real operator inputs under the §8.3 target-size floor.
+ */
+const ENTRY_LABEL = 'shrink-0 text-sm text-text-soft';
+const ENTRY_INPUT = cn(
+  'numeric min-w-0 max-w-[110px] flex-1 px-2 py-1 text-right text-base',
+);
+const ENTRY_ERROR = 'text-xs font-medium text-alarm-crit';
 
 export function CardControls({
   controllerId,
@@ -73,6 +90,10 @@ export function CardControls({
   const spValue = Number(spDraft);
   const spError = spDraft.trim() === '' ? undefined : validateSetpoint(spValue, spRange);
   const coError = validateOutput(co);
+  // Same precedence `Field` applied: local validation first, then the rejection
+  // the backend sent back for this control.
+  const spMessage = spError ?? setpointCmd.error?.detail;
+  const coMessage = coError ?? outputCmd.error?.detail;
   const isManual = mode === 'MAN';
 
   const show = (control: CardControl): boolean => controls.includes(control);
@@ -80,32 +101,36 @@ export function CardControls({
   return (
     <div data-testid="card-controls" className={cn('flex flex-col gap-2', className)}>
       {show('setpoint') ? (
-        <div className="flex items-end gap-2">
-          <Field
-            label="Setpoint"
-            htmlFor={spId}
-            error={spError ?? setpointCmd.error?.detail}
-            className="min-w-0 flex-1"
-          >
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <label htmlFor={spId} className={ENTRY_LABEL}>
+              Setpoint
+            </label>
             <Input
               id={spId}
               type="number"
               inputMode="decimal"
-              className="numeric px-2 py-1"
+              className={ENTRY_INPUT}
               value={spDraft}
               invalid={spError !== undefined}
               aria-describedby={spError !== undefined ? `${spId}-err` : undefined}
               onChange={(e) => setSpDraft(e.target.value)}
             />
-          </Field>
-          <Button
-            disabled={spDraft.trim() === '' || spError !== undefined || setpointCmd.isPending}
-            onClick={() =>
-              setpointCmd.mutate({ id: controllerId, value: spValue }, { onError: onRejected })
-            }
-          >
-            Set setpoint
-          </Button>
+            <Button
+              className="shrink-0 px-2.5"
+              disabled={spDraft.trim() === '' || spError !== undefined || setpointCmd.isPending}
+              onClick={() =>
+                setpointCmd.mutate({ id: controllerId, value: spValue }, { onError: onRejected })
+              }
+            >
+              Set setpoint
+            </Button>
+          </div>
+          {spMessage !== undefined ? (
+            <p id={`${spId}-err`} role="alert" className={ENTRY_ERROR}>
+              {spMessage}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -142,31 +167,37 @@ export function CardControls({
       ) : null}
 
       {show('output') ? (
-        <div className="flex items-end gap-2">
-          <Field
-            label="Saída"
-            htmlFor={coId}
-            error={coError ?? outputCmd.error?.detail}
-            className="min-w-0 flex-1"
-          >
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <label htmlFor={coId} className={ENTRY_LABEL}>
+              Saída
+            </label>
             <Input
               id={coId}
               type="number"
               inputMode="decimal"
-              className="numeric px-2 py-1"
+              className={ENTRY_INPUT}
               value={Number.isFinite(co) ? co : ''}
               disabled={!isManual}
               invalid={coError !== undefined}
               aria-describedby={coError !== undefined ? `${coId}-err` : undefined}
               onChange={(e) => setCo(Number(e.target.value))}
             />
-          </Field>
-          <Button
-            disabled={!isManual || coError !== undefined || outputCmd.isPending}
-            onClick={() => outputCmd.mutate({ id: controllerId, value: co }, { onError: onRejected })}
-          >
-            Set output
-          </Button>
+            <Button
+              className="shrink-0 px-2.5"
+              disabled={!isManual || coError !== undefined || outputCmd.isPending}
+              onClick={() =>
+                outputCmd.mutate({ id: controllerId, value: co }, { onError: onRejected })
+              }
+            >
+              Set output
+            </Button>
+          </div>
+          {coMessage !== undefined ? (
+            <p id={`${coId}-err`} role="alert" className={ENTRY_ERROR}>
+              {coMessage}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>

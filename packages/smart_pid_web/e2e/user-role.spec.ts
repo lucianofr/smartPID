@@ -163,6 +163,8 @@ test('user opens the [cfg] menu, gets every theme and no Administração', async
   await expect(menu).toBeVisible();
   await expect(menu.getByText('Tema')).toBeVisible();
   await expect(menu.getByRole('menuitemradio')).toHaveText([
+    'Optimizer',
+    'Optimizer Dark',
     'Recorder',
     'Phosphor',
     'ISA-101',
@@ -187,7 +189,7 @@ test('admin keeps the Administração block in the same [cfg] menu', async ({ pa
   await page.getByRole('button', { name: 'Configurações' }).click();
   const menu = page.getByRole('menu');
   await expect(menu.getByText('Administração')).toBeVisible();
-  await expect(menu.getByRole('menuitemradio')).toHaveCount(4);
+  await expect(menu.getByRole('menuitemradio')).toHaveCount(6);
   for (const label of ['Projects', 'Settings', 'Connection', 'Users']) {
     await expect(menu.getByRole('menuitem', { name: label })).toBeVisible();
   }

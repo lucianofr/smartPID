@@ -1,28 +1,52 @@
 /*
  * Theme-agnostic tokens. Theme-varying COLOR tokens live in themes.css under
  * [data-theme]. The §6.4 type tokens resolve here (:root) — one type system,
- * three palettes. The Archivo/Geist files behind these stacks are wired by
- * src/assets/fonts/fonts.css (Task 3); the fallbacks are metric-compatible
+ * six palettes. The Inter/Poppins/IBM Plex Mono files behind these stacks are
+ * wired by src/assets/fonts/fonts.css; the fallbacks are metric-compatible
  * (§6.2: system-ui / ui-monospace, minor reflow on first paint accepted).
  */
 :root {
   /* Type faces (§6.2). --font-display is PER-THEME (§10.6) and lives in
-   * themes.css: numerals and body text are identical in all four themes, the
-   * display face is not. Recorder/Phosphor/ISA-101 declare Archivo at wdth 125
-   * via .type-display; neon declares Orbitron. */
-  --font-ui: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-data: 'Geist Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+   * themes.css: numerals and body text are identical in all six themes, the
+   * display face is not. Five themes declare Poppins; neon keeps Orbitron. */
+  --font-ui: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-data: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
 
-  /* Type scale */
-  --text-2xs: 0.6875rem; --text-xs: 0.75rem; --text-sm: 0.8125rem;
-  --text-base: 0.9375rem;
-  --text-lg: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
-  --text-xl: clamp(1.25rem, 1.1rem + 0.6vw, 1.5rem);
-  --text-2xl: clamp(1.75rem, 1.4rem + 1.2vw, 2.5rem);
+  /* Type scale — the smartPID Optimizer HMI scale, in px-exact rem. Dense on
+   * purpose: a control room reads this at a metre. The ladder is fixed, not
+   * fluid; an operator screen is a known size and reflowing numerals between
+   * breakpoints is how a readout starts to look untrustworthy. */
+  --text-2xs: 0.625rem;    /* 10px — section captions, units, meta */
+  --text-xs: 0.6875rem;    /* 11px — state chips, priority pills */
+  --text-sm: 0.75rem;      /* 12px — field labels, legend */
+  --text-base: 0.8125rem;  /* 13px — control labels, table cells, buttons */
+  --text-md: 0.9375rem;    /* 15px — loop tag: FIC-001 */
+  --text-lg: 1.0625rem;    /* 17px — bar readouts, loop-card values */
+  --text-xl: 1.2rem;       /* h4 — app title, panel headings */
+  --text-2xl: 1.5rem;      /* h2 — KPI band figures */
+  --text-3xl: 1.875rem;    /* 30px — faceplate primary PV */
   --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
 
-  /* Shape — instrument chrome is square; pills are reserved for count chips. */
-  --radius-card: 0px; --radius-control: 0px; --radius-pill: 999px;
+  /* Tracking. Caps-locked captions need the widest track; the brand wordmark
+   * the tightest. */
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.06em;
+  --tracking-caps: 0.1em;
+
+  /* Line height */
+  --lh-flat: 1;
+  --lh-tight: 1.2;
+  --lh-snug: 1.45;
+  --lh-normal: 1.6;
+
+  /* Shape. The pre-rewrite instrument chrome was square at every corner; the
+   * Optimizer design system rounds the card (10px), the control (6px) and the
+   * plot well (8px), and keeps the pill for chips and count badges. */
+  --radius-card: 10px;
+  --radius-control: 6px;
+  --radius-well: 8px;
+  --radius-pill: 999px;
 
   /* Motion */
   --dur-fast: 120ms; --dur-normal: 200ms; --dur-slow: 320ms;

@@ -23,6 +23,17 @@ export interface TrendPenTip {
   pv: number;
 }
 
+/** Micro-labels in the well's padding band (§6.9), all optional. */
+export interface TrendWellLabels {
+  /** Upper y bound, top-left. Omit when the plot is auto-scaled — an unknown
+   *  bound printed as a number is a lie the operator cannot audit. */
+  yTop?: string;
+  /** Lower y bound, bottom-left. */
+  yBottom?: string;
+  /** Time ruler, bottom-right (e.g. "30 min → agora"). */
+  time?: string;
+}
+
 export interface TrendProps {
   data: TrendSeriesData;
   /** Accessible name — pt-BR at call sites (e.g. "Tendência FIC-101"). */
@@ -41,12 +52,49 @@ export interface TrendProps {
   aiTicks?: readonly number[];
   /** Static halo pass on PV (§6.7). Caller decides from `--glow-trace` (§10.5). */
   glow?: boolean;
+  /** Canvas height in CSS px. The well adds `TREND_WELL_CHROME_PX` around it. */
   height?: number;
+  labels?: TrendWellLabels;
   className?: string;
 }
 
 const PEN_RADIUS_PX = 3.5;
 const AI_TICK_PX = 6;
+
+/**
+ * Padding the sunken well adds around the canvas — `p-3.5` is uniform, so the
+ * same number applies on both axes. Exported so a caller sizing the plot from a
+ * measured container subtracts the real inset instead of hard-coding a
+ * duplicate of this class that silently drifts when the padding changes.
+ */
+export const TREND_WELL_INSET_PX = 28;
+
+/**
+ * §6.9 PV area fade. The stops are the RESOLVED `--trace-pv` value with an
+ * 8-digit alpha suffix appended, so no color ever enters this file — the token
+ * remains the single source. Themes author the traces as 6-digit hex; anything
+ * else (a future wide-gamut theme) skips the fill rather than guessing at a
+ * conversion, which is why this returns a falsy fill style instead of throwing.
+ */
+const AREA_ALPHA_TOP = '33'; // ≈20%
+const AREA_ALPHA_BOTTOM = '00'; // fully transparent
+const SIX_DIGIT_HEX = /^#[0-9a-f]{6}$/i;
+
+function withAlpha(color: string, alphaSuffix: string): string | null {
+  const trimmed = color.trim();
+  return SIX_DIGIT_HEX.test(trimmed) ? `${trimmed}${alphaSuffix}` : null;
+}
+
+function pvAreaFill(u: uPlot, pvStroke: string): CanvasGradient | string {
+  const top = withAlpha(pvStroke, AREA_ALPHA_TOP);
+  const bottom = withAlpha(pvStroke, AREA_ALPHA_BOTTOM);
+  if (top === null || bottom === null) return '';
+  // uPlot's context works in device pixels, and bbox is already scaled.
+  const gradient = u.ctx.createLinearGradient(0, u.bbox.top, 0, u.bbox.top + u.bbox.height);
+  gradient.addColorStop(0, top);
+  gradient.addColorStop(1, bottom);
+  return gradient;
+}
 
 function drawPenTip(u: uPlot, tip: TrendPenTip, color: string): void {
   const x = u.valToPos(tip.t, 'x', true);
@@ -104,6 +152,8 @@ function drawHalo(u: uPlot, seriesIdx: number, theme: UplotTheme): void {
   ctx.restore();
 }
 
+const WELL_LABEL = 'numeric pointer-events-none absolute text-2xs leading-none text-text-soft';
+
 export function Trend({
   data,
   ariaLabel,
@@ -113,6 +163,7 @@ export function Trend({
   aiTicks,
   glow = false,
   height = 280,
+  labels,
   className,
 }: TrendProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -184,7 +235,13 @@ export function Trend({
       ],
       series: [
         {},
-        { label: 'PV', stroke: theme.series.pv.stroke, width: theme.series.pv.width },
+        {
+          label: 'PV',
+          stroke: theme.series.pv.stroke,
+          width: theme.series.pv.width,
+          // Re-read per draw so a resize re-derives the gradient geometry.
+          fill: (u) => pvAreaFill(u, theme.series.pv.stroke),
+        },
         { label: 'SP', stroke: theme.series.sp.stroke, width: theme.series.sp.width, dash: theme.series.sp.dash },
         { label: 'CO', stroke: theme.series.co.stroke, width: theme.series.co.width, scale: 'co' },
       ],
@@ -250,13 +307,23 @@ export function Trend({
 
   return (
     <div
-      ref={containerRef}
       role="img"
       aria-label={ariaLabel}
       data-theme-key={themeKey}
       data-glow={glow ? 'on' : 'off'}
-      className={cn('w-full bg-trend-bg', className)}
-      style={{ height }}
-    />
+      // The §6.9 sunken well. The micro-labels live in the padding band, not
+      // over the plot: uPlot draws real axes inside the canvas and an overlay
+      // there would collide with its own tick labels.
+      className={cn('relative w-full overflow-hidden rounded-well bg-surface-sunk p-3.5', className)}
+    >
+      {labels?.yTop ? <span className={cn(WELL_LABEL, 'left-3.5 top-1')}>{labels.yTop}</span> : null}
+      {labels?.yBottom ? (
+        <span className={cn(WELL_LABEL, 'bottom-1 left-3.5')}>{labels.yBottom}</span>
+      ) : null}
+      {labels?.time ? (
+        <span className={cn(WELL_LABEL, 'bottom-1 right-3.5')}>{labels.time}</span>
+      ) : null}
+      <div ref={containerRef} className="w-full bg-trend-bg" style={{ height }} />
+    </div>
   );
 }

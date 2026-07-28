@@ -119,7 +119,10 @@ describe('AppShell', () => {
       'href',
       '/executive',
     );
-    expect(screen.getByRole('link', { name: 'Smart PID' })).toHaveAttribute('href', '/');
+    // The wordmark is two-tone (`PID` is amber), so its accessible name comes
+    // from an explicit aria-label — text-node joining would read "smart PID
+    // Optimizer" in jsdom and "smartPID Optimizer" in a browser.
+    expect(screen.getByRole('link', { name: 'smartPID Optimizer' })).toHaveAttribute('href', '/');
   });
 
   it('keeps the executive entry for a user role', async () => {
@@ -180,6 +183,8 @@ describe('AppShell — [cfg] menu role gating', () => {
 
     expect(within(menu).getByText('Tema')).toBeVisible();
     expect(within(menu).getAllByRole('menuitemradio').map((i) => i.textContent)).toEqual([
+      'Optimizer',
+      'Optimizer Dark',
       'Recorder',
       'Phosphor',
       'ISA-101',
@@ -211,7 +216,7 @@ describe('AppShell — [cfg] menu role gating', () => {
 
     const menu = await openCfgMenu();
     await within(menu).findByText('Administração');
-    expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(4);
+    expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(6);
     for (const label of ['Projects', 'Settings', 'Connection', 'Users']) {
       expect(within(menu).getByRole('menuitem', { name: label })).toBeVisible();
     }

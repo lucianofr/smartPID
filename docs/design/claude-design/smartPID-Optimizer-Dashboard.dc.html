@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="stylesheet" href="_ds/smartpid-optimizer-design-system-582473f6-728f-41ba-8f1e-a911851edae4/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/smartpid-optimizer-design-system-582473f6-728f-41ba-8f1e-a911851edae4/tokens/colors.css">
+<link rel="stylesheet" href="_ds/smartpid-optimizer-design-system-582473f6-728f-41ba-8f1e-a911851edae4/tokens/typography.css">
+<link rel="stylesheet" href="_ds/smartpid-optimizer-design-system-582473f6-728f-41ba-8f1e-a911851edae4/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/smartpid-optimizer-design-system-582473f6-728f-41ba-8f1e-a911851edae4/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/smartpid-optimizer-design-system-582473f6-728f-41ba-8f1e-a911851edae4/tokens/patterns.css">
+<link rel="stylesheet" href="_ds/smartpid-optimizer-design-system-582473f6-728f-41ba-8f1e-a911851edae4/styles.css">
+<script src="_ds/smartpid-optimizer-design-system-582473f6-728f-41ba-8f1e-a911851edae4/_ds_bundle.js"></script>
+<meta name="design_doc_mode" content="canvas">
+<style>
+body{margin:0;background:#eef1f3;font-family:'Inter',system-ui,sans-serif}
+.dv-turn{padding:40px 44px 60px;scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 22px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#0d1f38;color:#fff;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 14px/1.2 'Inter',system-ui,sans-serif;color:#0d1f38}
+.dv-opts{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px}
+.dv-oid{font:700 11px ui-monospace,Menlo,monospace;padding:3px 8px;background:rgba(13,31,56,.08);color:#0d1f38;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 12px/1.3 'Inter',system-ui,sans-serif;color:rgba(13,31,56,.6)}
+.dv-card{max-width:100%;background:#fff;border:1px solid rgba(13,31,56,.1);border-radius:10px;box-shadow:0 1px 3px rgba(13,31,56,.08);overflow:hidden}
+.dv-opt:target .dv-oid{background:#2b6bae;color:#fff}
+.dv-next{margin:26px 0 0;font:12px/1.6 'Inter',system-ui,sans-serif;color:rgba(13,31,56,.55)}
+.dv-next a{color:#2b6bae}
+@keyframes spPulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</helmet>
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">smartPID Optimizer — página principal, 3 direções (layout + tratamento dos cards)</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Painel Executivo — claro, direto ao ponto</div>
+<div class="dv-card" style="width:1920px;height:1080px">
+<div style="width:1920px;height:1080px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:var(--chrome-0);font-family:var(--font-ui);color:var(--ink)">
+
+<header style="flex:0 0 auto;height:64px;display:flex;align-items:center;gap:26px;padding:0 28px;background:#ffffff;border-bottom:1px solid rgba(90,107,122,.18)">
+<div style="display:flex;align-items:center;gap:10px;flex:0 0 auto">
+<img src="assets/logo-step-icon.svg" alt="" style="height:24px;display:block" />
+<span style="font-family:var(--font-display);font-weight:700;font-size:var(--fs-h4);letter-spacing:var(--tracking-tight);color:var(--navy-deep)">smart<span style="color:var(--amber)">PID</span> Optimizer</span>
+</div>
+<nav style="display:flex;align-items:center;gap:2px;margin-left:8px">
+<span style="padding:9px 14px;font-size:var(--fs-ui);font-weight:600;color:var(--navy-deep);border-bottom:2px solid var(--amber)">Dashboard</span>
+<span style="padding:9px 14px;font-size:var(--fs-ui);font-weight:500;color:var(--ink-soft)">Executivo</span>
+<span style="padding:9px 14px;font-size:var(--fs-ui);font-weight:500;color:var(--ink-soft)">Alarmes</span>
+<span style="padding:9px 14px;font-size:var(--fs-ui);font-weight:500;color:var(--ink-soft)">Configurações</span>
+</nav>
+<div style="flex:1"></div>
+<div style="display:flex;align-items:center;gap:7px;font-size:var(--fs-ui-sm);color:var(--ink-dim)">
+<span style="width:7px;height:7px;border-radius:999px;background:var(--live);flex:0 0 auto"></span>OPC-UA conectado
+</div>
+<div style="width:1px;height:22px;background:rgba(90,107,122,.18)"></div>
+<div style="display:flex;align-items:center;gap:9px;font-size:var(--fs-ui-sm);font-weight:600;color:var(--ink-soft)">
+<span style="width:28px;height:28px;border-radius:999px;background:var(--navy-deep);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:0 0 auto">LR</span>
+Luciano Rocha
+</div>
+</header>
+
+<div style="flex:0 0 auto;background:linear-gradient(120deg,var(--navy-darker),var(--navy-deep) 65%);padding:18px 28px;display:flex;align-items:center">
+<div style="display:flex;align-items:center;gap:14px;flex:1;padding:0 22px;border-right:1px solid rgba(255,255,255,.12)">
+<span style="width:38px;height:38px;border-radius:10px;background:rgba(255,140,66,.15);display:flex;align-items:center;justify-content:center;flex:0 0 auto">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#ffb380" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"></path><path d="M3.34 19a10 10 0 1 1 17.32 0"></path></svg>
+</span>
+<div><div style="font-family:var(--font-display);font-weight:700;font-size:var(--fs-h2);color:#ffffff;line-height:1">{{kpiLoops}}</div><div style="font-size:var(--fs-caption);letter-spacing:var(--tracking-caps);color:rgba(255,255,255,.6);margin-top:5px;text-transform:uppercase">malhas monitoradas</div></div>
+</div>
+<div style="display:flex;align-items:center;gap:14px;flex:1;padding:0 22px;border-right:1px solid rgba(255,255,255,.12)">
+<span style="width:38px;height:38px;border-radius:10px;background:rgba(255,140,66,.15);display:flex;align-items:center;justify-content:center;flex:0 0 auto">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#ffb380" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path><path d="M9 13a4.5 4.5 0 0 0 3-4"></path><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"></path><path d="M3.477 10.896a4 4 0 0 1 .585-.396"></path><path d="M6 18a4 4 0 0 1-1.967-.516"></path><path d="M12 13h4"></path><path d="M12 18h6a2 2 0 0 1 2 2v1"></path><path d="M12 8h8"></path><path d="M16 8V5a2 2 0 0 1 2-2"></path><circle cx="16" cy="13" r=".5"></circle><circle cx="18" cy="3" r=".5"></circle><circle cx="20" cy="21" r=".5"></circle><circle cx="20" cy="8" r=".5"></circle></svg>
+</span>
+<div><div style="font-family:var(--font-display);font-weight:700;font-size:var(--fs-h2);color:#ffffff;line-height:1">{{kpiAi}}</div><div style="font-size:var(--fs-caption);letter-spacing:var(--tracking-caps);color:rgba(255,255,255,.6);margin-top:5px;text-transform:uppercase">em otimização ativa por IA</div></div>
+</div>
+<div style="display:flex;align-items:center;gap:14px;flex:1;padding:0 22px;border-right:1px solid rgba(255,255,255,.12)">
+<span style="width:38px;height:38px;border-radius:10px;background:rgba(255,140,66,.15);display:flex;align-items:center;justify-content:center;flex:0 0 auto">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#ffb380" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg>
+</span>
+<div><div style="font-family:var(--font-display);font-weight:700;font-size:var(--fs-h2);color:var(--amber-soft);line-height:1">{{kpiVar}}</div><div style="font-size:var(--fs-caption);letter-spacing:var(--tracking-caps);color:rgba(255,255,255,.6);margin-top:5px;text-transform:uppercase">variabilidade média</div></div>
+</div>
+<div style="display:flex;align-items:center;gap:14px;flex:1;padding:0 22px">
+<span style="width:38px;height:38px;border-radius:10px;background:rgba(255,140,66,.15);display:flex;align-items:center;justify-content:center;flex:0 0 auto">
+<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#ffb380" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+</span>
+<div><div style="font-family:var(--font-display);font-weight:700;font-size:var(--fs-h2);color:var(--amber-soft);line-height:1">{{kpiRoi}}</div><div style="font-size:var(--fs-caption);letter-spacing:var(--tracking-caps);color:rgba(255,255,255,.6);margin-top:5px;text-transform:uppercase">economia estimada</div></div>
+</div>
+</div>
+
+<div style="flex:1;min-height:0;display:flex;gap:20px;padding:20px 28px;overflow:hidden">
+
+<aside style="width:372px;flex:0 0 auto;height:100%;overflow-y:auto;background:#fff;border:1px solid rgba(90,107,122,.16);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+<div><div style="font-family:var(--font-mono);font-weight:700;font-size:var(--fs-h3);color:var(--navy-deep)">{{faceA.tag}}</div><div style="font-size:var(--fs-ui-sm);color:var(--ink-dim);margin-top:2px">{{faceA.desc}}</div></div>
+<span style="width:9px;height:9px;border-radius:999px;background:var(--live);margin-top:6px;flex:0 0 auto"></span>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="width:24px;font-size:var(--fs-caption);font-weight:700;color:var(--ink-soft)">PV</span>
+<div style="flex:1;height:14px;background:var(--chrome-0);border-radius:999px;overflow:hidden"><div style="width:{{faceA.pvPct}}%;height:100%;background:var(--trace-pv)"></div></div>
+<span style="font-family:var(--font-mono);font-weight:600;font-size:var(--fs-value-xl);width:64px;text-align:right;color:var(--navy-deep)">{{faceA.pv}}</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="width:24px;font-size:var(--fs-caption);font-weight:700;color:var(--ink-soft)">SP</span>
+<div style="flex:1;height:10px;background:var(--chrome-0);border-radius:999px;overflow:hidden"><div style="width:{{faceA.spPct}}%;height:100%;background:var(--trace-sp)"></div></div>
+<span style="font-family:var(--font-mono);font-weight:600;font-size:var(--fs-value);width:64px;text-align:right;color:var(--ink)">{{faceA.sp}}</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="width:24px;font-size:var(--fs-caption);font-weight:700;color:var(--ink-soft)">CO</span>
+<div style="flex:1;height:10px;background:var(--chrome-0);border-radius:999px;overflow:hidden"><div style="width:{{faceA.coPct}}%;height:100%;background:var(--trace-co)"></div></div>
+<span style="font-family:var(--font-mono);font-weight:600;font-size:var(--fs-value);width:64px;text-align:right;color:var(--ink)">{{faceA.co}}</span>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<label style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-size:var(--fs-ui-sm);color:var(--ink-soft)">SP Local</span><span style="display:flex;align-items:center;justify-content:flex-end;height:30px;padding:0 10px;border:1px solid rgba(90,107,122,.25);border-radius:6px;background:var(--chrome-0);font-family:var(--font-mono);font-size:var(--fs-ui);width:110px;color:var(--ink)">{{faceA.sp}}</span></label>
+<label style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-size:var(--fs-ui-sm);color:var(--ink-soft)">CO Manual</span><span style="display:flex;align-items:center;justify-content:flex-end;height:30px;padding:0 10px;border:1px solid rgba(90,107,122,.2);border-radius:6px;background:var(--chrome-1);font-family:var(--font-mono);font-size:var(--fs-ui);width:110px;color:var(--ink-dim)">{{faceA.co}}</span></label>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:7px">
+<div style="font-size:var(--fs-caption);font-weight:700;text-transform:uppercase;letter-spacing:var(--tracking-caps);color:var(--ink-dim)">Modo PID</div>
+<div style="display:flex;gap:6px">
+<div style="flex:1;text-align:center;padding:8px 0;border-radius:6px;font-size:var(--fs-ui);font-weight:700;background:{{faceA.autoBg}};color:{{faceA.autoFg}};border:1px solid rgba(90,107,122,.2)">AUTO</div>
+<div style="flex:1;text-align:center;padding:8px 0;border-radius:6px;font-size:var(--fs-ui);font-weight:700;background:{{faceA.manBg}};color:{{faceA.manFg}};border:1px solid rgba(90,107,122,.2)">MAN</div>
+</div>
+<div style="font-size:var(--fs-caption);font-weight:700;text-transform:uppercase;letter-spacing:var(--tracking-caps);color:var(--ink-dim);margin-top:5px">Otimizador IA</div>
+<div style="display:flex;gap:6px">
+<div style="flex:1;text-align:center;padding:8px 0;border-radius:6px;font-size:var(--fs-ui);font-weight:700;background:{{faceA.runBg}};color:{{faceA.runFg}};border:1px solid rgba(90,107,122,.2)">RUN</div>
+<div style="flex:1;text-align:center;padding:8px 0;border-radius:6px;font-size:var(--fs-ui);font-weight:700;background:{{faceA.stopBg}};color:{{faceA.stopFg}};border:1px solid rgba(90,107,122,.2)">STOP</div>
+</div>
+</div>
+
+<div style="height:1px;background:rgba(90,107,122,.16)"></div>
+
+<div style="display:flex;gap:8px">
+<div style="flex:1;text-align:center"><div style="font-size:var(--fs-caption);color:var(--ink-dim);text-transform:uppercase">Kp</div><div style="font-family:var(--font-mono);font-size:var(--fs-ui);font-weight:600;color:var(--ink)">{{faceA.kp}}</div></div>
+<div style="flex:1;text-align:center"><div style="font-size:var(--fs-caption);color:var(--ink-dim);text-transform:uppercase">Ti</div><div style="font-family:var(--font-mono);font-size:var(--fs-ui);font-weight:600;color:var(--ink)">{{faceA.ti}}</div></div>
+<div style="flex:1;text-align:center"><div style="font-size:var(--fs-caption);color:var(--ink-dim);text-transform:uppercase">Td</div><div style="font-family:var(--font-mono);font-size:var(--fs-ui);font-weight:600;color:var(--ink)">{{faceA.td}}</div></div>
+</div>
+
+<div style="background:{{faceA.aiBoxBg}};border:1px solid {{faceA.aiBoxBorder}};border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;gap:8px">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{faceA.aiLabelColor}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path><path d="M9 13a4.5 4.5 0 0 0 3-4"></path><path d="M12 13h4"></path><path d="M12 18h6a2 2 0 0 1 2 2v1"></path><path d="M12 8h8"></path><path d="M16 8V5a2 2 0 0 1 2-2"></path></svg>
+<span style="font-size:var(--fs-caption);font-weight:700;color:{{faceA.aiLabelColor}};text-transform:uppercase;letter-spacing:var(--tracking-caps)">{{faceA.aiHeaderLabel}}</span>
+</div>
+<div style="font-size:var(--fs-ui-sm);color:var(--ink-soft);line-height:var(--lh-snug)">{{faceA.aiBodyText}}</div>
+<button style="display:flex;align-items:center;justify-content:center;gap:6px;height:34px;border-radius:6px;background:{{faceA.aiBtnBg}};border:{{faceA.aiBtnBorder}};color:{{faceA.aiBtnFg}};font-size:var(--fs-ui);font-weight:700;cursor:pointer" style-hover="filter:brightness(0.94)">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+{{faceA.aiButtonLabel}}
+</button>
+<sc-if value="{{faceA.aiActive}}" hint-placeholder-val="{{true}}">
+<div style="display:flex;flex-direction:column;gap:6px;padding-top:9px;border-top:1px solid rgba(255,140,66,.22)">
+<sc-for list="{{faceA.log}}" as="entry" hint-placeholder-count="3">
+<div style="display:flex;gap:8px;font-size:var(--fs-caption)"><span style="font-family:var(--font-mono);color:var(--ink-dim);flex:0 0 auto">{{entry.time}}</span><span style="color:var(--ink-soft)">{{entry.text}}</span></div>
+</sc-for>
+</div>
+</sc-if>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px 6px">
+<sc-for list="{{faceA.metrics}}" as="m" hint-placeholder-count="4">
+<div style="text-align:center"><div style="font-size:9px;color:var(--ink-dim);text-transform:uppercase">{{m.label}}</div><div style="font-family:var(--font-mono);font-size:var(--fs-value-sm);font-weight:600;color:var(--ink)">{{m.value}}</div></div>
+</sc-for>
+</div>
+</aside>
+
+<div style="flex:1;min-width:0;height:100%;display:flex;flex-direction:column;gap:16px">
+
+<div style="flex:0 0 auto">
+<div style="font-family:var(--font-display);font-weight:600;font-size:var(--fs-ui);color:var(--navy-deep);margin-bottom:10px">Malhas PID</div>
+<div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:6px">
+<sc-for list="{{loopsA}}" as="loop" hint-placeholder-count="8">
+<div onClick="{{loop.onClick}}" style="width:206px;flex:0 0 auto;background:#fff;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px;cursor:pointer;position:relative;overflow:hidden;border:2px solid {{loop.borderColor}};box-shadow:{{loop.shadowVal}}" style-hover="transform:translateY(-2px)">
+<div style="position:absolute;top:0;left:0;right:0;height:3px;background:{{loop.topBarColor}}"></div>
+<sc-if value="{{loop.hasAlarm}}" hint-placeholder-val="{{false}}"><span style="position:absolute;top:11px;right:11px;width:8px;height:8px;border-radius:999px;background:{{loop.alarmColor}}"></span></sc-if>
+<div><div style="font-family:var(--font-mono);font-weight:700;font-size:var(--fs-tag);color:var(--navy-deep)">{{loop.tag}}</div><div style="font-size:var(--fs-ui-sm);color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{loop.desc}}</div></div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;align-items:center;gap:6px"><span style="width:16px;font-size:var(--fs-caption);color:var(--ink-dim);font-weight:700">PV</span><div style="flex:1;height:6px;background:var(--chrome-0);border-radius:999px;overflow:hidden"><div style="width:{{loop.pvPct}}%;height:100%;background:var(--trace-pv)"></div></div><span style="font-family:var(--font-mono);font-size:var(--fs-ui-sm);width:34px;text-align:right;color:var(--ink)">{{loop.pv}}</span></div>
+<div style="display:flex;align-items:center;gap:6px"><span style="width:16px;font-size:var(--fs-caption);color:var(--ink-dim);font-weight:700">SP</span><div style="flex:1;height:6px;background:var(--chrome-0);border-radius:999px;overflow:hidden"><div style="width:{{loop.spPct}}%;height:100%;background:var(--trace-sp)"></div></div><span style="font-family:var(--font-mono);font-size:var(--fs-ui-sm);width:34px;text-align:right;color:var(--ink)">{{loop.sp}}</span></div>
+<div style="display:flex;align-items:center;gap:6px"><span style="width:16px;font-size:var(--fs-caption);color:var(--ink-dim);font-weight:700">CO</span><div style="flex:1;height:6px;background:var(--chrome-0);border-radius:999px;overflow:hidden"><div style="width:{{loop.coPct}}%;height:100%;background:var(--trace-co)"></div></div><span style="font-family:var(--font-mono);font-size:var(--fs-ui-sm);width:34px;text-align:right;color:var(--ink)">{{loop.co}}</span></div>
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap">
+<span style="font-size:var(--fs-caption);font-weight:700;letter-spacing:var(--tracking-wide);padding:3px 8px;border-radius:999px;background:{{loop.modeBg}};color:{{loop.modeColor}}">{{loop.mode}}</span>
+<span style="font-size:var(--fs-caption);font-weight:700;letter-spacing:var(--tracking-wide);padding:3px 8px;border-radius:999px;background:{{loop.stratBg}};color:{{loop.stratColor}}">{{loop.stratLabel}}</span>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="flex:1;min-height:0;background:#fff;border:1px solid rgba(90,107,122,.16);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+<span style="font-family:var(--font-display);font-weight:600;font-size:var(--fs-h4);color:var(--navy-deep)">Tendência — {{trendA.loop.tag}}</span>
+<div style="display:flex;align-items:center;gap:14px;font-size:var(--fs-ui-sm);color:var(--ink-soft)">
+<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:2px;background:var(--trace-pv);display:inline-block"></span>PV <b style="font-family:var(--font-mono);color:var(--ink);font-weight:600">{{trendA.pvNow}}</b></span>
+<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:0;border-top:2px dashed var(--trace-sp);display:inline-block"></span>SP <b style="font-family:var(--font-mono);color:var(--ink);font-weight:600">{{trendA.spNow}}</b></span>
+<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:2px;background:var(--trace-co);display:inline-block"></span>CO <b style="font-family:var(--font-mono);color:var(--ink);font-weight:600">{{trendA.coNow}}</b></span>
+</div>
+</div>
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+<label style="display:flex;align-items:center;gap:6px;font-size:var(--fs-ui-sm);color:var(--ink-soft)">Janela<input type="number" defaultValue="15" style="width:46px;height:28px;border:1px solid rgba(90,107,122,.25);border-radius:6px;padding:0 6px;font-family:var(--font-mono);font-size:var(--fs-ui-sm)" /><select defaultValue="min" style="height:28px;border:1px solid rgba(90,107,122,.25);border-radius:6px;font-size:var(--fs-ui-sm);padding:0 4px"><option value="min">min</option><option value="s">s</option><option value="h">h</option></select></label>
+<label style="display:flex;align-items:center;gap:7px;font-size:var(--fs-ui-sm);color:var(--ink-soft);cursor:pointer" onClick="{{toggleAutoA}}">Auto-escala<span style="width:32px;height:18px;border-radius:999px;background:{{trendA.autoTrack}};position:relative;display:inline-block"><span style="position:absolute;top:2px;left:{{trendA.autoThumb}}px;width:14px;height:14px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3)"></span></span></label>
+<sc-if value="{{trendA.showManual}}" hint-placeholder-val="{{false}}">
+<span style="display:flex;align-items:center;gap:5px;font-size:var(--fs-caption);color:var(--ink-dim)">PV<input type="number" defaultValue="{{trendA.pvMinVal}}" style="width:44px;height:26px;border:1px solid rgba(90,107,122,.25);border-radius:5px;font-family:var(--font-mono);font-size:11px;padding:0 4px" />–<input type="number" defaultValue="{{trendA.pvMaxVal}}" style="width:44px;height:26px;border:1px solid rgba(90,107,122,.25);border-radius:5px;font-family:var(--font-mono);font-size:11px;padding:0 4px" /></span>
+</sc-if>
+<button style="display:flex;align-items:center;gap:6px;height:32px;padding:0 13px;border-radius:6px;border:none;background:var(--navy-deep);color:#fff;font-size:var(--fs-ui-sm);font-weight:600;cursor:pointer" style-hover="background:var(--navy)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg>Exportar CSV</button>
+</div>
+</div>
+<div style="flex:1;min-height:0;position:relative;background:var(--chrome-0);border-radius:8px;padding:14px">
+<svg viewBox="0 0 1000 300" preserveAspectRatio="none" style="width:100%;height:100%;display:block">
+<defs><linearGradient id="pvGradA" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2b6bae" stop-opacity="0.2"></stop><stop offset="100%" stop-color="#2b6bae" stop-opacity="0"></stop></linearGradient></defs>
+<line x1="0" y1="1" x2="1000" y2="1" stroke="var(--plot-grid)" stroke-width="1"></line>
+<line x1="0" y1="150" x2="1000" y2="150" stroke="var(--plot-grid)" stroke-width="1"></line>
+<line x1="0" y1="299" x2="1000" y2="299" stroke="var(--plot-grid)" stroke-width="1"></line>
+<path d="{{trendA.areaPath}}" fill="url(#pvGradA)" stroke="none"></path>
+<path d="{{trendA.coPath}}" fill="none" stroke="var(--trace-co)" stroke-width="1.5" vector-effect="non-scaling-stroke"></path>
+<path d="{{trendA.spPath}}" fill="none" stroke="var(--trace-sp)" stroke-width="1.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"></path>
+<path d="{{trendA.pvPath}}" fill="none" stroke="var(--trace-pv)" stroke-width="2.5" vector-effect="non-scaling-stroke"></path>
+</svg>
+<div style="position:absolute;left:22px;top:20px;font-family:var(--font-mono);font-size:var(--fs-caption);color:var(--ink-dim)">{{trendA.yTop}}</div>
+<div style="position:absolute;left:22px;bottom:20px;font-family:var(--font-mono);font-size:var(--fs-caption);color:var(--ink-dim)">{{trendA.yBot}}</div>
+<div style="position:absolute;right:20px;bottom:20px;display:flex;gap:18px;font-family:var(--font-mono);font-size:var(--fs-caption);color:var(--ink-dim)"><span>-15m</span><span>-11m</span><span>-7m</span><span>-4m</span><span>agora</span></div>
+</div>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Comando IA — escuro, alto contraste</div>
+<div class="dv-card" style="width:1920px;height:1080px">
+<div style="width:1920px;height:1080px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:var(--navy-darker);font-family:var(--font-ui);color:#fff">
+
+<header style="flex:0 0 auto;height:64px;display:flex;align-items:center;gap:26px;padding:0 28px;background:var(--navy-darker);border-bottom:1px solid rgba(255,255,255,.1)">
+<div style="display:flex;align-items:center;gap:10px;flex:0 0 auto">
+<img src="assets/logo-step-icon.svg" alt="" style="height:24px;display:block" />
+<span style="font-family:var(--font-display);font-weight:700;font-size:var(--fs-h4);letter-spacing:var(--tracking-tight);color:#fff">smart<span style="color:var(--amber)">PID</span> Optimizer</span>
+</div>
+<nav style="display:flex;align-items:center;gap:2px;margin-left:8px">
+<span style="padding:9px 14px;font-size:var(--fs-ui);font-weight:600;color:#fff;border-bottom:2px solid var(--amber)">Dashboard</span>
+<span style="padding:9px 14px;font-size:var(--fs-ui);font-weight:500;color:rgba(255,255,255,.55)">Executivo</span>
+<span style="padding:9px 14px;font-size:var(--fs-ui);font-weight:500;color:rgba(255,255,255,.55)">Alarmes</span>
+<span style="padding:9px 14px;font-size:var(--fs-ui);font-weight:500;color:rgba(255,255,255,.55)">Configurações</span>
+</nav>
+<div style="flex:1"></div>
+<div style="display:flex;align-items:center;gap:7px;font-size:var(--fs-ui-sm);color:rgba(255,255,255,.5)">
+<span style="width:7px;height:7px;border-radius:999px;background:var(--live);flex:0 0 auto"></span>OPC-UA conectado
+</div>
+<div style="width:1px;height:22px;background:rgba(255,255,255,.12)"></div>
+<div style="display:flex;align-items:center;gap:9px;font-size:var(--fs-ui-sm);font-weight:600;color:rgba(255,255,255,.7)">
+<span style="width:28px;height:28px;border-radius:999px;background:var(--amber);color:var(--navy-darker);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:0 0 auto">LR</span>
+Luciano Rocha
+</div>
+</header>
+
+<div style="flex:0 0 auto;position:relative;padding:20px 28px;display:flex;align-items:center;background-image:linear-gradient(90deg,rgba(6,13,26,.92),rgba(6,13,26,.86)),url('assets/hero-bg.png');background-size:cover;background-position:center">
+<div style="display:flex;align-items:center;gap:14px;flex:1;padding:0 22px;border-right:1px solid rgba(255,255,255,.14)">
+<span style="width:40px;height:40px;border-radius:10px;background:rgba(255,140,66,.18);display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:0 0 0 1px rgba(255,140,66,.3)">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffb380" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"></path><path d="M3.34 19a10 10 0 1 1 17.32 0"></path></svg>
+</span>
+<div><div style="font-family:var(--font-display);font-weight:700;font-size:var(--fs-h2);color:#ffffff;line-height:1;text-shadow:0 0 18px rgba(255,140,66,.35)">{{kpiLoops}}</div><div style="font-size:var(--fs-caption);letter-spacing:var(--tracking-caps);color:rgba(255,255,255,.55);margin-top:5px;text-transform:uppercase">malhas monitoradas</div></div>
+</div>
+<div style="display:flex;align-items:center;gap:14px;flex:1;padding:0 22px;border-right:1px solid rgba(255,255,255,.14)">
+<span style="width:40px;height:40px;border-radius:10px;background:rgba(255,140,66,.18);display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:0 0 0 1px rgba(255,140,66,.3)">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffb380" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path><path d="M9 13a4.5 4.5 0 0 0 3-4"></path><path d="M12 13h4"></path><path d="M12 18h6a2 2 0 0 1 2 2v1"></path><path d="M12 8h8"></path><path d="M16 8V5a2 2 0 0 1 2-2"></path></svg>
+</span>
+<div><div style="font-family:var(--font-display);font-weight:700;font-size:var(--fs-h2);color:#ffffff;line-height:1;text-shadow:0 0 18px rgba(255,140,66,.35)">{{kpiAi}}</div><div style="font-size:var(--fs-caption);letter-spacing:var(--tracking-caps);color:rgba(255,255,255,.55);margin-top:5px;text-transform:uppercase">em otimização ativa por IA</div></div>
+</div>
+<div style="display:flex;align-items:center;gap:14px;flex:1;padding:0 22px;border-right:1px solid rgba(255,255,255,.14)">
+<span style="width:40px;height:40px;border-radius:10px;background:rgba(255,140,66,.18);display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:0 0 0 1px rgba(255,140,66,.3)">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg>
+</span>
+<div><div style="font-family:var(--font-display);font-weight:700;font-size:var(--fs-h2);color:var(--amber);line-height:1;text-shadow:0 0 22px rgba(255,140,66,.55)">{{kpiVar}}</div><div style="font-size:var(--fs-caption);letter-spacing:var(--tracking-caps);color:rgba(255,255,255,.55);margin-top:5px;text-transform:uppercase">variabilidade média</div></div>
+</div>
+<div style="display:flex;align-items:center;gap:14px;flex:1;padding:0 22px">
+<span style="width:40px;height:40px;border-radius:10px;background:rgba(255,140,66,.18);display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:0 0 0 1px rgba(255,140,66,.3)">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+</span>
+<div><div style="font-family:var(--font-display);font-weight:700;font-size:var(--fs-h2);color:var(--amber);line-height:1;text-shadow:0 0 22px rgba(255,140,66,.55)">{{kpiRoi}}</div><div style="font-size:var(--fs-caption);letter-spacing:var(--tracking-caps);color:rgba(255,255,255,.55);margin-top:5px;text-transform:uppercase">economia estimada</div></div>
+</div>
+</div>
+
+<div style="flex:1;min-height:0;display:flex;gap:20px;padding:20px 28px;overflow:hidden">
+
+<aside style="width:372px;flex:0 0 auto;height:100%;overflow-y:auto;background:linear-gradient(165deg,var(--navy) 0%,var(--navy-deep) 100%);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+<div><div style="font-family:var(--font-mono);font-weight:700;font-size:var(--fs-h3);color:#fff">{{faceB.tag}}</div><div style="font-size:var(--fs-ui-sm);color:rgba(255,255,255,.5);margin-top:2px">{{faceB.desc}}</div></div>
+<span style="width:9px;height:9px;border-radius:999px;background:var(--live);margin-top:6px;flex:0 0 auto;box-shadow:0 0 8px var(--live)"></span>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="width:24px;font-size:var(--fs-caption);font-weight:700;color:rgba(255,255,255,.55)">PV</span>
+<div style="flex:1;height:14px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden"><div style="width:{{faceB.pvPct}}%;height:100%;background:linear-gradient(90deg,var(--select),var(--select-hover))"></div></div>
+<span style="font-family:var(--font-mono);font-weight:600;font-size:var(--fs-value-xl);width:64px;text-align:right;color:#fff">{{faceB.pv}}</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="width:24px;font-size:var(--fs-caption);font-weight:700;color:rgba(255,255,255,.55)">SP</span>
+<div style="flex:1;height:10px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden"><div style="width:{{faceB.spPct}}%;height:100%;background:#8b97a3"></div></div>
+<span style="font-family:var(--font-mono);font-weight:600;font-size:var(--fs-value);width:64px;text-align:right;color:rgba(255,255,255,.85)">{{faceB.sp}}</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="width:24px;font-size:var(--fs-caption);font-weight:700;color:rgba(255,255,255,.55)">CO</span>
+<div style="flex:1;height:10px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden"><div style="width:{{faceB.coPct}}%;height:100%;background:var(--amber-soft)"></div></div>
+<span style="font-family:var(--font-mono);font-weight:600;font-size:var(--fs-value);width:64px;text-align:right;color:rgba(255,255,255,.85)">{{faceB.co}}</span>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<label style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-size:var(--fs-ui-sm);color:rgba(255,255,255,.55)">SP Local</span><span style="display:flex;align-items:center;justify-content:flex-end;height:30px;padding:0 10px;border:1px solid rgba(255,255,255,.16);border-radius:6px;background:rgba(255,255,255,.06);font-family:var(--font-mono);font-size:var(--fs-ui);width:110px;color:#fff">{{faceB.sp}}</span></label>
+<label style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-size:var(--fs-ui-sm);color:rgba(255,255,255,.55)">CO Manual</span><span style="display:flex;align-items:center;justify-content:flex-end;height:30px;padding:0 10px;border:1px solid rgba(255,255,255,.1);border-radius:6px;background:rgba(255,255,255,.03);font-family:var(--font-mono);font-size:var(--fs-ui);width:110px;color:rgba(255,255,255,.4)">{{faceB.co}}</span></label>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:7px">
+<div style="font-size:var(--fs-caption);font-weight:700;text-transform:uppercase;letter-spacing:var(--tracking-caps);color:rgba(255,255,255,.4)">Modo PID</div>
+<div style="display:flex;gap:6px">
+<div style="flex:1;text-align:center;padding:8px 0;border-radius:6px;font-size:var(--fs-ui);font-weight:700;background:{{faceB.autoBg}};color:{{faceB.autoFg}};border:1px solid rgba(255,255,255,.14)">AUTO</div>
+<div style="flex:1;text-align:center;padding:8px 0;border-radius:6px;font-size:var(--fs-ui);font-weight:700;background:{{faceB.manBg}};color:{{faceB.manFg}};border:1px solid rgba(255,255,255,.14)">MAN</div>
+</div>
+<div style="font-size:var(--fs-caption);font-weight:700;text-transform:uppercase;letter-spacing:var(--tracking-caps);color:rgba(255,255,255,.4);margin-top:5px">Otimizador IA</div>
+<div style="display:flex;gap:6px">
+<div style="flex:1;text-align:center;padding:8px 0;border-radius:6px;font-size:var(--fs-ui);font-weight:700;background:{{faceB.runBg}};color:{{faceB.runFg}};border:1px solid rgba(255,255,255,.14)">RUN</div>
+<div style="flex:1;text-align:center;padding:8px 0;border-radius:6px;font-size:var(--fs-ui);font-weight:700;background:{{faceB.stopBg}};color:{{faceB.stopFg}};border:1px solid rgba(255,255,255,.14)">STOP</div>
+</div>
+</div>
+
+<div style="height:1px;background:rgba(255,255,255,.1)"></div>
+
+<div style="display:flex;gap:8px">
+<div style="flex:1;text-align:center"><div style="font-size:var(--fs-caption);color:rgba(255,255,255,.4);text-transform:uppercase">Kp</div><div style="font-family:var(--font-mono);font-size:var(--fs-ui);font-weight:600;color:#fff">{{faceB.kp}}</div></div>
+<div style="flex:1;text-align:center"><div style="font-size:var(--fs-caption);color:rgba(255,255,255,.4);text-transform:uppercase">Ti</div><div style="font-family:var(--font-mono);font-size:var(--fs-ui);font-weight:600;color:#fff">{{faceB.ti}}</div></div>
+<div style="flex:1;text-align:center"><div style="font-size:var(--fs-caption);color:rgba(255,255,255,.4);text-transform:uppercase">Td</div><div style="font-family:var(--font-mono);font-size:var(--fs-ui);font-weight:600;color:#fff">{{faceB.td}}</div></div>
+</div>
+
+<div style="background:rgba(255,140,66,.1);border:1px solid rgba(255,140,66,.45);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 0 24px rgba(255,140,66,.12)">
+<div style="display:flex;align-items:center;gap:8px">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--amber-soft)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path><path d="M9 13a4.5 4.5 0 0 0 3-4"></path><path d="M12 13h4"></path><path d="M12 18h6a2 2 0 0 1 2 2v1"></path><path d="M12 8h8"></path><path d="M16 8V5a2 2 0 0 1 2-2"></path></svg>
+<span style="font-size:var(--fs-caption);font-weight:700;color:var(--amber-soft);text-transform:uppercase;letter-spacing:var(--tracking-caps)">{{faceB.aiHeaderLabel}}</span>
+</div>
+<div style="font-size:var(--fs-ui-sm);color:rgba(255,255,255,.7);line-height:var(--lh-snug)">{{faceB.aiBodyText}}</div>
+<button style="display:flex;align-items:center;justify-content:center;gap:6px;height:34px;border-radius:6px;background:{{faceB.aiBtnBg}};border:{{faceB.aiBtnBorder}};color:{{faceB.aiBtnFg}};font-size:var(--fs-ui);font-weight:700;cursor:pointer" style-hover="filter:brightness(1.08)">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+{{faceB.aiButtonLabel}}
+</button>
+<sc-if value="{{faceB.aiActive}}" hint-placeholder-val="{{true}}">
+<div style="display:flex;flex-direction:column;gap:6px;padding-top:9px;border-top:1px solid rgba(255,140,66,.25)">
+<sc-for list="{{faceB.log}}" as="entry" hint-placeholder-count="3">
+<div style="display:flex;gap:8px;font-size:var(--fs-caption)"><span style="font-family:var(--font-mono);color:rgba(255,255,255,.4);flex:0 0 auto">{{entry.time}}</span><span style="color:rgba(255,255,255,.65)">{{entry.text}}</span></div>
+</sc-for>
+</div>
+</sc-if>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px 6px">
+<sc-for list="{{faceB.metrics}}" as="m" hint-placeholder-count="4">
+<div style="text-align:center"><div style="font-size:9px;color:rgba(255,255,255,.4);text-transform:uppercase">{{m.label}}</div><div style="font-family:var(--font-mono);font-size:var(--fs-value-sm);font-weight:600;color:#fff">{{m.value}}</div></div>
+</sc-for>
+</div>
+</aside>
+
+<div style="flex:1;min-width:0;height:100%;display:flex;flex-direction:column;gap:16px">
+
+<div style="flex:0 0 auto">
+<div style="font-family:var(--font-display);font-weight:600;font-size:var(--fs-ui);color:rgba(255,255,255,.75);margin-bottom:10px">Malhas PID</div>
+<div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:6px">
+<sc-for list="{{loopsB}}" as="loop" hint-placeholder-count="8">
+<div onClick="{{loop.onClick}}" style="width:206px;flex:0 0 auto;background:linear-gradient(165deg,var(--navy) 0%,var(--navy-deep) 100%);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px;cursor:pointer;position:relative;overflow:hidden;border:2px solid {{loop.borderColorDark}};box-shadow:{{loop.shadowValDark}}" style-hover="transform:translateY(-2px)">
+<div style="position:absolute;top:0;left:0;right:0;height:3px;background:{{loop.topBarColor}}"></div>
+<sc-if value="{{loop.hasAlarm}}" hint-placeholder-val="{{false}}"><span style="position:absolute;top:11px;right:11px;width:8px;height:8px;border-radius:999px;background:{{loop.alarmColor}}"></span></sc-if>
+<div><div style="font-family:var(--font-mono);font-weight:700;font-size:var(--fs-tag);color:#fff">{{loop.tag}}</div><div style="font-size:var(--fs-ui-sm);color:rgba(255,255,255,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{loop.desc}}</div></div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;align-items:center;gap:6px"><span style="width:16px;font-size:var(--fs-caption);color:rgba(255,255,255,.4);font-weight:700">PV</span><div style="flex:1;height:6px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden"><div style="width:{{loop.pvPct}}%;height:100%;background:var(--select-hover)"></div></div><span style="font-family:var(--font-mono);font-size:var(--fs-ui-sm);width:34px;text-align:right;color:#fff">{{loop.pv}}</span></div>
+<div style="display:flex;align-items:center;gap:6px"><span style="width:16px;font-size:var(--fs-caption);color:rgba(255,255,255,.4);font-weight:700">SP</span><div style="flex:1;height:6px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden"><div style="width:{{loop.spPct}}%;height:100%;background:#8b97a3"></div></div><span style="font-family:var(--font-mono);font-size:var(--fs-ui-sm);width:34px;text-align:right;color:#fff">{{loop.sp}}</span></div>
+<div style="display:flex;align-items:center;gap:6px"><span style="width:16px;font-size:var(--fs-caption);color:rgba(255,255,255,.4);font-weight:700">CO</span><div style="flex:1;height:6px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden"><div style="width:{{loop.coPct}}%;height:100%;background:var(--amber-soft)"></div></div><span style="font-family:var(--font-mono);font-size:var(--fs-ui-sm);width:34px;text-align:right;color:#fff">{{loop.co}}</span></div>
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap">
+<span style="font-size:var(--fs-caption);font-weight:700;letter-spacing:var(--tracking-wide);padding:3px 8px;border-radius:999px;background:{{loop.modeColor}};color:#fff">{{loop.mode}}</span>
+<span style="font-size:var(--fs-caption);font-weight:700;letter-spacing:var(--tracking-wide);padding:3px 8px;border-radius:999px;background:{{loop.stratColor}};color:#fff">{{loop.stratLabel}}</span>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="flex:1;min-height:0;background:var(--navy-deep);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+<span style="font-family:var(--font-display);font-weight:600;font-size:var(--fs-h4);color:#fff">Tendência — {{trendB.loop.tag}}</span>
+<div style="display:flex;align-items:center;gap:14px;font-size:var(--fs-ui-sm);color:rgba(255,255,255,.65)">
+<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:2px;background:var(--select-hover);display:inline-block"></span>PV <b style="font-family:var(--font-mono);color:#fff;font-weight:600">{{trendB.pvNow}}</b></span>
+<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:0;border-top:2px dashed #8b97a3;display:inline-block"></span>SP <b style="font-family:var(--font-mono);color:#fff;font-weight:600">{{trendB.spNow}}</b></span>
+<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:2px;background:var(--amber-soft);display:inline-block"></span>CO <b style="font-family:var(--font-mono);color:#fff;font-weight:600">{{trendB.coNow}}</b></span>
+</div>
+</div>
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+<label style="display:flex;align-items:center;gap:6px;font-size:var(--fs-ui-sm);color:rgba(255,255,255,.6)">Janela<input type="number" defaultValue="15" style="width:46px;height:28px;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:0 6px;font-family:var(--font-mono);font-size:var(--fs-ui-sm);background:rgba(255,255,255,.06);color:#fff" /><select defaultValue="min" style="height:28px;border:1px solid rgba(255,255,255,.18);border-radius:6px;font-size:var(--fs-ui-sm);padding:0 4px;background:rgba(255,255,255,.06);color:#fff"><option value="min">min</option><option value="s">s</option><option value="h">h</option></select></label>
+<label style="display:flex;align-items:center;gap:7px;font-size:var(--fs-ui-sm);color:rgba(255,255,255,.6);cursor:pointer" onClick="{{toggleAutoB}}">Auto-escala<span style="width:32px;height:18px;border-radius:999px;background:{{trendB.autoTrack}};position:relative;display:inline-block"><span style="position:absolute;top:2px;left:{{trendB.autoThumb}}px;width:14px;height:14px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.5)"></span></span></label>
+<sc-if value="{{trendB.showManual}}" hint-placeholder-val="{{false}}">
+<span style="display:flex;align-items:center;gap:5px;font-size:var(--fs-caption);color:rgba(255,255,255,.45)">PV<input type="number" defaultValue="{{trendB.pvMinVal}}" style="width:44px;height:26px;border:1px solid rgba(255,255,255,.18);border-radius:5px;font-family:var(--font-mono);font-size:11px;padding:0 4px;background:rgba(255,255,255,.06);color:#fff" />–<input type="number" defaultValue="{{trendB.pvMaxVal}}" style="width:44px;height:26px;border:1px solid rgba(255,255,255,.18);border-radius:5px;font-family:var(--font-mono);font-size:11px;padding:0 4px;background:rgba(255,255,255,.06);color:#fff" /></span>
+</sc-if>
+<button style="display:flex;align-items:center;gap:6px;height:32px;padding:0 13px;border-radius:6px;border:none;background:var(--amber);color:var(--navy-darker);font-size:var(--fs-ui-sm);font-weight:700;cursor:pointer" style-hover="background:var(--amber-hover)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg>Exportar CSV</button>
+</div>
+</div>
+<div style="flex:1;min-height:0;position:relative;background:var(--navy-darker);border-radius:8px;padding:14px">
+<svg viewBox="0 0 1000 300" preserveAspectRatio="none" style="width:100%;height:100%;display:block">
+<defs>
+<linearGradient id="pvGradB" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#357bc4" stop-opacity="0.45"></stop><stop offset="100%" stop-color="#357bc4" stop-opacity="0"></stop></linearGradient>
+<filter id="glowB" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur><feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter>
+</defs>
+<line x1="0" y1="1" x2="1000" y2="1" stroke="rgba(255,255,255,.08)" stroke-width="1"></line>
+<line x1="0" y1="150" x2="1000" y2="150" stroke="rgba(255,255,255,.08)" stroke-width="1"></line>
+<line x1="0" y1="299" x2="1000" y2="299" stroke="rgba(255,255,255,.08)" stroke-width="1"></line>
+<path d="{{trendB.areaPath}}" fill="url(#pvGradB)" stroke="none"></path>
+<path d="{{trendB.coPath}}" fill="none" stroke="var(--amber-soft)" stroke-width="1.5" vector-effect="non-scaling-stroke"></path>
+<path d="{{trendB.spPath}}" fill="none" stroke="#8b97a3" stroke-width="1.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"></path>
+<path d="{{trendB.pvPath}}" fill="none" stroke="#4f9ae0" stroke-width="2.5" vector-effect="non-scaling-stroke" filter="url(#glowB)"></path>
+</svg>
+<div style="position:absolute;left:22px;top:20px;font-family:var(--font-mono);font-size:var(--fs-caption);color:rgba(255,255,255,.4)">{{trendB.yTop}}</div>
+<div style="position:absolute;left:22px;bottom:20px;font-family:var(--font-mono);font-size:var(--fs-caption);color:rgba(255,255,255,.4)">{{trendB.yBot}}</div>
+<div style="position:absolute;right:20px;bottom:20px;display:flex;gap:18px;font-family:var(--font-mono);font-size:var(--fs-caption);color:rgba(255,255,255,.4)"><span>-15m</span><span>-11m</span><span>-7m</span><span>-4m</span><span>agora</span></div>
+</div>
+</div>
+
+</div>
+</div>
+
+<footer style="flex:0 0 auto;display:flex;align-items:center;gap:18px;padding:0 28px;height:40px;background:var(--navy-darker);border-top:1px solid rgba(255,255,255,.1)">
+<div style="display:flex;align-items:center;gap:18px;flex:0 0 auto">
+<span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.35)">Alarmes</span>
+<span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#ff6b6b;font-weight:700;animation:spPulse 1s steps(1,end) infinite"><span style="width:9px;height:9px;background:currentColor;display:inline-block;clip-path:polygon(30% 0%,70% 0%,100% 30%,100% 70%,70% 100%,30% 100%,0% 70%,0% 30%)"></span>CRIT<b style="font-family:var(--font-mono);margin-left:2px">1</b></span>
+<span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#e8b84b;font-weight:700"><span style="width:9px;height:9px;background:currentColor;display:inline-block;clip-path:polygon(50% 0%,0% 100%,100% 100%)"></span>WARN<b style="font-family:var(--font-mono);margin-left:2px">2</b></span>
+<span style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.4)"><span style="width:7px;height:7px;background:currentColor;display:inline-block;transform:rotate(45deg)"></span>ADV<b style="font-family:var(--font-mono);margin-left:2px">2</b></span>
+<span style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.3)"><span style="width:7px;height:7px;background:currentColor;border-radius:999px;display:inline-block"></span>LOG<b style="font-family:var(--font-mono);margin-left:2px">0</b></span>
+</div>
+<span style="width:1px;height:16px;background:rgba(255,255,255,.12);flex:0 0 auto"></span>
+<span style="font-size:11px;color:rgba(255,255,255,.4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1">07:22:48 · LIC-310 HI HI 91,7</span>
+<button style="flex:0 0 auto;height:26px;padding:0 14px;border-radius:6px;border:none;background:var(--amber);color:var(--navy-darker);font-size:11px;font-weight:700;cursor:pointer" style-hover="background:var(--amber-hover)">Reconhecer tudo (3)</button>
+</footer>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="1c">
+<div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Sala de Controle Inteligente — IA em primeiro plano, layout compacto</div>
+<div class="dv-card" style="width:1920px;height:1080px">
+<div style="width:1920px;height:1080px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:#fbfbfa;font-family:var(--font-ui);color:var(--ink)">
+
+<header style="flex:0 0 auto;height:80px;display:flex;align-items:center;gap:22px;padding:0 28px;background:#ffffff;border-bottom:1px solid rgba(90,107,122,.16)">
+<div style="display:flex;align-items:center;gap:10px;flex:0 0 auto">
+<img src="assets/logo-step-icon.svg" alt="" style="height:24px;display:block" />
+<span style="font-family:var(--font-display);font-weight:700;font-size:var(--fs-h4);letter-spacing:var(--tracking-tight);color:var(--navy-deep)">smart<span style="color:var(--amber)">PID</span> Optimizer</span>
+</div>
+<div style="width:1px;height:32px;background:rgba(90,107,122,.16)"></div>
+<div style="display:flex;align-items:center;gap:10px;flex:1">
+<div style="display:flex;align-items:center;gap:7px;padding:6px 12px;background:var(--chrome-0);border-radius:999px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"></path><path d="M3.34 19a10 10 0 1 1 17.32 0"></path></svg><b style="font-family:var(--font-mono);font-size:var(--fs-ui);color:var(--navy-deep)">{{kpiLoops}}</b><span style="font-size:11px;color:var(--ink-dim)">malhas</span></div>
+<div style="display:flex;align-items:center;gap:7px;padding:6px 12px;background:rgba(74,20,140,.08);border-radius:999px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--state-ai)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path><path d="M9 13a4.5 4.5 0 0 0 3-4"></path><path d="M12 13h4"></path><path d="M12 18h6a2 2 0 0 1 2 2v1"></path><path d="M12 8h8"></path><path d="M16 8V5a2 2 0 0 1 2-2"></path></svg><b style="font-family:var(--font-mono);font-size:var(--fs-ui);color:var(--state-ai)">{{kpiAi}}</b><span style="font-size:11px;color:var(--ink-dim)">com IA ativa</span></div>
+<div style="display:flex;align-items:center;gap:7px;padding:6px 12px;background:rgba(255,140,66,.1);border-radius:999px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--amber-hover)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg><b style="font-family:var(--font-mono);font-size:var(--fs-ui);color:var(--amber-hover)">{{kpiVar}}</b><span style="font-size:11px;color:var(--ink-dim)">variabilidade</span></div>
+<div style="display:flex;align-items:center;gap:7px;padding:6px 12px;background:rgba(255,140,66,.1);border-radius:999px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--amber-hover)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg><b style="font-family:var(--font-mono);font-size:var(--fs-ui);color:var(--amber-hover)">{{kpiRoi}}</b><span style="font-size:11px;color:var(--ink-dim)">economia/ano</span></div>
+</div>
+<nav style="display:flex;align-items:center;gap:2px">
+<span style="padding:8px 13px;font-size:var(--fs-ui-sm);font-weight:600;color:var(--navy-deep);background:var(--chrome-0);border-radius:7px">Dashboard</span>
+<span style="padding:8px 13px;font-size:var(--fs-ui-sm);font-weight:500;color:var(--ink-soft)">Executivo</span>
+<span style="padding:8px 13px;font-size:var(--fs-ui-sm);font-weight:500;color:var(--ink-soft)">Alarmes</span>
+</nav>
+<div style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink-dim)"><span style="width:7px;height:7px;border-radius:999px;background:var(--live);flex:0 0 auto"></span>conectado</div>
+<span style="width:28px;height:28px;border-radius:999px;background:var(--navy-deep);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:0 0 auto">LR</span>
+</header>
+
+<div style="flex:1;min-height:0;display:flex;gap:18px;padding:18px 28px;overflow:hidden">
+
+<aside style="width:372px;flex:0 0 auto;height:100%;overflow-y:auto;background:#fff;border:1px solid rgba(90,107,122,.16);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+<div><div style="font-family:var(--font-mono);font-weight:700;font-size:var(--fs-h3);color:var(--navy-deep)">{{faceC.tag}}</div><div style="font-size:var(--fs-ui-sm);color:var(--ink-dim);margin-top:2px">{{faceC.desc}}</div></div>
+<span style="width:9px;height:9px;border-radius:999px;background:var(--live);margin-top:6px;flex:0 0 auto"></span>
+</div>
+
+<div style="background:{{faceC.aiBoxBg}};border:1px solid {{faceC.aiBoxBorder}};border-radius:10px;padding:13px;display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;align-items:center;gap:8px">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{faceC.aiLabelColor}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path><path d="M9 13a4.5 4.5 0 0 0 3-4"></path><path d="M12 13h4"></path><path d="M12 18h6a2 2 0 0 1 2 2v1"></path><path d="M12 8h8"></path><path d="M16 8V5a2 2 0 0 1 2-2"></path></svg>
+<span style="font-size:var(--fs-caption);font-weight:700;color:{{faceC.aiLabelColor}};text-transform:uppercase;letter-spacing:var(--tracking-caps)">{{faceC.aiHeaderLabel}}</span>
+</div>
+<div style="font-size:var(--fs-ui-sm);color:var(--ink-soft);line-height:var(--lh-snug)">{{faceC.aiBodyText}}</div>
+<button style="display:flex;align-items:center;justify-content:center;gap:6px;height:34px;border-radius:7px;background:{{faceC.aiBtnBg}};border:{{faceC.aiBtnBorder}};color:{{faceC.aiBtnFg}};font-size:var(--fs-ui);font-weight:700;cursor:pointer" style-hover="filter:brightness(0.94)">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+{{faceC.aiButtonLabel}}
+</button>
+<sc-if value="{{faceC.aiActive}}" hint-placeholder-val="{{true}}">
+<div style="display:flex;flex-direction:column;gap:6px;padding-top:8px;border-top:1px solid rgba(255,140,66,.22)">
+<sc-for list="{{faceC.log}}" as="entry" hint-placeholder-count="3">
+<div style="display:flex;gap:8px;font-size:var(--fs-caption)"><span style="font-family:var(--font-mono);color:var(--ink-dim);flex:0 0 auto">{{entry.time}}</span><span style="color:var(--ink-soft)">{{entry.text}}</span></div>
+</sc-for>
+</div>
+</sc-if>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="width:24px;font-size:var(--fs-caption);font-weight:700;color:var(--ink-soft)">PV</span>
+<div style="flex:1;height:14px;background:var(--chrome-0);border-radius:999px;overflow:hidden"><div style="width:{{faceC.pvPct}}%;height:100%;background:var(--trace-pv)"></div></div>
+<span style="font-family:var(--font-mono);font-weight:600;font-size:var(--fs-value-xl);width:64px;text-align:right;color:var(--navy-deep)">{{faceC.pv}}</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="width:24px;font-size:var(--fs-caption);font-weight:700;color:var(--ink-soft)">SP</span>
+<div style="flex:1;height:10px;background:var(--chrome-0);border-radius:999px;overflow:hidden"><div style="width:{{faceC.spPct}}%;height:100%;background:var(--trace-sp)"></div></div>
+<span style="font-family:var(--font-mono);font-weight:600;font-size:var(--fs-value);width:64px;text-align:right;color:var(--ink)">{{faceC.sp}}</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="width:24px;font-size:var(--fs-caption);font-weight:700;color:var(--ink-soft)">CO</span>
+<div style="flex:1;height:10px;background:var(--chrome-0);border-radius:999px;overflow:hidden"><div style="width:{{faceC.coPct}}%;height:100%;background:var(--trace-co)"></div></div>
+<span style="font-family:var(--font-mono);font-weight:600;font-size:var(--fs-value);width:64px;text-align:right;color:var(--ink)">{{faceC.co}}</span>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<label style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-size:var(--fs-ui-sm);color:var(--ink-soft)">SP Local</span><span style="display:flex;align-items:center;justify-content:flex-end;height:30px;padding:0 10px;border:1px solid rgba(90,107,122,.25);border-radius:6px;background:var(--chrome-0);font-family:var(--font-mono);font-size:var(--fs-ui);width:110px;color:var(--ink)">{{faceC.sp}}</span></label>
+<label style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-size:var(--fs-ui-sm);color:var(--ink-soft)">CO Manual</span><span style="display:flex;align-items:center;justify-content:flex-end;height:30px;padding:0 10px;border:1px solid rgba(90,107,122,.2);border-radius:6px;background:var(--chrome-1);font-family:var(--font-mono);font-size:var(--fs-ui);width:110px;color:var(--ink-dim)">{{faceC.co}}</span></label>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:6px;color:var(--ink-dim)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5H3"></path><path d="M12 19H3"></path><path d="M14 3v4"></path><path d="M16 17v4"></path><path d="M21 12h-9"></path><path d="M21 19h-5"></path><path d="M21 5h-7"></path><path d="M8 10v4"></path><path d="M8 12H3"></path></svg><span style="font-size:var(--fs-caption);font-weight:700;text-transform:uppercase;letter-spacing:var(--tracking-caps)">Modo &amp; Otimizador</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto"><path d="m18 15-6-6-6 6"></path></svg></div>
+<div style="display:flex;gap:6px">
+<div style="flex:1;text-align:center;padding:8px 0;border-radius:6px;font-size:var(--fs-ui);font-weight:700;background:{{faceC.autoBg}};color:{{faceC.autoFg}};border:1px solid rgba(90,107,122,.2)">AUTO</div>
+<div style="flex:1;text-align:center;padding:8px 0;border-radius:6px;font-size:var(--fs-ui);font-weight:700;background:{{faceC.manBg}};color:{{faceC.manFg}};border:1px solid rgba(90,107,122,.2)">MAN</div>
+</div>
+<div style="display:flex;gap:6px">
+<div style="flex:1;text-align:center;padding:8px 0;border-radius:6px;font-size:var(--fs-ui);font-weight:700;background:{{faceC.runBg}};color:{{faceC.runFg}};border:1px solid rgba(90,107,122,.2)">RUN</div>
+<div style="flex:1;text-align:center;padding:8px 0;border-radius:6px;font-size:var(--fs-ui);font-weight:700;background:{{faceC.stopBg}};color:{{faceC.stopFg}};border:1px solid rgba(90,107,122,.2)">STOP</div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:6px;color:var(--ink-dim)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 10.27 7 3.34"></path><path d="m11 13.73-4 6.93"></path><path d="M12 22v-2"></path><path d="M12 2v2"></path><path d="M14 12h8"></path><path d="m17 20.66-1-1.73"></path><path d="m17 3.34-1 1.73"></path><path d="M2 12h2"></path><path d="m20.66 17-1.73-1"></path><path d="m20.66 7-1.73 1"></path><path d="m3.34 17 1.73-1"></path><path d="m3.34 7 1.73 1"></path><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="12" r="8"></circle></svg><span style="font-size:var(--fs-caption);font-weight:700;text-transform:uppercase;letter-spacing:var(--tracking-caps)">Ajuste PID</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto"><path d="m18 15-6-6-6 6"></path></svg></div>
+<div style="display:flex;gap:8px">
+<div style="flex:1;text-align:center"><div style="font-size:var(--fs-caption);color:var(--ink-dim);text-transform:uppercase">Kp</div><div style="font-family:var(--font-mono);font-size:var(--fs-ui);font-weight:600;color:var(--ink)">{{faceC.kp}}</div></div>
+<div style="flex:1;text-align:center"><div style="font-size:var(--fs-caption);color:var(--ink-dim);text-transform:uppercase">Ti</div><div style="font-family:var(--font-mono);font-size:var(--fs-ui);font-weight:600;color:var(--ink)">{{faceC.ti}}</div></div>
+<div style="flex:1;text-align:center"><div style="font-size:var(--fs-caption);color:var(--ink-dim);text-transform:uppercase">Td</div><div style="font-family:var(--font-mono);font-size:var(--fs-ui);font-weight:600;color:var(--ink)">{{faceC.td}}</div></div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:6px;color:var(--ink-dim)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"></path><path d="m19 9-5 5-4-4-3 3"></path></svg><span style="font-size:var(--fs-caption);font-weight:700;text-transform:uppercase;letter-spacing:var(--tracking-caps)">Desempenho</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto"><path d="m18 15-6-6-6 6"></path></svg></div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px 6px">
+<sc-for list="{{faceC.metrics}}" as="m" hint-placeholder-count="4">
+<div style="text-align:center"><div style="font-size:9px;color:var(--ink-dim);text-transform:uppercase">{{m.label}}</div><div style="font-family:var(--font-mono);font-size:var(--fs-value-sm);font-weight:600;color:var(--ink)">{{m.value}}</div></div>
+</sc-for>
+</div>
+</div>
+</aside>
+
+<div style="flex:1;min-width:0;height:100%;display:flex;flex-direction:column;gap:14px">
+
+<div style="flex:0 0 auto">
+<div style="font-family:var(--font-display);font-weight:600;font-size:var(--fs-ui);color:var(--navy-deep);margin-bottom:8px">Malhas PID</div>
+<div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:6px">
+<sc-for list="{{loopsC}}" as="loop" hint-placeholder-count="8">
+<div onClick="{{loop.onClick}}" style="width:190px;flex:0 0 auto;background:#fff;border-radius:10px;padding:12px 12px 12px 14px;display:flex;flex-direction:column;gap:8px;cursor:pointer;position:relative;overflow:hidden;border:1px solid {{loop.borderColor}};box-shadow:{{loop.shadowVal}}" style-hover="transform:translateY(-2px)">
+<div style="position:absolute;top:0;left:0;bottom:0;width:4px;background:{{loop.topBarColor}}"></div>
+<sc-if value="{{loop.hasAlarm}}" hint-placeholder-val="{{false}}"><span style="position:absolute;top:10px;right:10px;width:7px;height:7px;border-radius:999px;background:{{loop.alarmColor}}"></span></sc-if>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+<div style="font-family:var(--font-mono);font-weight:700;font-size:var(--fs-ui);color:var(--navy-deep)">{{loop.tag}}</div>
+<span style="width:20px;height:20px;border-radius:999px;background:{{loop.stratBg}};display:flex;align-items:center;justify-content:center;flex:0 0 auto"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{{loop.stratColor}}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"></path><path d="M12 13h4"></path><path d="M12 18h6a2 2 0 0 1 2 2v1"></path><path d="M12 8h8"></path></svg></span>
+</div>
+<div style="font-size:10px;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:-6px">{{loop.desc}}</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;align-items:center;gap:5px"><span style="width:14px;font-size:9px;color:var(--ink-dim);font-weight:700">PV</span><div style="flex:1;height:5px;background:var(--chrome-0);border-radius:999px;overflow:hidden"><div style="width:{{loop.pvPct}}%;height:100%;background:var(--trace-pv)"></div></div><span style="font-family:var(--font-mono);font-size:10px;width:30px;text-align:right;color:var(--ink)">{{loop.pv}}</span></div>
+<div style="display:flex;align-items:center;gap:5px"><span style="width:14px;font-size:9px;color:var(--ink-dim);font-weight:700">SP</span><div style="flex:1;height:5px;background:var(--chrome-0);border-radius:999px;overflow:hidden"><div style="width:{{loop.spPct}}%;height:100%;background:var(--trace-sp)"></div></div><span style="font-family:var(--font-mono);font-size:10px;width:30px;text-align:right;color:var(--ink)">{{loop.sp}}</span></div>
+<div style="display:flex;align-items:center;gap:5px"><span style="width:14px;font-size:9px;color:var(--ink-dim);font-weight:700">CO</span><div style="flex:1;height:5px;background:var(--chrome-0);border-radius:999px;overflow:hidden"><div style="width:{{loop.coPct}}%;height:100%;background:var(--trace-co)"></div></div><span style="font-family:var(--font-mono);font-size:10px;width:30px;text-align:right;color:var(--ink)">{{loop.co}}</span></div>
+</div>
+<span style="font-size:9px;font-weight:700;letter-spacing:var(--tracking-wide);padding:2px 7px;border-radius:999px;background:{{loop.modeBg}};color:{{loop.modeColor}};align-self:flex-start">{{loop.mode}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="flex:1;min-height:0;background:#fff;border:1px solid rgba(90,107,122,.16);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+<span style="font-family:var(--font-display);font-weight:600;font-size:var(--fs-h4);color:var(--navy-deep)">Tendência — {{trendC.loop.tag}}</span>
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+<label style="display:flex;align-items:center;gap:6px;font-size:var(--fs-ui-sm);color:var(--ink-soft)">Janela<input type="number" defaultValue="15" style="width:46px;height:28px;border:1px solid rgba(90,107,122,.25);border-radius:6px;padding:0 6px;font-family:var(--font-mono);font-size:var(--fs-ui-sm)" /><select defaultValue="min" style="height:28px;border:1px solid rgba(90,107,122,.25);border-radius:6px;font-size:var(--fs-ui-sm);padding:0 4px"><option value="min">min</option><option value="s">s</option><option value="h">h</option></select></label>
+<label style="display:flex;align-items:center;gap:7px;font-size:var(--fs-ui-sm);color:var(--ink-soft);cursor:pointer" onClick="{{toggleAutoC}}">Auto-escala<span style="width:32px;height:18px;border-radius:999px;background:{{trendC.autoTrack}};position:relative;display:inline-block"><span style="position:absolute;top:2px;left:{{trendC.autoThumb}}px;width:14px;height:14px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3)"></span></span></label>
+<button style="display:flex;align-items:center;gap:6px;height:32px;padding:0 13px;border-radius:6px;border:none;background:var(--navy-deep);color:#fff;font-size:var(--fs-ui-sm);font-weight:600;cursor:pointer" style-hover="background:var(--navy)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg>CSV</button>
+</div>
+</div>
+<div style="flex:1;min-height:0;display:flex;gap:14px">
+<div style="flex:1;min-width:0;position:relative;background:var(--chrome-0);border-radius:8px;padding:14px">
+<svg viewBox="0 0 1000 300" preserveAspectRatio="none" style="width:100%;height:100%;display:block">
+<defs><linearGradient id="pvGradC" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#2b6bae" stop-opacity="0.2"></stop><stop offset="100%" stop-color="#2b6bae" stop-opacity="0"></stop></linearGradient></defs>
+<line x1="0" y1="1" x2="1000" y2="1" stroke="var(--plot-grid)" stroke-width="1"></line>
+<line x1="0" y1="150" x2="1000" y2="150" stroke="var(--plot-grid)" stroke-width="1"></line>
+<line x1="0" y1="299" x2="1000" y2="299" stroke="var(--plot-grid)" stroke-width="1"></line>
+<path d="{{trendC.areaPath}}" fill="url(#pvGradC)" stroke="none"></path>
+<path d="{{trendC.coPath}}" fill="none" stroke="var(--trace-co)" stroke-width="1.5" vector-effect="non-scaling-stroke"></path>
+<path d="{{trendC.spPath}}" fill="none" stroke="var(--trace-sp)" stroke-width="1.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"></path>
+<path d="{{trendC.pvPath}}" fill="none" stroke="var(--trace-pv)" stroke-width="2.5" vector-effect="non-scaling-stroke"></path>
+</svg>
+<div style="position:absolute;left:20px;top:18px;font-family:var(--font-mono);font-size:var(--fs-caption);color:var(--ink-dim)">{{trendC.yTop}}</div>
+<div style="position:absolute;left:20px;bottom:18px;font-family:var(--font-mono);font-size:var(--fs-caption);color:var(--ink-dim)">{{trendC.yBot}}</div>
+<div style="position:absolute;right:18px;bottom:18px;display:flex;gap:16px;font-family:var(--font-mono);font-size:var(--fs-caption);color:var(--ink-dim)"><span>-15m</span><span>-11m</span><span>-7m</span><span>-4m</span><span>agora</span></div>
+</div>
+<div style="width:150px;flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:2px;background:var(--trace-pv);flex:0 0 auto"></span><span style="font-size:11px;color:var(--ink-soft)">PV</span><b style="font-family:var(--font-mono);font-size:var(--fs-ui);color:var(--ink);margin-left:auto">{{trendC.pvNow}}</b></div>
+<div style="display:flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:2px;background:var(--trace-sp);flex:0 0 auto"></span><span style="font-size:11px;color:var(--ink-soft)">SP</span><b style="font-family:var(--font-mono);font-size:var(--fs-ui);color:var(--ink);margin-left:auto">{{trendC.spNow}}</b></div>
+<div style="display:flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:2px;background:var(--trace-co);flex:0 0 auto"></span><span style="font-size:11px;color:var(--ink-soft)">CO</span><b style="font-family:var(--font-mono);font-size:var(--fs-ui);color:var(--ink);margin-left:auto">{{trendC.coNow}}</b></div>
+<div style="height:1px;background:rgba(90,107,122,.16);margin:2px 0"></div>
+<div><div style="font-size:9px;color:var(--ink-dim);text-transform:uppercase">IAE</div><div style="font-family:var(--font-mono);font-size:var(--fs-ui);font-weight:600;color:var(--ink)">{{trendC.loop.iae}}</div></div>
+<div><div style="font-size:9px;color:var(--ink-dim);text-transform:uppercase">Var/Rng</div><div style="font-family:var(--font-mono);font-size:var(--fs-ui);font-weight:600;color:var(--ink)">{{trendC.loop.varRng}}</div></div>
+<div><div style="font-size:9px;color:var(--ink-dim);text-transform:uppercase">TV</div><div style="font-family:var(--font-mono);font-size:var(--fs-ui);font-weight:600;color:var(--ink)">{{trendC.loop.tv}}</div></div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Experimente: "mais como <a href="#1b">1b</a> mas com o layout do trend de <a href="#1c">1c</a>" · "aplique o direcional de <a href="#1a">1a</a> às demais telas do produto" · "adicione a página de alarmes e a executiva"</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const HEX = {
+  ok: '#2f7d4f', warn: '#d8a72e', alarm: '#c53030', off: '#7a91a8',
+  ai: '#4a148c', none: '#616467', select: '#2b6bae',
+};
+
+function hexA(hex, a) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+}
+
+function pct(v, lo, hi) {
+  return Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100));
+}
+
+const BASE_LOOPS = [
+  { tag: 'FIC-001', desc: 'Vazão de alimentação', min: 0, max: 100, pv: 37.1, sp: 37.1, co: 30.9, mode: 'AUTO', optimizer: 'RUN', strategy: 'FUZZY', alarm: 'none', kp: '1.000', ti: '14.293', td: '0.000', iae: '492.4', varSp: '32.5%', varRng: '12.1%', tv: '80.4', seed: 11 },
+  { tag: 'TIC-204', desc: 'Temperatura do reator', min: 0, max: 100, pv: 68.4, sp: 70.0, co: 54.2, mode: 'AUTO', optimizer: 'RUN', strategy: 'RL', alarm: 'none', kp: '0.640', ti: '38.500', td: '4.200', iae: '118.7', varSp: '9.8%', varRng: '4.1%', tv: '31.9', seed: 23 },
+  { tag: 'LIC-310', desc: 'Nível do tanque de balanço', min: 0, max: 100, pv: 91.7, sp: 80.0, co: 72.5, mode: 'MAN', optimizer: 'STOP', strategy: 'NONE', alarm: 'crit', kp: '2.400', ti: '6.000', td: '0.000', iae: '881.0', varSp: '48.6%', varRng: '19.4%', tv: '141.2', seed: 37 },
+  { tag: 'PIC-115', desc: 'Pressão de topo da coluna', min: 0, max: 100, pv: 52.0, sp: 52.0, co: 41.8, mode: 'AUTO', optimizer: 'RUN', strategy: 'FUZZY', alarm: 'none', kp: '0.880', ti: '22.100', td: '1.500', iae: '57.3', varSp: '3.2%', varRng: '1.7%', tv: '18.4', seed: 44 },
+  { tag: 'FIC-002', desc: 'Vazão de refluxo', min: 0, max: 100, pv: 44.6, sp: 45.0, co: 38.2, mode: 'AUTO', optimizer: 'RUN', strategy: 'FUZZY', alarm: 'none', kp: '1.120', ti: '11.800', td: '0.000', iae: '63.8', varSp: '4.6%', varRng: '2.4%', tv: '22.7', seed: 52 },
+  { tag: 'AIC-330', desc: 'Análise de O₂ na chaminé', min: 0, max: 21, pv: 3.2, sp: 3.0, co: 47.5, mode: 'AUTO', optimizer: 'RUN', strategy: 'RL', alarm: 'warn', kp: '1.560', ti: '9.400', td: '0.800', iae: '204.1', varSp: '15.2%', varRng: '8.9%', tv: '54.3', seed: 63 },
+  { tag: 'TIC-450', desc: 'Temperatura da coluna DC-02', min: 0, max: 100, pv: 76.9, sp: 75.0, co: 61.4, mode: 'AUTO', optimizer: 'RUN', strategy: 'FUZZY', alarm: 'none', kp: '0.740', ti: '29.600', td: '3.100', iae: '95.6', varSp: '6.1%', varRng: '3.8%', tv: '27.5', seed: 71 },
+  { tag: 'LIC-118', desc: 'Nível do vaso de refluxo', min: 0, max: 100, pv: 58.3, sp: 60.0, co: 49.7, mode: 'MAN', optimizer: 'STOP', strategy: 'NONE', alarm: 'none', kp: '1.800', ti: '8.200', td: '0.000', iae: '312.0', varSp: '21.4%', varRng: '11.0%', tv: '68.2', seed: 82 },
+];
+
+function genTrend(loop) {
+  const n = 48;
+  let s = loop.seed * 9301 + 49297;
+  const rand = function () { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+  const pv = [], sp = [], co = [];
+  const range = loop.max - loop.min;
+  let y = loop.pv - range * 0.08;
+  let dy = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const zeta = 0.06 + 0.55 * t;
+    const wobble = Math.sin(t * 7 + loop.seed) * range * 0.05 * (1 - t * 0.75);
+    const target = loop.sp + wobble;
+    const noise = (rand() - 0.5) * range * 0.04 * (1 - t * 0.6);
+    const e = target - y;
+    dy += (1.1 * e - 2 * zeta * dy) * 0.4;
+    y += dy * 0.4 + noise;
+    y = Math.max(loop.min, Math.min(loop.max, y));
+    pv.push(y);
+    sp.push(loop.sp);
+    co.push(Math.max(0, Math.min(100, loop.co + (target - y) * 0.9 + noise * 0.6)));
+  }
+  return { pv: pv, sp: sp, co: co };
+}
+
+function pathOf(values, lo, hi, w, h) {
+  const n = values.length;
+  const parts = [];
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * w;
+    const yy = h - ((values[i] - lo) / (hi - lo)) * h;
+    parts.push((i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + yy.toFixed(1));
+  }
+  return parts.join(' ');
+}
+
+class Component extends DCLogic {
+  state = { selA: 'FIC-001', selB: 'FIC-001', selC: 'FIC-001', autoA: true, autoB: true, autoC: true };
+
+  select(key, tag) { this.setState({ ['sel' + key]: tag }); }
+  toggleAuto(key) { this.setState((s) => ({ ['auto' + key]: !s['auto' + key] })); }
+
+  buildLoops(selTag, key) {
+    const self = this;
+    return BASE_LOOPS.map(function (l) {
+      const modeOk = l.mode === 'AUTO';
+      const stratOn = l.strategy !== 'NONE';
+      const isSel = l.tag === selTag;
+      return {
+        tag: l.tag, desc: l.desc,
+        pv: l.pv.toFixed(1), sp: l.sp.toFixed(1), co: l.co.toFixed(1),
+        pvPct: pct(l.pv, l.min, l.max), spPct: pct(l.sp, l.min, l.max), coPct: pct(l.co, 0, 100),
+        mode: l.mode, modeColor: modeOk ? HEX.ok : HEX.warn, modeBg: hexA(modeOk ? HEX.ok : HEX.warn, 0.13),
+        stratLabel: stratOn ? l.strategy : '—', stratColor: stratOn ? HEX.ai : HEX.none, stratBg: hexA(stratOn ? HEX.ai : HEX.none, 0.13),
+        hasAlarm: l.alarm !== 'none', alarmColor: l.alarm === 'crit' ? HEX.alarm : HEX.warn,
+        topBarColor: modeOk ? HEX.ok : HEX.warn,
+        borderColor: isSel ? HEX.select : 'rgba(90,107,122,.2)',
+        shadowVal: isSel ? '0 10px 24px rgba(43,107,174,.28)' : '0 1px 3px rgba(13,31,56,.07)',
+        borderColorDark: isSel ? '#ff8c42' : 'rgba(255,255,255,.12)',
+        shadowValDark: isSel ? '0 0 0 1px rgba(255,140,66,.5), 0 10px 26px rgba(255,140,66,.22)' : '0 1px 3px rgba(0,0,0,.3)',
+        onClick: function () { self.select(key, l.tag); },
+      };
+    });
+  }
+
+  buildTrend(tag, auto) {
+    const loop = BASE_LOOPS.find(function (l) { return l.tag === tag; }) || BASE_LOOPS[0];
+    const t = genTrend(loop);
+    const lo = loop.min, hi = loop.max;
+    const W = 1000, H = 300;
+    const pvPath = pathOf(t.pv, lo, hi, W, H);
+    const areaPath = pvPath + ' L ' + W.toFixed(1) + ' ' + H.toFixed(1) + ' L 0 ' + H.toFixed(1) + ' Z';
+    return {
+      loop: loop,
+      pvPath: pvPath,
+      spPath: pathOf(t.sp, lo, hi, W, H),
+      coPath: pathOf(t.co, lo, hi, W, H),
+      areaPath: areaPath,
+      yTop: hi.toFixed(0), yBot: lo.toFixed(0),
+      pvNow: loop.pv.toFixed(1), spNow: loop.sp.toFixed(1), coNow: loop.co.toFixed(1),
+      showManual: !auto,
+      pvMinVal: loop.min.toFixed(1), pvMaxVal: loop.max.toFixed(1),
+      autoTrack: auto ? HEX.select : '#c7cdd3', autoThumb: auto ? 16 : 2,
+    };
+  }
+
+  buildFace(tag) {
+    const l = BASE_LOOPS.find(function (x) { return x.tag === tag; }) || BASE_LOOPS[0];
+    const isAuto = l.mode === 'AUTO';
+    const isRun = l.optimizer === 'RUN';
+    const aiActive = l.strategy !== 'NONE';
+    const proposedTi = (parseFloat(l.ti) * 1.12).toFixed(3);
+    return {
+      tag: l.tag, desc: l.desc, pv: l.pv.toFixed(1), sp: l.sp.toFixed(1), co: l.co.toFixed(1),
+      pvPct: pct(l.pv, l.min, l.max), spPct: pct(l.sp, l.min, l.max), coPct: pct(l.co, 0, 100),
+      autoBg: isAuto ? '#0d1f38' : 'transparent', autoFg: isAuto ? '#ffffff' : '#5a6b7a',
+      manBg: !isAuto ? '#d8a72e' : 'transparent', manFg: !isAuto ? '#2c1c00' : '#5a6b7a',
+      runBg: isRun ? '#2f7d4f' : 'transparent', runFg: isRun ? '#ffffff' : '#5a6b7a',
+      stopBg: !isRun ? '#7a8b99' : 'transparent', stopFg: !isRun ? '#ffffff' : '#5a6b7a',
+      kp: l.kp, ti: l.ti, td: l.td,
+      aiActive: aiActive,
+      aiHeaderLabel: aiActive ? 'IA sugere ajuste' : 'Otimização por IA',
+      aiBodyText: aiActive ? ('Aumentar Ti para ' + proposedTi + ' reduz oscilação em ~12%.') : 'Malha em ajuste fixo — ative a IA para otimização contínua.',
+      aiButtonLabel: aiActive ? 'Aplicar ajuste' : 'Ativar IA',
+      aiBoxBg: aiActive ? 'rgba(255,140,66,.09)' : 'rgba(90,107,122,.07)',
+      aiBoxBorder: aiActive ? 'rgba(255,140,66,.4)' : 'rgba(90,107,122,.22)',
+      aiLabelColor: aiActive ? '#c05a1a' : '#5a6b7a',
+      aiBtnBg: aiActive ? '#ff8c42' : 'transparent',
+      aiBtnFg: aiActive ? '#0d1f38' : '#5a6b7a',
+      aiBtnBorder: aiActive ? '1px solid transparent' : '1px solid rgba(90,107,122,.35)',
+      metrics: [
+        { label: 'IAE', value: l.iae }, { label: 'Var/SP', value: l.varSp },
+        { label: 'Var/Rng', value: l.varRng }, { label: 'TV', value: l.tv },
+      ],
+      log: [
+        { time: '07:23', text: 'Ti ajustado ' + l.ti + ' \u2192 ' + proposedTi },
+        { time: '07:19', text: 'Oscilação reduzida (pkpk -38%)' },
+        { time: '07:12', text: 'Novo ganho validado e aplicado' },
+      ],
+    };
+  }
+
+  renderVals() {
+    return {
+      loopsA: this.buildLoops(this.state.selA, 'A'),
+      loopsB: this.buildLoops(this.state.selB, 'B'),
+      loopsC: this.buildLoops(this.state.selC, 'C'),
+      trendA: this.buildTrend(this.state.selA, this.state.autoA),
+      trendB: this.buildTrend(this.state.selB, this.state.autoB),
+      trendC: this.buildTrend(this.state.selC, this.state.autoC),
+      faceA: this.buildFace(this.state.selA),
+      faceB: this.buildFace(this.state.selB),
+      faceC: this.buildFace(this.state.selC),
+      toggleAutoA: function () { this.toggleAuto('A'); }.bind(this),
+      toggleAutoB: function () { this.toggleAuto('B'); }.bind(this),
+      toggleAutoC: function () { this.toggleAuto('C'); }.bind(this),
+      kpiLoops: 8, kpiAi: 6, kpiVar: '\u221234%', kpiRoi: 'R$ 186 mil/ano',
+    };
+  }
+}
+</script>
+</body>
+</html>

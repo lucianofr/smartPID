@@ -4,6 +4,10 @@ import { THEME_IDS, type ContractThemeId } from './contract';
 export type ThemeId = ContractThemeId;
 
 export const THEMES: ReadonlyArray<{ id: ThemeId; label: string }> = [
+  // The product's own palettes, first because they carry the brand. Everything
+  // below them is an instrument skin the operator can fall back to.
+  { id: 'optimizer', label: 'Optimizer' },
+  { id: 'optimizer-dark', label: 'Optimizer Dark' },
   { id: 'recorder', label: 'Recorder' },
   { id: 'phosphor', label: 'Phosphor' },
   { id: 'isa101', label: 'ISA-101' },
@@ -13,8 +17,8 @@ export const THEMES: ReadonlyArray<{ id: ThemeId; label: string }> = [
 ];
 
 export const STORAGE_KEY = 'spid.theme';
-/** §10.2/D9: a demo must open on the theme the directive asked for. */
-export const DEFAULT_THEME: ThemeId = 'neon';
+/** The design system ships as the product's own face; skins stay opt-in. */
+export const DEFAULT_THEME: ThemeId = 'optimizer';
 
 /**
  * §6.8 stored-value migration. Without it a returning user with

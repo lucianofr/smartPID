@@ -30,7 +30,7 @@ export const Slider = React.forwardRef<
       {...props}
     >
       <SliderPrimitive.Track className="relative h-1.5 w-full grow overflow-hidden rounded-pill bg-bar-track">
-        <SliderPrimitive.Range className="absolute h-full bg-accent" />
+        <SliderPrimitive.Range className="absolute h-full rounded-pill bg-accent" />
       </SliderPrimitive.Track>
       {Array.from({ length: thumbCount }, (_, index) => (
         <SliderPrimitive.Thumb
@@ -38,7 +38,8 @@ export const Slider = React.forwardRef<
           aria-label={thumbLabel}
           aria-disabled={disabled || undefined}
           className={cn(
-            'block h-4 w-4 rounded-pill border border-rule-strong bg-surface outline-none transition-colors',
+            'block h-4 w-4 rounded-pill border border-rule-strong bg-surface shadow-card outline-none',
+            'transition-colors duration-fast hover:border-accent',
             'focus-visible:ring-2 focus-visible:ring-focus-ring disabled:pointer-events-none',
             'max-lg:h-11 max-lg:w-11',
           )}

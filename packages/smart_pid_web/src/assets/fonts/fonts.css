@@ -1,30 +1,64 @@
-/* §6.2 — one Archivo Variable file (wght+wdth), two Geist Mono statics. swap +
- * preload; metric-compatible fallbacks accept minor reflow on first paint. */
+/* Type system of the smartPID Optimizer design system: Poppins (brand/display),
+ * Inter (UI), IBM Plex Mono (every number the process produces).
+ *
+ * All three replace the pre-rewrite Archivo/Geist Mono pair. Orbitron survives
+ * as the neon theme's display face only (§10.6) — it is the one palette whose
+ * identity is carried by its lettering rather than by its chrome.
+ *
+ * Latin subsets, `swap`, metric-compatible fallbacks: minor reflow on first
+ * paint is accepted (§6.2). Combined budget ≤ 160 KB, enforced by fonts.test.ts
+ * and scripts/check-bundle.mjs. */
+
+/* ---------- display: brand wordmark, section headings, KPI figures ---------- */
 @font-face {
-  font-family: 'Archivo Variable';
-  src: url('./archivo-latin-var.woff2') format('woff2-variations');
-  font-weight: 100 900;
-  font-stretch: 62.5% 125%;
+  font-family: 'Poppins';
+  src: url('./poppins-latin-600.woff2') format('woff2');
+  font-weight: 600;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
-  font-family: 'Geist Mono';
-  src: url('./geist-mono-latin-400.woff2') format('woff2');
+  font-family: 'Poppins';
+  src: url('./poppins-latin-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ---------- ui: labels, buttons, prose. One variable file, 400–700. -------- */
+@font-face {
+  font-family: 'Inter Variable';
+  src: url('./inter-latin-var.woff2') format('woff2-variations');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ---------- data: readouts, tags, logs. 400 log / 600 value / 700 tag. ----- */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('./plex-mono-latin-400.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
-  font-family: 'Geist Mono';
-  src: url('./geist-mono-latin-500.woff2') format('woff2');
-  font-weight: 500;
+  font-family: 'IBM Plex Mono';
+  src: url('./plex-mono-latin-600.woff2') format('woff2');
+  font-weight: 600;
   font-style: normal;
   font-display: swap;
 }
-/* §10.6 display face for the neon theme. wght only: Orbitron has no width
- * axis, so .type-display's `font-stretch: 125%` is inert under neon — left as
- * a harmless no-op rather than paying for a token that says "no width axis". */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('./plex-mono-latin-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* §10.6 display face for the neon theme. wght only: Orbitron has no width axis,
+ * so `.type-display`'s font-stretch is inert under neon — a harmless no-op. */
 @font-face {
   font-family: 'Orbitron Variable';
   src: url('./orbitron-latin-var.woff2') format('woff2-variations');

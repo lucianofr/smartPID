@@ -42,9 +42,19 @@ describe('§6.4 token contract resolves under every [data-theme]', () => {
     expect(Number.parseFloat(resolved('--trend-sp-width'))).toBe(1.5);
   });
 
-  it('the contract holds 48 tokens — 41 palette + 3 type + the four §10.5 glow tokens', () => {
-    expect(CONTRACT_TOKENS).toHaveLength(48);
+  it('the contract holds 60 tokens — 48 palette + 3 type + 4 glow + 2 shadow + the brand layer', () => {
+    expect(CONTRACT_TOKENS).toHaveLength(60);
     for (const token of ['--glow-alarm', '--glow-focus', '--glow-accent', '--glow-trace']) {
+      expect(CONTRACT_TOKENS, token).toContain(token);
+    }
+    // The design-system additions: the brand layer, the AI strategy chip, the
+    // comms dot and the two elevation steps the Optimizer cards rest on.
+    for (const token of [
+      '--brand-ink', '--brand-ink-deep', '--brand-accent', '--brand-accent-hover',
+      '--brand-accent-soft', '--on-brand-accent', '--kpi-band',
+      '--state-ai', '--state-ai-soft', '--live',
+      '--shadow-card', '--shadow-lifted',
+    ]) {
       expect(CONTRACT_TOKENS, token).toContain(token);
     }
   });
@@ -74,10 +84,14 @@ describe('§6.4 token contract resolves under every [data-theme]', () => {
     expect(tokensCss).toMatch(/--font-ui\s*:/);
     expect(tokensCss).toMatch(/--font-data\s*:/);
 
-    const archivo = "'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif";
-    for (const id of ['recorder', 'phosphor', 'isa101']) {
+    // Five of the six themes share the Poppins display face; neon keeps Orbitron
+    // (§10.6) because its identity is carried by its lettering, not its chrome.
+    const poppins = "'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif";
+    for (const id of ['optimizer', 'optimizer-dark', 'recorder', 'phosphor', 'isa101']) {
       document.documentElement.setAttribute('data-theme', id);
-      expect(resolved('--font-display'), id).toBe(archivo);
+      expect(resolved('--font-display'), id).toBe(poppins);
     }
+    document.documentElement.setAttribute('data-theme', 'neon');
+    expect(resolved('--font-display')).toMatch(/^'Orbitron Variable'/);
   });
 });

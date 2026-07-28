@@ -30,7 +30,7 @@ afterEach(() => {
 describe('App composition root', () => {
   it('applies the default theme and guards the dashboard behind /login', async () => {
     render(<App />);
-    expect(document.documentElement.getAttribute('data-theme')).toBe('neon');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('optimizer');
     await waitFor(() => expect(window.location.pathname).toBe('/login'));
     expect(screen.getByRole('button', { name: 'Entrar' })).toBeVisible();
   });

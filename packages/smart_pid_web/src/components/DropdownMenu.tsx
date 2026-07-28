@@ -15,7 +15,7 @@ const DropdownMenuContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        'z-50 min-w-40 rounded-card border border-rule-strong bg-surface p-1 text-text',
+        'z-50 min-w-40 rounded-card border border-rule bg-surface p-1 text-text shadow-card',
         className,
       )}
       {...props}
@@ -37,7 +37,7 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      'flex min-h-11 cursor-default select-none items-center gap-2 rounded-control px-3 text-sm outline-none',
+      'flex min-h-11 cursor-default select-none items-center gap-2 rounded-control px-2.5 text-base outline-none',
       'data-[highlighted]:bg-selection data-[disabled]:pointer-events-none data-[disabled]:text-text-disabled',
       destructive && 'text-alarm-crit',
       className,
@@ -56,13 +56,13 @@ const DropdownMenuRadioItem = React.forwardRef<
   <DropdownMenuPrimitive.RadioItem
     ref={ref}
     className={cn(
-      'relative flex min-h-11 cursor-default select-none items-center gap-2 rounded-control pl-8 pr-3 text-sm outline-none',
+      'relative flex min-h-11 cursor-default select-none items-center gap-2 rounded-control pl-8 pr-2.5 text-base outline-none',
       'data-[highlighted]:bg-selection data-[disabled]:pointer-events-none data-[disabled]:text-text-disabled',
       className,
     )}
     {...props}
   >
-    <DropdownMenuPrimitive.ItemIndicator className="absolute left-3">
+    <DropdownMenuPrimitive.ItemIndicator className="absolute left-2.5">
       <Check className="h-4 w-4" aria-hidden="true" />
     </DropdownMenuPrimitive.ItemIndicator>
     {children}
@@ -88,7 +88,7 @@ const DropdownMenuLabel = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.Label
     ref={ref}
-    className={cn('px-3 py-1.5 text-2xs font-medium uppercase tracking-wider text-text-soft', className)}
+    className={cn('px-2.5 py-1.5 text-2xs font-bold uppercase tracking-caps text-text-soft', className)}
     {...props}
   />
 ));

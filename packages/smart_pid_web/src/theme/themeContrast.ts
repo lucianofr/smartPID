@@ -3,7 +3,7 @@
  * themes.css exactly (sync-tested there); guard-exempt (token-guard EXCLUDE_FILES).
  * Field → token: camelCase of the §6.4 name (surfaceSunk → --surface-sunk, …).
  */
-export type GateThemeId = 'recorder' | 'phosphor' | 'neon';
+export type GateThemeId = 'optimizer' | 'optimizer-dark' | 'recorder' | 'phosphor' | 'neon';
 
 export interface ThemePalette {
   bg: string;
@@ -38,6 +38,68 @@ export interface ThemePalette {
 }
 
 export const PALETTES: Record<GateThemeId, ThemePalette> = {
+  optimizer: {
+    bg: '#F0F4F7',
+    surface: '#FFFFFF',
+    surfaceSunk: '#F0F4F7',
+    ruleStrong: '#7A8B99',
+    text: '#3F3F3F',
+    textSoft: '#5C5C5C',
+    focusRing: '#2B6BAE',
+    selection: '#D5E3F2',
+    accent: '#2B6BAE',
+    accentHover: '#21578F',
+    onAccent: '#FFFFFF',
+    alarmCrit: '#C53030',
+    alarmCritBg: '#F8DEDE',
+    alarmWarn: '#8A691A',
+    alarmWarnBg: '#F5E9D2',
+    alarmAdv: '#4A148C',
+    alarmAdvBg: '#ECE2F5',
+    alarmLog: '#5A6B7A',
+    onAlarm: '#FFFFFF',
+    stateRunning: '#2F7D4F',
+    stateStopped: '#5A6B7A',
+    stateError: '#C53030',
+    tracePv: '#2B6BAE',
+    traceSp: '#7C8189',
+    traceCo: '#3F3F3F',
+    trendBg: '#F0F4F7',
+    barTrack: '#F0F4F7',
+    barFill: '#2B6BAE',
+    barMarker: '#3F3F3F',
+  },
+  'optimizer-dark': {
+    bg: '#060D1A',
+    surface: '#142944',
+    surfaceSunk: '#0A1526',
+    ruleStrong: '#5E7997',
+    text: '#FFFFFF',
+    textSoft: '#B8C2CE',
+    focusRing: '#FF8C42',
+    selection: '#1B3A63',
+    accent: '#FF8C42',
+    accentHover: '#FFB380',
+    onAccent: '#0D1F38',
+    alarmCrit: '#FF6B6B',
+    alarmCritBg: '#3A0E0E',
+    alarmWarn: '#FFB020',
+    alarmWarnBg: '#3A2600',
+    alarmAdv: '#C08CFF',
+    alarmAdvBg: '#241A3E',
+    alarmLog: '#B8C2CE',
+    onAlarm: '#0D1F38',
+    stateRunning: '#4ED88B',
+    stateStopped: '#8DA0B5',
+    stateError: '#FF6B6B',
+    tracePv: '#6FB4F0',
+    traceSp: '#9AA7B4',
+    traceCo: '#FFB380',
+    trendBg: '#0A1526',
+    barTrack: '#0A1526',
+    barFill: '#6FB4F0',
+    barMarker: '#FFFFFF',
+  },
   recorder: {
     bg: '#F7F8FA',
     surface: '#FFFFFF',

@@ -51,6 +51,17 @@
   --color-bar-fill: var(--bar-fill);
   --color-bar-marker: var(--bar-marker);
 
+  /* Brand layer — wordmark, KPI band, AI call-to-action. Never process state. */
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-ink-deep: var(--brand-ink-deep);
+  --color-brand-accent: var(--brand-accent);
+  --color-brand-accent-hover: var(--brand-accent-hover);
+  --color-brand-accent-soft: var(--brand-accent-soft);
+  --color-on-brand-accent: var(--on-brand-accent);
+  --color-state-ai: var(--state-ai);
+  --color-state-ai-soft: var(--state-ai-soft);
+  --color-live: var(--live);
+
   /* Fonts */
   --font-display: var(--font-display);
   --font-ui: var(--font-ui);
@@ -61,14 +72,26 @@
   --text-xs: var(--text-xs);
   --text-sm: var(--text-sm);
   --text-base: var(--text-base);
+  --text-md: var(--text-md);
   --text-lg: var(--text-lg);
   --text-xl: var(--text-xl);
   --text-2xl: var(--text-2xl);
+  --text-3xl: var(--text-3xl);
+
+  /* Tracking (tracking-caps / tracking-wide / tracking-tight utilities) */
+  --tracking-tight: var(--tracking-tight);
+  --tracking-wide: var(--tracking-wide);
+  --tracking-caps: var(--tracking-caps);
 
   /* Radius */
   --radius-card: var(--radius-card);
   --radius-control: var(--radius-control);
+  --radius-well: var(--radius-well);
   --radius-pill: var(--radius-pill);
+
+  /* Elevation (shadow-card / shadow-lifted utilities) */
+  --shadow-card: var(--shadow-card);
+  --shadow-lifted: var(--shadow-lifted);
 
   /* Durations / easing */
   --transition-duration-fast: var(--dur-fast);

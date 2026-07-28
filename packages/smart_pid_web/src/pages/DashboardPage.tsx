@@ -4,7 +4,8 @@ import { Button } from '@/components/Button';
 import { EmptyState, ErrorState, LoadingState } from '@/components/MissingState';
 import { AlarmFooterBar } from '@/features/dashboard/AlarmFooterBar';
 import { Faceplate } from '@/features/dashboard/Faceplate';
-import { LoopCard } from '@/features/dashboard/LoopCard';
+import { KpiBand } from '@/features/dashboard/KpiBand';
+import { activeAiStrategy, LoopCard } from '@/features/dashboard/LoopCard';
 import { TrendPanel } from '@/features/dashboard/TrendPanel';
 import { pvScale, useControllers } from '@/features/dashboard/useControllers';
 import { useLoopStatuses } from '@/features/dashboard/useLoopStatuses';
@@ -15,6 +16,9 @@ import { useTwinRunning } from '@/features/simulator/useSimulatorStatus';
 import { useCan } from '@/auth/useCan';
 import { useConnectionStatus } from '@/realtime/useConnectionStatus';
 import { cn } from '@/lib/utils';
+
+/** KPI figures this page cannot source without adding a poll. */
+const UNAVAILABLE = '—';
 
 /**
  * Operational dashboard (§6.9).
@@ -29,6 +33,12 @@ import { cn } from '@/lib/utils';
  * `/?loop=<id>` preselects one loop: it is the landing target of the executive
  * dashboard's bad-actor rows (phase 9). The param seeds the initial selection
  * only — clicking a card afterwards must not be undone by a stale URL.
+ *
+ * The KPI band sits between the page-level banners and the rail. Its two
+ * roster-derived figures are exact; variability and savings are em dashes here
+ * because the only sources for them are `GET /controllers/stats` and the AI
+ * tuning log, and the operational page must not take on two extra polls to
+ * decorate a header. The executive dashboard already owns those numbers.
  */
 export function DashboardPage() {
   const controllers = useControllers();
@@ -68,9 +78,15 @@ export function DashboardPage() {
       />
     );
   }
-  if (controllers.data.length === 0) {
+  const loopCount = controllers.data.length;
+  const aiActive = controllers.data.filter((c) => activeAiStrategy(c) !== null).length;
+
+  if (loopCount === 0) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
+        {/* Zeros are the honest reading of an empty roster — dropping the band
+            here would make the page jump the moment the first loop lands. */}
+        <KpiBand loops={0} aiActive={0} variability={UNAVAILABLE} savings={UNAVAILABLE} />
         <EmptyState
           className="flex-1"
           message="Nenhuma malha configurada."
@@ -91,6 +107,14 @@ export function DashboardPage() {
       {/* A model driving the plant is a fact the Loops page must not hide.
           Cache-only read: the §7 resync already primes the twin snapshot. */}
       {twinRunning ? <SimulationModeBanner running /> : null}
+      {/* Below the simulation banner on purpose: a "these numbers come from a
+          model" warning outranks a summary band. */}
+      <KpiBand
+        loops={loopCount}
+        aiActive={aiActive}
+        variability={UNAVAILABLE}
+        savings={UNAVAILABLE}
+      />
       <div
         data-testid="dashboard-detail"
         className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden"
@@ -102,28 +126,33 @@ export function DashboardPage() {
           <section
             aria-label="Malhas"
             className={cn(
-              'relative shrink-0 border-b border-rule',
+              // px-1.5 + the list's own p-3.5 puts the first card 20px off the
+              // column edge (the mock's `p-5`) while the scroller itself still
+              // runs to the very edge, so a clipped card keeps hinting at more.
+              'relative shrink-0 border-b border-rule px-1.5 pt-4',
               'after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-8',
               'after:bg-[linear-gradient(to_right,transparent,var(--bg))]',
             )}
           >
-            {newLoopButton !== null ? (
-              <div className="flex justify-end px-3 pt-2">{newLoopButton}</div>
-            ) : null}
-            <ul className="flex flex-nowrap gap-3 overflow-x-auto p-3">
+            <div className="flex items-center justify-between gap-3 px-3.5">
+              <h2 className="type-display text-base font-semibold text-text">Malhas PID</h2>
+              {newLoopButton}
+            </div>
+            <ul className="flex flex-nowrap gap-3.5 overflow-x-auto p-3.5">
               {controllers.data.map((controller) => {
                 const status = statuses.get(controller.id) ?? null;
                 const selectedHere = controller.id === selected.id;
                 return (
-                  <li
-                    key={controller.id}
-                    className={cn('flex', selectedHere && 'outline outline-2 outline-focus-ring')}
-                  >
+                  // The selection treatment lives on the card (border + lifted
+                  // shadow), not on this wrapper: an outline drawn out here sat
+                  // outside the card's radius and read as a second frame.
+                  <li key={controller.id} className="flex shrink-0">
                     <LoopCard
                       controller={controller}
                       status={status}
                       onOpenConfig={setConfigId}
                       stale={stale}
+                      selected={selectedHere}
                       controlsSlot={
                         <div className="flex flex-col gap-2">
                           <Button
@@ -153,7 +182,11 @@ export function DashboardPage() {
             </ul>
           </section>
 
-          <TrendPanel controllerId={selected.id} scale={pvScale(selected)} />
+          {/* Same 20px gutter as the rail so the plot lines up with the cards
+              instead of running into the viewport edge. */}
+          <div className="flex min-w-0 flex-col px-5 pb-4 max-lg:shrink-0 lg:min-h-0 lg:flex-1">
+            <TrendPanel controllerId={selected.id} scale={pvScale(selected)} />
+          </div>
         </div>
 
         <Faceplate

@@ -120,7 +120,22 @@ const MAPPING: Record<string, OldToken | typeof DERIVED> = {
   '--glow-focus': DERIVED,
   '--glow-accent': DERIVED,
   '--glow-trace': DERIVED,
-  // Type — per-theme since §10.6; ISA-101 keeps the Archivo stack.
+  // Brand layer — new with the smartPID Optimizer design system. ISA-101 has no
+  // brand voice, so it answers these with its own neutral control chrome.
+  '--brand-ink': DERIVED,
+  '--brand-ink-deep': DERIVED,
+  '--brand-accent': DERIVED,
+  '--brand-accent-hover': DERIVED,
+  '--brand-accent-soft': DERIVED,
+  '--on-brand-accent': DERIVED,
+  // The optimiser strategy chip and the OPC-UA link dot.
+  '--state-ai': DERIVED,
+  '--state-ai-soft': DERIVED,
+  '--live': DERIVED,
+  // Elevation — ISA-101 chrome is flat; both steps are the no-op shadow.
+  '--shadow-card': DERIVED,
+  '--shadow-lifted': DERIVED,
+  // Type — per-theme since §10.6; ISA-101 now takes the Poppins display stack.
   '--font-display': DERIVED,
 };
 
@@ -171,7 +186,18 @@ const ISA101_EXPECTED: Record<string, string> = {
   '--glow-focus': '0 0 #0000',
   '--glow-accent': '0 0 #0000',
   '--glow-trace': '0px',
-  '--font-display': "'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif",
+  '--brand-ink': '#2D2D30',
+  '--brand-ink-deep': '#1E1E1E',
+  '--brand-accent': '#57575B',
+  '--brand-accent-hover': '#666666',
+  '--brand-accent-soft': '#9A9A9A',
+  '--on-brand-accent': '#FFFFFF',
+  '--state-ai': '#AA55FF',
+  '--state-ai-soft': '#260A3A',
+  '--live': '#00C853',
+  '--shadow-card': '0 0 #0000',
+  '--shadow-lifted': '0 0 #0000',
+  '--font-display': "'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif",
 };
 
 const CSS_FILES = ['src/theme/tokens.css', 'src/theme/themes.css'];
@@ -205,7 +231,10 @@ describe('ISA-101 computed style matches the recorded mapping', () => {
     // §10.6: --font-display moved into the [data-theme] blocks, so ISA-101 now
     // pins it like any other per-theme value. Only --font-ui / --font-data
     // remain in :root and stay excepted.
-    const typeTokens = ['--font-ui', '--font-data'];
+    // --kpi-band joins them: it is a gradient composed from other tokens, so a
+    // literal-value assertion would pin jsdom's substitution behaviour rather
+    // than the palette. Non-empty is the honest check.
+    const typeTokens = ['--font-ui', '--font-data', '--kpi-band'];
     const covered = new Set(Object.keys(ISA101_EXPECTED));
     const uncovered = CONTRACT_TOKENS.filter(
       (t) => !covered.has(t) && !typeTokens.includes(t),
@@ -266,15 +295,19 @@ describe('the retokenisation is finished', () => {
     expect(themesCss).not.toContain('INTERIM');
   });
 
-  it('all four themes declare the identical token vocabulary (single §6.4 set)', () => {
+  it('all six themes declare the identical token vocabulary (single §6.4 set)', () => {
     const blocks = [...themesCss.matchAll(/\[data-theme="([a-z0-9-]+)"\]\s*\{([\s\S]*?)\n\}/g)];
-    expect(blocks.map((b) => b[1])).toEqual(['recorder', 'phosphor', 'isa101', 'neon']);
+    expect(blocks.map((b) => b[1])).toEqual([
+      'optimizer', 'optimizer-dark', 'recorder', 'phosphor', 'isa101', 'neon',
+    ]);
     const names = blocks.map(
       (b) => [...b[2].matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]).sort(),
     );
-    expect(names[0]).toHaveLength(46); // 41 palette + 4 glow + --font-display
-    expect(names[1]).toEqual(names[0]);
-    expect(names[2]).toEqual(names[0]);
-    expect(names[3]).toEqual(names[0]);
+    // 58 = the 60-token contract minus --font-ui / --font-data, which stay in
+    // :root because the numerals and body text are identical in every theme.
+    expect(names[0]).toHaveLength(58);
+    for (let i = 1; i < names.length; i += 1) {
+      expect(names[i], blocks[i][1]).toEqual(names[0]);
+    }
   });
 });

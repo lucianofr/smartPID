@@ -12,14 +12,15 @@ export interface ReadoutProps {
   className?: string;
 }
 
+/** Three rungs of the §6.2 numeric scale: inline stat, panel stat, hero figure. */
 const VALUE_SIZE: Record<NonNullable<ReadoutProps['size']>, string> = {
   sm: 'text-sm',
-  md: 'text-xl',
-  lg: 'text-2xl',
+  md: 'text-lg',
+  lg: 'text-3xl',
 };
 
-/** Labeled numeric display. The label is Archivo (UI face); the value is ALWAYS
- *  Geist Mono via .numeric — a KPI figure is a metric (§6.2). */
+/** Labeled numeric display. The label is the UI face; the value is ALWAYS the
+ *  data face via .numeric — a KPI figure is a metric (§6.2). */
 export function Readout({
   label,
   value,
@@ -32,11 +33,11 @@ export function Readout({
   const finite = typeof value === 'number' && Number.isFinite(value);
   return (
     <div className={cn('flex flex-col gap-0.5', className)} data-stale={stale ? 'true' : undefined}>
-      <span className="text-2xs font-medium uppercase tracking-wider text-text-soft">{label}</span>
+      <span className="text-2xs uppercase tracking-caps text-text-soft">{label}</span>
       <span className="flex items-baseline gap-1">
         <span
           className={cn(
-            'numeric font-medium',
+            'numeric font-semibold',
             VALUE_SIZE[size],
             stale ? 'text-text-disabled' : 'text-text',
           )}

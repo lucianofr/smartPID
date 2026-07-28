@@ -66,7 +66,7 @@ export function useToasts(): readonly ActiveToast[] {
 }
 
 const TONE_CLASS: Record<ToastTone, string> = {
-  default: 'border-rule-strong bg-surface',
+  default: 'border-rule bg-surface',
   crit: 'border-alarm-crit bg-alarm-crit-bg',
   warn: 'border-alarm-warn bg-alarm-warn-bg',
 };
@@ -84,21 +84,24 @@ export function Toaster() {
             if (!open) dismissToast(t.id);
           }}
           className={cn(
-            'relative flex flex-col gap-1 rounded-card border p-3 pr-12 text-text',
+            // shadow-lifted, not shadow-card: a toast is the one surface that
+            // floats over an operator screen it did not come from.
+            'relative flex flex-col gap-1 rounded-card border p-3.5 pr-12 text-text shadow-lifted',
             TONE_CLASS[t.tone ?? 'default'],
           )}
         >
-          <ToastPrimitive.Title className="text-sm font-medium">{t.title}</ToastPrimitive.Title>
+          <ToastPrimitive.Title className="text-base font-semibold">{t.title}</ToastPrimitive.Title>
           {t.description ? (
-            <ToastPrimitive.Description className="text-xs text-text-soft">
+            <ToastPrimitive.Description className="text-sm text-text-soft">
               {t.description}
             </ToastPrimitive.Description>
           ) : null}
           <ToastPrimitive.Close
             aria-label="Fechar"
             className={cn(
-              'absolute right-0 top-0 inline-flex min-h-11 min-w-11 items-center justify-center',
-              'text-text-soft outline-none hover:text-text focus-visible:ring-2 focus-visible:ring-focus-ring',
+              'absolute right-0.5 top-0.5 inline-flex min-h-11 min-w-11 items-center justify-center rounded-control',
+              'text-text-soft outline-none transition-colors duration-fast',
+              'hover:text-text focus-visible:ring-2 focus-visible:ring-focus-ring',
             )}
           >
             <X className="h-4 w-4" aria-hidden="true" />

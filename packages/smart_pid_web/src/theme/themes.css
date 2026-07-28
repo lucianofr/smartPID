@@ -1,9 +1,105 @@
 /* ============================================================================
- * Theme value sets. Recorder (§6.5) and Phosphor (§6.6) are NORMATIVE — hex
- * values verbatim from the spec; do not "adjust". ISA-101 is the audited 5→3
- * retokenisation of the pre-rewrite palette (phase 11); every hex is traced to
- * its old token in docs/isa101-token-mapping.md. Visual output is unchanged.
+ * Theme value sets.
+ *
+ * `optimizer` / `optimizer-dark` are the smartPID Optimizer design system,
+ * directions 1a and 1b of the imported Claude Design document
+ * (docs/design/claude-design/smartPID-Optimizer-Dashboard.dc.html). Their
+ * primitives come from that project's tokens/colors.css: the industrial chrome
+ * ramp, the single selection blue, ISA-101 status/alarm priorities and the LFR
+ * Automação brand navy/amber.
+ *
+ * Three values deviate from the imported file, all in the same direction — the
+ * mock uses them decoratively, the product uses them to carry meaning, and the
+ * meaning has to survive a WCAG audit (themeContrast.test.ts):
+ *   --alarm-warn  #D8A72E -> #8A691A  (1.94:1 on paper; the floor is 4.5)
+ *   --trace-sp    #A0A4A9 -> #7C8189  (2.27:1 on the plot well; floor 3.0)
+ *   --live        #00C853 -> #0E9F53  (light theme only; the dark keeps #00C853)
+ * Hue is preserved in each case; only lightness moves.
+ *
+ * Recorder (§6.5) and Phosphor (§6.6) are NORMATIVE — hex values verbatim from
+ * the spec; do not "adjust". ISA-101 is the audited 5->3 retokenisation of the
+ * pre-rewrite palette (phase 11); every hex is traced to its old token in
+ * docs/isa101-token-mapping.md. Visual output is unchanged.
+ *
+ * The four legacy palettes are instrument chrome with no brand voice: they
+ * answer the brand tokens with their own accent rather than with LFR navy and
+ * amber, and they keep --shadow-* flat.
  * ========================================================================= */
+
+/*
+ * OPTIMIZER (direction 1a, "Painel Executivo") — the default. White cards on a
+ * cool chrome workspace, one selection blue, brand navy in the KPI band and the
+ * wordmark, amber reserved for the AI call-to-action.
+ */
+[data-theme="optimizer"] {
+  --bg: #F0F4F7;            /* chrome-0 workspace */  --surface: #FFFFFF;
+  --surface-sunk: #F0F4F7;  /* plot wells, bar tracks, inputs */
+  --rule: #DFE6EC;          /* hairlines, card borders */
+  --rule-strong: #7A8B99;   /* control boundaries — 3.51:1 on surface */
+  --text: #3F3F3F;  --text-soft: #5C5C5C;  --text-disabled: #8B9AA7;
+  --focus-ring: #2B6BAE;  --selection: #D5E3F2;  --scrim: rgba(13, 31, 56, 0.55);
+  --accent: #2B6BAE;  --accent-hover: #21578F;  --accent-sunk: #17406B;
+  --accent-soft: #E4EDF7;  --on-accent: #FFFFFF;                /* 5.50:1 */
+  --brand-ink: #0D1F38;  --brand-ink-deep: #060D1A;
+  --brand-accent: #FF8C42;  --brand-accent-hover: #E67E3A;
+  --brand-accent-soft: #FFB380;  --on-brand-accent: #0D1F38;    /* 7.15:1 */
+  --kpi-band: linear-gradient(120deg, var(--brand-ink-deep), var(--brand-ink) 65%);
+  --alarm-crit: #C53030;  --alarm-crit-bg: #F8DEDE;
+  --alarm-warn: #8A691A;  --alarm-warn-bg: #F5E9D2;             /* 4.61:1 on bg */
+  --alarm-adv:  #4A148C;  --alarm-adv-bg:  #ECE2F5;
+  --alarm-log:  #5A6B7A;  --on-alarm: #FFFFFF;                  /* >=5.10:1 on all fills */
+  --state-running: #2F7D4F;  --state-stopped: #5A6B7A;
+  --state-error: #C53030;    --state-oos: #B0BAC4;
+  --state-ai: #4A148C;  --state-ai-soft: #ECE2F5;  --live: #0E9F53;
+  --trace-pv: #2B6BAE;  --trace-sp: #7C8189;  --trace-co: #3F3F3F;
+  --trend-grid: #B8C0C8;  --trend-axis: #7A8B99;  --trend-bg: #F0F4F7;
+  --trend-pv-width: 2px;  --trend-sp-width: 1.5px;  --trend-co-width: 1.5px;
+  --trend-sp-dash: 6 4;
+  --bar-track: #F0F4F7;  --bar-fill: #2B6BAE;  --bar-marker: #3F3F3F;
+  --glow-alarm: 0 0 #0000;  --glow-focus: 0 0 #0000;  --glow-accent: 0 0 #0000;
+  --glow-trace: 0px;
+  --shadow-card: 0 1px 3px rgba(13, 31, 56, 0.07);
+  --shadow-lifted: 0 10px 24px rgba(43, 107, 174, 0.28);
+  --font-display: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/*
+ * OPTIMIZER DARK (direction 1b, "Comando IA") — same geometry, inverted
+ * ground. Amber is promoted from brand-only to the interactive accent because
+ * on navy it is the one hue that reads as "act on this"; the selection blue
+ * demotes to the PV trace.
+ */
+[data-theme="optimizer-dark"] {
+  --bg: #060D1A;            /* navy-darker */         --surface: #142944;
+  --surface-sunk: #0A1526;  /* plot wells, bar tracks */
+  --rule: #1F3A5C;
+  --rule-strong: #5E7997;   /* 3.26:1 on surface */
+  --text: #FFFFFF;  --text-soft: #B8C2CE;  --text-disabled: #6A7B8C;
+  --focus-ring: #FF8C42;  --selection: #1B3A63;  --scrim: rgba(3, 7, 15, 0.72);
+  --accent: #FF8C42;  --accent-hover: #FFB380;  --accent-sunk: #E67E3A;
+  --accent-soft: #3A2413;  --on-accent: #0D1F38;                /* 7.15:1 */
+  --brand-ink: #0D1F38;  --brand-ink-deep: #060D1A;
+  --brand-accent: #FF8C42;  --brand-accent-hover: #FFB380;
+  --brand-accent-soft: #FFB380;  --on-brand-accent: #0D1F38;
+  --kpi-band: linear-gradient(120deg, var(--brand-ink-deep), #0B1A30 65%);
+  --alarm-crit: #FF6B6B;  --alarm-crit-bg: #3A0E0E;
+  --alarm-warn: #FFB020;  --alarm-warn-bg: #3A2600;
+  --alarm-adv:  #C08CFF;  --alarm-adv-bg:  #241A3E;
+  --alarm-log:  #B8C2CE;  --on-alarm: #0D1F38;                  /* >=5.96:1 on all fills */
+  --state-running: #4ED88B;  --state-stopped: #8DA0B5;
+  --state-error: #FF6B6B;    --state-oos: #3C4A5C;
+  --state-ai: #C08CFF;  --state-ai-soft: #241A3E;  --live: #00C853;
+  --trace-pv: #6FB4F0;  --trace-sp: #9AA7B4;  --trace-co: #FFB380;
+  --trend-grid: #1C3050;  --trend-axis: #5E7997;  --trend-bg: #0A1526;
+  --trend-pv-width: 2px;  --trend-sp-width: 1.5px;  --trend-co-width: 1.5px;
+  --trend-sp-dash: 6 4;
+  --bar-track: #0A1526;  --bar-fill: #6FB4F0;  --bar-marker: #FFFFFF;
+  --glow-alarm: 0 0 #0000;  --glow-focus: 0 0 #0000;  --glow-accent: 0 0 #0000;
+  --glow-trace: 0px;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-lifted: 0 0 0 1px rgba(255, 140, 66, 0.5), 0 10px 26px rgba(255, 140, 66, 0.22);
+  --font-display: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
 
 [data-theme="recorder"] {
   --bg: #F7F8FA;            /* cool paper */         --surface: #FFFFFF;
@@ -14,12 +110,17 @@
   --focus-ring: #16202B;  --selection: #DCEBEB;  --scrim: rgba(10, 14, 20, 0.5);
   --accent: #0E6B6B;  --accent-hover: #0B5757;  --accent-sunk: #083F3F;
   --accent-soft: #E1EEEE;  --on-accent: #FFFFFF;                /* 6.30:1 */
+  --brand-ink: #16202B;  --brand-ink-deep: #0A1119;
+  --brand-accent: #0E6B6B;  --brand-accent-hover: #0B5757;
+  --brand-accent-soft: #7FBFBF;  --on-brand-accent: #FFFFFF;
+  --kpi-band: linear-gradient(120deg, var(--brand-ink-deep), var(--brand-ink) 65%);
   --alarm-crit: #C02026;  --alarm-crit-bg: #F7DCDC;
   --alarm-warn: #9E5E00;  --alarm-warn-bg: #F5E3CC;             /* 4.87:1 on bg */
   --alarm-adv:  #6B4FA8;  --alarm-adv-bg:  #E8E1F4;
   --alarm-log:  #5A6875;  --on-alarm: #FFFFFF;                  /* ≥5.18:1 on all fills */
   --state-running: #7C8894;  --state-stopped: #5A6875;          /* gray, never green */
   --state-error: #C02026;    --state-oos: #B0B8C0;
+  --state-ai: #6B4FA8;  --state-ai-soft: #E8E1F4;  --live: #0E6B6B;
   --trace-pv: #1B4F87;  --trace-sp: #7C8894;  --trace-co: #BC7211;  /* 3.34:1 on sunk */
   --trend-grid: #E4E9EF;  --trend-axis: #9DA9B5;  --trend-bg: #EEF1F5;
   --trend-pv-width: 2px;  --trend-sp-width: 1.5px;  --trend-co-width: 1.5px;
@@ -27,7 +128,8 @@
   --bar-track: #EEF1F5;  --bar-fill: #5A6875;  --bar-marker: #16202B;
   --glow-alarm: 0 0 #0000;  --glow-focus: 0 0 #0000;  --glow-accent: 0 0 #0000;
   --glow-trace: 0px;        /* §10.5 no halo on paper */
-  --font-display: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --shadow-card: 0 0 #0000;  --shadow-lifted: 0 0 #0000;
+  --font-display: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 [data-theme="phosphor"] {
@@ -40,12 +142,17 @@
   --focus-ring: #D6DEE8;  --selection: #16304A;  --scrim: rgba(0, 0, 0, 0.6);
   --accent: #23A6A6;  --accent-hover: #2FBDBD;  --accent-sunk: #1A7F7F;
   --accent-soft: #10302F;  --on-accent: #0A0E14;                /* 6.52:1 — white FAILS here */
+  --brand-ink: #131A24;  --brand-ink-deep: #0A0E14;
+  --brand-accent: #23A6A6;  --brand-accent-hover: #2FBDBD;
+  --brand-accent-soft: #7FE0E0;  --on-brand-accent: #0A0E14;
+  --kpi-band: linear-gradient(120deg, var(--brand-ink-deep), var(--brand-ink) 65%);
   --alarm-crit: #FF4D4D;  --alarm-crit-bg: #3A0E0E;
   --alarm-warn: #FFA51F;  --alarm-warn-bg: #3A2A00;
   --alarm-adv:  #A98BFF;  --alarm-adv-bg:  #241A3E;
   --alarm-log:  #8894A3;  --on-alarm: #0A0E14;                  /* ≥5.91:1 on all fills */
   --state-running: #5E7080;  --state-stopped: #8894A3;
   --state-error: #FF4D4D;    --state-oos: #3E4A57;
+  --state-ai: #A98BFF;  --state-ai-soft: #241A3E;  --live: #3FD07A;
   --trace-pv: #9FC8F0;  --trace-sp: #6E7B8A;  --trace-co: #E39B3D;
   --trend-grid: #16202E;  --trend-axis: #3E4E63;  --trend-bg: #0A0E14;
   --trend-pv-width: 2px;  --trend-sp-width: 1.5px;  --trend-co-width: 1.5px;
@@ -53,7 +160,8 @@
   --bar-track: #0E141C;  --bar-fill: #5E7080;  --bar-marker: #8FB6D6;
   --glow-alarm: 0 0 #0000;  --glow-focus: 0 0 #0000;  --glow-accent: 0 0 #0000;
   --glow-trace: 4px;        /* §10.5 the CRT halo, formerly `theme === 'phosphor'` */
-  --font-display: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --shadow-card: 0 0 #0000;  --shadow-lifted: 0 0 #0000;
+  --font-display: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 /*
@@ -74,12 +182,17 @@
   --accent: #57575B;        /* ISA-101 has no accent hue: neutral control chrome */
   --accent-hover: #666666;  --accent-sunk: #454548;
   --accent-soft: #333337;   --on-accent: #FFFFFF;
+  --brand-ink: #2D2D30;  --brand-ink-deep: #1E1E1E;
+  --brand-accent: #57575B;  --brand-accent-hover: #666666;
+  --brand-accent-soft: #9A9A9A;  --on-brand-accent: #FFFFFF;
+  --kpi-band: linear-gradient(120deg, var(--brand-ink-deep), var(--brand-ink) 65%);
   --alarm-crit: #FF3333;  --alarm-crit-bg: #3A0E0E;
   --alarm-warn: #FF8800;  --alarm-warn-bg: #3A2200;
   --alarm-adv:  #AA55FF;  --alarm-adv-bg:  #260A3A;
   --alarm-log:  #ABABAB;  --on-alarm: #FFFFFF;
   --state-running: #9A9A9A;  --state-stopped: #ABABAB;
   --state-error: #FF3333;    --state-oos: #666666;
+  --state-ai: #AA55FF;  --state-ai-soft: #260A3A;  --live: #00C853;
   --trace-pv: #E0E0E0;  --trace-sp: #33AAFF;  --trace-co: #FFB000;
   --trend-grid: #3A3A3D;  --trend-axis: #57575B;  --trend-bg: #252526;
   --trend-pv-width: 1.5px;  --trend-sp-width: 1.5px;  --trend-co-width: 1.5px;
@@ -87,19 +200,19 @@
   --bar-track: #252526;  --bar-fill: #9A9A9A;  --bar-marker: #CCCCCC;
   --glow-alarm: 0 0 #0000;  --glow-focus: 0 0 #0000;  --glow-accent: 0 0 #0000;
   --glow-trace: 0px;        /* §10.5 ISA-101 chrome does not bloom */
-  --font-display: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --shadow-card: 0 0 #0000;  --shadow-lifted: 0 0 #0000;
+  --font-display: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 /*
- * Neon (§10) — the fourth theme, and the default from §10.2. Derived from the
- * ui-ux-pro-max skill, deliberately DISCARDING the ISA-101 premise recorded at
- * contract.ts:22 ("green never means ok"): --state-running is neon green here.
+ * Neon (§10) — deliberately DISCARDING the ISA-101 premise recorded in
+ * contract.ts ("green never means ok"): --state-running is neon green here.
  * That is safe only because recorder and isa101 stay in the picker untouched,
  * so a customer who needs ISA-101 conformance still has a conforming surface.
  *
- * WCAG does NOT fall with ISA-101. Every pair below passes all 43 assertions of
- * themeContrast.test.ts; tightest margins are --alarm-crit on --alarm-crit-bg
- * (4.72:1, floor 3.0) and --rule-strong on --surface (3.23:1, floor 3.0).
+ * WCAG does NOT fall with ISA-101. Every pair below passes themeContrast.test.ts;
+ * tightest margins are --alarm-crit on --alarm-crit-bg (4.72:1, floor 3.0) and
+ * --rule-strong on --surface (3.23:1, floor 3.0).
  *
  * Salience headroom min(alarm chroma) - max(chrome chroma) is -0.056 (§10.4):
  * a running loop is louder than an ADVISORY. Glow (§10.5) is the compensating
@@ -115,12 +228,17 @@
   --focus-ring: #00E5FF;  --selection: #1B2A5C;  --scrim: rgba(3,3,8,0.72);
   --accent: #00E5FF;  --accent-hover: #66F2FF;  --accent-sunk: #0088A0;
   --accent-soft: #0A2A38;  --on-accent: #04040A;                /* 13.29:1 */
+  --brand-ink: #101226;  --brand-ink-deep: #07070E;
+  --brand-accent: #00E5FF;  --brand-accent-hover: #66F2FF;
+  --brand-accent-soft: #9DF4FF;  --on-brand-accent: #04040A;
+  --kpi-band: linear-gradient(120deg, var(--brand-ink-deep), var(--brand-ink) 65%);
   --alarm-crit: #FF2D6F;  --alarm-crit-bg: #3A0A1C;             /* 5.60:1 on bg */
   --alarm-warn: #FFB020;  --alarm-warn-bg: #3A2600;
   --alarm-adv:  #C77DFF;  --alarm-adv-bg:  #28123E;
   --alarm-log:  #A6ADDC;  --on-alarm: #04040A;                  /* >=5.70:1 on all four fills */
   --state-running: #39FF88;  --state-stopped: #A6ADDC;          /* the discarded premise, made visible */
   --state-error: #FF2D6F;    --state-oos: #4A4E6E;              /* oos is contrast-exempt: faded IS the signal */
+  --state-ai: #C77DFF;  --state-ai-soft: #28123E;  --live: #39FF88;
   --trace-pv: #00F0FF;  --trace-sp: #B8BEE8;  --trace-co: #FFA630;
   --trend-grid: #1A1C33;  --trend-axis: #5A5F85;  --trend-bg: #07070E;
   --trend-pv-width: 2px;  --trend-sp-width: 1.5px;  --trend-co-width: 1.5px;
@@ -130,5 +248,6 @@
   --glow-focus: 0 0 10px rgba(0,229,255,0.65);
   --glow-accent: 0 0 14px rgba(0,229,255,0.45);
   --glow-trace: 8px;
-  --font-display: 'Orbitron Variable', 'Archivo Variable', system-ui, sans-serif;
+  --shadow-card: 0 0 #0000;  --shadow-lifted: 0 0 #0000;
+  --font-display: 'Orbitron Variable', 'Poppins', system-ui, sans-serif;
 }

@@ -10,7 +10,7 @@ const TabsList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.List
     ref={ref}
-    className={cn('inline-flex items-center gap-1 border-b border-rule', className)}
+    className={cn('inline-flex items-center gap-0.5 border-b border-rule', className)}
     {...props}
   />
 ));
@@ -23,10 +23,15 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      '-mb-px inline-flex min-h-11 items-center justify-center border-b-2 border-transparent px-4',
-      'text-sm font-medium text-text-soft outline-none transition-colors',
+      '-mb-px inline-flex min-h-11 items-center justify-center rounded-t-control border-b-2 border-transparent px-3.5',
+      'text-base font-medium text-text-soft outline-none transition-colors duration-fast',
       'hover:text-text focus-visible:ring-2 focus-visible:ring-focus-ring',
-      'data-[state=active]:border-accent data-[state=active]:text-text',
+      // The active rule is brand amber, matching the shell's primary nav
+      // (AppShell NAV_LINK_ACTIVE). `border-b-*` is the bottom-edge longhand
+      // and is emitted after the `border-*` shorthand, so it wins on the only
+      // edge that has width — the other three sit at 0 and never paint.
+      'data-[state=active]:border-accent data-[state=active]:border-b-brand-accent',
+      'data-[state=active]:font-semibold data-[state=active]:text-text',
       'disabled:pointer-events-none disabled:text-text-disabled',
       className,
     )}

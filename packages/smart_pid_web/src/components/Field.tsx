@@ -48,14 +48,19 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, invalid = false, ...props }, ref) => (
+  ({ className, invalid = false, type, ...props }, ref) => (
     <input
       ref={ref}
+      type={type}
       aria-invalid={invalid || undefined}
       className={cn(
-        'min-h-11 w-full rounded-control border border-rule-strong bg-surface-sunk px-3 py-2 text-sm text-text',
-        'placeholder:text-text-disabled outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+        'min-h-11 w-full rounded-control border border-rule-strong bg-surface-sunk px-2.5 py-2 text-base text-text',
+        'placeholder:text-text-disabled outline-none transition-colors duration-fast',
+        'focus-visible:ring-2 focus-visible:ring-focus-ring',
         'disabled:cursor-not-allowed disabled:text-text-disabled',
+        // A number field is a readout the operator is allowed to edit; it reads
+        // in the data face so it lines up with every other numeral on screen.
+        type === 'number' && 'numeric',
         invalid && 'border-alarm-crit',
         className,
       )}

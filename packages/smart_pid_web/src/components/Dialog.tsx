@@ -56,7 +56,7 @@ const DialogContent = React.forwardRef<
         }}
         className={cn(
           'fixed left-1/2 top-1/2 z-50 flex w-full max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col gap-3',
-          'rounded-card border border-rule-strong bg-surface p-6 text-text outline-none',
+          'rounded-card border border-rule bg-surface p-5 text-text shadow-card outline-none',
           className,
         )}
         {...props}
@@ -65,8 +65,9 @@ const DialogContent = React.forwardRef<
         <DialogPrimitive.Close
           aria-label="Fechar"
           className={cn(
-            'absolute right-1 top-1 inline-flex min-h-11 min-w-11 items-center justify-center',
-            'text-text-soft outline-none transition-colors hover:text-text',
+            'absolute right-1.5 top-1.5 inline-flex min-h-11 min-w-11 items-center justify-center rounded-control',
+            'text-text-soft outline-none transition-colors duration-fast',
+            'hover:bg-surface-sunk hover:text-text',
             'focus-visible:ring-2 focus-visible:ring-focus-ring',
           )}
         >
@@ -94,7 +95,7 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn('type-display text-lg text-text', className)}
+    className={cn('type-display text-xl font-semibold text-text', className)}
     {...props}
   />
 ));
