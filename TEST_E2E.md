@@ -338,16 +338,26 @@ Open Chrome at `http://127.0.0.1:5173`. Create `test-evidence/` in the worktree 
 ### Themes, resilience, responsive, accessibility
 
 #### E2E-045 — Theme switch and persistence
-- **Steps:** Switch Recorder→Phosphor→ISA-101; inspect `<html data-theme>`; reload each.
-- **Expected:** Attribute and visual treatment change and persist; Recorder is default in a fresh browser storage profile.
+- **Steps:** From the `Configurações` menu cycle Neon→Recorder→Phosphor→ISA-101→Neon; inspect
+  `<html data-theme>` and `localStorage['spid.theme']` after each pick; reload after each. Then clear
+  `localStorage` through CDP and load `/` in a fresh storage profile.
+- **Expected:** The menu offers exactly four themes — `Neon`, `Recorder`, `Phosphor`, `ISA-101`.
+  The attribute, the stored value and the visual treatment change together and survive every reload.
+  In a fresh storage profile the app opens on `Neon`, and `data-theme="neon"` is already on `<html>`
+  before React mounts — no flash of another theme at any point.
 - **Evidence:** `test-evidence/E2E-045-themes.png`
-- **Result:** [x] PASS [ ] FAIL
+- **Result:** [ ] PASS [ ] FAIL
 
-#### E2E-046 — Phosphor-only halo and legacy migration
-- **Steps:** Compare PV trace Recorder/Phosphor; set localStorage `spid.theme='ocean'` through CDP and reload.
-- **Expected:** Static PV halo appears only in Phosphor; no `shadowBlur`-style frame collapse; legacy ocean migrates to Recorder and storage updates.
+#### E2E-046 — Token-driven PV halo and legacy migration
+- **Steps:** Compare the PV trace under all four themes. In each, read
+  `getComputedStyle(document.documentElement).getPropertyValue('--glow-trace')` and the trend
+  container's `data-glow` attribute. Then set localStorage `spid.theme='ocean'` through CDP and reload.
+- **Expected:** The static PV halo is present wherever `--glow-trace` is non-zero — Phosphor (`4px`)
+  and Neon (`8px`) — and absent wherever it is `0px` — Recorder and ISA-101. `data-glow` tracks the
+  token in every case. No component decides this from a theme id. No `shadowBlur`-style frame
+  collapse in any of the four themes. Legacy `ocean` still migrates to Recorder and storage updates.
 - **Evidence:** `test-evidence/E2E-046-halo-migration.png`
-- **Result:** [x] PASS [ ] FAIL
+- **Result:** [ ] PASS [ ] FAIL
 
 #### E2E-047 — Backend outage and resync
 - **Steps:** While live, stop backend; observe; restart it; during outage use simulator/backend means to create then clear an alarm if feasible before WS reconnect.
@@ -421,8 +431,8 @@ Open Chrome at `http://127.0.0.1:5173`. Create `test-evidence/` in the worktree 
 | E2E-042 | User allowed capabilities | PASS | `E2E-042-user-allowed.png` | Re-measured via Playwright after my CDP-input artifact; mode/setpoint/output/ack all 200 |
 | E2E-043 | User forbidden capabilities | PASS | `E2E-043-user-forbidden.png` | Card [cfg] stays a read-only surface for a user by design; CRUD absent (no Salvar/Excluir) |
 | E2E-044 | Mid-session role change | PASS | `E2E-044-role-change.png` | **Security fix** (68cef13): a demoted admin kept full power for the 8 h token life and could create a permanent backdoor admin (POST /users 201). Authorization now resolves against the stored user record. Verified: stale token -> 403 on all admin routes, /auth/me reports user, operator still operates. |
-| E2E-045 | Theme persistence | PASS | `E2E-045-themes.png` | All three themes persist across reload; Recorder default in a fresh profile |
-| E2E-046 | Halo/migration | PASS | `E2E-046-halo-migration.png` |  |
+| E2E-045 | Theme persistence | RE-RUN | `E2E-045-themes.png` | Procedure re-specified for the fourth theme: four themes persist across reload; Neon is the fresh-profile default and paints pre-mount. Awaiting the re-run in §12 step 11. |
+| E2E-046 | Halo/migration | RE-RUN | `E2E-046-halo-migration.png` | Procedure re-specified: the halo follows `--glow-trace`, so it is present in Phosphor **and** Neon and absent in Recorder and ISA-101. Strictly more specific than the old "only in Phosphor". Awaiting the re-run in §12 step 11. |
 | E2E-047 | Backend outage/resync | PASS | `E2E-047-resync.png` | **Safety fix** (94b90d5): HMI showed stale PV as live and never recovered. Socket stayed OPEN with no close event, and resync fanned /ai/status via Promise.all where 404 is by design, so recovery was structurally impossible. Now: assertive SEM CONEXÃO banner, values marked (desatualizado), auto-reconnect + resync, 0 reloads. |
 | E2E-048 | Invalid token | PASS | `E2E-048-invalid-token.png` |  |
 | E2E-049 | Responsive breakpoints | PASS | `E2E-049-responsive.png` | Strengthened: faceplate rail `scrollHeight === clientHeight` across 16 combinations. Bug fixed earlier: header overflowed 4 px at the 320 px floor |
