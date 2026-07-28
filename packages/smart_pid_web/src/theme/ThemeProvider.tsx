@@ -13,7 +13,8 @@ export const THEMES: ReadonlyArray<{ id: ThemeId; label: string }> = [
 ];
 
 export const STORAGE_KEY = 'spid.theme';
-export const DEFAULT_THEME: ThemeId = 'recorder';
+/** §10.2/D9: a demo must open on the theme the directive asked for. */
+export const DEFAULT_THEME: ThemeId = 'neon';
 
 /**
  * §6.8 stored-value migration. Without it a returning user with

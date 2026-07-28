@@ -29,10 +29,10 @@ beforeEach(() => {
 });
 
 describe('theme registry (spec §6.8 + §10.2)', () => {
-  it('ships exactly recorder, phosphor, isa101, neon — recorder still default', () => {
+  it('ships exactly recorder, phosphor, isa101, neon — neon default', () => {
     expect(THEMES.map((t) => t.id)).toEqual(['recorder', 'phosphor', 'isa101', 'neon']);
     expect(THEMES.map((t) => t.label)).toEqual(['Recorder', 'Phosphor', 'ISA-101', 'Neon']);
-    expect(DEFAULT_THEME).toBe('recorder');
+    expect(DEFAULT_THEME).toBe('neon');
     expect(STORAGE_KEY).toBe('spid.theme');
   });
 });
@@ -55,21 +55,21 @@ describe('resolveStoredTheme — every §6.8 migration row', () => {
     },
   );
 
-  it('unknown and null fall to recorder', () => {
-    expect(resolveStoredTheme('banana')).toBe('recorder');
-    expect(resolveStoredTheme(null)).toBe('recorder');
+  it('unknown and null fall to neon (§10.2 default)', () => {
+    expect(resolveStoredTheme('banana')).toBe('neon');
+    expect(resolveStoredTheme(null)).toBe('neon');
   });
 });
 
 describe('ThemeProvider behavior', () => {
-  it('defaults to recorder and sets data-theme on <html>', () => {
+  it('defaults to neon and sets data-theme on <html>', () => {
     render(
       <ThemeProvider>
         <Probe />
       </ThemeProvider>,
     );
-    expect(screen.getByTestId('current').textContent).toBe('recorder');
-    expect(document.documentElement.getAttribute('data-theme')).toBe('recorder');
+    expect(screen.getByTestId('current').textContent).toBe('neon');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('neon');
   });
 
   it('migrates a legacy stored value ONCE and writes the migrated value back', () => {
@@ -108,11 +108,15 @@ describe('ThemeProvider behavior', () => {
 });
 
 describe('index.html pre-paint script stays in sync with LEGACY_THEME_MAP', () => {
-  it('contains every mapping row and the valid-id list', () => {
+  it('contains every mapping row, the valid-id list and the neon fallback', () => {
     const html = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
     for (const [legacy, target] of Object.entries(LEGACY_THEME_MAP)) {
       expect(html).toContain(`'${legacy}': '${target}'`);
     }
-    expect(html).toContain(`['recorder', 'phosphor', 'isa101']`);
+    expect(html).toContain(`['recorder', 'phosphor', 'isa101', 'neon']`);
+    // The static attribute and the script fallback must agree with DEFAULT_THEME,
+    // or a fresh profile flashes one theme and settles on another.
+    expect(html).toContain(`<html lang="pt-BR" data-theme="${DEFAULT_THEME}">`);
+    expect(html).toContain(`legacy[stored] || '${DEFAULT_THEME}'`);
   });
 });
