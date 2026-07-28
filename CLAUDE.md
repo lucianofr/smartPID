@@ -77,15 +77,16 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 - Cada loop PID seleciona independentemente: NONE, FUZZY ou RL
 
 ### RL Engine (Phase 5 — otimizacao de Ki via Reinforcement Learning)
-- Algoritmos: SAC (Soft Actor-Critic) ou PPO (Proximal Policy Optimization)
-- Framework: stable-baselines3 (lazy import — so carrega quando habilitado)
-- Observation space: [error, delta_error, CO, integral_val] normalizados
+- Algoritmo: SAC (Soft Actor-Critic) apenas — suporte a PPO foi removido (caminho de treino invalido, nunca usado em producao)
+- Framework: stable-baselines3 (extra opcional `ai`, lazy import — so carrega quando habilitado)
+- Observation space (5 dims): [error, delta_error, CO, integral_val, ti_norm] normalizados — `ti_norm` e a posicao log-escala do Ti/Ki atual dentro de [limit_min, limit_max], necessaria para preservar a propriedade de Markov
 - Action space: gamma ∈ [-1.0, +1.0] (mesma interface do Fuzzy)
 - Mesma formula de atualizacao de Ki e guardrails (ai_limit_min/max) do Fuzzy
-- Reward functions por objetivo:
+- Reward: preferencialmente calculado a partir da janela de KPIs do StatsWorker (IAE, oscilacao, TV) quando disponivel; cai para o reward pontual (instantaneo) por objetivo quando a janela ainda nao tem amostras suficientes:
   - **SP Tracking / Disturbance Rejection**: minimizar IAE/ITAE, penalizar TV (valve chattering)
   - **Surge Level**: recompensar estabilidade da valvula, penalizar IAE apenas fora do deadband
-- Treinamento online continuo durante operacao
+- Portao de politica: a rede neural so assume o controle de Ti/Ki apos 3 rodadas de treino online bem-sucedidas (ou ao carregar um modelo ja treinado de uma sessao anterior); antes disso, e sempre que o modelo falha ao prever, usa a politica de fallback P+D
+- Treinamento online continuo durante operacao (SAC off-policy, replay buffer)
 - Telemetria de decisoes de tuning logada em `Log_Sintonia_IA`
 
 ### Estatisticas de Performance (Phase 5)
