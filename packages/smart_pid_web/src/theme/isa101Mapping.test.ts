@@ -115,6 +115,11 @@ const MAPPING: Record<string, OldToken | typeof DERIVED> = {
   '--bar-track': '--bar-track',
   '--bar-fill': '--bar-fill',
   '--bar-marker': '--bar-marker',
+  // Glow — new in the §10.5 contract; ISA-101 chrome never blooms.
+  '--glow-alarm': DERIVED,
+  '--glow-focus': DERIVED,
+  '--glow-accent': DERIVED,
+  '--glow-trace': DERIVED,
 };
 
 /** Every §6.4 color/geometry token and its exact final ISA-101 value. */
@@ -160,6 +165,10 @@ const ISA101_EXPECTED: Record<string, string> = {
   '--bar-track': '#252526',
   '--bar-fill': '#9A9A9A',
   '--bar-marker': '#CCCCCC',
+  '--glow-alarm': '0 0 #0000',
+  '--glow-focus': '0 0 #0000',
+  '--glow-accent': '0 0 #0000',
+  '--glow-trace': '0px',
 };
 
 const CSS_FILES = ['src/theme/tokens.css', 'src/theme/themes.css'];

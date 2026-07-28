@@ -27,6 +27,12 @@ export const CONTRACT_TOKENS = [
   '--trend-pv-width', '--trend-sp-width', '--trend-co-width', '--trend-sp-dash',
   // Bar
   '--bar-track', '--bar-fill', '--bar-marker',
+  // Glow (§10.5) — the salience channel. Bloom is reserved for alarms, focus,
+  // the PV trace and primary-button hover; steady state never blooms. The three
+  // shadow tokens are `0 0 #0000` (a valid no-op <shadow>) outside neon, NOT
+  // `none`: `none` cannot appear inside a comma-separated box-shadow list and
+  // would invalidate Tailwind's composed ring.
+  '--glow-alarm', '--glow-focus', '--glow-accent', '--glow-trace',
   // Type
   '--font-display', '--font-ui', '--font-data',
 ] as const;

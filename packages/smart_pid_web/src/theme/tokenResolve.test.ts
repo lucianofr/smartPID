@@ -41,4 +41,30 @@ describe('§6.4 token contract resolves under every [data-theme]', () => {
     expect(resolved('--trend-pv-width')).toBe('2px');
     expect(Number.parseFloat(resolved('--trend-sp-width'))).toBe(1.5);
   });
+
+  it('the contract holds 48 tokens — 41 palette + 3 type + the four §10.5 glow tokens', () => {
+    expect(CONTRACT_TOKENS).toHaveLength(48);
+    for (const token of ['--glow-alarm', '--glow-focus', '--glow-accent', '--glow-trace']) {
+      expect(CONTRACT_TOKENS, token).toContain(token);
+    }
+  });
+
+  it('--glow-trace carries px so parseFloat reads it (the halo is "token non-zero")', () => {
+    document.documentElement.setAttribute('data-theme', 'phosphor');
+    expect(resolved('--glow-trace')).toBe('4px');
+    expect(Number.parseFloat(resolved('--glow-trace'))).toBe(4);
+    document.documentElement.setAttribute('data-theme', 'recorder');
+    expect(Number.parseFloat(resolved('--glow-trace'))).toBe(0);
+    document.documentElement.setAttribute('data-theme', 'isa101');
+    expect(Number.parseFloat(resolved('--glow-trace'))).toBe(0);
+  });
+
+  it('the bloom tokens are valid <shadow> values, never the uncomposable `none`', () => {
+    for (const id of ['recorder', 'phosphor', 'isa101']) {
+      document.documentElement.setAttribute('data-theme', id);
+      for (const token of ['--glow-alarm', '--glow-focus', '--glow-accent']) {
+        expect(resolved(token), `${id} ${token}`).toBe('0 0 #0000');
+      }
+    }
+  });
 });
