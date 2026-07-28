@@ -1,22 +1,37 @@
-"""Tests for the single-admin authentication gate.
+"""Tests for the two-role authorization gates (Phase 0 spec §9).
 
-This deployment is single-user: there are no role tiers. ``require_authenticated_admin``
-simply returns the authenticated user; the 401 path lives in ``get_current_user``.
+Roles are lowercase ``admin`` | ``user``. ``require_user`` accepts any authenticated
+principal; ``require_admin`` accepts only ``admin`` and rejects ``user`` with 403.
 """
 from __future__ import annotations
 
+import pytest
+from fastapi import HTTPException
+
 from smart_pid_core.adapters.inbound.api.dependencies import (
-    require_authenticated_admin,
+    require_admin,
+    require_user,
 )
 from smart_pid_domain.dtos.auth import UserClaims
 
 
-def test_authenticated_user_passes():
-    user = UserClaims(user_id=1, username="admin", role="ADMIN")
-    result = require_authenticated_admin(user)
-    assert result.username == "admin"
+def _u(role: str, uid: int = 1) -> UserClaims:
+    return UserClaims(user_id=uid, username=role, role=role)  # type: ignore[arg-type]
 
 
-def test_returns_same_user_unchanged():
-    user = UserClaims(user_id=7, username="admin", role="ADMIN")
-    assert require_authenticated_admin(user) is user
+def test_require_user_admin():
+    assert require_user(_u("admin")) is not None
+
+
+def test_require_user_user():
+    assert require_user(_u("user")) is not None
+
+
+def test_require_admin_admin():
+    assert require_admin(_u("admin")) is not None
+
+
+def test_require_admin_user_rejected():
+    with pytest.raises(HTTPException) as exc:
+        require_admin(_u("user"))
+    assert exc.value.status_code == 403

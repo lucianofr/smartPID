@@ -4,9 +4,9 @@ const QUERY = '(prefers-reduced-motion: reduce)';
 
 function subscribe(onChange: () => void): () => void {
   if (typeof window === 'undefined' || !window.matchMedia) return () => {};
-  const mql = window.matchMedia(QUERY);
-  mql.addEventListener('change', onChange);
-  return () => mql.removeEventListener('change', onChange);
+  const list = window.matchMedia(QUERY);
+  list.addEventListener('change', onChange);
+  return () => list.removeEventListener('change', onChange);
 }
 
 function getSnapshot(): boolean {
@@ -15,10 +15,12 @@ function getSnapshot(): boolean {
 }
 
 /**
- * Tracks `prefers-reduced-motion: reduce`. When true, the alarm UI swaps its
- * blink animation for motion-free encodings (weight/underline/filled icon in CSS,
- * plus a persistent unacked count badge + assertive live region in the DOM) so the
- * new-vs-seen distinction survives without motion (a11y review, §4).
+ * Tracks `prefers-reduced-motion: reduce`, live.
+ *
+ * The §11 CSS floor already kills the animation; this hook exists because
+ * suppressing the blink also removes an INFORMATION channel. Components read
+ * it to render the motion-free replacement (a persistent unacked count badge)
+ * instead of silently losing the new-vs-seen distinction.
  */
 export function useReducedMotion(): boolean {
   return useSyncExternalStore(subscribe, getSnapshot, () => false);

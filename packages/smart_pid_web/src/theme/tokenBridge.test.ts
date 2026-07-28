@@ -3,44 +3,46 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 // Vitest runs from the package root (`npm run test` in packages/smart_pid_web).
-const indexCssPath = resolve(process.cwd(), 'src/index.css');
-
-function readIndexCss(): string {
-  return readFileSync(indexCssPath, 'utf8');
-}
+const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8');
 
 describe('Tailwind v4 token bridge (src/index.css)', () => {
-  const css = readIndexCss();
-
-  it('imports tailwindcss', () => {
-    expect(css).toMatch(/@import\s+["']tailwindcss["']/);
+  it('imports tailwindcss and the token-contract stylesheets', () => {
+    expect(css).toMatch(/@import\s+['"]tailwindcss['"]/);
+    expect(css).toMatch(/@import\s+['"]\.\/theme\/tokens\.css['"]/);
+    expect(css).toMatch(/@import\s+['"]\.\/theme\/themes\.css['"]/);
   });
 
-  it('imports the existing token-contract stylesheets', () => {
-    expect(css).toMatch(/@import\s+["']\.\/theme\/tokens\.css["']/);
-    expect(css).toMatch(/@import\s+["']\.\/theme\/themes\.css["']/);
-  });
-
-  it('declares an @theme inline block', () => {
+  it('declares an @theme inline block (plain @theme would freeze values at build time)', () => {
     expect(css).toMatch(/@theme\s+inline\s*\{/);
-  });
-
-  it('does not use a plain (non-inline) @theme block for color/radius/font tokens', () => {
-    // A plain `@theme {` (no `inline`) defining contract tokens would break runtime
-    // re-resolution on data-theme flips. Only `@theme inline {` is permitted here.
     const plainTheme = /@theme\s*\{[^}]*--(?:color|radius|font)-[^}]*\}/;
     expect(css).not.toMatch(plainTheme);
   });
 
-  it('maps required color tokens onto the existing contract variables', () => {
-    expect(css).toMatch(/--color-bg:\s*var\(--bg\)/);
-    expect(css).toMatch(/--color-surface:\s*var\(--surface\)/);
-    expect(css).toMatch(/--color-text:\s*var\(--text\)/);
-    expect(css).toMatch(/--color-alarm-critical:\s*var\(--alarm-critical\)/);
+  it('maps every §6.4 color token onto the contract variable', () => {
+    for (const name of [
+      'bg', 'surface', 'surface-sunk', 'rule', 'rule-strong', 'text', 'text-soft',
+      'text-disabled', 'focus-ring', 'selection', 'scrim', 'accent', 'accent-hover',
+      'accent-sunk', 'accent-soft', 'on-accent', 'alarm-crit', 'alarm-crit-bg',
+      'alarm-warn', 'alarm-warn-bg', 'alarm-adv', 'alarm-adv-bg', 'alarm-log',
+      'on-alarm', 'state-running', 'state-stopped', 'state-error', 'state-oos',
+      'trace-pv', 'trace-sp', 'trace-co', 'trend-grid', 'trend-axis', 'trend-bg',
+      'bar-track', 'bar-fill', 'bar-marker',
+    ]) {
+      expect(css, name).toMatch(new RegExp(`--color-${name}:\\s*var\\(--${name}\\)`));
+    }
   });
 
-  it('maps required radius and font tokens onto the existing contract variables', () => {
-    expect(css).toMatch(/--radius-card:\s*var\(--radius-card\)/);
-    expect(css).toMatch(/--font-ui:\s*var\(--font-ui\)/);
+  it('bridges fonts, sizes and radii', () => {
+    expect(css).toMatch(/--font-display:\s*var\(--font-display\)/);
+    expect(css).toMatch(/--font-data:\s*var\(--font-data\)/);
+    expect(css).toMatch(/--text-2xs:\s*var\(--text-2xs\)/);
+    expect(css).toMatch(/--radius-pill:\s*var\(--radius-pill\)/);
+  });
+
+  it('carries the §11 reduced-motion kill-switch and the two type classes', () => {
+    expect(css).toMatch(/prefers-reduced-motion:\s*reduce/);
+    expect(css).toMatch(/\.type-display\s*\{/);
+    expect(css).toMatch(/\.numeric\s*\{/);
+    expect(css).toMatch(/font-feature-settings:\s*'zero'\s*1/);
   });
 });

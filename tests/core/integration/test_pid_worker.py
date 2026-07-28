@@ -17,7 +17,7 @@ from smart_pid_domain.models.controller import Controller, PIDParams
 
 class TestPIDWorker:
     def test_publishes_control_action(self) -> None:
-        bus = EventBus()
+        bus = EventBus(url_prefix=f"inproc://test_pid_worker_{uuid.uuid4().hex[:8]}")
         bus.start()
         try:
             controller = Controller(
@@ -54,7 +54,7 @@ class TestPIDWorker:
             bus.stop()
 
     def test_worker_survives_missing_telemetry(self) -> None:
-        bus = EventBus()
+        bus = EventBus(url_prefix=f"inproc://test_pid_worker_{uuid.uuid4().hex[:8]}")
         bus.start()
         try:
             controller = Controller(id=2, name="FIC-201", scan_rate_s=0.1)

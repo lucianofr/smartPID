@@ -1,84 +1,143 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { apiGet } from '../api/client';
-import { AppShell } from '../components/shell/AppShell';
-import { useMultiTrendModel } from '../features/multitrend/useMultiTrendModel';
-import { useStats } from '../features/multitrend/useStats';
-import { useHistory, type HistoryParams } from '../features/multitrend/useHistory';
-import { MultiTrendChart } from '../features/multitrend/MultiTrendChart';
-import { SeriesSelector } from '../features/multitrend/SeriesSelector';
-import { StatsPanel } from '../features/multitrend/StatsPanel';
-import { HistoryQuery } from '../features/multitrend/HistoryQuery';
-import { ExportButton } from '../features/multitrend/ExportButton';
-import type { SignalKey } from '../features/multitrend/types';
+import type { ExportRequest } from '@/api/types';
+import { Button } from '@/components/Button';
+import { EmptyState } from '@/components/MissingState';
+import { AlarmFooterBar } from '@/features/dashboard/AlarmFooterBar';
+import { useControllers } from '@/features/dashboard/useControllers';
+import { ExportButton } from '@/features/multitrend/ExportButton';
+import { HistoryQuery } from '@/features/multitrend/HistoryQuery';
+import { MultiTrendChart } from '@/features/multitrend/MultiTrendChart';
+import { SeriesSelector } from '@/features/multitrend/SeriesSelector';
+import { StatsPanel } from '@/features/multitrend/StatsPanel';
+import { createTimeSync } from '@/features/multitrend/timeSync';
+import { exportRange, useHistory, type HistoryWindow } from '@/features/multitrend/useHistory';
+import { useMultiTrendModel } from '@/features/multitrend/useMultiTrendModel';
+import { useStats, type UseStatsResult } from '@/features/multitrend/useStats';
 
-const ONE_HOUR_MS = 3_600_000;
+/**
+ * Multi-trend workspace (§6.8).
+ *
+ * Up to four loops occupy a 2×2 grid of charts that share one x-range: pan or
+ * zoom any occupied cell and the siblings follow, which is the whole point of
+ * looking at four loops at once. The loop roster comes from
+ * `GET /controllers/stats` — a loop with no stats worker has nothing to trend
+ * and nothing to score.
+ */
 
-interface OpcuaStatus {
-  state: string;
-  endpoint: string | null;
+/**
+ * Roster the model may safely reconcile a persisted layout against (§9.2).
+ *
+ * `null` while pending OR errored: a fetch error must never read as "every
+ * loop is gone" — that would permanently wipe an operator's saved trend
+ * layout for a transient backend hiccup, not an actual roster change. Only a
+ * genuinely resolved, successful roster reconciles.
+ */
+export function reconcilableRoster(
+  stats: Pick<UseStatsResult, 'isPending' | 'isError' | 'loops'>,
+): readonly number[] | null {
+  return stats.isPending || stats.isError ? null : stats.loops;
 }
 
-export function MultiTrendPage(): JSX.Element {
-  // OPC status is POLLED via REST (same pattern as DashboardPage); never hardcode opcDown.
-  const opcua = useQuery({
-    queryKey: ['opcua-status'],
-    queryFn: () => apiGet<OpcuaStatus>('/opcua/status'),
-    refetchInterval: 5_000,
-  });
-  const opcDown = opcua.data ? opcua.data.state !== 'ONLINE' : false;
+export function MultiTrendPage() {
+  const stats = useStats();
+  // Already cached — the dashboard runs the same `queryKeys.controllers` query.
+  // The id→tag join is client-side by design: /controllers/stats stays lean.
+  const controllers = useControllers();
+  const loopLabel = useMemo(() => {
+    const byId = new Map<number, string>();
+    for (const c of controllers.data ?? []) byId.set(c.id, c.name);
+    // Never blank: an unloaded or deleted loop still reads `Loop {id}`.
+    return (loopId: number): string => {
+      const name = byId.get(loopId);
+      return name === undefined ? `Loop ${loopId}` : `#${loopId} · ${name}`;
+    };
+  }, [controllers.data]);
+  const model = useMultiTrendModel(reconcilableRoster(stats));
+  /** One shared x-range for every occupied cell, for the page's lifetime. */
+  const sync = useMemo(() => createTimeSync(), []);
+  const [loaded, setLoaded] = useState<HistoryWindow | null>(null);
+  const history = useHistory(loaded);
 
-  const model = useMultiTrendModel();
-  const { rows } = useStats();
-  const [historyParams, setHistoryParams] = useState<HistoryParams | null>(null);
-  const history = useHistory(historyParams);
-
-  const loops = useMemo(() => rows.map((r) => r.loopId), [rows]);
-  const [selection, setSelectionState] = useState<SignalKey[]>([]);
-
-  const onSelectionChange = (sel: SignalKey[]): void => {
-    setSelectionState(sel);
-    model.setSelection(sel);
-  };
-
-  const exportLoop = selection[0]?.loopId ?? loops[0] ?? 0;
-  const exportRequest = {
-    controller_id: exportLoop,
-    start: historyParams?.start ?? new Date(Date.now() - ONE_HOUR_MS).toISOString(),
-    end: historyParams?.end ?? new Date().toISOString(),
-    format: 'csv' as const,
-  };
+  const occupiedLoops = model.slots.flatMap((s) =>
+    s.controllerId === null ? [] : [s.controllerId],
+  );
+  const focusLoop = model.selection[0]?.loopId ?? stats.loops[0] ?? null;
+  const exportRequest: ExportRequest | null =
+    focusLoop === null
+      ? null
+      : { controller_id: focusLoop, ...exportRange(loaded), format: 'csv' };
 
   return (
-    <AppShell opcDown={opcDown}>
-      {/* Bento layout (design-system §10): trend ~8 cols, side ~4 cols; single-column
-          stack below 960px. Flat token utilities only — no hardcoded palette. */}
-      <div className="grid grid-cols-12 gap-4 items-start">
-        <section className="col-span-12 [@media(min-width:960px)]:col-span-8 flex flex-col gap-3 min-w-0 border border-border rounded-card bg-surface-container p-4">
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => model.setPaused(!model.paused)}>
-              {model.paused ? 'Resume' : 'Pause'}
-            </button>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="grid min-h-0 flex-1 gap-3 overflow-auto p-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <section aria-label="Tendências" className="flex min-w-0 flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <h1 className="text-sm font-medium text-text">Tendências</h1>
+            <Button size="sm" onClick={() => model.setPaused(!model.paused)}>
+              {model.paused ? 'Retomar' : 'Pausar'}
+            </Button>
           </div>
-          <div className="w-full min-w-0 h-[clamp(280px,48vh,540px)]">
-            <MultiTrendChart series={model.series} onPxWidth={model.setPxWidth} />
+
+          <div
+            data-testid="multitrend-chart"
+            className="grid min-h-60 grid-cols-1 gap-2 xl:grid-cols-2"
+          >
+            {occupiedLoops.length === 0 ? (
+              <EmptyState
+                message="Nenhuma série selecionada."
+                hint="Marque PV, SP ou CO de até quatro malhas para começar."
+              />
+            ) : (
+              model.slots.map((slot, index) =>
+                slot.controllerId === null ? null : (
+                  <div key={slot.controllerId} className="flex min-w-0 flex-col gap-1">
+                    <h2 className="numeric truncate text-2xs uppercase tracking-wider text-text-soft">
+                      {loopLabel(slot.controllerId)}
+                    </h2>
+                    <MultiTrendChart
+                      id={`slot-${index}`}
+                      testId={`multitrend-slot-${index}`}
+                      ariaLabel={`Tendência ${loopLabel(slot.controllerId)}`}
+                      series={model.slotSeries[index]}
+                      sync={sync}
+                      onPxWidth={model.setPxWidth}
+                    />
+                  </div>
+                ),
+              )
+            )}
           </div>
+
+          <StatsPanel
+            rows={stats.rows}
+            isPending={stats.isPending}
+            isError={stats.isError}
+            onRetry={stats.refetch}
+          />
         </section>
 
-        <aside className="col-span-12 [@media(min-width:960px)]:col-span-4 flex flex-col gap-4 min-w-0">
-          <SeriesSelector loops={loops} selected={selection} onChange={onSelectionChange} />
-          <StatsPanel rows={rows} />
+        <aside aria-label="Controles de tendência" className="flex min-w-0 flex-col gap-3">
+          <SeriesSelector
+            loops={stats.loops}
+            loopLabel={loopLabel}
+            isSelected={model.isSelected}
+            isFull={model.isFull}
+            occupiedLoops={occupiedLoops}
+            onToggle={model.toggleSignal}
+          />
           <HistoryQuery
-            controllerId={exportLoop}
-            onQuery={setHistoryParams}
-            frames={history.frames}
-            count={history.count}
-            isLoading={history.isLoading}
-            hasQueried={historyParams !== null}
+            controllerId={focusLoop}
+            frames={history.data?.frames ?? []}
+            count={history.data?.count ?? 0}
+            isPending={history.isPending}
+            isError={history.isError}
+            hasQueried={loaded !== null}
+            onLoad={setLoaded}
           />
           <ExportButton request={exportRequest} />
         </aside>
       </div>
-    </AppShell>
+      <AlarmFooterBar />
+    </div>
   );
 }

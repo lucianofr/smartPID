@@ -1,59 +1,65 @@
-import { describe, it, expect } from 'vitest';
-import { applyWindow, minMaxDecimate } from './decimate';
-import type { AlignedSeries } from './multiTrendData';
+import { describe, expect, it } from 'vitest';
+import { decimateHistory } from './decimate';
 
-function ramp(n: number): AlignedSeries {
-  const x = Array.from({ length: n }, (_, i) => i);
-  const y = Array.from({ length: n }, (_, i) => i);
-  return { keys: [{ loopId: 1, variable: 'pv' }], data: [x, y] };
+function ramp(n: number): { t: number[]; pv: number[] } {
+  const t: number[] = [];
+  const pv: number[] = [];
+  for (let i = 0; i < n; i += 1) {
+    t.push(i);
+    pv.push(i % 7);
+  }
+  return { t, pv };
 }
 
-describe('minMaxDecimate', () => {
-  it('caps output to at most 2 points per pixel column', () => {
-    const series = ramp(10_000);
-    const pxWidth = 300;
-    const out = minMaxDecimate(series, pxWidth);
-    // min/max → at most 2 samples per column
-    expect(out.data[0].length).toBeLessThanOrEqual(pxWidth * 2);
-    expect(out.data[0].length).toBeGreaterThan(0);
-    // same length across x and every series row
-    out.data.forEach((row) => expect(row.length).toBe(out.data[0].length));
+describe('decimateHistory', () => {
+  it('passes a series shorter than the pixel width straight through', () => {
+    const [t, pv] = decimateHistory([1, 2, 3], [[10, 20, 30]], 100);
+    expect(t).toEqual([1, 2, 3]);
+    expect(pv).toEqual([10, 20, 30]);
   });
 
-  it('does not decimate when points already fit the pixel budget', () => {
-    const series = ramp(120);
-    const out = minMaxDecimate(series, 300);
-    expect(out.data[0].length).toBe(120);
+  it('caps the output at two samples per pixel column plus the pinned endpoints', () => {
+    const { t, pv } = ramp(5000);
+    const [outT] = decimateHistory(t, [pv], 200);
+    expect(outT.length).toBeLessThanOrEqual(200 * 2 + 2);
+    expect(outT.length).toBeGreaterThan(200);
   });
 
-  it('preserves transient peaks (min and max of a spike survive)', () => {
-    const x = [0, 1, 2, 3, 4, 5, 6, 7];
-    const y = [0, 0, 0, 99, 0, -99, 0, 0]; // one positive and one negative spike
-    const series: AlignedSeries = { keys: [{ loopId: 1, variable: 'pv' }], data: [x, y] };
-    const out = minMaxDecimate(series, 2); // force aggressive decimation
-    const ys = out.data[1];
-    expect(Math.max(...ys)).toBe(99);
-    expect(Math.min(...ys)).toBe(-99);
-  });
-});
-
-describe('applyWindow', () => {
-  it('drops the left so at most maxPoints remain', () => {
-    const out = applyWindow(ramp(5000), { maxPoints: 600, maxSeconds: 1e9 });
-    expect(out.data[0].length).toBeLessThanOrEqual(600);
-    // newest sample retained
-    expect(out.data[0].at(-1)).toBe(4999);
+  it('keeps the exact first and latest samples', () => {
+    const { t, pv } = ramp(5000);
+    // Endpoints are what an operator reads off the window edges, and min/max
+    // bucketing has no reason to land on them.
+    const [outT, outPv] = decimateHistory(t, [pv], 60);
+    expect(outT[0]).toBe(t[0]);
+    expect(outPv[0]).toBe(pv[0]);
+    expect(outT[outT.length - 1]).toBe(t[t.length - 1]);
+    expect(outPv[outPv.length - 1]).toBe(pv[pv.length - 1]);
   });
 
-  it('drops samples older than maxSeconds relative to the newest', () => {
-    const x = [0, 10, 20, 30, 40, 50];
-    const y = [1, 2, 3, 4, 5, 6];
-    const out = applyWindow(
-      { keys: [{ loopId: 1, variable: 'pv' }], data: [x, y] },
-      { maxPoints: 1e9, maxSeconds: 25 },
+  it('preserves a one-sample transient', () => {
+    const { t, pv } = ramp(4000);
+    pv[1234] = 999;
+    const [, outPv] = decimateHistory(t, [pv], 100);
+    expect(outPv).toContain(999);
+  });
+
+  it('emits a monotonically ascending time column from unsorted input', () => {
+    const { t, pv } = ramp(3000);
+    const order = t.map((_, i) => i).reverse();
+    const [outT] = decimateHistory(
+      order.map((i) => t[i]),
+      [order.map((i) => pv[i])],
+      50,
     );
-    // newest=50, keep t >= 25 → [30,40,50]
-    expect(out.data[0]).toEqual([30, 40, 50]);
-    expect(out.data[1]).toEqual([4, 5, 6]);
+    expect(outT).toHaveLength(new Set(outT).size);
+    for (let i = 1; i < outT.length; i += 1) expect(outT[i]).toBeGreaterThan(outT[i - 1]);
+  });
+
+  it('decimates every row against the same time column', () => {
+    const { t, pv } = ramp(2000);
+    const sp = pv.map((v) => v + 100);
+    const [outT, outPv, outSp] = decimateHistory(t, [pv, sp], 80);
+    expect(outPv).toHaveLength(outT.length);
+    expect(outSp).toHaveLength(outT.length);
   });
 });

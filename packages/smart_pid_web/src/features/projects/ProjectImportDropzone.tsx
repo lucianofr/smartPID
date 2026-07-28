@@ -1,53 +1,72 @@
-import { useImportProject } from './useProjects';
+import { useState } from 'react';
+import { ApiError } from '@/api/client';
+import { useCan } from '@/auth/useCan';
+import { cn } from '@/lib/utils';
+import { projectErrorMessage, useImportProject } from './useProjects';
 
 /**
- * Project import dropzone (Fatia 7; Task 8.3 — CSS migrated to flat ISA-101 token
- * utilities). Dashed token-border surface with a `.spid` file picker; upload
- * errors surface via the --alarm-critical token (`text-alarm-critical`).
+ * `.spid` upload (§9 `projects.manage`, admin-only).
+ *
+ * The refusals the backend really produces are distinct states, not one
+ * "upload failed": 413 means the archive is bigger than `max_upload_bytes`,
+ * 507 means the server has no room to stage it, and 400 means it is not a
+ * valid project archive.
  */
-export function ProjectImportDropzone(): JSX.Element {
+export function ProjectImportDropzone() {
+  const canManage = useCan('projects.manage');
   const importProject = useImportProject();
+  const [failure, setFailure] = useState<string | null>(null);
 
-  async function handleFile(input: HTMLInputElement): Promise<void> {
+  if (!canManage) return null;
+
+  const handleFile = async (input: HTMLInputElement): Promise<void> => {
     const file = input.files?.[0];
-    if (!file) return;
-    const name = file.name.replace(/\.spid$/i, '');
+    if (file === undefined) return;
+    setFailure(null);
     try {
-      await importProject.mutateAsync({ file, name });
-    } catch {
-      /* surfaced via importProject.isError */
+      await importProject.mutateAsync({ file, name: file.name.replace(/\.spid$/i, '') });
+    } catch (error) {
+      setFailure(
+        error instanceof ApiError
+          ? projectErrorMessage(error, 'Não foi possível importar o projeto.')
+          : 'Não foi possível importar o projeto.',
+      );
     } finally {
+      // Re-picking the same file must fire another change event.
       input.value = '';
     }
-  }
+  };
 
   return (
     <div
-      className="flex flex-col gap-2 p-4 bg-surface-container text-text border border-dashed border-border-strong rounded-card"
-      aria-label="Import project"
+      className={cn(
+        'flex flex-col gap-2 border border-dashed border-rule-strong bg-surface p-3',
+      )}
     >
-      <label
-        className="uppercase tracking-[0.04em] text-text-secondary"
-        style={{ fontSize: 'var(--text-xs)' }}
-        htmlFor="import-input"
-      >
+      <label htmlFor="project-import" className="text-sm font-medium text-text">
         Import .spid
       </label>
       <input
-        id="import-input"
-        className="text-text"
-        style={{ fontSize: 'var(--text-sm)' }}
+        id="project-import"
         type="file"
         accept=".spid"
+        aria-describedby="project-import-desc"
+        className="text-sm text-text file:mr-3 file:min-h-9 file:rounded-control file:border file:border-rule-strong file:bg-surface-sunk file:px-3 file:text-sm file:text-text"
         onChange={(e) => void handleFile(e.currentTarget)}
       />
-      {importProject.isPending && <progress className="w-full" aria-label="Uploading" />}
-      {importProject.isError && (
-        <p className="m-0 text-alarm-critical" style={{ fontSize: 'var(--text-sm)' }} role="alert">
-          Upload failed:{' '}
-          {importProject.error instanceof Error ? importProject.error.message : 'Unknown error'}
+      <p id="project-import-desc" className="text-xs text-text-soft">
+        Arquivo de projeto portátil exportado por outra instalação.
+      </p>
+      {importProject.isPending ? (
+        <p role="status" className="text-xs text-text-soft">
+          Enviando…
         </p>
-      )}
+      ) : null}
+      {failure !== null ? (
+        <p role="alert" className="text-xs font-medium text-alarm-crit">
+          {failure}
+        </p>
+      ) : null}
     </div>
   );
 }

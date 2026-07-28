@@ -1,138 +1,151 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { projectApi } from './projectApi';
-import { useDeleteProject, useOpenProject, useProjectList } from './useProjects';
-import { useSettings } from '../settings/useSettings';
+import { endpoints } from '@/api/endpoints';
+import { ApiError } from '@/api/client';
+import { useCan } from '@/auth/useCan';
+import { Button } from '@/components/Button';
+import { EmptyState, ErrorState, LoadingState } from '@/components/MissingState';
+import { usePreferences } from '@/features/settings/useSettings';
+import { cn } from '@/lib/utils';
+import { projectErrorMessage, useDeleteProject, useOpenProject, useProjectList } from './useProjects';
 
-function formatSize(bytes: number): string {
+/**
+ * Project roster with the per-row lifecycle (§9 `projects.manage`, admin-only).
+ *
+ * Opening a project swaps the whole plant database underneath the session, so
+ * the operator is returned to the dashboard rather than left staring at a table
+ * that now describes a different plant.
+ */
+
+const TH = 'border-b border-rule px-3 py-2 text-left text-2xs uppercase tracking-wider text-text-soft';
+const TD = 'border-b border-rule px-3 py-2 align-middle';
+
+export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/**
- * Projects table (Fatia 7; Task 8.3 — CSS migrated to flat ISA-101 token
- * utilities). Per-row Open/Download/Delete actions; Delete carries the
- * --alarm-critical token via the `text-alarm-critical`/`border-alarm-critical`
- * utilities (the one sanctioned color use, signalling a destructive action).
- */
-const TH = 'text-left px-3 py-2 border-b border-border text-text-secondary uppercase tracking-[0.04em]';
-
-const TD = 'px-3 py-2 border-b border-divider align-middle';
-
-const ACTION_BUTTON =
-  'cursor-pointer bg-surface text-text border border-border rounded-control px-3 py-1 hover:border-border-strong';
-
-export function ProjectList(): JSX.Element {
-  const list = useProjectList();
-  const del = useDeleteProject();
+export function ProjectList() {
+  const canManage = useCan('projects.manage');
+  const list = useProjectList(canManage);
   const open = useOpenProject();
-  const { preferences } = useSettings();
+  const remove = useDeleteProject();
+  const { confirmDestructive } = usePreferences();
   const navigate = useNavigate();
-  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
 
-  async function handleOpen(name: string): Promise<void> {
+  if (!canManage) {
+    return (
+      <p className="p-4 text-sm text-text-soft">
+        Somente administradores podem gerenciar projetos.
+      </p>
+    );
+  }
+  if (list.isPending) return <LoadingState label="Carregando projetos…" />;
+  if (list.isError) {
+    return (
+      <ErrorState
+        message="Não foi possível carregar a lista de projetos."
+        onRetry={() => void list.refetch()}
+      />
+    );
+  }
+
+  const projects = list.data.projects;
+  if (projects.length === 0) {
+    return (
+      <EmptyState
+        message="Nenhum projeto no servidor."
+        hint="Crie um projeto ou importe um arquivo .spid."
+      />
+    );
+  }
+
+  const report = (error: unknown, fallback: string): void => {
+    setFailure(error instanceof ApiError ? projectErrorMessage(error, fallback) : fallback);
+  };
+
+  const handleOpen = async (name: string): Promise<void> => {
+    setFailure(null);
     try {
       await open.mutateAsync(name);
       navigate('/');
-    } catch {
-      /* surfaced via open.isError */
+    } catch (error) {
+      report(error, 'Não foi possível abrir o projeto.');
     }
-  }
+  };
 
-  async function handleDelete(name: string): Promise<void> {
-    if (preferences.confirmDestructive && !window.confirm(`Delete project "${name}"?`)) return;
+  const handleDelete = async (name: string): Promise<void> => {
+    if (confirmDestructive && !window.confirm(`Excluir o projeto "${name}"?`)) return;
+    setFailure(null);
     try {
-      await del.mutateAsync(name);
-    } catch {
-      /* surfaced via del.isError */
+      await remove.mutateAsync(name);
+    } catch (error) {
+      report(error, 'Não foi possível excluir o projeto.');
     }
-  }
+  };
 
-  async function handleDownload(): Promise<void> {
-    setDownloadError(null);
+  // The bearer token travels in a header, so the download cannot be an <a href>.
+  const handleDownload = async (): Promise<void> => {
+    setFailure(null);
     try {
-      const blob = await projectApi.download();
+      const blob = await endpoints.downloadProject();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'project.spid';
-      a.click();
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'project.spid';
+      anchor.click();
       URL.revokeObjectURL(url);
-    } catch (e) {
-      setDownloadError(e instanceof Error ? e.message : 'Download failed');
+    } catch (error) {
+      report(error, 'Não foi possível baixar o projeto.');
     }
-  }
-
-  if (list.isLoading) return <p className="text-text-secondary p-4">Loading projects…</p>;
-  const projects = list.data?.projects ?? [];
+  };
 
   return (
-    <>
-      <table
-        className="w-full border-collapse bg-surface-container text-text border border-border rounded-card"
-        style={{ fontSize: 'var(--text-sm)' }}
-        aria-label="Projects"
-      >
+    <div className="flex flex-col gap-2">
+      <table className="w-full border-collapse border border-rule bg-surface text-sm text-text">
+        <caption className="sr-only">Projetos disponíveis no servidor</caption>
         <thead>
           <tr>
-            <th className={TH} style={{ fontSize: 'var(--text-xs)' }}>
-              Name
-            </th>
-            <th
-              className={`${TH} text-right whitespace-nowrap`}
-              style={{ fontSize: 'var(--text-xs)' }}
-            >
-              Loops
-            </th>
-            <th
-              className={`${TH} text-right whitespace-nowrap`}
-              style={{ fontSize: 'var(--text-xs)' }}
-            >
-              Size
-            </th>
-            <th className={TH} style={{ fontSize: 'var(--text-xs)' }}>
-              Actions
-            </th>
+            <th className={TH}>Name</th>
+            <th className={cn(TH, 'text-right')}>Loops</th>
+            <th className={cn(TH, 'text-right')}>Size</th>
+            <th className={cn(TH, 'text-right')}>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {projects.map((p) => (
-            <tr key={p.name} className="[&:last-child>td]:border-b-0">
-              <td className={`${TD} font-semibold`}>{p.name}</td>
-              <td className={`${TD} numeric text-right whitespace-nowrap`}>{p.controller_count}</td>
-              <td className={`${TD} numeric text-right whitespace-nowrap`}>
-                {formatSize(p.size_bytes)}
-              </td>
-              <td className={`${TD} flex gap-2 justify-end`}>
-                <button type="button" className={ACTION_BUTTON} onClick={() => void handleOpen(p.name)}>
-                  Open
-                </button>
-                <button type="button" className={ACTION_BUTTON} onClick={() => void handleDownload()}>
-                  Download
-                </button>
-                <button
-                  type="button"
-                  className={`${ACTION_BUTTON} text-alarm-critical border-alarm-critical hover:border-alarm-critical`}
-                  onClick={() => void handleDelete(p.name)}
-                >
-                  Delete
-                </button>
+          {projects.map((project) => (
+            <tr key={project.name}>
+              <td className={cn(TD, 'font-medium')}>{project.name}</td>
+              <td className={cn(TD, 'numeric text-right')}>{project.controller_count}</td>
+              <td className={cn(TD, 'numeric text-right')}>{formatSize(project.size_bytes)}</td>
+              <td className={cn(TD, 'text-right')}>
+                <span className="flex justify-end gap-2">
+                  <Button size="sm" onClick={() => void handleOpen(project.name)}>
+                    Open
+                  </Button>
+                  <Button size="sm" onClick={() => void handleDownload()}>
+                    Download
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => void handleDelete(project.name)}
+                  >
+                    Delete
+                  </Button>
+                </span>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      {(open.isError || del.isError || downloadError) && (
-        <p role="alert" className="mt-2 text-alarm-critical" style={{ fontSize: 'var(--text-sm)' }}>
-          {downloadError ??
-            (open.error instanceof Error
-              ? open.error.message
-              : del.error instanceof Error
-                ? del.error.message
-                : 'Action failed')}
+      {failure !== null ? (
+        <p role="alert" className="text-xs font-medium text-alarm-crit">
+          {failure}
         </p>
-      )}
-    </>
+      ) : null}
+    </div>
   );
 }

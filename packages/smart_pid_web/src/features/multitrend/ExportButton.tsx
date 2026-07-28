@@ -1,65 +1,49 @@
-import { useState } from 'react';
-import { apiDownload } from '../../api/client';
-import { useExport, type ExportRequest } from './useExport';
+import type { ExportRequest } from '@/api/types';
+import { useCan } from '@/auth/useCan';
+import { Button } from '@/components/Button';
+import { useExport } from './useExport';
 
-interface Props {
-  request: ExportRequest;
+/**
+ * Create → poll → authenticated download, in one control (§6.8).
+ *
+ * There is no list/history affordance by design: the backend exposes no
+ * `GET /export/list`, so anything resembling "your exports" would be fiction.
+ */
+
+export interface ExportButtonProps {
+  /** null disables the control — an export needs exactly one loop (TD-008). */
+  request: ExportRequest | null;
 }
 
-export function ExportButton({ request }: Props): JSX.Element {
-  const { phase, job, start } = useExport();
-  const [downloadError, setDownloadError] = useState(false);
+export function ExportButton({ request }: ExportButtonProps) {
+  const allowed = useCan('export.data');
+  const { phase, downloadError, start, download } = useExport();
+
+  if (!allowed) return null;
 
   if (phase === 'generating') {
     return (
-      <span
-        className="export-btn export-btn--busy inline-flex items-center text-text-secondary"
-        aria-live="polite"
-      >
+      <span role="status" aria-live="polite" className="inline-flex min-h-11 items-center text-sm text-text-soft">
         Gerando…
       </span>
     );
   }
 
-  if (phase === 'done' && job) {
-    // The download route requires the Bearer JWT header (no auth cookie), so a plain
-    // anchor navigation would 401. Fetch the bytes authenticated, then trigger a save.
-    // Any failure (expired token -> 401, evicted job -> 404, 500, network drop) must
-    // surface a recovery affordance instead of silently doing nothing.
-    const handleDownload = async (): Promise<void> => {
-      setDownloadError(false);
-      let url: string | undefined;
-      try {
-        const blob = await apiDownload(`/export/${job.id}/download`);
-        url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `export_${job.id}.${job.format}`;
-        a.click();
-      } catch {
-        setDownloadError(true);
-      } finally {
-        if (url) URL.revokeObjectURL(url);
-      }
-    };
+  if (phase === 'done') {
     return (
-      <button
-        type="button"
-        className={
-          downloadError
-            ? 'export-btn export-btn--error border border-border-strong font-semibold'
-            : 'export-btn export-btn--ready'
-        }
-        onClick={() => void handleDownload()}
-      >
-        {downloadError ? 'Download failed — retry' : 'Download'}
-      </button>
+      <Button variant={downloadError ? 'secondary' : 'primary'} onClick={() => void download()}>
+        {downloadError ? 'Download falhou — repetir' : 'Download CSV'}
+      </Button>
     );
   }
 
   return (
-    <button type="button" className="export-btn" onClick={() => start(request)}>
-      {phase === 'error' ? 'Retry export' : 'Export'}
-    </button>
+    <Button
+      variant="secondary"
+      disabled={request === null}
+      onClick={() => request !== null && start(request)}
+    >
+      {phase === 'error' ? 'Exportar novamente' : 'Exportar CSV'}
+    </Button>
   );
 }

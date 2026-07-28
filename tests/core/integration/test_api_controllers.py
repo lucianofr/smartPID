@@ -40,16 +40,16 @@ class TestCreateController:
         assert data["id"] > 0
 
     @pytest.mark.asyncio
-    async def test_create_any_authenticated_user_allowed(
+    async def test_create_rejects_user_role(
         self, client: AsyncClient, user_headers: dict[str, str]
     ) -> None:
-        # Single-admin deployment: any authenticated user may create.
+        # POST /controllers is admin-only (spec §9.2 Appendix A).
         resp = await client.post(
             "/controllers",
             json={"name": "TIC-101"},
             headers=user_headers,
         )
-        assert resp.status_code == 201
+        assert resp.status_code == 403
 
 
 class TestGetController:

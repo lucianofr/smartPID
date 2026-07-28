@@ -1,89 +1,39 @@
-// Hand-typed DTOs mirroring the backend simulator Pydantic models
-// (smart_pid_domain/dtos/simulator.py, models/process_preset.py, dtos/commands.py).
-// String-literal unions are used for enums; field names/types copied verbatim.
+import type { components } from '@/api/generated/openapi';
 
-export type ProcessPresetName = 'FLOW' | 'PRESSURE' | 'LEVEL' | 'TEMPERATURE' | 'CUSTOM';
-export const PRESET_NAMES: ProcessPresetName[] = ['FLOW', 'PRESSURE', 'LEVEL', 'TEMPERATURE', 'CUSTOM'];
+/**
+ * Simulator DTOs, aliased straight off the generated OpenAPI schema — the twin
+ * is an internal OPC-UA process model (port 4849, `SPID_SIMULATOR_ENABLED`),
+ * and hand-copying its Pydantic shapes is how they silently drift.
+ */
 
-export type TwinMode = 'MAN' | 'AUTO';
-export type DisturbanceType = 'step' | 'noise';
+export type SimulatorStatusResponse = components['schemas']['SimulatorStatusResponse'];
+export type ControllerSimStatus = components['schemas']['ControllerSimStatus'];
+export type ProcessPresetName = components['schemas']['ProcessPresetName'];
+export type SimulatorPresetRequest = components['schemas']['SimulatorPresetRequest'];
+export type SimulatorParametersRequest = components['schemas']['SimulatorParametersRequest'];
+export type SimulatorDisturbanceRequest = components['schemas']['SimulatorDisturbanceRequest'];
+export type SimulatorPIDModeRequest = components['schemas']['SimulatorPIDModeRequest'];
+export type SimulatorPIDSPRequest = components['schemas']['SimulatorPIDSPRequest'];
+export type AutoSPRequest = components['schemas']['AutoSPRequest'];
+export type AutoDisturbanceRequest = components['schemas']['AutoDisturbanceRequest'];
 
-export interface SimulatorPresetRequest {
-  controller_id: number;
-  preset: ProcessPresetName;
-}
+/** Selectable process models (models/process_preset.py). */
+export const PRESET_NAMES = ['FLOW', 'PRESSURE', 'LEVEL', 'TEMPERATURE', 'CUSTOM'] as const;
 
-export interface SimulatorParametersRequest {
-  controller_id: number;
+export type TwinMode = SimulatorPIDModeRequest['mode'];
+export type DisturbanceType = SimulatorDisturbanceRequest['type'];
+
+/** `ControllerSimStatus.pid_mode` is an int on the wire: 0 = MAN, 1 = AUTO. */
+export const PID_MODE_AUTO = 1;
+
+/** Editable first/second-order-plus-dead-time process model. */
+export interface Dynamics {
   gain: number;
-  tau1: number;
-  tau2?: number | null;
   dead_time: number;
-}
-
-export interface SimulatorDisturbanceRequest {
-  controller_id: number;
-  type: DisturbanceType;
-  amplitude: number;
-}
-
-export interface AutoSPRequest {
-  enabled: boolean;
-  sp_min_pct: number;
-  sp_max_pct: number;
-}
-
-export interface AutoDisturbanceRequest {
-  enabled: boolean;
-  max_amplitude_pct: number;
-}
-
-export interface SimulatorPIDModeRequest {
-  controller_id: number;
-  mode: TwinMode;
-}
-
-export interface SimulatorPIDSPRequest {
-  controller_id: number;
-  sp: number;
-}
-
-export interface ControllerSimStatus {
-  preset: string;
-  gain: number;
   tau1: number;
   tau2: number | null;
-  dead_time: number;
-  step_active: boolean;
-  step_amplitude: number;
-  noise_active: boolean;
-  noise_amplitude: number;
-  pid_enabled: boolean;
-  pid_kp: number;
-  pid_ti: number;
-  pid_td: number;
-  pid_mode: number; // 0=MAN, 1=AUTO
-  pid_cv: number;
-  auto_sp: AutoSPRequest | null;
-  auto_disturbance: AutoDisturbanceRequest | null;
-  pv: number;
-  sp: number;
-  co: number;
-  error: number;
-  process_input: number;
-  process_output: number;
-  disturbance_output: number;
 }
 
-export interface SimulatorStatusResponse {
-  enabled: boolean;
-  running: boolean;
-  controllers: Record<number, ControllerSimStatus>;
-}
-
-export interface CommandResponse {
-  ok: boolean;
-  controller_id?: number | null;
-  detail?: string | null;
-  enabled?: boolean | null;
-}
+/** Backend defaults (AutoSPRequest / AutoDisturbanceRequest schema defaults). */
+export const AUTO_SP_DEFAULTS = { sp_min_pct: 30, sp_max_pct: 70 } as const;
+export const AUTO_DISTURBANCE_DEFAULTS = { max_amplitude_pct: 10 } as const;

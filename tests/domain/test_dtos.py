@@ -3,7 +3,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
+from pydantic import ValidationError
+
 from smart_pid_domain.dtos.auth import LoginRequest, TokenResponse, UserClaims, UserCreate
+from smart_pid_domain.enums import UserRole
 from smart_pid_domain.dtos.commands import (
     CommandResponse,
     ModeCommand,
@@ -31,13 +36,17 @@ class TestAuthDTOs:
         assert resp.token_type == "bearer"
 
     def test_user_create_default_role(self) -> None:
-        from smart_pid_domain.enums import UserRole
         u = UserCreate(username="bob", password="pass")
-        assert u.role == UserRole.OPERATOR
+        assert u.role == UserRole.USER
 
     def test_user_claims(self) -> None:
-        c = UserClaims(user_id=1, username="admin", role="ADMIN")
+        c = UserClaims(user_id=1, username="admin", role="admin")
         assert c.user_id == 1
+        assert c.role == UserRole.ADMIN
+
+    def test_user_claims_rejects_legacy_role(self) -> None:
+        with pytest.raises(ValidationError):
+            UserClaims(user_id=1, username="admin", role="ADMIN")
 
 
 class TestCommandDTOs:

@@ -1,142 +1,97 @@
-import { lazy, Suspense, useState } from 'react';
-import { QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { queryClient } from './api/queryClient';
-import { AuthProvider, useAuth } from './auth/AuthContext';
-import { LoginPage } from './auth/LoginPage';
-import { RequireAuth } from './auth/RequireAuth';
-import { RealtimeProvider } from './realtime/RealtimeProvider';
-import { ThemeProvider } from './theme/ThemeProvider';
-import { DashboardPage } from './pages/DashboardPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { ConnectionPage } from './pages/ConnectionPage';
-import { AppShell } from './components/shell/AppShell';
-import { AlarmPanel } from './features/alarms/AlarmPanel';
-import { WelcomeDialog } from './features/projects/WelcomeDialog';
-import './theme/tokens.css';
-import './theme/themes.css';
+import { Suspense, useCallback, useMemo, useState, type ReactNode } from 'react';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
+import { AppShell } from '@/app/AppShell';
+import { appRoutes } from '@/app/routes';
+import { AuthProvider, useAuth } from '@/auth/AuthContext';
+import { RouteGuard } from '@/auth/RouteGuard';
+import { LoadingState } from '@/components/MissingState';
+import { Toaster, toast } from '@/components/Toast';
+import { LoginPage } from '@/pages/LoginPage';
+import { RealtimeProvider } from '@/realtime/RealtimeProvider';
+import { createResyncRunner } from '@/realtime/resync';
+import { ThemeProvider } from '@/theme/ThemeProvider';
 
-// Heavy/rare surfaces are code-split so the dashboard entry stays within the
-// app-page JS budget (see scripts/check-bundle.mjs, §12 perf budget).
-const ExecutiveDashboardPage = lazy(() =>
-  import('./pages/ExecutiveDashboardPage').then((m) => ({ default: m.ExecutiveDashboardPage })),
-);
-const MultiTrendPage = lazy(() =>
-  import('./pages/MultiTrendPage').then((m) => ({ default: m.MultiTrendPage })),
-);
-const SimulatorPage = lazy(() =>
-  import('./pages/SimulatorPage').then((m) => ({ default: m.SimulatorPage })),
-);
-const ProjectsPage = lazy(() =>
-  import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })),
-);
+/**
+ * Composition root. Provider order is load-bearing: the realtime socket needs
+ * the auth token and the query client (§7 resync primes canonical keys), and a
+ * 4401 close must be able to force the login route — so it sits inside both.
+ */
 
-function RouteFallback() {
-  return <div role="status" aria-live="polite" className="p-8 text-muted-foreground" />;
+/**
+ * Secondary routes are code-split (see `app/routes.tsx`), so the shell needs
+ * one Suspense boundary. It sits INSIDE `AppShell` — the top bar and the
+ * palette must stay on screen while a route chunk arrives.
+ */
+function ProtectedLayout() {
+  return (
+    <RouteGuard>
+      <AppShell>
+        <Suspense fallback={<LoadingState label="Carregando página…" bars={3} />}>
+          <Outlet />
+        </Suspense>
+      </AppShell>
+    </RouteGuard>
+  );
 }
 
-function Shell() {
-  const { token } = useAuth();
-  const [welcomeSeen, setWelcomeSeen] = useState(
-    () => sessionStorage.getItem('spid.welcome-seen') === '1',
-  );
-  const showWelcome = token != null && !welcomeSeen;
-  const dismissWelcome = () => {
-    sessionStorage.setItem('spid.welcome-seen', '1');
-    setWelcomeSeen(true);
-  };
+function RealtimeSession({ children }: { children: ReactNode }) {
+  const { token, logout } = useAuth();
+  const queryClient = useQueryClient();
+  const resync = useMemo(() => createResyncRunner({ queryClient }), [queryClient]);
   return (
-    <RealtimeProvider token={token}>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route
-          path="/"
-          element={
-            <RequireAuth>
-              <DashboardPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/executive"
-          element={
-            <RequireAuth>
-              <Suspense fallback={<RouteFallback />}>
-                <ExecutiveDashboardPage />
-              </Suspense>
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/multitrend"
-          element={
-            <RequireAuth>
-              <Suspense fallback={<RouteFallback />}>
-                <MultiTrendPage />
-              </Suspense>
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/simulator"
-          element={
-            <RequireAuth>
-              <Suspense fallback={<RouteFallback />}>
-                <SimulatorPage />
-              </Suspense>
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/alarms"
-          element={
-            <RequireAuth>
-              <AppShell opcDown={false}>
-                <AlarmPanel />
-              </AppShell>
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <RequireAuth>
-              <SettingsPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/connection"
-          element={
-            <RequireAuth>
-              <ConnectionPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/projects"
-          element={
-            <RequireAuth>
-              <Suspense fallback={<RouteFallback />}>
-                <ProjectsPage />
-              </Suspense>
-            </RequireAuth>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-      {showWelcome && <WelcomeDialog open onDismiss={dismissWelcome} />}
+    <RealtimeProvider token={token} resync={resync} onAuthExpired={logout}>
+      {children}
     </RealtimeProvider>
   );
 }
 
 export function App() {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+      }),
+  );
+  const onPermissionDenied = useCallback(() => {
+    toast({
+      title: 'Sem permissão',
+      description: 'Sua conta não tem acesso a esta ação.',
+      tone: 'warn',
+    });
+  }, []);
+
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
+        <AuthProvider onPermissionDenied={onPermissionDenied}>
           <BrowserRouter>
-            <Shell />
+            <RealtimeSession>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route element={<ProtectedLayout />}>
+                  {appRoutes.map(({ path, element: Element, adminOnly }) => (
+                    <Route
+                      key={path}
+                      path={path}
+                      element={
+                        adminOnly === true ? (
+                          <RouteGuard adminOnly>
+                            <Element />
+                          </RouteGuard>
+                        ) : (
+                          <Element />
+                        )
+                      }
+                    />
+                  ))}
+                  {/* Unknown path under a session lands on the dashboard; without
+                      one it inherits ProtectedLayout's guard → /login. */}
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Route>
+              </Routes>
+            </RealtimeSession>
+            <Toaster />
           </BrowserRouter>
         </AuthProvider>
       </QueryClientProvider>

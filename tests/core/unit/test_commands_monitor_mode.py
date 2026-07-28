@@ -1,7 +1,8 @@
 """Tests for monitor-mode gating on /commands endpoints and apply-tuning."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+import time
+import uuid
 from unittest.mock import MagicMock
 
 import pytest
@@ -22,17 +23,23 @@ from smart_pid_core.domain.services.pid_engine import PIDEngine
 from smart_pid_core.domain.services.pid_mode_manager import ModeManager
 from smart_pid_domain.enums import ControllerMode
 from smart_pid_domain.models.controller import Controller, PIDParams
+from smart_pid_domain.models.tuning import TuningRecommendation
 
 
-@dataclass
-class _FakeRec:
-    """Minimal tuning recommendation for testing."""
-    current_kp: float = 1.0
-    current_ti: float = 10.0
-    current_td: float = 0.5
-    recommended_kp: float = 1.2
-    recommended_ti: float = 9.0
-    recommended_td: float = 0.6
+def _make_rec(controller_id: int = 1) -> TuningRecommendation:
+    """A pending recommendation as the AI worker would produce it."""
+    return TuningRecommendation(
+        id=uuid.uuid4(),
+        controller_id=controller_id,
+        current_kp=1.0,
+        current_ti=10.0,
+        current_td=0.5,
+        recommended_kp=1.2,
+        recommended_ti=9.0,
+        recommended_td=0.6,
+        reason="IMC/lambda retune",
+        timestamp=time.time(),
+    )
 
 
 @pytest.fixture
@@ -43,12 +50,12 @@ async def monitor_deps(tmp_path):
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
-    historian = SQLiteHistorian(repo)
+    historian = SQLiteHistorian(repo.session_factory)
     user_db_path = tmp_path / "users.db"
     user_repo = UserRepository(user_db_path)
     await user_repo.initialize()
-    alarm_repo = AlarmRepository(repo)
-    audit_repo = AuditRepository(repo)
+    alarm_repo = AlarmRepository(repo.session_factory)
+    audit_repo = AuditRepository(repo.session_factory)
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
     loop_manager = LoopManager(bus=bus, execution_mode="monitor")
@@ -57,8 +64,11 @@ async def monitor_deps(tmp_path):
         execution_mode="monitor",
     )  # type: ignore[call-arg]
 
+    # Both principals must exist: authorization reads the role off the stored
+    # record on every request (E2E-044), not off the token claim.
     admin_hash = hash_password("admin")
-    await user_repo.create("admin", admin_hash, "ADMIN")
+    await user_repo.create("admin", admin_hash, "admin")      # id 1
+    await user_repo.create("operator", admin_hash, "user")    # id 2
 
     yield {
         "repo": repo,
@@ -73,7 +83,7 @@ async def monitor_deps(tmp_path):
     loop_manager.stop_all()
     bus.stop()
     await user_repo.close()
-    await repo.db.close()
+    await repo.close()
 
 
 @pytest.fixture
@@ -99,7 +109,7 @@ async def monitor_client(monitor_app):
 @pytest.fixture
 def operator_headers(monitor_deps) -> dict[str, str]:
     token = create_access_token(
-        user_id=2, username="operator", role="OPERATOR",
+        user_id=2, username="operator", role="user",
         secret=monitor_deps["settings"].jwt_secret,
     )
     return {"Authorization": f"Bearer {token}"}
@@ -156,12 +166,12 @@ class TestApplyTuning:
         db_path = tmp_path / "test.spid"
         repo = SQLiteRepository(db_path)
         await repo.initialize()
-        historian = SQLiteHistorian(repo)
+        historian = SQLiteHistorian(repo.session_factory)
         user_db_path = tmp_path / "users.db"
         user_repo = UserRepository(user_db_path)
         await user_repo.initialize()
-        alarm_repo = AlarmRepository(repo)
-        audit_repo = AuditRepository(repo)
+        alarm_repo = AlarmRepository(repo.session_factory)
+        audit_repo = AuditRepository(repo.session_factory)
         bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
         bus.start()
         loop_manager = LoopManager(bus=bus, execution_mode="execute")
@@ -171,7 +181,7 @@ class TestApplyTuning:
         )  # type: ignore[call-arg]
 
         admin_hash = hash_password("admin")
-        await user_repo.create("admin", admin_hash, "ADMIN")
+        await user_repo.create("admin", admin_hash, "admin")
 
         yield {
             "repo": repo,
@@ -186,7 +196,7 @@ class TestApplyTuning:
         loop_manager.stop_all()
         bus.stop()
         await user_repo.close()
-        await repo.db.close()
+        await repo.close()
 
     async def _register_controller(self, deps: dict) -> int:
         """Save controller and register loop context."""
@@ -223,7 +233,7 @@ class TestApplyTuning:
         )
         headers = {
             "Authorization": "Bearer " + create_access_token(
-                user_id=1, username="admin", role="ADMIN",
+                user_id=1, username="admin", role="admin",
                 secret=execute_deps["settings"].jwt_secret,
             ),
         }
@@ -252,11 +262,11 @@ class TestApplyTuning:
             audit_repo=execute_deps["audit_repo"],
             opcua_adapter=mock_opcua,
         )
-        app.state.tuning_recommendations = {cid: _FakeRec()}
+        app.state.tuning_store.put(_make_rec(cid))
 
         headers = {
             "Authorization": "Bearer " + create_access_token(
-                user_id=1, username="admin", role="ADMIN",
+                user_id=1, username="admin", role="admin",
                 secret=execute_deps["settings"].jwt_secret,
             ),
         }
@@ -285,11 +295,11 @@ class TestApplyTuning:
             audit_repo=execute_deps["audit_repo"],
             opcua_adapter=mock_opcua,
         )
-        app.state.tuning_recommendations = {cid: _FakeRec()}
+        app.state.tuning_store.put(_make_rec(cid))
 
         headers = {
             "Authorization": "Bearer " + create_access_token(
-                user_id=1, username="admin", role="ADMIN",
+                user_id=1, username="admin", role="admin",
                 secret=execute_deps["settings"].jwt_secret,
             ),
         }

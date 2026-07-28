@@ -1,5 +1,4 @@
 """Alarm router — active alarms, history, ACK."""
-from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Annotated
@@ -10,7 +9,7 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
     get_ai_repo,
     get_alarm_repo,
     get_audit_repo,
-    require_authenticated_admin,
+    require_user,
 )
 from smart_pid_core.adapters.outbound.ai_repo import AIRepository  # noqa: TC001
 from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository  # noqa: TC001
@@ -23,7 +22,7 @@ router = APIRouter()
 
 @router.get("/active")
 async def get_active_alarms(
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_user)],
     alarm_repo: Annotated[AlarmRepository, Depends(get_alarm_repo)],
     controller_id: int | None = None,
     priority: str | None = None,
@@ -33,7 +32,7 @@ async def get_active_alarms(
 
 @router.get("/history")
 async def get_alarm_history(
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_user)],
     alarm_repo: Annotated[AlarmRepository, Depends(get_alarm_repo)],
     start: str = Query(...),
     end: str = Query(...),
@@ -56,7 +55,7 @@ async def get_alarm_history(
 
 @router.get("/ai-history")
 async def get_ai_log_history(
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_user)],
     ai_repo: Annotated[AIRepository, Depends(get_ai_repo)],
     start: str = Query(...),
     end: str = Query(...),
@@ -74,7 +73,7 @@ async def get_ai_log_history(
 @router.post("/{alarm_id}/ack")
 async def ack_alarm(
     alarm_id: int,
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_user)],
     alarm_repo: Annotated[AlarmRepository, Depends(get_alarm_repo)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> dict:
@@ -92,7 +91,7 @@ async def ack_alarm(
 
 @router.post("/ack-all")
 async def ack_all_alarms(
-    user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    user: Annotated[UserClaims, Depends(require_user)],
     alarm_repo: Annotated[AlarmRepository, Depends(get_alarm_repo)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> dict:

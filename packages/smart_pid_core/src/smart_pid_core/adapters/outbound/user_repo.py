@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS Usuarios (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     nome        TEXT    NOT NULL UNIQUE,
     senha_hash  TEXT    NOT NULL,
-    perfil      TEXT    NOT NULL DEFAULT 'OPERATOR',
+    perfil      TEXT    NOT NULL DEFAULT 'user',
     ativo       INTEGER NOT NULL DEFAULT 1,
     criado_em   TEXT    NOT NULL DEFAULT (datetime('now'))
 );

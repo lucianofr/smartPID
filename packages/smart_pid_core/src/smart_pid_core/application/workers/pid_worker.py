@@ -14,6 +14,7 @@ from smart_pid_core.domain.services.pid_engine import PIDState
 from smart_pid_core.domain.services.pid_mode_manager import BlockStatus
 from smart_pid_domain.enums import (
     ControllerMode,
+    ExecutionMode,
     InitSubStatus,
     LimitBits,
     SignalSeverity,
@@ -426,6 +427,10 @@ class PIDWorker:
                         ),
                         "integral_val": self._state.cv,
                         "delta_cv": delta_cv,
+                        # The IO worker writes CO to the DCS for DDC loops only:
+                        # in SUPERVISORY the DCS owns the PID and writing CO
+                        # would fight its controller.
+                        "execution_mode": str(self._controller.execution_mode),
                         "timestamp": datetime.now(tz=UTC).isoformat(),
                     }
                     topic = (
@@ -474,7 +479,16 @@ class PIDWorker:
             try:
                 data = msgpack.unpackb(payload)
                 self._last_pv = _deserialize_ff_signal(data["pv"])
-                self._last_sp = _deserialize_ff_signal(data["sp"])
+                # SP ownership mirrors CO below: in DDC SmartPID owns the
+                # setpoint (the operator writes it), so telemetry may only SEED
+                # it — otherwise every scan clobbers the operator's value with
+                # the PLC's stale SP node and the loop regulates to the wrong
+                # target. In SUPERVISORY the DCS owns SP, so each frame wins.
+                if (
+                    self._controller.execution_mode is not ExecutionMode.DDC
+                    or not self._has_telemetry
+                ):
+                    self._last_sp = _deserialize_ff_signal(data["sp"])
                 if "bkcal_in" in data:
                     self._last_bkcal_in = _deserialize_ff_signal(
                         data["bkcal_in"],

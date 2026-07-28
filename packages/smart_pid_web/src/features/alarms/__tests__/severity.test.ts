@@ -1,35 +1,83 @@
-import { describe, it, expect } from 'vitest';
-import { priorityRank, severityIcon, severityClass, isUnacked } from '../severity';
+import { describe, expect, it } from 'vitest';
+import {
+  ALARM_SEVERITIES,
+  SEVERITY_PRESENTATION,
+  isUnackedStatus,
+  priorityRank,
+  severity,
+  severityClass,
+  severityVar,
+  toSeverity,
+} from '../severity';
 
-describe('severity helpers', () => {
-  it('ranks CRITICAL before WARNING before ADVISORY before LOG', () => {
-    expect(priorityRank('CRITICAL')).toBeLessThan(priorityRank('WARNING'));
-    expect(priorityRank('WARNING')).toBeLessThan(priorityRank('ADVISORY'));
-    expect(priorityRank('ADVISORY')).toBeLessThan(priorityRank('LOG'));
+describe('severity presentation map', () => {
+  it('maps every severity to its label, glyph and contract token', () => {
+    expect(severity('CRITICAL')).toEqual({
+      label: 'CRITICAL',
+      glyph: 'octagon',
+      token: '--alarm-crit',
+    });
+    expect(severity('WARNING')).toEqual({
+      label: 'WARNING',
+      glyph: 'triangle',
+      token: '--alarm-warn',
+    });
+    expect(severity('ADVISORY')).toEqual({
+      label: 'ADVISORY',
+      glyph: 'diamond',
+      token: '--alarm-adv',
+    });
+    expect(severity('LOG')).toEqual({ label: 'LOG', glyph: 'dot', token: '--alarm-log' });
   });
 
-  it('maps each priority to a distinct geometric glyph (ISA-101: shape not just color)', () => {
-    const glyphs = new Set([
-      severityIcon('CRITICAL'),
-      severityIcon('WARNING'),
-      severityIcon('ADVISORY'),
+  it('covers the four wire severities and nothing else', () => {
+    expect(ALARM_SEVERITIES).toEqual(['CRITICAL', 'WARNING', 'ADVISORY', 'LOG']);
+    expect(Object.keys(SEVERITY_PRESENTATION)).toEqual([...ALARM_SEVERITIES]);
+  });
+
+  it('gives every severity a distinct shape — severity is never color-only', () => {
+    const glyphs = ALARM_SEVERITIES.map((s) => severity(s).glyph);
+    expect(new Set(glyphs).size).toBe(glyphs.length);
+  });
+});
+
+describe('priorityRank', () => {
+  it('ranks CRITICAL first and LOG last', () => {
+    expect(ALARM_SEVERITIES.map(priorityRank)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('sorts a mixed flood most-severe first', () => {
+    const mixed = ['LOG', 'CRITICAL', 'ADVISORY', 'WARNING'] as const;
+    expect([...mixed].sort((a, b) => priorityRank(a) - priorityRank(b))).toEqual([
+      'CRITICAL',
+      'WARNING',
+      'ADVISORY',
+      'LOG',
     ]);
-    expect(glyphs.size).toBe(3); // octagon / triangle / diamond
-    expect(severityIcon('CRITICAL')).toBe('octagon');
-    expect(severityIcon('WARNING')).toBe('triangle');
-    expect(severityIcon('ADVISORY')).toBe('diamond');
+  });
+});
+
+describe('toSeverity', () => {
+  it('accepts the wire values case-insensitively', () => {
+    expect(toSeverity('critical')).toBe('CRITICAL');
+    expect(toSeverity('WARNING')).toBe('WARNING');
   });
 
-  it('maps priority to a stable CSS class token', () => {
+  it('degrades an unknown priority to LOG instead of dropping the alarm', () => {
+    expect(toSeverity('WHATEVER')).toBe('LOG');
+    expect(toSeverity('')).toBe('LOG');
+  });
+});
+
+describe('presentation helpers', () => {
+  it('derives the CSS class and the var() reference from the same token', () => {
     expect(severityClass('CRITICAL')).toBe('sev-critical');
-    expect(severityClass('WARNING')).toBe('sev-warning');
-    expect(severityClass('ADVISORY')).toBe('sev-advisory');
-    expect(severityClass('LOG')).toBe('sev-log');
+    expect(severityVar('WARNING')).toBe('var(--alarm-warn)');
   });
 
-  it('treats UNACKNOWLEDGED and CLEARED_UNACK as unacked (blink); ACKNOWLEDGED as stable', () => {
-    expect(isUnacked('UNACKNOWLEDGED')).toBe(true);
-    expect(isUnacked('CLEARED_UNACK')).toBe(true);
-    expect(isUnacked('ACKNOWLEDGED')).toBe(false);
+  it('treats both unacknowledged row states as demanding acknowledgement', () => {
+    expect(isUnackedStatus('UNACKNOWLEDGED')).toBe(true);
+    expect(isUnackedStatus('CLEARED_UNACK')).toBe(true);
+    expect(isUnackedStatus('ACKNOWLEDGED')).toBe(false);
   });
 });

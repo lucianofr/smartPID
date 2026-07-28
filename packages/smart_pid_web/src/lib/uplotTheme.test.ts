@@ -1,40 +1,73 @@
-import { describe, it, expect } from 'vitest';
-import { buildUplotTheme, type TrendTokens } from './uplotTheme';
+import { afterEach, describe, expect, it } from 'vitest';
+import { buildUplotTheme, readTrendTokens } from './uplotTheme';
 
-const tokens: TrendTokens = {
-  pv: '#E0E0E0', sp: '#33AAFF', co: '#FFB000',
-  grid: '#3A3A3D', axis: '#57575B', bg: '#252526',
-  pvWidth: 2, spWidth: 1.5, coWidth: 1,
-  font: '12px JetBrains Mono',
-};
+const root = document.documentElement;
+const SET = {
+  '--trace-pv': '#1B4F87',
+  '--trace-sp': '#7C8894',
+  '--trace-co': '#BC7211',
+  '--trend-grid': '#E4E9EF',
+  '--trend-axis': '#9DA9B5',
+  '--trend-bg': '#EEF1F5',
+  '--accent': '#0E6B6B',
+  '--trend-pv-width': '2px',
+  '--trend-sp-width': '1.5px',
+  '--trend-co-width': '1.5px',
+  '--trend-sp-dash': '6 4',
+  '--font-data': "'Geist Mono', monospace",
+} as const;
 
-describe('buildUplotTheme (§7.1)', () => {
-  const t = buildUplotTheme(tokens);
+afterEach(() => {
+  for (const name of Object.keys(SET)) root.style.removeProperty(name);
+});
 
-  it('maps axis + grid + bg from trend tokens', () => {
-    expect(t.axesStroke).toBe('#57575B');
-    expect(t.gridStroke).toBe('#3A3A3D');
-    expect(t.bg).toBe('#252526');
+function apply(): CSSStyleDeclaration {
+  for (const [name, value] of Object.entries(SET)) root.style.setProperty(name, value);
+  return getComputedStyle(root);
+}
+
+describe('readTrendTokens (NEW §6.4 names)', () => {
+  it('reads traces, grid, axis, bg, accent and px widths', () => {
+    const t = readTrendTokens(apply());
+    expect(t.pv).toBe('#1B4F87');
+    expect(t.sp).toBe('#7C8894');
+    expect(t.co).toBe('#BC7211');
+    expect(t.grid).toBe('#E4E9EF');
+    expect(t.axis).toBe('#9DA9B5');
+    expect(t.bg).toBe('#EEF1F5');
+    expect(t.accent).toBe('#0E6B6B');
+    expect(t.pvWidth).toBe(2); // parseFloat('2px')
+    expect(t.spWidth).toBe(1.5);
+    expect(t.font).toBe("12px 'Geist Mono', monospace");
   });
-  it('PV/SP/CO series use the right strokes, SP is dashed, CO uses co scale', () => {
-    expect(t.series.pv).toMatchObject({ stroke: '#E0E0E0' });
-    expect(t.series.sp).toMatchObject({ stroke: '#33AAFF', dash: [6, 4] });
-    expect(t.series.co).toMatchObject({ stroke: '#FFB000', scale: 'co' });
+
+  it('falls back to 1.5 width when a width token is missing (defensive)', () => {
+    apply();
+    root.style.removeProperty('--trend-co-width');
+    expect(readTrendTokens(getComputedStyle(root)).coWidth).toBe(1.5);
   });
-  it('line weights come from the trend line-weight tokens', () => {
-    expect(t.series.pv.width).toBe(2);
-    expect(t.series.sp.width).toBe(1.5);
-    expect(t.series.co.width).toBe(1);
+});
+
+describe('buildUplotTheme', () => {
+  it('maps series treatments: SP dash from the token, CO on the co scale', () => {
+    const theme = buildUplotTheme(readTrendTokens(apply()));
+    expect(theme.series.sp.dash).toEqual([6, 4]);
+    expect(theme.series.co.scale).toBe('co');
+    expect(theme.series.pv.width).toBe(2);
+    expect(theme.axisFont).toContain('Geist Mono');
   });
-  it('axis label font comes from the --font-data token', () => {
-    expect(t.axisFont).toBe('12px JetBrains Mono');
+
+  it('SP renders SOLID when --trend-sp-dash is none (ISA-101 §6.3 rule)', () => {
+    apply();
+    root.style.setProperty('--trend-sp-dash', 'none');
+    expect(buildUplotTheme(readTrendTokens(getComputedStyle(root))).series.sp.dash).toEqual([]);
   });
-  it('exposes a crosshair cursor on both axes', () => {
-    expect(t.cursor).toMatchObject({ x: true, y: true });
-  });
-  it('no area fill on any series', () => {
-    for (const s of Object.values(t.series)) {
-      expect((s as Record<string, unknown>).fill).toBeUndefined();
-    }
+
+  it('SP falls back to solid when the dash token is missing or unparseable', () => {
+    apply();
+    root.style.removeProperty('--trend-sp-dash');
+    expect(readTrendTokens(getComputedStyle(root)).spDash).toEqual([]);
+    root.style.setProperty('--trend-sp-dash', 'dotted');
+    expect(readTrendTokens(getComputedStyle(root)).spDash).toEqual([]);
   });
 });

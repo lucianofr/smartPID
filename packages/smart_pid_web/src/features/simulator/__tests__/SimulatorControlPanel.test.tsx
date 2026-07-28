@@ -1,85 +1,219 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as api from '../api';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { endpoints } from '@/api/endpoints';
+import type { Role, SimulatorStatus } from '@/api/types';
+import { statusEnvelope } from '@/test/fixtures';
+import { createFakeRealtime, createQueryClient, TestProviders } from '@/test/providers';
+import { simulatorApi } from '../api';
 import { SimulatorControlPanel } from '../SimulatorControlPanel';
+import type { ControllerSimStatus } from '../types';
 
-vi.mock('../api');
-vi.mock('../../../realtime/useRealtime', () => ({
-  useRealtime: () => ({
-    connected: true, lastStatus: new Map([[1, { pv: 50, sp: 50, co: 0, mode: 'MAN' }]]),
-    lastStats: new Map(), subscribe: () => () => {}, onResync: () => () => {},
-  }),
-}));
+/**
+ * The panel's contract is a permission split: reshaping the model is
+ * `simulator.configure` (admin), driving twin SP/mode/CO is `loop.operate`
+ * (everyone). Both halves are asserted here, plus the invalidate→refetch loop
+ * that is the ONLY way a simulator write becomes visible.
+ */
 
-const wrapper = ({ children }: { children: React.ReactNode }) => {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
-};
+const CONFIG_CONTROLS = [
+  'Start',
+  'Stop',
+  'Inject disturbance',
+  'Remove',
+] as const;
+
+function controller(overrides: Partial<ControllerSimStatus> = {}): ControllerSimStatus {
+  return {
+    preset: 'FLOW',
+    gain: 1.2,
+    tau1: 3,
+    tau2: null,
+    dead_time: 1,
+    step_active: false,
+    step_amplitude: 0,
+    noise_active: false,
+    noise_amplitude: 0,
+    pid_enabled: false,
+    pid_kp: 1,
+    pid_ti: 10,
+    pid_td: 0,
+    pid_mode: 0,
+    pid_cv: 0,
+    co: 40,
+    sp: 50,
+    pv: 50,
+    error: 0,
+    process_input: 0,
+    process_output: 0,
+    disturbance_output: 0,
+    auto_sp: null,
+    auto_disturbance: null,
+    ...overrides,
+  };
+}
+
+function snapshot(overrides: Partial<ControllerSimStatus> = {}, running = true): SimulatorStatus {
+  return { enabled: true, running, controllers: { 1: controller(overrides) } };
+}
+
+function renderPanel(options: { role?: Role; status?: SimulatorStatus } = {}) {
+  const role = options.role ?? 'admin';
+  sessionStorage.setItem('smart-pid-token', 'jwt');
+  vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
+  const statusSpy = vi
+    .spyOn(endpoints, 'simulatorStatus')
+    .mockResolvedValue(options.status ?? snapshot());
+  const realtime = createFakeRealtime();
+  const view = render(
+    <TestProviders queryClient={createQueryClient()} realtime={realtime.value}>
+      <SimulatorControlPanel controllerId={1} />
+    </TestProviders>,
+  );
+  return { ...view, statusSpy, realtime };
+}
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  vi.mocked(api.getSimulatorStatus).mockResolvedValue({
-    enabled: true, running: false,
-    controllers: { 1: {
-      preset: 'FLOW', gain: 1.2, tau1: 3, tau2: null, dead_time: 1,
-      step_active: false, step_amplitude: 0, noise_active: false, noise_amplitude: 0,
-      pid_mode: 0, co: 0, sp: 50, pv: 50, auto_sp: null, auto_disturbance: null,
-    } as never },
-  });
-  vi.mocked(api.setPreset).mockResolvedValue({ ok: true });
-  vi.mocked(api.injectDisturbance).mockResolvedValue({ ok: true });
+  sessionStorage.clear();
+  vi.spyOn(simulatorApi, 'start').mockResolvedValue({ ok: true });
+  vi.spyOn(simulatorApi, 'preset').mockResolvedValue({ ok: true });
+  vi.spyOn(simulatorApi, 'parameters').mockResolvedValue({ ok: true });
+  vi.spyOn(simulatorApi, 'injectDisturbance').mockResolvedValue({ ok: true });
+  vi.spyOn(simulatorApi, 'clearDisturbance').mockResolvedValue({ ok: true });
+  vi.spyOn(simulatorApi, 'setCo').mockResolvedValue({ ok: true });
+  vi.spyOn(simulatorApi, 'setSp').mockResolvedValue({ ok: true });
+  vi.spyOn(simulatorApi, 'setMode').mockResolvedValue({ ok: true });
+  vi.spyOn(simulatorApi, 'setAutoSp').mockResolvedValue(controller());
 });
 
-describe('SimulatorControlPanel', () => {
-  it('applies a preset change through the preset mutation', async () => {
-    render(<SimulatorControlPanel controllerId={1} />, { wrapper });
-    await waitFor(() => expect(screen.getByRole('combobox', { name: /process preset/i })).toBeInTheDocument());
-    fireEvent.change(screen.getByRole('combobox', { name: /process preset/i }), { target: { value: 'LEVEL' } });
-    await waitFor(() => expect(api.setPreset).toHaveBeenCalledWith({ controller_id: 1, preset: 'LEVEL' }));
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe('SimulatorControlPanel — permission split', () => {
+  it('gives an administrator the whole configuration region', async () => {
+    renderPanel();
+    for (const name of CONFIG_CONTROLS) {
+      expect(await screen.findByRole('button', { name })).toBeInTheDocument();
+    }
+    expect(screen.getByRole('combobox', { name: 'Process preset' })).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: 'Gain' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Auto-SP' })).toBeInTheDocument();
   });
-  it('injects a disturbance through the disturbance mutation', async () => {
-    render(<SimulatorControlPanel controllerId={1} />, { wrapper });
-    await waitFor(() => expect(screen.getByRole('button', { name: /inject/i })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /inject/i }));
-    await waitFor(() => expect(api.injectDisturbance).toHaveBeenCalledWith(
-      expect.objectContaining({ controller_id: 1, type: 'step' })));
+
+  it('shows a user the designed restricted state instead of the configuration region', async () => {
+    const { statusSpy } = renderPanel({ role: 'user' });
+    expect(await screen.findByText('Simulador gerenciado pelo administrador')).toBeVisible();
+    for (const name of CONFIG_CONTROLS) {
+      expect(screen.queryByRole('button', { name })).toBeNull();
+    }
+    expect(screen.queryByRole('combobox', { name: 'Process preset' })).toBeNull();
+    expect(screen.queryByRole('switch', { name: 'Auto-SP' })).toBeNull();
+    expect(statusSpy).not.toHaveBeenCalled();
+  });
+
+  it('still lets a user drive twin SP/mode/CO off the live frame', async () => {
+    const { realtime } = renderPanel({ role: 'user' });
+    await screen.findByText('Simulador gerenciado pelo administrador');
+
+    // No REST snapshot is readable, so the operate region waits for a frame.
+    expect(screen.queryByRole('group', { name: 'Twin mode' })).toBeNull();
+    act(() => realtime.emit(statusEnvelope(1, 1, { mode: 'MAN' })));
+
+    expect(screen.getByRole('group', { name: 'Twin mode' })).toBeInTheDocument();
+    // makeStatus: sp 55, co 42 — the operate fields seed from the live frame.
+    expect(screen.getByRole('spinbutton', { name: 'Setpoint SP' })).toHaveValue(55);
+    fireEvent.click(screen.getByRole('button', { name: 'Apply output' }));
+    await waitFor(() => expect(simulatorApi.setCo).toHaveBeenCalledWith(1, 42));
   });
 });
 
-describe('SimulatorControlPanel — dynamics params debounce', () => {
-  beforeEach(() => {
-    vi.mocked(api.setParameters).mockResolvedValue({ ok: true });
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+describe('SimulatorControlPanel — server-owned state', () => {
+  it('refetches the snapshot after every write so the panel shows the server, not the click', async () => {
+    const { statusSpy } = renderPanel();
+    await screen.findByRole('button', { name: 'Start' });
+    const before = statusSpy.mock.calls.length;
 
-  it('collapses several rapid dynamics commits into a single setParameters call', async () => {
-    render(<SimulatorControlPanel controllerId={1} />, { wrapper });
-    // Wait for the controller status to resolve and sliders to render.
-    const gainSlider = await screen.findByRole('slider', { name: /gain/i });
-
-    vi.useFakeTimers();
-    // Several rapid slider drag ticks fire onCommit on each onChange.
-    act(() => {
-      fireEvent.change(gainSlider, { target: { value: '1.5' } });
-      fireEvent.change(gainSlider, { target: { value: '2.0' } });
-      fireEvent.change(gainSlider, { target: { value: '2.5' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Process preset' }), {
+      target: { value: 'TEMPERATURE' },
     });
 
-    // Before the debounce window elapses, no request is sent.
-    expect(api.setParameters).not.toHaveBeenCalled();
+    await waitFor(() => expect(simulatorApi.preset).toHaveBeenCalledWith({
+      controller_id: 1,
+      preset: 'TEMPERATURE',
+    }));
+    await waitFor(() => expect(statusSpy.mock.calls.length).toBeGreaterThan(before));
+  });
 
-    // Advance past the debounce trailing window; the async flush lets the
-    // React Query mutation reach the (mocked) api.setParameters call.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(300);
+  it('arms Remove from the server flags, never from the click that injected', async () => {
+    const { statusSpy } = renderPanel();
+    const remove = await screen.findByRole('button', { name: 'Remove' });
+    expect(remove).toBeDisabled();
+
+    statusSpy.mockResolvedValue(snapshot({ step_active: true }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Amplitude' }), {
+      target: { value: '20' },
     });
+    fireEvent.click(screen.getByRole('button', { name: 'Inject disturbance' }));
 
-    expect(api.setParameters).toHaveBeenCalledTimes(1);
-    expect(api.setParameters).toHaveBeenCalledWith(
-      expect.objectContaining({ controller_id: 1, gain: 2.5 }),
+    await waitFor(() =>
+      expect(simulatorApi.injectDisturbance).toHaveBeenCalledWith({
+        controller_id: 1,
+        type: 'step',
+        amplitude: 20,
+      }),
     );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove' })).toBeEnabled());
+  });
+
+  it('treats a noise disturbance as active too', async () => {
+    renderPanel({ status: snapshot({ noise_active: true }) });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove' })).toBeEnabled());
+  });
+
+  it('collapses a slider drag into ONE parameters PUT', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderPanel();
+    const gain = await screen.findByRole('slider', { name: 'Gain' });
+
+    // Radix moves the thumb one `step` per arrow key — three ticks, one gesture.
+    for (let i = 0; i < 3; i += 1) fireEvent.keyDown(gain, { key: 'ArrowRight' });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+
+    expect(simulatorApi.parameters).toHaveBeenCalledTimes(1);
+    expect(simulatorApi.parameters).toHaveBeenCalledWith(
+      expect.objectContaining({ controller_id: 1, tau1: 3, tau2: null, dead_time: 1 }),
+    );
+  });
+
+  it('closes the CO path in AUTO — the PID owns the output there', async () => {
+    renderPanel({ status: snapshot({ pid_mode: 1 }) });
+    await waitFor(() => expect(screen.getByRole('spinbutton', { name: 'Output CO' })).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Apply output' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'AUTO' })).toHaveAttribute('aria-pressed', 'true');
+    // SP stays writable in AUTO — that is the whole point of AUTO.
+    expect(screen.getByRole('spinbutton', { name: 'Setpoint SP' })).toBeEnabled();
+  });
+
+  it('sends the automation band the server already holds when re-enabling', async () => {
+    renderPanel({
+      status: snapshot({ auto_sp: { enabled: false, sp_min_pct: 10, sp_max_pct: 90 } }),
+    });
+    fireEvent.click(await screen.findByRole('switch', { name: 'Auto-SP' }));
+    await waitFor(() =>
+      expect(simulatorApi.setAutoSp).toHaveBeenCalledWith(1, {
+        enabled: true,
+        sp_min_pct: 10,
+        sp_max_pct: 90,
+      }),
+    );
+  });
+
+  it('refuses to offer controls for a simulator the server has switched off', async () => {
+    renderPanel({ status: { enabled: false, running: false, controllers: {} } });
+    expect(await screen.findByText('Simulador desabilitado no servidor')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Start' })).toBeNull();
   });
 });

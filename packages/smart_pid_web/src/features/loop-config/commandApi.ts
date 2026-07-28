@@ -1,22 +1,15 @@
-import { apiGet, apiPost, apiPut } from '../../api/client';
-import type { ControllerMode } from './types';
+import { api } from '@/api/client';
+import { endpoints } from '@/api/endpoints';
+import type { AiStatus, CommandResponse, ControllerMode, ControllerResponse } from '@/api/types';
 
-export interface CommandResponse {
-  ok: boolean;
-  controller_id: number | null;
-  detail: string | null;
-  enabled?: boolean | null;
-}
+/**
+ * Loop command + controller CRUD surface. The four writes phase 4 already
+ * published (`setMode`, `setSetpoint`, `setOutput`, `applyTuning`) are reused
+ * from `endpoints` rather than restated — one definition of each request body,
+ * and one seam the dashboard tests already spy on.
+ */
 
-export interface AiStatus {
-  controller_id: number;
-  engine: string;
-  objective: string;
-  speed: string;
-  current_ki: number;
-  last_gamma: number | null;
-  enabled: boolean;
-}
+export type { CommandResponse };
 
 export interface TuningRecommendation {
   controller_id: number;
@@ -32,34 +25,40 @@ export interface TuningRecommendation {
   source: string | null;
 }
 
-export const setSetpoint = (controller_id: number, value: number) =>
-  apiPost<CommandResponse>('/commands/setpoint', { controller_id, value });
-
-export const setMode = (controller_id: number, mode: ControllerMode) =>
-  apiPost<CommandResponse>('/commands/mode', { controller_id, mode });
-
-export const setOutput = (controller_id: number, value: number) =>
-  apiPost<CommandResponse>('/commands/output', { controller_id, value });
-
-export const setOptimization = (controller_id: number, enabled: boolean) =>
-  apiPost<CommandResponse>('/commands/optimization', { controller_id, enabled });
-
-export const writeTuning = (controller_id: number, kp: number, ti: number, td: number) =>
-  apiPost<CommandResponse>('/commands/tuning', { controller_id, kp, ti, td });
-
-export const getTuningRecommendation = (controller_id: number) =>
-  apiGet<TuningRecommendation>(`/commands/tuning-recommendations/${controller_id}`);
-
-export const getAiStatus = (controller_id: number) =>
-  apiGet<AiStatus>(`/controllers/${controller_id}/ai/status`);
-
 export type AiAction = 'start' | 'stop' | 'pause';
 
-export const sendAiAction = (controller_id: number, action: AiAction) =>
-  apiPost(`/controllers/${controller_id}/ai/${action}`, {});
+export const setSetpoint = (controllerId: number, value: number) =>
+  endpoints.setSetpoint(controllerId, value);
 
-export const applyTuning = (controller_id: number) =>
-  apiPost<{ ok: boolean; detail?: string }>(`/commands/apply-tuning/${controller_id}`, {});
+export const setMode = (controllerId: number, mode: ControllerMode) =>
+  endpoints.setMode(controllerId, mode);
 
-export const updateController = (controller_id: number, patch: Record<string, unknown>) =>
-  apiPut(`/controllers/${controller_id}`, patch);
+export const setOutput = (controllerId: number, value: number) =>
+  endpoints.setOutput(controllerId, value);
+
+export const applyTuning = (controllerId: number) => endpoints.applyTuning(controllerId);
+
+export const setOptimization = (controllerId: number, enabled: boolean) =>
+  api.post<CommandResponse>('/commands/optimization', { controller_id: controllerId, enabled });
+
+export const writeTuning = (controllerId: number, kp: number, ti: number, td: number) =>
+  api.post<CommandResponse>('/commands/tuning', { controller_id: controllerId, kp, ti, td });
+
+/** 404 = no pending recommendation. An expected state, never retried. */
+export const getTuningRecommendation = (controllerId: number) =>
+  api.get<TuningRecommendation>(`/commands/tuning-recommendations/${controllerId}`);
+
+export const getAiStatus = (controllerId: number): Promise<AiStatus> =>
+  endpoints.aiStatus(controllerId);
+
+export const sendAiAction = (controllerId: number, action: AiAction) =>
+  api.post<Record<string, unknown>>(`/controllers/${controllerId}/ai/${action}`);
+
+export const updateController = (controllerId: number, patch: Record<string, unknown>) =>
+  api.put<ControllerResponse>(`/controllers/${controllerId}`, patch);
+
+export const createController = (body: Record<string, unknown>) =>
+  api.post<ControllerResponse>('/controllers', body);
+
+export const deleteController = (controllerId: number) =>
+  api.delete<Record<string, unknown>>(`/controllers/${controllerId}`);

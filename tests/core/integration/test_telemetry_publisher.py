@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import uuid
 
 import msgpack
 import pytest
@@ -16,7 +17,7 @@ from smart_pid_core.application.telemetry_publisher import TelemetryPublisher
 class TestTelemetryPublisher:
     @pytest.mark.asyncio
     async def test_republishes_status_topic(self) -> None:
-        bus = EventBus()
+        bus = EventBus(url_prefix=f"inproc://test_telemetry_publ_{uuid.uuid4().hex[:8]}")
         bus.start()
         time.sleep(0.1)
 
@@ -55,7 +56,7 @@ class TestTelemetryPublisher:
 
     @pytest.mark.asyncio
     async def test_republishes_action_topic(self) -> None:
-        bus = EventBus()
+        bus = EventBus(url_prefix=f"inproc://test_telemetry_publ_{uuid.uuid4().hex[:8]}")
         bus.start()
         time.sleep(0.1)
 
@@ -91,7 +92,7 @@ class TestTelemetryPublisher:
 
     @pytest.mark.asyncio
     async def test_stop_is_clean(self) -> None:
-        bus = EventBus()
+        bus = EventBus(url_prefix=f"inproc://test_telemetry_publ_{uuid.uuid4().hex[:8]}")
         bus.start()
         time.sleep(0.05)
 

@@ -18,6 +18,7 @@ from smart_pid_core.adapters.inbound.api.ws.realtime import (
     map_topic_to_envelope,
     register_realtime_ws,
 )
+from smart_pid_core.adapters.outbound.user_repo import User
 
 
 class FakeSocket:
@@ -240,7 +241,29 @@ _SECRET = "test-secret"
 _ALLOWED_ORIGIN = "http://127.0.0.1:5173"
 
 
-def _make_app() -> FastAPI:
+class _StubUserRepo:
+    """The slice of ``UserRepository`` the WS auth path uses.
+
+    The socket handshake resolves its token against the live user store like
+    every REST route does, so the harness needs a store — but these tests are
+    about the transport, not about SQLite.
+    """
+
+    def __init__(self, users: dict[int, User]) -> None:
+        self._users = users
+
+    async def get_by_id(self, user_id: int) -> User | None:
+        return self._users.get(user_id)
+
+
+def _stored(uid: int, username: str, role: str, *, active: bool = True) -> User:
+    return User(
+        id=uid, username=username, password_hash="x",
+        role=role, created_at="", active=active,
+    )
+
+
+def _make_app(users: dict[int, User] | None = None) -> FastAPI:
     app = FastAPI()
 
     class _Settings:
@@ -249,13 +272,16 @@ def _make_app() -> FastAPI:
 
     app.state.settings = _Settings()
     app.state.realtime_manager = ConnectionManager()
+    app.state.user_repo = _StubUserRepo(
+        {1: _stored(1, "admin", "admin")} if users is None else users
+    )
     register_realtime_ws(app)
     return app
 
 
 def _good_token() -> str:
     return create_access_token(
-        user_id=1, username="admin", role="ADMIN", secret=_SECRET
+        user_id=1, username="admin", role="admin", secret=_SECRET
     )
 
 
@@ -288,6 +314,51 @@ def test_ws_rejects_bad_origin() -> None:
     client = TestClient(app)
     with client.websocket_connect(
         "/ws/realtime", headers={"origin": "http://evil.example"}
+    ) as ws:
+        ws.send_json({"type": "auth", "token": _good_token()})
+        with pytest.raises(WebSocketDisconnect) as exc:
+            ws.receive_text()
+    assert exc.value.code == 4401
+
+
+def test_ws_rejects_legacy_role_token() -> None:
+    """Spec §9.5 applies to the socket too: legacy vocabulary => 4401."""
+    app = _make_app()
+    client = TestClient(app)
+    for legacy in ("ADMIN", "SUPERVISOR", "OPERATOR"):
+        legacy_token = create_access_token(
+            user_id=1, username="admin", role=legacy, secret=_SECRET
+        )
+        with client.websocket_connect(
+            "/ws/realtime", headers={"origin": _ALLOWED_ORIGIN}
+        ) as ws:
+            ws.send_json({"type": "auth", "token": legacy_token})
+            with pytest.raises(WebSocketDisconnect) as exc:
+                ws.receive_text()
+        assert exc.value.code == 4401, f"role={legacy!r} must close 4401"
+
+
+def test_ws_rejects_token_for_deactivated_user() -> None:
+    """E2E-044, socket edition: a soft-deleted account must lose its live
+    telemetry feed immediately, not when its 8h token finally expires."""
+    app = _make_app({1: _stored(1, "admin", "admin", active=False)})
+    client = TestClient(app)
+    with client.websocket_connect(
+        "/ws/realtime", headers={"origin": _ALLOWED_ORIGIN}
+    ) as ws:
+        ws.send_json({"type": "auth", "token": _good_token()})
+        with pytest.raises(WebSocketDisconnect) as exc:
+            ws.receive_text()
+    assert exc.value.code == 4401
+
+
+def test_ws_rejects_token_for_unknown_subject() -> None:
+    """A correctly-signed token whose subject is not in the store is not a
+    principal — the socket resolves against the store, not the claims."""
+    app = _make_app({})
+    client = TestClient(app)
+    with client.websocket_connect(
+        "/ws/realtime", headers={"origin": _ALLOWED_ORIGIN}
     ) as ws:
         ws.send_json({"type": "auth", "token": _good_token()})
         with pytest.raises(WebSocketDisconnect) as exc:
@@ -360,7 +431,7 @@ async def test_create_app_registers_ws_route_and_openapi(tmp_path) -> None:
 
     repo = SQLiteRepository(tmp_path / "test.spid")
     await repo.initialize()
-    historian = SQLiteHistorian(repo)
+    historian = SQLiteHistorian(repo.session_factory)
     user_repo = UserRepository(tmp_path / "users.db")
     await user_repo.initialize()
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
@@ -389,4 +460,4 @@ async def test_create_app_registers_ws_route_and_openapi(tmp_path) -> None:
         loop_manager.stop_all()
         bus.stop()
         await user_repo.close()
-        await repo.db.close()
+        await repo.close()

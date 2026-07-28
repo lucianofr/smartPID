@@ -33,6 +33,10 @@ def controller():
 class TestStatsWorker:
     def test_publishes_stats_after_samples(self, bus, controller):
         worker = StatsWorker(bus=bus, controller=controller)
+        # Production cadence is one STATS per 5 s of samples
+        # (_publish_interval = 5.0 / scan_rate_s = 50 ticks here); shorten it
+        # so the assertion does not need a 5 s sleep.
+        worker._publish_interval = 10
         worker.start()
         try:
             pub = bus.create_publisher()

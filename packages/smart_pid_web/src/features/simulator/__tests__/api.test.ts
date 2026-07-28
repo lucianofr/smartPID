@@ -1,55 +1,150 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import * as client from '../../../api/client';
-import {
-  setPreset, injectDisturbance, clearDisturbance, setCo, setMode,
-  setAutoSp, setAutoDisturbance, startSimulator, stopSimulator, getSimulatorStatus,
-} from '../api';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError, setAuthHooks } from '@/api/client';
+import { simulatorApi } from '../api';
 
-vi.mock('../../../api/client');
+/**
+ * Path/verb/body contract for every simulator route. These are the calls that
+ * fail SILENTLY when they drift (a wrong verb is a 405 swallowed by a mutation
+ * handler), so the wire shape is asserted rather than the wrapper's return.
+ */
 
-beforeEach(() => vi.clearAllMocks());
+const fetchMock = vi.fn();
 
-describe('simulator api wrappers', () => {
-  it('setPreset POSTs /simulator/preset with controller_id + preset', async () => {
-    vi.mocked(client.apiPost).mockResolvedValue({ ok: true });
-    await setPreset({ controller_id: 1, preset: 'FLOW' });
-    expect(client.apiPost).toHaveBeenCalledWith('/simulator/preset', { controller_id: 1, preset: 'FLOW' });
+function ok(json: unknown = { ok: true }): Response {
+  return new Response(JSON.stringify(json), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
   });
-  it('injectDisturbance POSTs /simulator/disturbance', async () => {
-    vi.mocked(client.apiPost).mockResolvedValue({ ok: true });
-    await injectDisturbance({ controller_id: 1, type: 'step', amplitude: 10 });
-    expect(client.apiPost).toHaveBeenCalledWith('/simulator/disturbance', { controller_id: 1, type: 'step', amplitude: 10 });
+}
+
+/** [path, init] of the single fetch this call made. */
+function call(): { url: string; method: string; body: unknown } {
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+  return {
+    url,
+    method: init.method as string,
+    body: typeof init.body === 'string' ? JSON.parse(init.body) : undefined,
+  };
+}
+
+beforeEach(() => {
+  fetchMock.mockReset();
+  // A Response body can only be read once — hand out a fresh one per call.
+  fetchMock.mockImplementation(() => Promise.resolve(ok()));
+  vi.stubGlobal('fetch', fetchMock);
+  setAuthHooks({ getToken: () => 'jwt' });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  setAuthHooks({ getToken: () => null });
+});
+
+describe('simulatorApi wire contract', () => {
+  it('reads status through the same path the §7 resync primes', async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(ok({ enabled: true, running: false, controllers: {} })),
+    );
+    await simulatorApi.status();
+    expect(call()).toMatchObject({ url: '/api/simulator/status', method: 'GET' });
   });
-  it('clearDisturbance DELETEs /simulator/disturbance/{id}', async () => {
-    vi.mocked(client.apiDelete).mockResolvedValue({ ok: true });
-    await clearDisturbance(1);
-    expect(client.apiDelete).toHaveBeenCalledWith('/simulator/disturbance/1');
+
+  it('starts and stops the twin with bodyless POSTs', async () => {
+    await simulatorApi.start();
+    expect(call()).toMatchObject({ url: '/api/simulator/start', method: 'POST', body: undefined });
+    fetchMock.mockClear();
+    await simulatorApi.stop();
+    expect(call()).toMatchObject({ url: '/api/simulator/stop', method: 'POST' });
   });
-  it('setCo POSTs /simulator/{id}/co with sp carrying CO%', async () => {
-    vi.mocked(client.apiPost).mockResolvedValue({ ok: true });
-    await setCo(1, 42);
-    expect(client.apiPost).toHaveBeenCalledWith('/simulator/1/co', { controller_id: 1, sp: 42 });
+
+  it('POSTs the preset with its controller_id', async () => {
+    await simulatorApi.preset({ controller_id: 1, preset: 'TEMPERATURE' });
+    expect(call()).toMatchObject({
+      url: '/api/simulator/preset',
+      method: 'POST',
+      body: { controller_id: 1, preset: 'TEMPERATURE' },
+    });
   });
-  it('setMode POSTs /simulator/{id}/pid/mode', async () => {
-    vi.mocked(client.apiPost).mockResolvedValue({ ok: true });
-    await setMode(1, 'AUTO');
-    expect(client.apiPost).toHaveBeenCalledWith('/simulator/1/pid/mode', { controller_id: 1, mode: 'AUTO' });
+
+  it('PUTs process parameters — a POST here is a 405', async () => {
+    await simulatorApi.parameters({ controller_id: 1, gain: 1.2, tau1: 3, tau2: null, dead_time: 1 });
+    expect(call()).toMatchObject({
+      url: '/api/simulator/parameters',
+      method: 'PUT',
+      body: { controller_id: 1, gain: 1.2, tau1: 3, tau2: null, dead_time: 1 },
+    });
   });
-  it('setAutoSp PUTs /simulator/{id}/auto-sp', async () => {
-    vi.mocked(client.apiPut).mockResolvedValue({});
-    await setAutoSp(1, { enabled: true, sp_min_pct: 30, sp_max_pct: 70 });
-    expect(client.apiPut).toHaveBeenCalledWith('/simulator/1/auto-sp', { enabled: true, sp_min_pct: 30, sp_max_pct: 70 });
+
+  it('injects with POST /disturbance and clears with DELETE /disturbance/{id}', async () => {
+    await simulatorApi.injectDisturbance({ controller_id: 1, type: 'step', amplitude: 20 });
+    expect(call()).toMatchObject({
+      url: '/api/simulator/disturbance',
+      method: 'POST',
+      body: { controller_id: 1, type: 'step', amplitude: 20 },
+    });
+    fetchMock.mockClear();
+    await simulatorApi.clearDisturbance(1);
+    expect(call()).toMatchObject({ url: '/api/simulator/disturbance/1', method: 'DELETE' });
   });
-  it('setAutoDisturbance PUTs /simulator/{id}/auto-disturbance', async () => {
-    vi.mocked(client.apiPut).mockResolvedValue({});
-    await setAutoDisturbance(1, { enabled: true, max_amplitude_pct: 10 });
-    expect(client.apiPut).toHaveBeenCalledWith('/simulator/1/auto-disturbance', { enabled: true, max_amplitude_pct: 10 });
+
+  it('carries the CO percentage in the `sp` field — /co reuses SimulatorPIDSPRequest', async () => {
+    await simulatorApi.setCo(1, 42);
+    expect(call()).toMatchObject({
+      url: '/api/simulator/1/co',
+      method: 'POST',
+      body: { controller_id: 1, sp: 42 },
+    });
   });
-  it('start/stop/status hit the right paths', async () => {
-    vi.mocked(client.apiPost).mockResolvedValue({ ok: true });
-    vi.mocked(client.apiGet).mockResolvedValue({ enabled: true, running: false, controllers: {} });
-    await startSimulator(); expect(client.apiPost).toHaveBeenCalledWith('/simulator/start', undefined);
-    await stopSimulator();  expect(client.apiPost).toHaveBeenCalledWith('/simulator/stop', undefined);
-    await getSimulatorStatus(); expect(client.apiGet).toHaveBeenCalledWith('/simulator/status');
+
+  it('keeps the twin setpoint on its own /pid/sp route', async () => {
+    await simulatorApi.setSp(1, 55);
+    expect(call()).toMatchObject({
+      url: '/api/simulator/1/pid/sp',
+      method: 'POST',
+      body: { controller_id: 1, sp: 55 },
+    });
+  });
+
+  it('POSTs the twin mode as MAN/AUTO, not the wire int', async () => {
+    await simulatorApi.setMode(1, 'AUTO');
+    expect(call()).toMatchObject({
+      url: '/api/simulator/1/pid/mode',
+      method: 'POST',
+      body: { controller_id: 1, mode: 'AUTO' },
+    });
+  });
+
+  it('PUTs both automation toggles under the controller', async () => {
+    await simulatorApi.setAutoSp(1, { enabled: true, sp_min_pct: 30, sp_max_pct: 70 });
+    expect(call()).toMatchObject({
+      url: '/api/simulator/1/auto-sp',
+      method: 'PUT',
+      body: { enabled: true, sp_min_pct: 30, sp_max_pct: 70 },
+    });
+    fetchMock.mockClear();
+    await simulatorApi.setAutoDisturbance(1, { enabled: false, max_amplitude_pct: 10 });
+    expect(call()).toMatchObject({
+      url: '/api/simulator/1/auto-disturbance',
+      method: 'PUT',
+      body: { enabled: false, max_amplitude_pct: 10 },
+    });
+  });
+
+  it('surfaces the admin-only 403 as a classified ApiError, never a bare throw', async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ detail: 'Admin role required' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+    await expect(simulatorApi.status()).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 403,
+      kind: 'forbidden',
+    });
+    await expect(simulatorApi.status()).rejects.toBeInstanceOf(ApiError);
   });
 });

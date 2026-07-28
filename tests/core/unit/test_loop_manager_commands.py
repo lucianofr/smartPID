@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 
 import pytest
 
@@ -14,7 +15,7 @@ from smart_pid_domain.models.controller import Controller, PIDParams
 
 @pytest.fixture
 def bus() -> EventBus:
-    b = EventBus()
+    b = EventBus(url_prefix=f"inproc://test_loop_manager_c_{uuid.uuid4().hex[:8]}")
     b.start()
     time.sleep(0.05)
     yield b

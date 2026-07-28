@@ -1,0 +1,5854 @@
+{
+  "components": {
+    "schemas": {
+      "AIConfigDTO": {
+        "description": "AI optimization config (mirrors domain AIConfig).",
+        "properties": {
+          "dead_time_l": {
+            "default": 1.0,
+            "title": "Dead Time L",
+            "type": "number"
+          },
+          "engine": {
+            "default": "NONE",
+            "title": "Engine",
+            "type": "string"
+          },
+          "limit_max": {
+            "default": 100.0,
+            "title": "Limit Max",
+            "type": "number"
+          },
+          "limit_min": {
+            "default": 0.1,
+            "title": "Limit Min",
+            "type": "number"
+          },
+          "objective": {
+            "default": "DISTURBANCE_REJECTION",
+            "title": "Objective",
+            "type": "string"
+          },
+          "rl_fallback_kd": {
+            "default": 0.2,
+            "title": "Rl Fallback Kd",
+            "type": "number"
+          },
+          "rl_fallback_kp": {
+            "default": 0.6,
+            "title": "Rl Fallback Kp",
+            "type": "number"
+          },
+          "rl_learning_rate": {
+            "default": 0.0003,
+            "title": "Rl Learning Rate",
+            "type": "number"
+          },
+          "rl_train_interval": {
+            "default": 32,
+            "title": "Rl Train Interval",
+            "type": "integer"
+          }
+        },
+        "title": "AIConfigDTO",
+        "type": "object"
+      },
+      "AIEngine": {
+        "enum": [
+          "NONE",
+          "FUZZY",
+          "RL"
+        ],
+        "title": "AIEngine",
+        "type": "string"
+      },
+      "AIHistoryResponse": {
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/AITuningLogEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "controller_id",
+          "entries"
+        ],
+        "title": "AIHistoryResponse",
+        "type": "object"
+      },
+      "AIStatusResponse": {
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "current_ki": {
+            "title": "Current Ki",
+            "type": "number"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "engine": {
+            "$ref": "#/components/schemas/AIEngine"
+          },
+          "last_gamma": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Gamma"
+          },
+          "objective": {
+            "$ref": "#/components/schemas/ControlObjective"
+          },
+          "paused": {
+            "default": false,
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "speed": {
+            "$ref": "#/components/schemas/ProcessSpeed"
+          }
+        },
+        "required": [
+          "controller_id",
+          "engine",
+          "objective",
+          "speed",
+          "current_ki"
+        ],
+        "title": "AIStatusResponse",
+        "type": "object"
+      },
+      "AITuningLogEntry": {
+        "properties": {
+          "approved": {
+            "title": "Approved",
+            "type": "boolean"
+          },
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ki_after": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ki After"
+          },
+          "ki_before": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ki Before"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
+          "objective": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "controller_id",
+          "timestamp",
+          "engine",
+          "ki_before",
+          "ki_after",
+          "objective",
+          "metric",
+          "approved"
+        ],
+        "title": "AITuningLogEntry",
+        "type": "object"
+      },
+      "AlarmConfigResponse": {
+        "description": "Full alarm configuration for a controller.",
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "thresholds": {
+            "items": {
+              "$ref": "#/components/schemas/AlarmThreshold"
+            },
+            "title": "Thresholds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "controller_id",
+          "thresholds"
+        ],
+        "title": "AlarmConfigResponse",
+        "type": "object"
+      },
+      "AlarmConfigUpdate": {
+        "description": "Update request for alarm thresholds.",
+        "properties": {
+          "thresholds": {
+            "items": {
+              "$ref": "#/components/schemas/AlarmThreshold"
+            },
+            "title": "Thresholds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "thresholds"
+        ],
+        "title": "AlarmConfigUpdate",
+        "type": "object"
+      },
+      "AlarmPriority": {
+        "enum": [
+          "CRITICAL",
+          "WARNING",
+          "ADVISORY",
+          "LOG"
+        ],
+        "title": "AlarmPriority",
+        "type": "string"
+      },
+      "AlarmThreshold": {
+        "description": "A single alarm threshold configuration.",
+        "properties": {
+          "alarm_type": {
+            "$ref": "#/components/schemas/AlarmType"
+          },
+          "deadband": {
+            "default": 0.0,
+            "title": "Deadband",
+            "type": "number"
+          },
+          "delay_off_s": {
+            "default": 0.0,
+            "title": "Delay Off S",
+            "type": "number"
+          },
+          "delay_on_s": {
+            "default": 0.0,
+            "title": "Delay On S",
+            "type": "number"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 0.0,
+            "title": "Limit",
+            "type": "number"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/AlarmPriority",
+            "default": "WARNING"
+          }
+        },
+        "required": [
+          "alarm_type"
+        ],
+        "title": "AlarmThreshold",
+        "type": "object"
+      },
+      "AlarmType": {
+        "enum": [
+          "HIHI",
+          "HI",
+          "LO",
+          "LOLO",
+          "DV_HI",
+          "DV_LO"
+        ],
+        "title": "AlarmType",
+        "type": "string"
+      },
+      "AutoDisturbanceRequest": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "max_amplitude_pct": {
+            "default": 10.0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Max Amplitude Pct",
+            "type": "number"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "AutoDisturbanceRequest",
+        "type": "object"
+      },
+      "AutoSPRequest": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "sp_max_pct": {
+            "default": 70.0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Sp Max Pct",
+            "type": "number"
+          },
+          "sp_min_pct": {
+            "default": 30.0,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Sp Min Pct",
+            "type": "number"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "AutoSPRequest",
+        "type": "object"
+      },
+      "Body_import_project_project_import_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_project_project_import_post",
+        "type": "object"
+      },
+      "CommandResponse": {
+        "properties": {
+          "controller_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Controller Id"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "CommandResponse",
+        "type": "object"
+      },
+      "ConnectionState": {
+        "enum": [
+          "OFFLINE",
+          "CONNECTING",
+          "ONLINE",
+          "RECONNECTING"
+        ],
+        "title": "ConnectionState",
+        "type": "string"
+      },
+      "ControlObjective": {
+        "enum": [
+          "SP_TRACKING",
+          "DISTURBANCE_REJECTION",
+          "SURGE_LEVEL"
+        ],
+        "title": "ControlObjective",
+        "type": "string"
+      },
+      "ControlOptsDTO": {
+        "description": "Control strategy options (mirrors domain ControlOpts).",
+        "properties": {
+          "direct_acting": {
+            "default": false,
+            "title": "Direct Acting",
+            "type": "boolean"
+          },
+          "no_out_limits_in_manual": {
+            "default": false,
+            "title": "No Out Limits In Manual",
+            "type": "boolean"
+          },
+          "obey_sp_limits_if_cas": {
+            "default": false,
+            "title": "Obey Sp Limits If Cas",
+            "type": "boolean"
+          },
+          "sp_pv_track_in_lo_or_iman": {
+            "default": false,
+            "title": "Sp Pv Track In Lo Or Iman",
+            "type": "boolean"
+          },
+          "sp_pv_track_in_man": {
+            "default": false,
+            "title": "Sp Pv Track In Man",
+            "type": "boolean"
+          },
+          "sp_pv_track_in_rout": {
+            "default": false,
+            "title": "Sp Pv Track In Rout",
+            "type": "boolean"
+          },
+          "sp_track_retained_target": {
+            "default": false,
+            "title": "Sp Track Retained Target",
+            "type": "boolean"
+          },
+          "track_enable": {
+            "default": false,
+            "title": "Track Enable",
+            "type": "boolean"
+          },
+          "track_in_manual": {
+            "default": false,
+            "title": "Track In Manual",
+            "type": "boolean"
+          },
+          "use_pv_for_bkcal_out": {
+            "default": false,
+            "title": "Use Pv For Bkcal Out",
+            "type": "boolean"
+          }
+        },
+        "title": "ControlOptsDTO",
+        "type": "object"
+      },
+      "ControllerCreate": {
+        "description": "Payload for creating a new controller (all fields have defaults except name).",
+        "properties": {
+          "ai_config": {
+            "$ref": "#/components/schemas/AIConfigDTO",
+            "default": {
+              "dead_time_l": 1.0,
+              "engine": "NONE",
+              "limit_max": 100.0,
+              "limit_min": 0.1,
+              "objective": "DISTURBANCE_REJECTION",
+              "rl_fallback_kd": 0.2,
+              "rl_fallback_kp": 0.6,
+              "rl_learning_rate": 0.0003,
+              "rl_train_interval": 32
+            }
+          },
+          "arw_hi_lim": {
+            "default": 100.0,
+            "title": "Arw Hi Lim",
+            "type": "number"
+          },
+          "arw_lo_lim": {
+            "default": 0.0,
+            "title": "Arw Lo Lim",
+            "type": "number"
+          },
+          "control_opts": {
+            "$ref": "#/components/schemas/ControlOptsDTO",
+            "default": {
+              "direct_acting": false,
+              "no_out_limits_in_manual": false,
+              "obey_sp_limits_if_cas": false,
+              "sp_pv_track_in_lo_or_iman": false,
+              "sp_pv_track_in_man": false,
+              "sp_pv_track_in_rout": false,
+              "sp_track_retained_target": false,
+              "track_enable": false,
+              "track_in_manual": false,
+              "use_pv_for_bkcal_out": false
+            }
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "execution_mode": {
+            "default": "SUPERVISORY",
+            "title": "Execution Mode",
+            "type": "string"
+          },
+          "ff_enable": {
+            "default": false,
+            "title": "Ff Enable",
+            "type": "boolean"
+          },
+          "ff_gain": {
+            "default": 1.0,
+            "title": "Ff Gain",
+            "type": "number"
+          },
+          "integral_type": {
+            "default": "TIME_TI",
+            "title": "Integral Type",
+            "type": "string"
+          },
+          "io_opts": {
+            "$ref": "#/components/schemas/IOOptsDTO",
+            "default": {
+              "fault_state_to_value": false,
+              "increase_to_close": false,
+              "low_cutoff": false,
+              "sp_pv_track_in_lo_or_iman": false,
+              "sp_pv_track_in_man": false,
+              "target_to_man_if_fault": false
+            }
+          },
+          "low_cut": {
+            "default": 0.0,
+            "title": "Low Cut",
+            "type": "number"
+          },
+          "max_tuning_change_pct": {
+            "default": 10.0,
+            "title": "Max Tuning Change Pct",
+            "type": "number"
+          },
+          "mode_normal": {
+            "default": "AUTO",
+            "title": "Mode Normal",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "out_hi_lim": {
+            "default": 100.0,
+            "title": "Out Hi Lim",
+            "type": "number"
+          },
+          "out_lo_lim": {
+            "default": 0.0,
+            "title": "Out Lo Lim",
+            "type": "number"
+          },
+          "out_scale": {
+            "$ref": "#/components/schemas/ScaleConfigDTO",
+            "default": {
+              "eu_max": 100.0,
+              "eu_min": 0.0,
+              "unit": ""
+            }
+          },
+          "permitted_modes": {
+            "default": [
+              "MAN",
+              "AUTO"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Permitted Modes",
+            "type": "array"
+          },
+          "pid_params": {
+            "$ref": "#/components/schemas/PIDParamsDTO",
+            "default": {
+              "alpha": 0.125,
+              "deadband": 0.0,
+              "gain": 1.0,
+              "rate": 0.0,
+              "reset": 10.0
+            }
+          },
+          "pid_structure": {
+            "default": "ISA",
+            "title": "Pid Structure",
+            "type": "string"
+          },
+          "process_speed": {
+            "default": "MEDIUM",
+            "title": "Process Speed",
+            "type": "string"
+          },
+          "pv_ftime": {
+            "default": 0.0,
+            "title": "Pv Ftime",
+            "type": "number"
+          },
+          "pv_scale": {
+            "$ref": "#/components/schemas/ScaleConfigDTO",
+            "default": {
+              "eu_max": 100.0,
+              "eu_min": 0.0,
+              "unit": ""
+            }
+          },
+          "scan_rate_s": {
+            "default": 1.0,
+            "title": "Scan Rate S",
+            "type": "number"
+          },
+          "shed_opt": {
+            "default": "MAN",
+            "title": "Shed Opt",
+            "type": "string"
+          },
+          "shed_time_s": {
+            "default": 10.0,
+            "title": "Shed Time S",
+            "type": "number"
+          },
+          "sp_ftime": {
+            "default": 0.0,
+            "title": "Sp Ftime",
+            "type": "number"
+          },
+          "sp_hi_lim": {
+            "default": 100.0,
+            "title": "Sp Hi Lim",
+            "type": "number"
+          },
+          "sp_lo_lim": {
+            "default": 0.0,
+            "title": "Sp Lo Lim",
+            "type": "number"
+          },
+          "sp_rate_dn": {
+            "default": 0.0,
+            "title": "Sp Rate Dn",
+            "type": "number"
+          },
+          "sp_rate_up": {
+            "default": 0.0,
+            "title": "Sp Rate Up",
+            "type": "number"
+          },
+          "tag_bindings": {
+            "$ref": "#/components/schemas/TagBindingsDTO",
+            "default": {
+              "mode_int_map": {},
+              "node_id_bkcal_in": "",
+              "node_id_bkcal_out": "",
+              "node_id_co": "",
+              "node_id_integral": "",
+              "node_id_kp": "",
+              "node_id_mode_actual": "",
+              "node_id_mode_target": "",
+              "node_id_pv": "",
+              "node_id_sp": "",
+              "node_id_td": "",
+              "node_id_ti": ""
+            }
+          },
+          "tss_s": {
+            "default": 60.0,
+            "title": "Tss S",
+            "type": "number"
+          },
+          "tuning_write_mode": {
+            "default": "approval_required",
+            "title": "Tuning Write Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ControllerCreate",
+        "type": "object"
+      },
+      "ControllerMode": {
+        "description": "Operating modes for the PID block.",
+        "enum": [
+          "OOS",
+          "IMAN",
+          "LO",
+          "MAN",
+          "AUTO",
+          "CAS",
+          "RCAS",
+          "ROUT",
+          "BYPASS"
+        ],
+        "title": "ControllerMode",
+        "type": "string"
+      },
+      "ControllerResponse": {
+        "description": "Full controller state returned by the API.",
+        "properties": {
+          "ai_config": {
+            "$ref": "#/components/schemas/AIConfigDTO",
+            "default": {
+              "dead_time_l": 1.0,
+              "engine": "NONE",
+              "limit_max": 100.0,
+              "limit_min": 0.1,
+              "objective": "DISTURBANCE_REJECTION",
+              "rl_fallback_kd": 0.2,
+              "rl_fallback_kp": 0.6,
+              "rl_learning_rate": 0.0003,
+              "rl_train_interval": 32
+            }
+          },
+          "arw_hi_lim": {
+            "default": 100.0,
+            "title": "Arw Hi Lim",
+            "type": "number"
+          },
+          "arw_lo_lim": {
+            "default": 0.0,
+            "title": "Arw Lo Lim",
+            "type": "number"
+          },
+          "co": {
+            "title": "Co",
+            "type": "number"
+          },
+          "control_opts": {
+            "$ref": "#/components/schemas/ControlOptsDTO",
+            "default": {
+              "direct_acting": false,
+              "no_out_limits_in_manual": false,
+              "obey_sp_limits_if_cas": false,
+              "sp_pv_track_in_lo_or_iman": false,
+              "sp_pv_track_in_man": false,
+              "sp_pv_track_in_rout": false,
+              "sp_track_retained_target": false,
+              "track_enable": false,
+              "track_in_manual": false,
+              "use_pv_for_bkcal_out": false
+            }
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "execution_mode": {
+            "default": "SUPERVISORY",
+            "title": "Execution Mode",
+            "type": "string"
+          },
+          "ff_enable": {
+            "default": false,
+            "title": "Ff Enable",
+            "type": "boolean"
+          },
+          "ff_gain": {
+            "default": 1.0,
+            "title": "Ff Gain",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "integral_type": {
+            "default": "TIME_TI",
+            "title": "Integral Type",
+            "type": "string"
+          },
+          "io_opts": {
+            "$ref": "#/components/schemas/IOOptsDTO",
+            "default": {
+              "fault_state_to_value": false,
+              "increase_to_close": false,
+              "low_cutoff": false,
+              "sp_pv_track_in_lo_or_iman": false,
+              "sp_pv_track_in_man": false,
+              "target_to_man_if_fault": false
+            }
+          },
+          "low_cut": {
+            "default": 0.0,
+            "title": "Low Cut",
+            "type": "number"
+          },
+          "max_tuning_change_pct": {
+            "default": 10.0,
+            "title": "Max Tuning Change Pct",
+            "type": "number"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "mode_normal": {
+            "default": "AUTO",
+            "title": "Mode Normal",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "optimization_enabled": {
+            "default": true,
+            "title": "Optimization Enabled",
+            "type": "boolean"
+          },
+          "out_hi_lim": {
+            "default": 100.0,
+            "title": "Out Hi Lim",
+            "type": "number"
+          },
+          "out_lo_lim": {
+            "default": 0.0,
+            "title": "Out Lo Lim",
+            "type": "number"
+          },
+          "out_scale": {
+            "$ref": "#/components/schemas/ScaleConfigDTO",
+            "default": {
+              "eu_max": 100.0,
+              "eu_min": 0.0,
+              "unit": ""
+            }
+          },
+          "permitted_modes": {
+            "default": [
+              "MAN",
+              "AUTO"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Permitted Modes",
+            "type": "array"
+          },
+          "pid_params": {
+            "$ref": "#/components/schemas/PIDParamsDTO",
+            "default": {
+              "alpha": 0.125,
+              "deadband": 0.0,
+              "gain": 1.0,
+              "rate": 0.0,
+              "reset": 10.0
+            }
+          },
+          "pid_structure": {
+            "default": "ISA",
+            "title": "Pid Structure",
+            "type": "string"
+          },
+          "process_speed": {
+            "default": "MEDIUM",
+            "title": "Process Speed",
+            "type": "string"
+          },
+          "pv": {
+            "title": "Pv",
+            "type": "number"
+          },
+          "pv_ftime": {
+            "default": 0.0,
+            "title": "Pv Ftime",
+            "type": "number"
+          },
+          "pv_scale": {
+            "$ref": "#/components/schemas/ScaleConfigDTO",
+            "default": {
+              "eu_max": 100.0,
+              "eu_min": 0.0,
+              "unit": ""
+            }
+          },
+          "scan_rate_s": {
+            "default": 1.0,
+            "title": "Scan Rate S",
+            "type": "number"
+          },
+          "shed_opt": {
+            "default": "MAN",
+            "title": "Shed Opt",
+            "type": "string"
+          },
+          "shed_time_s": {
+            "default": 10.0,
+            "title": "Shed Time S",
+            "type": "number"
+          },
+          "sp": {
+            "title": "Sp",
+            "type": "number"
+          },
+          "sp_ftime": {
+            "default": 0.0,
+            "title": "Sp Ftime",
+            "type": "number"
+          },
+          "sp_hi_lim": {
+            "default": 100.0,
+            "title": "Sp Hi Lim",
+            "type": "number"
+          },
+          "sp_lo_lim": {
+            "default": 0.0,
+            "title": "Sp Lo Lim",
+            "type": "number"
+          },
+          "sp_rate_dn": {
+            "default": 0.0,
+            "title": "Sp Rate Dn",
+            "type": "number"
+          },
+          "sp_rate_up": {
+            "default": 0.0,
+            "title": "Sp Rate Up",
+            "type": "number"
+          },
+          "tag_bindings": {
+            "$ref": "#/components/schemas/TagBindingsDTO",
+            "default": {
+              "mode_int_map": {},
+              "node_id_bkcal_in": "",
+              "node_id_bkcal_out": "",
+              "node_id_co": "",
+              "node_id_integral": "",
+              "node_id_kp": "",
+              "node_id_mode_actual": "",
+              "node_id_mode_target": "",
+              "node_id_pv": "",
+              "node_id_sp": "",
+              "node_id_td": "",
+              "node_id_ti": ""
+            }
+          },
+          "tss_s": {
+            "default": 60.0,
+            "title": "Tss S",
+            "type": "number"
+          },
+          "tuning_write_mode": {
+            "default": "approval_required",
+            "title": "Tuning Write Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "mode",
+          "pv",
+          "sp",
+          "co"
+        ],
+        "title": "ControllerResponse",
+        "type": "object"
+      },
+      "ControllerSimStatus": {
+        "properties": {
+          "auto_disturbance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AutoDisturbanceRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "auto_sp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AutoSPRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "co": {
+            "default": 0.0,
+            "title": "Co",
+            "type": "number"
+          },
+          "dead_time": {
+            "title": "Dead Time",
+            "type": "number"
+          },
+          "disturbance_output": {
+            "default": 0.0,
+            "title": "Disturbance Output",
+            "type": "number"
+          },
+          "error": {
+            "default": 0.0,
+            "title": "Error",
+            "type": "number"
+          },
+          "gain": {
+            "title": "Gain",
+            "type": "number"
+          },
+          "noise_active": {
+            "title": "Noise Active",
+            "type": "boolean"
+          },
+          "noise_amplitude": {
+            "title": "Noise Amplitude",
+            "type": "number"
+          },
+          "pid_cv": {
+            "default": 0.0,
+            "title": "Pid Cv",
+            "type": "number"
+          },
+          "pid_enabled": {
+            "default": false,
+            "title": "Pid Enabled",
+            "type": "boolean"
+          },
+          "pid_kp": {
+            "default": 1.0,
+            "title": "Pid Kp",
+            "type": "number"
+          },
+          "pid_mode": {
+            "default": 0,
+            "title": "Pid Mode",
+            "type": "integer"
+          },
+          "pid_td": {
+            "default": 0.0,
+            "title": "Pid Td",
+            "type": "number"
+          },
+          "pid_ti": {
+            "default": 10.0,
+            "title": "Pid Ti",
+            "type": "number"
+          },
+          "preset": {
+            "title": "Preset",
+            "type": "string"
+          },
+          "process_input": {
+            "default": 0.0,
+            "title": "Process Input",
+            "type": "number"
+          },
+          "process_output": {
+            "default": 0.0,
+            "title": "Process Output",
+            "type": "number"
+          },
+          "pv": {
+            "default": 0.0,
+            "title": "Pv",
+            "type": "number"
+          },
+          "sp": {
+            "default": 50.0,
+            "title": "Sp",
+            "type": "number"
+          },
+          "step_active": {
+            "title": "Step Active",
+            "type": "boolean"
+          },
+          "step_amplitude": {
+            "title": "Step Amplitude",
+            "type": "number"
+          },
+          "tau1": {
+            "title": "Tau1",
+            "type": "number"
+          },
+          "tau2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tau2"
+          }
+        },
+        "required": [
+          "preset",
+          "gain",
+          "tau1",
+          "tau2",
+          "dead_time",
+          "step_active",
+          "step_amplitude",
+          "noise_active",
+          "noise_amplitude"
+        ],
+        "title": "ControllerSimStatus",
+        "type": "object"
+      },
+      "ControllerUpdate": {
+        "description": "Patch payload \u2014 all fields optional.",
+        "properties": {
+          "ai_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AIConfigDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "arw_hi_lim": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arw Hi Lim"
+          },
+          "arw_lo_lim": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arw Lo Lim"
+          },
+          "control_opts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ControlOptsDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Mode"
+          },
+          "ff_enable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ff Enable"
+          },
+          "ff_gain": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ff Gain"
+          },
+          "integral_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integral Type"
+          },
+          "io_opts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IOOptsDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "low_cut": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low Cut"
+          },
+          "max_tuning_change_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Tuning Change Pct"
+          },
+          "mode_normal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode Normal"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "out_hi_lim": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Out Hi Lim"
+          },
+          "out_lo_lim": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Out Lo Lim"
+          },
+          "out_scale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScaleConfigDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "permitted_modes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permitted Modes"
+          },
+          "pid_params": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PIDParamsDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pid_structure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid Structure"
+          },
+          "process_speed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Process Speed"
+          },
+          "pv_ftime": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pv Ftime"
+          },
+          "pv_scale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScaleConfigDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scan_rate_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Rate S"
+          },
+          "shed_opt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shed Opt"
+          },
+          "shed_time_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shed Time S"
+          },
+          "sp_ftime": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sp Ftime"
+          },
+          "sp_hi_lim": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sp Hi Lim"
+          },
+          "sp_lo_lim": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sp Lo Lim"
+          },
+          "sp_rate_dn": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sp Rate Dn"
+          },
+          "sp_rate_up": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sp Rate Up"
+          },
+          "tag_bindings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TagBindingsDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tss_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tss S"
+          },
+          "tuning_write_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tuning Write Mode"
+          }
+        },
+        "title": "ControllerUpdate",
+        "type": "object"
+      },
+      "ExportJob": {
+        "description": "Tracks the state of an export job.",
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "file_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Path"
+          },
+          "format": {
+            "enum": [
+              "csv",
+              "json"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "progress": {
+            "default": 0,
+            "title": "Progress",
+            "type": "integer"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "status": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "running",
+              "done",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "controller_id",
+          "start",
+          "end",
+          "format"
+        ],
+        "title": "ExportJob",
+        "type": "object"
+      },
+      "ExportRequest": {
+        "description": "Request to create a data export job.",
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "format": {
+            "default": "csv",
+            "enum": [
+              "csv",
+              "json"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "controller_id",
+          "start",
+          "end"
+        ],
+        "title": "ExportRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HistoryResponse": {
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "frames": {
+            "items": {
+              "$ref": "#/components/schemas/TelemetryFrameDTO"
+            },
+            "title": "Frames",
+            "type": "array"
+          }
+        },
+        "required": [
+          "controller_id",
+          "frames",
+          "count"
+        ],
+        "title": "HistoryResponse",
+        "type": "object"
+      },
+      "IOOptsDTO": {
+        "description": "I/O processing options (mirrors domain IOOpts).",
+        "properties": {
+          "fault_state_to_value": {
+            "default": false,
+            "title": "Fault State To Value",
+            "type": "boolean"
+          },
+          "increase_to_close": {
+            "default": false,
+            "title": "Increase To Close",
+            "type": "boolean"
+          },
+          "low_cutoff": {
+            "default": false,
+            "title": "Low Cutoff",
+            "type": "boolean"
+          },
+          "sp_pv_track_in_lo_or_iman": {
+            "default": false,
+            "title": "Sp Pv Track In Lo Or Iman",
+            "type": "boolean"
+          },
+          "sp_pv_track_in_man": {
+            "default": false,
+            "title": "Sp Pv Track In Man",
+            "type": "boolean"
+          },
+          "target_to_man_if_fault": {
+            "default": false,
+            "title": "Target To Man If Fault",
+            "type": "boolean"
+          }
+        },
+        "title": "IOOptsDTO",
+        "type": "object"
+      },
+      "LoginRequest": {
+        "properties": {
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "ModeCommand": {
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ControllerMode"
+          }
+        },
+        "required": [
+          "controller_id",
+          "mode"
+        ],
+        "title": "ModeCommand",
+        "type": "object"
+      },
+      "OPCUABrowseResponse": {
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/OPCUANodeInfo"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "parent_node_id": {
+            "title": "Parent Node Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "parent_node_id",
+          "children"
+        ],
+        "title": "OPCUABrowseResponse",
+        "type": "object"
+      },
+      "OPCUAConnectRequest": {
+        "properties": {
+          "endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint"
+          }
+        },
+        "title": "OPCUAConnectRequest",
+        "type": "object"
+      },
+      "OPCUAEndpointRequest": {
+        "properties": {
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "endpoint"
+        ],
+        "title": "OPCUAEndpointRequest",
+        "type": "object"
+      },
+      "OPCUANodeInfo": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "node_class": {
+            "title": "Node Class",
+            "type": "string"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id",
+          "display_name",
+          "node_class"
+        ],
+        "title": "OPCUANodeInfo",
+        "type": "object"
+      },
+      "OPCUASearchResponse": {
+        "properties": {
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/OPCUANodeInfo"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "query",
+          "results"
+        ],
+        "title": "OPCUASearchResponse",
+        "type": "object"
+      },
+      "OPCUAServerStatus": {
+        "properties": {
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "port": {
+            "title": "Port",
+            "type": "integer"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "running",
+          "port",
+          "endpoint"
+        ],
+        "title": "OPCUAServerStatus",
+        "type": "object"
+      },
+      "OPCUAStatusResponse": {
+        "properties": {
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ConnectionState"
+          }
+        },
+        "required": [
+          "state",
+          "endpoint"
+        ],
+        "title": "OPCUAStatusResponse",
+        "type": "object"
+      },
+      "OptimizationCommand": {
+        "description": "Enable/disable the online tuning optimizer (ENABLE_OPTIMIZER) for a loop.",
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "controller_id",
+          "enabled"
+        ],
+        "title": "OptimizationCommand",
+        "type": "object"
+      },
+      "OutputCommand": {
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "controller_id",
+          "value"
+        ],
+        "title": "OutputCommand",
+        "type": "object"
+      },
+      "PIDParamsDTO": {
+        "description": "PID tuning parameters (mirrors domain PIDParams).",
+        "properties": {
+          "alpha": {
+            "default": 0.125,
+            "title": "Alpha",
+            "type": "number"
+          },
+          "deadband": {
+            "default": 0.0,
+            "title": "Deadband",
+            "type": "number"
+          },
+          "gain": {
+            "default": 1.0,
+            "title": "Gain",
+            "type": "number"
+          },
+          "rate": {
+            "default": 0.0,
+            "title": "Rate",
+            "type": "number"
+          },
+          "reset": {
+            "default": 10.0,
+            "title": "Reset",
+            "type": "number"
+          }
+        },
+        "title": "PIDParamsDTO",
+        "type": "object"
+      },
+      "ProcessPresetName": {
+        "description": "Simulator process model presets.",
+        "enum": [
+          "FLOW",
+          "PRESSURE",
+          "LEVEL",
+          "TEMPERATURE",
+          "CUSTOM"
+        ],
+        "title": "ProcessPresetName",
+        "type": "string"
+      },
+      "ProcessSpeed": {
+        "description": "Process dynamics speed \u2014 determines stats window and AI speed factor.",
+        "enum": [
+          "ULTRA_FAST",
+          "FAST",
+          "MEDIUM",
+          "SLOW"
+        ],
+        "title": "ProcessSpeed",
+        "type": "string"
+      },
+      "ProjectCreate": {
+        "description": "Request to create a new project.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ProjectCreate",
+        "type": "object"
+      },
+      "ProjectListItem": {
+        "description": "Single project in a list response.",
+        "properties": {
+          "controller_count": {
+            "default": 0,
+            "title": "Controller Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "size_bytes": {
+            "default": 0,
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ProjectListItem",
+        "type": "object"
+      },
+      "ProjectListResponse": {
+        "description": "List of available projects.",
+        "properties": {
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectListItem"
+            },
+            "title": "Projects",
+            "type": "array"
+          }
+        },
+        "required": [
+          "projects"
+        ],
+        "title": "ProjectListResponse",
+        "type": "object"
+      },
+      "ProjectOpen": {
+        "description": "Request to open a project by name.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ProjectOpen",
+        "type": "object"
+      },
+      "ProjectResponse": {
+        "description": "Project metadata response.",
+        "properties": {
+          "controller_count": {
+            "default": 0,
+            "title": "Controller Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ],
+        "title": "ProjectResponse",
+        "type": "object"
+      },
+      "ScaleConfigDTO": {
+        "description": "Engineering-unit scale (mirrors domain ScaleConfig).",
+        "properties": {
+          "eu_max": {
+            "default": 100.0,
+            "title": "Eu Max",
+            "type": "number"
+          },
+          "eu_min": {
+            "default": 0.0,
+            "title": "Eu Min",
+            "type": "number"
+          },
+          "unit": {
+            "default": "",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "title": "ScaleConfigDTO",
+        "type": "object"
+      },
+      "SetpointCommand": {
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "controller_id",
+          "value"
+        ],
+        "title": "SetpointCommand",
+        "type": "object"
+      },
+      "SimulatorDisturbanceRequest": {
+        "properties": {
+          "amplitude": {
+            "title": "Amplitude",
+            "type": "number"
+          },
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "step",
+              "noise"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "controller_id",
+          "type",
+          "amplitude"
+        ],
+        "title": "SimulatorDisturbanceRequest",
+        "type": "object"
+      },
+      "SimulatorPIDEnableRequest": {
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "controller_id",
+          "enabled"
+        ],
+        "title": "SimulatorPIDEnableRequest",
+        "type": "object"
+      },
+      "SimulatorPIDModeRequest": {
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "MAN",
+              "AUTO"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "controller_id",
+          "mode"
+        ],
+        "title": "SimulatorPIDModeRequest",
+        "type": "object"
+      },
+      "SimulatorPIDParamsRequest": {
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "kp": {
+            "title": "Kp",
+            "type": "number"
+          },
+          "td": {
+            "title": "Td",
+            "type": "number"
+          },
+          "ti": {
+            "title": "Ti",
+            "type": "number"
+          }
+        },
+        "required": [
+          "controller_id",
+          "kp",
+          "ti",
+          "td"
+        ],
+        "title": "SimulatorPIDParamsRequest",
+        "type": "object"
+      },
+      "SimulatorPIDSPRequest": {
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "sp": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Sp",
+            "type": "number"
+          }
+        },
+        "required": [
+          "controller_id",
+          "sp"
+        ],
+        "title": "SimulatorPIDSPRequest",
+        "type": "object"
+      },
+      "SimulatorPIDStatusResponse": {
+        "properties": {
+          "cv": {
+            "title": "Cv",
+            "type": "number"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "kp": {
+            "title": "Kp",
+            "type": "number"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "integer"
+          },
+          "td": {
+            "title": "Td",
+            "type": "number"
+          },
+          "ti": {
+            "title": "Ti",
+            "type": "number"
+          }
+        },
+        "required": [
+          "enabled",
+          "kp",
+          "ti",
+          "td",
+          "mode",
+          "cv"
+        ],
+        "title": "SimulatorPIDStatusResponse",
+        "type": "object"
+      },
+      "SimulatorParametersRequest": {
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "dead_time": {
+            "title": "Dead Time",
+            "type": "number"
+          },
+          "gain": {
+            "title": "Gain",
+            "type": "number"
+          },
+          "tau1": {
+            "title": "Tau1",
+            "type": "number"
+          },
+          "tau2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tau2"
+          }
+        },
+        "required": [
+          "controller_id",
+          "gain",
+          "tau1",
+          "dead_time"
+        ],
+        "title": "SimulatorParametersRequest",
+        "type": "object"
+      },
+      "SimulatorPresetRequest": {
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "preset": {
+            "$ref": "#/components/schemas/ProcessPresetName"
+          }
+        },
+        "required": [
+          "controller_id",
+          "preset"
+        ],
+        "title": "SimulatorPresetRequest",
+        "type": "object"
+      },
+      "SimulatorStatusResponse": {
+        "properties": {
+          "controllers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ControllerSimStatus"
+            },
+            "title": "Controllers",
+            "type": "object"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "running": {
+            "default": false,
+            "title": "Running",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "controllers"
+        ],
+        "title": "SimulatorStatusResponse",
+        "type": "object"
+      },
+      "StatsResponse": {
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "iae": {
+            "title": "Iae",
+            "type": "number"
+          },
+          "ise": {
+            "title": "Ise",
+            "type": "number"
+          },
+          "itae": {
+            "title": "Itae",
+            "type": "number"
+          },
+          "mean_abs_error": {
+            "default": 0.0,
+            "title": "Mean Abs Error",
+            "type": "number"
+          },
+          "mse": {
+            "title": "Mse",
+            "type": "number"
+          },
+          "osc": {
+            "default": 0.0,
+            "title": "Osc",
+            "type": "number"
+          },
+          "pk_pk_error": {
+            "default": 0.0,
+            "title": "Pk Pk Error",
+            "type": "number"
+          },
+          "recent_pk_pk_error": {
+            "default": 0.0,
+            "title": "Recent Pk Pk Error",
+            "type": "number"
+          },
+          "recent_reversals": {
+            "default": 0,
+            "title": "Recent Reversals",
+            "type": "integer"
+          },
+          "reversals": {
+            "default": 0,
+            "title": "Reversals",
+            "type": "integer"
+          },
+          "sample_count": {
+            "title": "Sample Count",
+            "type": "integer"
+          },
+          "std_dev": {
+            "title": "Std Dev",
+            "type": "number"
+          },
+          "total_variation": {
+            "title": "Total Variation",
+            "type": "number"
+          },
+          "tv_per_sample": {
+            "default": 0.0,
+            "title": "Tv Per Sample",
+            "type": "number"
+          },
+          "variability_range": {
+            "title": "Variability Range",
+            "type": "number"
+          },
+          "variability_sp": {
+            "title": "Variability Sp",
+            "type": "number"
+          },
+          "zero_crossings": {
+            "default": 0,
+            "title": "Zero Crossings",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "controller_id",
+          "iae",
+          "itae",
+          "ise",
+          "mse",
+          "std_dev",
+          "total_variation",
+          "variability_sp",
+          "variability_range",
+          "sample_count"
+        ],
+        "title": "StatsResponse",
+        "type": "object"
+      },
+      "SystemStatusResponse": {
+        "properties": {
+          "active_controllers": {
+            "title": "Active Controllers",
+            "type": "integer"
+          },
+          "api_version": {
+            "title": "Api Version",
+            "type": "string"
+          },
+          "bus_active": {
+            "title": "Bus Active",
+            "type": "boolean"
+          },
+          "cpu_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu Percent"
+          },
+          "memory_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory Percent"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "uptime_s": {
+            "title": "Uptime S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "status",
+          "uptime_s",
+          "active_controllers",
+          "bus_active",
+          "api_version"
+        ],
+        "title": "SystemStatusResponse",
+        "type": "object"
+      },
+      "TagBindingsDTO": {
+        "description": "OPC-UA NodeID mappings (mirrors domain TagBindings).",
+        "properties": {
+          "mode_int_map": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Mode Int Map",
+            "type": "object"
+          },
+          "node_id_bkcal_in": {
+            "default": "",
+            "title": "Node Id Bkcal In",
+            "type": "string"
+          },
+          "node_id_bkcal_out": {
+            "default": "",
+            "title": "Node Id Bkcal Out",
+            "type": "string"
+          },
+          "node_id_co": {
+            "default": "",
+            "title": "Node Id Co",
+            "type": "string"
+          },
+          "node_id_integral": {
+            "default": "",
+            "title": "Node Id Integral",
+            "type": "string"
+          },
+          "node_id_kp": {
+            "default": "",
+            "title": "Node Id Kp",
+            "type": "string"
+          },
+          "node_id_mode_actual": {
+            "default": "",
+            "title": "Node Id Mode Actual",
+            "type": "string"
+          },
+          "node_id_mode_target": {
+            "default": "",
+            "title": "Node Id Mode Target",
+            "type": "string"
+          },
+          "node_id_pv": {
+            "default": "",
+            "title": "Node Id Pv",
+            "type": "string"
+          },
+          "node_id_sp": {
+            "default": "",
+            "title": "Node Id Sp",
+            "type": "string"
+          },
+          "node_id_td": {
+            "default": "",
+            "title": "Node Id Td",
+            "type": "string"
+          },
+          "node_id_ti": {
+            "default": "",
+            "title": "Node Id Ti",
+            "type": "string"
+          }
+        },
+        "title": "TagBindingsDTO",
+        "type": "object"
+      },
+      "TelemetryFrameDTO": {
+        "properties": {
+          "co": {
+            "title": "Co",
+            "type": "number"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "pv": {
+            "title": "Pv",
+            "type": "number"
+          },
+          "sp": {
+            "title": "Sp",
+            "type": "number"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timestamp",
+          "pv",
+          "sp",
+          "co",
+          "mode",
+          "status"
+        ],
+        "title": "TelemetryFrameDTO",
+        "type": "object"
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "token_type": {
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token"
+        ],
+        "title": "TokenResponse",
+        "type": "object"
+      },
+      "TuningCommand": {
+        "description": "Direct PID tuning write. Values are clamped server-side to the\ncontroller's ``max_tuning_change_pct`` guardrail before being written.",
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "kp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kp"
+          },
+          "td": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Td"
+          },
+          "ti": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ti"
+          }
+        },
+        "required": [
+          "controller_id"
+        ],
+        "title": "TuningCommand",
+        "type": "object"
+      },
+      "UserClaims": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "username",
+          "role"
+        ],
+        "title": "UserClaims",
+        "type": "object"
+      },
+      "UserCreate": {
+        "description": "Create-user request body for ``POST /users``.\n\nSpec \u00a79.3 refers to this DTO as \"RegisterRequest\"; in this codebase the\nsymbol has always been ``UserCreate`` (kept \u2014 not renamed). Dead code in\nthe single-admin deployment, reactivated by the users router.",
+        "properties": {
+          "password": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole",
+            "default": "user"
+          },
+          "username": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "UserCreate",
+        "type": "object"
+      },
+      "UserResponse": {
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "created_at": {
+            "default": "",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "role"
+        ],
+        "title": "UserResponse",
+        "type": "object"
+      },
+      "UserRole": {
+        "description": "Authorization tiers (spec \u00a79): exactly two roles, lowercase values.\n\nLegacy values (\"ADMIN\", \"SUPERVISOR\", \"OPERATOR\") were retired by the\ntwo-role model. Persisted rows are rewritten at startup by\n``_migrate_user_roles`` (smart_pid_core.main); legacy JWT role claims are\nrejected with 401 (single forced re-login) and are never mapped.",
+        "enum": [
+          "admin",
+          "user"
+        ],
+        "title": "UserRole",
+        "type": "string"
+      },
+      "UserUpdate": {
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "UserUpdate",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Smart PID API",
+    "version": "2.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/alarms/ack-all": {
+      "post": {
+        "operationId": "ack_all_alarms_alarms_ack_all_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ack All Alarms Alarms Ack All Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ack All Alarms",
+        "tags": [
+          "alarms"
+        ]
+      }
+    },
+    "/alarms/active": {
+      "get": {
+        "operationId": "get_active_alarms_alarms_active_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "controller_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Controller Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "priority",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Priority"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get Active Alarms Alarms Active Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Active Alarms",
+        "tags": [
+          "alarms"
+        ]
+      }
+    },
+    "/alarms/ai-history": {
+      "get": {
+        "operationId": "get_ai_log_history_alarms_ai_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "title": "End",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "controller_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Controller Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get Ai Log History Alarms Ai History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ai Log History",
+        "tags": [
+          "alarms"
+        ]
+      }
+    },
+    "/alarms/history": {
+      "get": {
+        "operationId": "get_alarm_history_alarms_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "title": "End",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "controller_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Controller Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get Alarm History Alarms History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Alarm History",
+        "tags": [
+          "alarms"
+        ]
+      }
+    },
+    "/alarms/{alarm_id}/ack": {
+      "post": {
+        "operationId": "ack_alarm_alarms__alarm_id__ack_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alarm_id",
+            "required": true,
+            "schema": {
+              "title": "Alarm Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ack Alarm Alarms  Alarm Id  Ack Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ack Alarm",
+        "tags": [
+          "alarms"
+        ]
+      }
+    },
+    "/audit": {
+      "get": {
+        "operationId": "get_audit_history_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "title": "End",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get Audit History Audit Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Audit History",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "login_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "description": "Return the authenticated principal's claims.\n\nThe SPA populates its AuthContext from this route after login and\nrefetches it whenever a 403 arrives (spec \u00a711) \u2014 a role changed\nmid-session is discovered here, not by decoding the JWT client-side.",
+        "operationId": "me_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserClaims"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "description": "Issue a fresh access token for an authenticated user.",
+        "operationId": "refresh_token_auth_refresh_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Refresh Token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/commands/apply-tuning/{controller_id}": {
+      "post": {
+        "description": "Apply a pending tuning recommendation to the DCS via OPC-UA.",
+        "operationId": "apply_tuning_commands_apply_tuning__controller_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Apply Tuning Commands Apply Tuning  Controller Id  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Tuning",
+        "tags": [
+          "commands"
+        ]
+      }
+    },
+    "/commands/mode": {
+      "post": {
+        "operationId": "set_mode_commands_mode_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModeCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Mode",
+        "tags": [
+          "commands"
+        ]
+      }
+    },
+    "/commands/optimization": {
+      "post": {
+        "description": "Enable/disable the online tuning optimizer (ENABLE_OPTIMIZER) for a loop.\n\nPersists the per-loop flag and notifies the running AI worker so the change\ntakes effect immediately. When disabled, SmartPID keeps monitoring and\npublishing telemetry/stats but does NOT compute or write tuning back.",
+        "operationId": "set_optimization_commands_optimization_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptimizationCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Optimization",
+        "tags": [
+          "commands"
+        ]
+      }
+    },
+    "/commands/output": {
+      "post": {
+        "operationId": "set_output_commands_output_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutputCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Output",
+        "tags": [
+          "commands"
+        ]
+      }
+    },
+    "/commands/setpoint": {
+      "post": {
+        "operationId": "set_setpoint_commands_setpoint_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetpointCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Setpoint",
+        "tags": [
+          "commands"
+        ]
+      }
+    },
+    "/commands/tuning": {
+      "post": {
+        "description": "Write Kp/Ti/Td directly to OPC-UA.\n\nMirrors the safety bar of ``apply-tuning``: supervisor-only, typed body,\nand each supplied parameter is clamped to the controller's\n``max_tuning_change_pct`` relative to its current value before write-back.",
+        "operationId": "write_tuning_commands_tuning_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TuningCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Write Tuning",
+        "tags": [
+          "commands"
+        ]
+      }
+    },
+    "/commands/tuning-recommendations/{controller_id}": {
+      "get": {
+        "description": "Return the current tuning recommendation for a controller.",
+        "operationId": "get_tuning_recommendation_commands_tuning_recommendations__controller_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Tuning Recommendation Commands Tuning Recommendations  Controller Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tuning Recommendation",
+        "tags": [
+          "commands"
+        ]
+      }
+    },
+    "/controllers": {
+      "get": {
+        "operationId": "list_controllers_controllers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ControllerResponse"
+                  },
+                  "title": "Response List Controllers Controllers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Controllers",
+        "tags": [
+          "controllers"
+        ]
+      },
+      "post": {
+        "operationId": "create_controller_controllers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControllerCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControllerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Controller",
+        "tags": [
+          "controllers"
+        ]
+      }
+    },
+    "/controllers/stats": {
+      "get": {
+        "description": "Return performance stats for all controllers that have a stats worker.",
+        "operationId": "get_all_stats_controllers_stats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StatsResponse"
+                  },
+                  "title": "Response Get All Stats Controllers Stats Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get All Stats",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/controllers/{controller_id}": {
+      "delete": {
+        "operationId": "delete_controller_controllers__controller_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Controller",
+        "tags": [
+          "controllers"
+        ]
+      },
+      "get": {
+        "operationId": "get_controller_controllers__controller_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControllerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Controller",
+        "tags": [
+          "controllers"
+        ]
+      },
+      "put": {
+        "operationId": "update_controller_controllers__controller_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControllerUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControllerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Controller",
+        "tags": [
+          "controllers"
+        ]
+      }
+    },
+    "/controllers/{controller_id}/ai/history": {
+      "get": {
+        "description": "Return AI history for controller optimization.",
+        "operationId": "get_ai_history_controllers__controller_id__ai_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIHistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ai History",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/controllers/{controller_id}/ai/pause": {
+      "post": {
+        "description": "Pause AI optimization for a controller loop.",
+        "operationId": "pause_ai_controllers__controller_id__ai_pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pause Ai Controllers  Controller Id  Ai Pause Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pause Ai",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/controllers/{controller_id}/ai/start": {
+      "post": {
+        "description": "Start AI optimization for a controller loop.",
+        "operationId": "start_ai_controllers__controller_id__ai_start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Start Ai Controllers  Controller Id  Ai Start Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Ai",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/controllers/{controller_id}/ai/status": {
+      "get": {
+        "description": "Return AI status for controller.",
+        "operationId": "get_ai_status_controllers__controller_id__ai_status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ai Status",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/controllers/{controller_id}/ai/stop": {
+      "post": {
+        "description": "Stop AI optimization for a controller loop.",
+        "operationId": "stop_ai_controllers__controller_id__ai_stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Stop Ai Controllers  Controller Id  Ai Stop Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop Ai",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/controllers/{controller_id}/alarm-config": {
+      "get": {
+        "description": "Get alarm thresholds for a controller.",
+        "operationId": "get_alarm_config_controllers__controller_id__alarm_config_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlarmConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Alarm Config",
+        "tags": [
+          "controllers"
+        ]
+      },
+      "put": {
+        "description": "Update alarm thresholds for a controller (requires supervisor).",
+        "operationId": "update_alarm_config_controllers__controller_id__alarm_config_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlarmConfigUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlarmConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Alarm Config",
+        "tags": [
+          "controllers"
+        ]
+      }
+    },
+    "/controllers/{controller_id}/stats": {
+      "get": {
+        "operationId": "get_stats_controllers__controller_id__stats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Stats",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/export": {
+      "post": {
+        "description": "Create a new export job.",
+        "operationId": "create_export_export_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Export",
+        "tags": [
+          "export"
+        ]
+      }
+    },
+    "/export/{export_id}": {
+      "get": {
+        "description": "Get the status of an export job.",
+        "operationId": "get_export_status_export__export_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Export Status",
+        "tags": [
+          "export"
+        ]
+      }
+    },
+    "/export/{export_id}/download": {
+      "get": {
+        "description": "Download the completed export file.",
+        "operationId": "download_export_export__export_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Export",
+        "tags": [
+          "export"
+        ]
+      }
+    },
+    "/history/{controller_id}": {
+      "get": {
+        "operationId": "query_history_history__controller_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query History",
+        "tags": [
+          "history"
+        ]
+      }
+    },
+    "/opcua/browse/{node_id}": {
+      "get": {
+        "operationId": "browse_children_opcua_browse__node_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "title": "Node Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OPCUABrowseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Browse Children",
+        "tags": [
+          "opcua"
+        ]
+      }
+    },
+    "/opcua/connect": {
+      "post": {
+        "operationId": "force_connect_opcua_connect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/OPCUAConnectRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OPCUAStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Force Connect",
+        "tags": [
+          "opcua"
+        ]
+      }
+    },
+    "/opcua/disconnect": {
+      "post": {
+        "operationId": "force_disconnect_opcua_disconnect_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OPCUAStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Force Disconnect",
+        "tags": [
+          "opcua"
+        ]
+      }
+    },
+    "/opcua/endpoint": {
+      "put": {
+        "operationId": "save_endpoint_opcua_endpoint_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OPCUAEndpointRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OPCUAStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Endpoint",
+        "tags": [
+          "opcua"
+        ]
+      }
+    },
+    "/opcua/search": {
+      "get": {
+        "operationId": "search_tags_opcua_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OPCUASearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Tags",
+        "tags": [
+          "opcua"
+        ]
+      }
+    },
+    "/opcua/status": {
+      "get": {
+        "operationId": "get_status_opcua_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OPCUAStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Status",
+        "tags": [
+          "opcua"
+        ]
+      }
+    },
+    "/project/current": {
+      "get": {
+        "description": "Return metadata about the currently-open project.",
+        "operationId": "get_current_project_current_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Current",
+        "tags": [
+          "project"
+        ]
+      }
+    },
+    "/project/download": {
+      "get": {
+        "description": "Download the active project as a .spid file (WAL checkpointed first).",
+        "operationId": "download_project_project_download_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Download Project",
+        "tags": [
+          "project"
+        ]
+      }
+    },
+    "/project/import": {
+      "post": {
+        "description": "Import a project file (admin-only).",
+        "operationId": "import_project_project_import_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_project_project_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Project",
+        "tags": [
+          "project"
+        ]
+      }
+    },
+    "/project/list": {
+      "get": {
+        "description": "List all available projects in the backend directory.",
+        "operationId": "list_projects_project_list_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Projects",
+        "tags": [
+          "project"
+        ]
+      }
+    },
+    "/project/new": {
+      "post": {
+        "description": "Create a new project file.",
+        "operationId": "new_project_project_new_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "New Project",
+        "tags": [
+          "project"
+        ]
+      }
+    },
+    "/project/open": {
+      "post": {
+        "description": "Open an existing project by name.",
+        "operationId": "open_project_project_open_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectOpen"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Project",
+        "tags": [
+          "project"
+        ]
+      }
+    },
+    "/project/{name}": {
+      "delete": {
+        "description": "Delete a project file from the backend directory.",
+        "operationId": "delete_project_project__name__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project",
+        "tags": [
+          "project"
+        ]
+      }
+    },
+    "/simulator/disturbance": {
+      "post": {
+        "operationId": "inject_disturbance_simulator_disturbance_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulatorDisturbanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inject Disturbance",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/disturbance/{controller_id}": {
+      "delete": {
+        "operationId": "clear_disturbance_simulator_disturbance__controller_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clear Disturbance",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/opcua/start": {
+      "post": {
+        "operationId": "start_opcua_server_simulator_opcua_start_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Start Opcua Server",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/opcua/status": {
+      "get": {
+        "operationId": "get_opcua_status_simulator_opcua_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OPCUAServerStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Opcua Status",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/opcua/stop": {
+      "post": {
+        "operationId": "stop_opcua_server_simulator_opcua_stop_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Stop Opcua Server",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/parameters": {
+      "put": {
+        "operationId": "set_parameters_simulator_parameters_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulatorParametersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Parameters",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/preset": {
+      "post": {
+        "operationId": "set_preset_simulator_preset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulatorPresetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Preset",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/start": {
+      "post": {
+        "operationId": "start_simulator_simulator_start_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Start Simulator",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/status": {
+      "get": {
+        "operationId": "get_status_simulator_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulatorStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Status",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/stop": {
+      "post": {
+        "operationId": "stop_simulator_simulator_stop_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Stop Simulator",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/{controller_id}/auto-disturbance": {
+      "put": {
+        "operationId": "set_auto_disturbance_simulator__controller_id__auto_disturbance_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutoDisturbanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControllerSimStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Auto Disturbance",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/{controller_id}/auto-sp": {
+      "put": {
+        "operationId": "set_auto_sp_simulator__controller_id__auto_sp_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutoSPRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControllerSimStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Auto Sp",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/{controller_id}/co": {
+      "post": {
+        "operationId": "set_co_simulator__controller_id__co_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulatorPIDSPRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Co",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/{controller_id}/pid/enable": {
+      "post": {
+        "operationId": "enable_pid_simulator__controller_id__pid_enable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulatorPIDEnableRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Enable Pid",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/{controller_id}/pid/mode": {
+      "post": {
+        "operationId": "set_pid_mode_simulator__controller_id__pid_mode_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulatorPIDModeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Pid Mode",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/{controller_id}/pid/params": {
+      "post": {
+        "operationId": "set_pid_params_simulator__controller_id__pid_params_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulatorPIDParamsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Pid Params",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/{controller_id}/pid/sp": {
+      "post": {
+        "operationId": "set_pid_sp_simulator__controller_id__pid_sp_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulatorPIDSPRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Pid Sp",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/{controller_id}/pid/status": {
+      "get": {
+        "operationId": "get_pid_status_simulator__controller_id__pid_status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulatorPIDStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Pid Status",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/system-events": {
+      "get": {
+        "operationId": "get_system_events_system_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "title": "End",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severity"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get System Events System Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get System Events",
+        "tags": [
+          "system-events"
+        ]
+      }
+    },
+    "/system/status": {
+      "get": {
+        "description": "Health check \u2014 no auth required.",
+        "operationId": "system_status_system_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "System Status",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/users": {
+      "get": {
+        "operationId": "list_users_users_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserResponse"
+                  },
+                  "title": "Response List Users Users Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Users",
+        "tags": [
+          "users"
+        ]
+      },
+      "post": {
+        "operationId": "create_user_users_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/users/{user_id}": {
+      "delete": {
+        "operationId": "deactivate_user_users__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Deactivate User",
+        "tags": [
+          "users"
+        ]
+      },
+      "patch": {
+        "operationId": "update_user_users__user_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update User",
+        "tags": [
+          "users"
+        ]
+      }
+    }
+  }
+}

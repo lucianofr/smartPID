@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+import uuid
 
 import msgpack
 
@@ -10,7 +11,7 @@ from smart_pid_core.application.event_bus import EventBus
 
 class TestEventBus:
     def test_publish_and_receive(self) -> None:
-        bus = EventBus()
+        bus = EventBus(url_prefix=f"inproc://test_event_bus_{uuid.uuid4().hex[:8]}")
         bus.start()
         try:
             pub = bus.create_publisher()
@@ -26,7 +27,7 @@ class TestEventBus:
             bus.stop()
 
     def test_subscriber_filters_by_prefix(self) -> None:
-        bus = EventBus()
+        bus = EventBus(url_prefix=f"inproc://test_event_bus_{uuid.uuid4().hex[:8]}")
         bus.start()
         try:
             pub = bus.create_publisher()
@@ -43,7 +44,7 @@ class TestEventBus:
             bus.stop()
 
     def test_multiple_subscribers(self) -> None:
-        bus = EventBus()
+        bus = EventBus(url_prefix=f"inproc://test_event_bus_{uuid.uuid4().hex[:8]}")
         bus.start()
         try:
             pub = bus.create_publisher()
@@ -60,7 +61,7 @@ class TestEventBus:
             bus.stop()
 
     def test_noblock_returns_none_when_empty(self) -> None:
-        bus = EventBus()
+        bus = EventBus(url_prefix=f"inproc://test_event_bus_{uuid.uuid4().hex[:8]}")
         bus.start()
         try:
             sub = bus.create_subscriber(b"EMPTY")
@@ -71,7 +72,7 @@ class TestEventBus:
             bus.stop()
 
     def test_cross_thread_communication(self) -> None:
-        bus = EventBus()
+        bus = EventBus(url_prefix=f"inproc://test_event_bus_{uuid.uuid4().hex[:8]}")
         bus.start()
         try:
             sub = bus.create_subscriber(b"THREAD")
@@ -92,7 +93,7 @@ class TestEventBus:
             bus.stop()
 
     def test_msgpack_round_trip(self) -> None:
-        bus = EventBus()
+        bus = EventBus(url_prefix=f"inproc://test_event_bus_{uuid.uuid4().hex[:8]}")
         bus.start()
         try:
             pub = bus.create_publisher()

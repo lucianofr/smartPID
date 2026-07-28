@@ -1,72 +1,143 @@
-import { useCallback, useEffect, useRef } from 'react';
-import { PresetSelector } from './PresetSelector';
-import { DynamicsSliders, type Dynamics } from './DynamicsSliders';
-import { DisturbanceControls } from './DisturbanceControls';
-import { TwinOutputModeControl } from './TwinOutputModeControl';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { EmptyState, LoadingState } from '@/components/MissingState';
+import { useCan } from '@/auth/useCan';
+import type { StatusData } from '@/lib/envelope';
+import { useRealtime } from '@/realtime/useRealtime';
 import { AutoToggles } from './AutoToggles';
+import { DisturbanceControls } from './DisturbanceControls';
+import { DynamicsSliders } from './DynamicsSliders';
+import { PresetSelector } from './PresetSelector';
 import { StartStopControl } from './StartStopControl';
-import { useSimulatorStatus } from './useSimulatorStatus';
+import { TwinOutputModeControl } from './TwinOutputModeControl';
 import { useSimulatorMutations } from './useSimulatorMutations';
-import type { ProcessPresetName, TwinMode } from './types';
+import { useSimulatorStatus } from './useSimulatorStatus';
+import { PID_MODE_AUTO, type Dynamics, type ProcessPresetName, type TwinMode } from './types';
 
-interface Props {
+export interface SimulatorControlPanelProps {
   controllerId: number;
 }
 
-// DynamicsSliders fires onCommit on every onChange (each slider drag tick).
-// Debounce trailing so a drag collapses to a single setParameters POST.
+/** One PUT per drag: DynamicsSliders commits on every tick of the gesture. */
 const PARAMS_DEBOUNCE_MS = 250;
 
-export function SimulatorControlPanel({ controllerId }: Props): JSX.Element {
-  const { data } = useSimulatorStatus();
-  const m = useSimulatorMutations(controllerId);
-  const c = data?.controllers?.[controllerId];
+/**
+ * The Sim page's control column.
+ *
+ * Two regions with different permissions: everything that reshapes the model —
+ * run state, preset, dynamics, disturbance, automation — needs
+ * `simulator.configure`, while twin SP/mode/CO is `loop.operate` and therefore
+ * stays available to a plain operator. That operator cannot read
+ * `/simulator/status` at all, so the operate region falls back to the live
+ * STATUS frame for its current values.
+ */
+export function SimulatorControlPanel({ controllerId }: SimulatorControlPanelProps) {
+  const canConfigure = useCan('simulator.configure');
+  const { data, restricted, isPending } = useSimulatorStatus();
+  const live = useRealtime<StatusData>(controllerId, 'status').last?.data;
+  const mutations = useSimulatorMutations(controllerId);
 
-  const paramsTimer = useRef<ReturnType<typeof setTimeout>>();
-  const commitParams = m.params.mutate;
+  const paramsTimer = useRef<number>();
+  const commitParams = mutations.parameters.mutate;
   const debouncedCommitParams = useCallback(
-    (d: Dynamics) => {
-      if (paramsTimer.current) clearTimeout(paramsTimer.current);
-      paramsTimer.current = setTimeout(() => commitParams(d), PARAMS_DEBOUNCE_MS);
+    (next: Dynamics) => {
+      window.clearTimeout(paramsTimer.current);
+      paramsTimer.current = window.setTimeout(() => commitParams(next), PARAMS_DEBOUNCE_MS);
     },
     [commitParams],
   );
-  useEffect(() => () => clearTimeout(paramsTimer.current), []);
+  useEffect(() => () => window.clearTimeout(paramsTimer.current), []);
 
-  if (!c) return <div role="status">Loading simulator…</div>;
+  const controller = data?.controllers[String(controllerId)];
 
-  const disturbanceActive = Boolean(c.step_active || c.noise_active);
-  const twinMode: TwinMode = c.pid_mode === 1 ? 'AUTO' : 'MAN';
+  let configRegion: ReactNode;
+  if (!canConfigure || restricted) {
+    configRegion = (
+      <EmptyState
+        message="Simulador gerenciado pelo administrador"
+        hint="Você pode operar SP, modo e CO do gêmeo digital, mas não configurá-lo."
+      />
+    );
+  } else if (isPending) {
+    configRegion = <LoadingState label="Carregando simulador…" bars={3} />;
+  } else if (data?.enabled === false) {
+    configRegion = (
+      <EmptyState
+        message="Simulador desabilitado no servidor"
+        hint="Defina SPID_SIMULATOR_ENABLED=true e reinicie o serviço."
+      />
+    );
+  } else {
+    configRegion = (
+      <>
+        <StartStopControl
+          running={data?.running === true}
+          onStart={() => mutations.start.mutate()}
+          onStop={() => mutations.stop.mutate()}
+        />
+        {controller ? (
+          <>
+            <PresetSelector
+              value={controller.preset as ProcessPresetName}
+              onChange={(preset) => mutations.preset.mutate(preset)}
+            />
+            <DynamicsSliders
+              value={{
+                gain: controller.gain,
+                dead_time: controller.dead_time,
+                tau1: controller.tau1,
+                tau2: controller.tau2,
+              }}
+              onCommit={debouncedCommitParams}
+            />
+            <DisturbanceControls
+              active={controller.step_active || controller.noise_active}
+              onInject={(type, amplitude) => mutations.inject.mutate({ type, amplitude })}
+              onRemove={() => mutations.clear.mutate()}
+            />
+            <AutoToggles
+              autoSp={controller.auto_sp ?? null}
+              autoDisturbance={controller.auto_disturbance ?? null}
+              onSetAutoSp={(body) => mutations.autoSp.mutate(body)}
+              onSetAutoDisturbance={(body) => mutations.autoDisturbance.mutate(body)}
+            />
+          </>
+        ) : (
+          <EmptyState
+            message="Nenhuma malha no gêmeo digital."
+            hint="Inicie o simulador para instanciar o modelo de processo."
+          />
+        )}
+      </>
+    );
+  }
+
+  // REST is authoritative when readable; a restricted operator still reaches
+  // the twin through the realtime frame it IS allowed to receive. The wire
+  // reports mode two ways: an int on the snapshot, the loop's string on a frame.
+  const twin: { sp: number; co: number; mode: TwinMode } | null = controller
+    ? {
+        sp: controller.sp,
+        co: controller.co,
+        mode: controller.pid_mode === PID_MODE_AUTO ? 'AUTO' : 'MAN',
+      }
+    : live
+      ? { sp: live.sp.value, co: live.co.value, mode: live.mode === 'AUTO' ? 'AUTO' : 'MAN' }
+      : null;
 
   return (
-    <section aria-label="Simulator controls" className="grid gap-4">
-      <StartStopControl
-        running={Boolean(data?.running)}
-        onStart={() => m.start.mutate()}
-        onStop={() => m.stop.mutate()}
-      />
-      <PresetSelector value={c.preset as ProcessPresetName} onChange={(p) => m.preset.mutate(p)} />
-      <DynamicsSliders
-        value={{ gain: c.gain, dead_time: c.dead_time, tau1: c.tau1, tau2: c.tau2 }}
-        onCommit={debouncedCommitParams}
-      />
-      <DisturbanceControls
-        active={disturbanceActive}
-        onInject={(type, amplitude) => m.inject.mutate({ type, amplitude })}
-        onRemove={() => m.clear.mutate()}
-      />
-      <TwinOutputModeControl
-        co={c.co}
-        mode={twinMode}
-        onSetCo={(co) => m.co.mutate(co)}
-        onSetMode={(mode) => m.mode.mutate(mode)}
-      />
-      <AutoToggles
-        autoSp={c.auto_sp ?? null}
-        autoDisturbance={c.auto_disturbance ?? null}
-        onSetAutoSp={(b) => m.autoSp.mutate(b)}
-        onSetAutoDisturbance={(b) => m.autoDist.mutate(b)}
-      />
+    <section aria-label="Simulator controls" className="flex flex-col gap-4">
+      {configRegion}
+      {twin === null ? null : (
+        <TwinOutputModeControl
+          key={controllerId}
+          sp={twin.sp}
+          co={twin.co}
+          mode={twin.mode}
+          onSetSp={(sp) => mutations.sp.mutate(sp)}
+          onSetCo={(co) => mutations.co.mutate(co)}
+          onSetMode={(mode) => mutations.mode.mutate(mode)}
+        />
+      )}
     </section>
   );
 }

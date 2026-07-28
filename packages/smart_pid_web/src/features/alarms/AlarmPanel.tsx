@@ -1,157 +1,187 @@
-import { useMemo, useRef, useState } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import { useActiveAlarms, useAlarmRealtimeSync, useAckAlarm, useAckAllAlarms } from './useAlarms';
-import { priorityRank, severityIcon, severityClass, isUnacked } from './severity';
+import { useState } from 'react';
+import { useCan } from '@/auth/useCan';
+import { Button } from '@/components/Button';
+import { EmptyState, ErrorState, LoadingState } from '@/components/MissingState';
+import { VirtualList } from '@/components/VirtualList';
+import { formatNumber, formatTimestamp } from '@/lib/format';
+import { cn } from '@/lib/utils';
+import { isUnackedStatus, severity, severityClass, toSeverity } from './severity';
+import { DEFAULT_ALARM_FILTERS, useAlarms, type AlarmFilters, type AlarmSort } from './useAlarms';
 import type { ActiveAlarm, AlarmStatus } from './types';
 
-const ROW_HEIGHT = 32;
-const GRID_COLS = '9rem 8rem 1fr 9rem 12rem 4rem';
+/**
+ * Active alarm panel (§6.4/§7). Flood-safe by construction: the list is
+ * windowed, rows are deduped by id, and a live flood reconciles through one
+ * coalesced REST refetch instead of one render per frame.
+ *
+ * Every row states its severity three ways (glyph, label, token color) and its
+ * acknowledgement two ways (status text + weight/stripe), so neither survives
+ * on color alone.
+ */
 
-function formatLocal(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+const ROW_HEIGHT = 48;
+const GRID = 'grid grid-cols-[7.5rem_7rem_minmax(0,1fr)_9rem_5.5rem_4rem] items-center gap-2 px-3';
+
+const STATUS_LABEL: Record<AlarmStatus | 'ALL', string> = {
+  ALL: 'Todos',
+  UNACKNOWLEDGED: 'Não reconhecidos',
+  ACKNOWLEDGED: 'Reconhecidos',
+  CLEARED_UNACK: 'Normalizados sem reconhecer',
+};
+
+const SELECT_CLASS = cn(
+  'min-h-11 rounded-control border border-rule-strong bg-surface-sunk px-2 text-sm text-text',
+  'outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+);
+
+export interface AlarmRowLineProps {
+  alarm: ActiveAlarm;
+  canAck: boolean;
+  ackPending: boolean;
+  onAck: (id: number) => void;
 }
 
-type SortKey = 'severity' | 'time';
-
-export function AlarmPanel(): JSX.Element {
-  useAlarmRealtimeSync();
-  const { data, isLoading, isError } = useActiveAlarms();
-
-  // Backend is the source of truth: the mutation hooks fire the ack POST and
-  // revalidate the active list via onSettled (never optimistic-mutate state).
-  // isPending gates the buttons to prevent double-click duplicate dispatches.
-  const ackOne = useAckAlarm();
-  const ackAll = useAckAllAlarms();
-
-  const [sortKey, setSortKey] = useState<SortKey>('severity');
-  const [stateFilter, setStateFilter] = useState<'ALL' | AlarmStatus>('ALL');
-  const [loopFilter, setLoopFilter] = useState<'ALL' | number>('ALL');
-
-  const rows = useMemo(() => {
-    // Dedupe by id (flood protection) — last write wins.
-    const byId = new Map<number, ActiveAlarm>();
-    for (const a of data ?? []) byId.set(a.id, a);
-    let list = [...byId.values()];
-    if (stateFilter !== 'ALL') list = list.filter((a) => a.status === stateFilter);
-    if (loopFilter !== 'ALL') list = list.filter((a) => a.controller_id === loopFilter);
-    list.sort((a, b) =>
-      sortKey === 'severity'
-        ? priorityRank(a.priority) - priorityRank(b.priority) ||
-          b.timestamp.localeCompare(a.timestamp)
-        : b.timestamp.localeCompare(a.timestamp),
-    );
-    return list;
-  }, [data, stateFilter, loopFilter, sortKey]);
-
-  const loopIds = useMemo(
-    () => [...new Set((data ?? []).map((a) => a.controller_id))].sort((a, b) => a - b),
-    [data],
+function AlarmRowLine({ alarm, canAck, ackPending, onAck }: AlarmRowLineProps) {
+  const sev = severity(toSeverity(alarm.priority));
+  const unacked = isUnackedStatus(alarm.status);
+  return (
+    <div
+      data-testid={`alarm-row-${alarm.id}`}
+      className={cn(
+        GRID,
+        'alarm-row h-full border-b border-rule text-sm',
+        severityClass(toSeverity(alarm.priority)),
+        unacked && 'is-unacked alarm-blink',
+      )}
+    >
+      <span className="inline-flex items-center gap-1.5 text-2xs font-medium tracking-wider">
+        <span className={`sev-icon sev-icon--${sev.glyph}`} aria-hidden="true" />
+        {sev.label}
+      </span>
+      <span className="truncate font-medium text-text">{alarm.controller_name ?? '—'}</span>
+      <span className="truncate text-text">
+        <span className="font-medium">{alarm.alarm_type}</span>{' '}
+        <span className="numeric">{formatNumber(alarm.value, 2)}</span>{' '}
+        <span className="text-text-soft">
+          (lim <span className="numeric">{formatNumber(alarm.limit, 2)}</span>)
+        </span>
+      </span>
+      <span className={cn('alarm-row__state text-2xs', unacked ? 'font-bold' : 'text-text-soft')}>
+        {alarm.status}
+      </span>
+      <span className="numeric text-2xs text-text-soft">{formatTimestamp(alarm.timestamp)}</span>
+      <Button
+        size="sm"
+        variant={unacked ? 'primary' : 'secondary'}
+        disabled={!canAck || !unacked || ackPending}
+        onClick={() => onAck(alarm.id)}
+      >
+        ACK
+      </Button>
+    </div>
   );
-  const newCritical = useMemo(
-    () => rows.filter((a) => a.priority === 'CRITICAL' && isUnacked(a.status)).length,
-    [rows],
-  );
+}
 
-  const parentRef = useRef<HTMLDivElement>(null);
-  const virt = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 12,
-  });
+export function AlarmPanel() {
+  const [filters, setFilters] = useState<AlarmFilters>(DEFAULT_ALARM_FILTERS);
+  const { rows, loops, unackedCritical, isPending, isError, refetch, ack } = useAlarms(filters);
+  const canAck = useCan('alarms.ack');
 
-  if (isLoading) return <p className="alarm-panel__status p-2 text-text-secondary">Loading alarms…</p>;
-  if (isError) return <p className="alarm-panel__status p-2 text-alarm-critical" role="alert">Failed to load alarms.</p>;
+  const patch = (next: Partial<AlarmFilters>): void =>
+    setFilters((current) => ({ ...current, ...next }));
 
   return (
-    <section className="alarm-panel flex flex-col h-full min-h-0" aria-label="Active alarms">
-      <header className="alarm-panel__toolbar flex gap-3 items-end p-2 border-b border-divider">
-        <label className="flex flex-col gap-0.5" style={{ fontSize: 'var(--text-xs)' }}>
-          Sort
-          <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)}>
-            <option value="severity">Severity</option>
-            <option value="time">Time</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-0.5" style={{ fontSize: 'var(--text-xs)' }}>
-          Filter by state
-          <select value={stateFilter} onChange={(e) => setStateFilter(e.target.value as 'ALL' | AlarmStatus)}>
-            <option value="ALL">All</option>
-            <option value="UNACKNOWLEDGED">Unacknowledged</option>
-            <option value="ACKNOWLEDGED">Acknowledged</option>
-            <option value="CLEARED_UNACK">Cleared (unacked)</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-0.5" style={{ fontSize: 'var(--text-xs)' }}>
-          Filter by loop
+    <section aria-label="Alarmes ativos" className="flex min-h-0 flex-1 flex-col">
+      <header className="flex flex-wrap items-end gap-3 border-b border-rule px-3 py-2">
+        <label className="flex flex-col gap-1 text-2xs text-text-soft">
+          Ordenar
           <select
-            value={loopFilter}
-            onChange={(e) => setLoopFilter(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+            className={SELECT_CLASS}
+            value={filters.sort}
+            onChange={(e) => patch({ sort: e.target.value as AlarmSort })}
           >
-            <option value="ALL">All loops</option>
-            {loopIds.map((id) => <option key={id} value={id}>{id}</option>)}
+            <option value="severity">Prioridade</option>
+            <option value="time">Horário</option>
           </select>
         </label>
-        <button type="button" className="alarm-panel__ack-all ml-auto"
-          onClick={() => ackAll.mutate()} disabled={ackAll.isPending}>ACK ALL</button>
+        <label className="flex flex-col gap-1 text-2xs text-text-soft">
+          Estado
+          <select
+            className={SELECT_CLASS}
+            value={filters.status}
+            onChange={(e) => patch({ status: e.target.value as AlarmStatus | 'ALL' })}
+          >
+            {(Object.keys(STATUS_LABEL) as (AlarmStatus | 'ALL')[]).map((value) => (
+              <option key={value} value={value}>
+                {STATUS_LABEL[value]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-2xs text-text-soft">
+          Malha
+          <select
+            className={SELECT_CLASS}
+            value={String(filters.controllerId)}
+            onChange={(e) =>
+              patch({ controllerId: e.target.value === 'ALL' ? 'ALL' : Number(e.target.value) })
+            }
+          >
+            <option value="ALL">Todas</option>
+            {loops.map((loop) => (
+              <option key={loop.id} value={loop.id}>
+                {loop.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {/* Bulk acknowledgement lives in the §6.9 footer, which is mounted on
+            this page too — a second ACK ALL here would be the same command
+            twice, one of them out of the operator's habitual reach. */}
       </header>
 
-      <div className="alarm-panel__live sr-only" role="status" aria-live="assertive">
-        {newCritical > 0 ? `${newCritical} new critical alarm(s)` : ''}
-      </div>
+      {/* Assertive because an unacknowledged CRITICAL is exactly the case that
+          must interrupt — and it must survive `prefers-reduced-motion`. */}
+      <span data-testid="alarm-panel-live" role="status" aria-live="assertive" className="sr-only">
+        {unackedCritical > 0 ? `${unackedCritical} alarme(s) crítico(s) sem reconhecer` : ''}
+      </span>
 
       <div
-        className="alarm-panel__head grid items-center gap-2 px-2 uppercase border-b border-divider text-text-secondary"
-        role="row"
-        style={{ gridTemplateColumns: GRID_COLS, height: 28, fontSize: 'var(--text-2xs)' }}
+        className={cn(GRID, 'shrink-0 border-b border-rule py-1 text-2xs uppercase text-text-soft')}
       >
-        <span>Sev</span><span>Tag</span><span>Message</span><span>State</span><span>Time</span><span>Ack</span>
+        <span>Prioridade</span>
+        <span>Malha</span>
+        <span>Evento</span>
+        <span>Estado</span>
+        <span>Horário</span>
+        <span className="sr-only">Reconhecer</span>
       </div>
 
-      <div ref={parentRef} className="alarm-panel__scroll flex-1 min-h-0 overflow-auto" data-testid="alarm-scroll">
-        {rows.length === 0 ? (
-          <p
-            data-testid="alarm-panel-empty"
-            role="status"
-            className="alarm-panel__empty p-4 text-center text-text-secondary"
-          >
-            No active alarms.
-          </p>
-        ) : null}
-        <div style={{ height: virt.getTotalSize(), position: 'relative' }}>
-          {virt.getVirtualItems().map((vi) => {
-            const a = rows[vi.index];
-            const unacked = isUnacked(a.status);
-            return (
-              <div
-                key={a.id}
-                role="row"
-                data-testid={`alarm-row-${a.id}`}
-                className={`alarm-row grid items-center gap-2 px-2 border-b border-divider ${severityClass(a.priority)} ${unacked ? 'is-unacked' : ''}`}
-                style={{ position: 'absolute', top: 0, left: 0, width: '100%',
-                  height: ROW_HEIGHT, transform: `translateY(${vi.start}px)`,
-                  gridTemplateColumns: GRID_COLS, fontSize: 'var(--text-sm)' }}
-              >
-                <span className="alarm-row__sev inline-flex items-center gap-1.5">
-                  <span className={`sev-icon sev-icon--${severityIcon(a.priority)}`} aria-hidden="true" />
-                  {a.priority}
-                </span>
-                <span className="alarm-row__tag">{a.controller_name}</span>
-                <span className="alarm-row__msg">
-                  <span className="alarm-row__type">{a.alarm_type}</span> {a.value} (lim {a.limit})
-                </span>
-                <span className="alarm-row__state">{a.status}</span>
-                <span className="alarm-row__time numeric">{formatLocal(a.timestamp)}</span>
-                <span className="alarm-row__ack">
-                  <button type="button" onClick={() => ackOne.mutate(a.id)}
-                    disabled={ackOne.isPending}>Ack</button>
-                </span>
-              </div>
-            );
-          })}
+      {isPending ? (
+        <LoadingState label="Carregando alarmes…" />
+      ) : isError ? (
+        <ErrorState message="Não foi possível carregar os alarmes." onRetry={refetch} />
+      ) : rows.length === 0 ? (
+        <EmptyState message="Nenhum alarme ativo." hint="A planta está dentro dos limites." />
+      ) : (
+        <div className="min-h-0 flex-1">
+          <VirtualList
+            items={rows}
+            height="100%"
+            estimateSize={ROW_HEIGHT}
+            getKey={(row) => row.id}
+            aria-label="Lista de alarmes ativos"
+            renderItem={(row) => (
+              <AlarmRowLine
+                alarm={row}
+                canAck={canAck}
+                ackPending={ack.isPending}
+                onAck={(id) => ack.mutate(id)}
+              />
+            )}
+          />
         </div>
-      </div>
+      )}
     </section>
   );
 }

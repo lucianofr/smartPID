@@ -1,158 +1,145 @@
-import type { ReactNode } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { endpoints } from '@/api/endpoints';
+import { queryKeys } from '@/api/queryKeys';
+import { ff, makeController, statusEnvelope } from '@/test/fixtures';
+import { createFakeRealtime, createQueryClient, TestProviders } from '@/test/providers';
 import { DashboardPage } from './DashboardPage';
-import { ThemeProvider } from '../theme/ThemeProvider';
-import type { ControllerResponse } from '../api/controllers';
-import type { StatusData } from '../realtime/envelope';
 
-const sig = (value: number) => ({
-  value,
-  severity: 'GOOD',
-  limit_bits: 'NONE',
-  sub_status: 'NON_SPECIFIC',
-});
+const CONTROLLERS = [
+  makeController({ id: 1, name: 'FIC-101', description: 'Flow' }),
+  makeController({ id: 2, name: 'TIC-202', description: 'Temp' }),
+];
 
-const controller: ControllerResponse = {
-  id: 9,
-  name: 'TIC-009',
-  description: 'Temperature',
-  pv_decimals: 1,
-  pv_unit: '°C',
-  pid_params: { gain: 1.5, reset: 30, rate: 0, alpha: 0.1, deadband: 0 },
-  pid_structure: 'ISA',
-  ai_config: {
-    engine: 'FUZZY',
-    objective: 'SP_TRACKING',
-    dead_time_l: 5,
-    limit_min: 0.5,
-    limit_max: 2,
-    rl_fallback_kp: 1,
-    rl_fallback_kd: 0,
-    rl_learning_rate: 0.001,
-    rl_train_interval: 100,
-  },
-  optimization_enabled: true,
-  out_hi_lim: 100,
-  out_lo_lim: 0,
-  arw_hi_lim: 100,
-  arw_lo_lim: 0,
-  pv_ftime: 0,
-  sp_ftime: 0,
-  sp_rate_up: 0,
-  sp_rate_dn: 0,
-};
-
-// MAN mode arrives live via the WS status frame, NOT from the REST response.
-const liveStatus: StatusData = {
-  pv: sig(70),
-  sp: sig(72),
-  co: sig(40),
-  bkcal_in: sig(0),
-  bkcal_out: sig(0),
-  mode: 'MAN',
-  kp: 1.5,
-  ti: 30,
-  td: 0,
-  integral_val: 0,
-  timestamp: '2026-06-19T00:00:00Z',
-};
-
-const lastStatus = new Map<number, StatusData>([[9, liveStatus]]);
-
-vi.mock('../realtime/useRealtime', () => ({
-  useRealtime: () => ({
-    connected: true,
-    lastStatus,
-    lastStats: new Map(),
-    subscribe: () => () => {},
-    onResync: () => () => {},
-  }),
-}));
-
-const cardControlsSpy = vi.fn();
-vi.mock('../features/loop-config/CardControls', () => ({
-  CardControls: (props: { controllerId: number; mode: string; optimizationEnabled: boolean }) => {
-    cardControlsSpy(props);
-    return <div data-testid={`card-controls-${props.controllerId}`} />;
-  },
-}));
-
-// Keep the AiPanel out of the integration surface (it owns its own queries).
-vi.mock('../features/loop-config/AiPanel', () => ({
-  AiPanel: ({ controllerId }: { controllerId: number }) => (
-    <div data-testid={`ai-panel-${controllerId}`} />
-  ),
-}));
-
-vi.mock('../api/client', () => ({
-  apiGet: vi.fn((path: string) => {
-    if (path === '/controllers') return Promise.resolve([controller]);
-    if (path === '/opcua/status')
-      return Promise.resolve({ state: 'ONLINE', endpoint: null });
-    return Promise.reject(new Error(`unexpected path ${path}`));
-  }),
-}));
-
-function renderDashboard(): void {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>
-      <ThemeProvider>
-        <MemoryRouter>{children}</MemoryRouter>
-      </ThemeProvider>
-    </QueryClientProvider>
-  );
-  render(<DashboardPage />, { wrapper });
+function renderDashboard(
+  controllers = CONTROLLERS,
+  path = '/',
+  realtime = createFakeRealtime(),
+) {
+  sessionStorage.setItem('smart-pid-token', 'jwt');
+  vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: 'admin', role: 'admin' });
+  const queryClient = createQueryClient();
+  queryClient.setQueryData(queryKeys.controllers, controllers);
+  queryClient.setQueryData(queryKeys.alarmsActive, []);
+  return {
+    ...render(
+      <TestProviders queryClient={queryClient} realtime={realtime.value} initialEntries={[path]}>
+        <DashboardPage />
+      </TestProviders>,
+    ),
+    realtime,
+    queryClient,
+  };
 }
 
-describe('DashboardPage wiring (Fatia 2)', () => {
-  beforeEach(() => {
-    cardControlsSpy.mockReset();
-  });
+beforeEach(() => {
+  sessionStorage.clear();
+});
 
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
-  it('passes the live mode and optimizationEnabled into CardControls', async () => {
+describe('DashboardPage', () => {
+  it('renders one card per loop in a single non-wrapping scroller', () => {
     renderDashboard();
-    await screen.findByText('TIC-009');
-    expect(cardControlsSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ controllerId: 9, mode: 'MAN', optimizationEnabled: true }),
+    const strip = within(screen.getByRole('region', { name: 'Malhas' })).getByRole('list');
+    expect(strip.className).toContain('flex-nowrap');
+    expect(strip.className).toContain('overflow-x-auto');
+    expect(strip.className).not.toContain('flex-wrap');
+    expect(within(strip).getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('fans live status frames out to the right cards', () => {
+    const { realtime } = renderDashboard();
+    act(() => {
+      // One burst, two loops: batching must not collapse them into one update.
+      realtime.emit(statusEnvelope(1, 1, { pv: ff(11.5) }));
+      realtime.emit(statusEnvelope(2, 2, { pv: ff(22.5) }));
+    });
+    const [first, second] = within(screen.getByRole('region', { name: 'Malhas' })).getAllByRole(
+      'listitem',
+    );
+    expect(within(first).getByRole('meter', { name: 'PV' })).toHaveAttribute(
+      'aria-valuenow',
+      '11.5',
+    );
+    expect(within(second).getByRole('meter', { name: 'PV' })).toHaveAttribute(
+      'aria-valuenow',
+      '22.5',
     );
   });
 
-  it('renders an AiPanel per controller', async () => {
+  it('shows the first loop in the trend and faceplate, and follows the selection', () => {
     renderDashboard();
-    expect(await screen.findByTestId('ai-panel-9')).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'Faceplate FIC-101' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir TIC-202' }));
+    expect(screen.getByRole('complementary', { name: 'Faceplate TIC-202' })).toBeVisible();
+    expect(screen.getByRole('img', { name: 'Tendência TIC-202' })).toBeInTheDocument();
   });
 
-  it('opens the LoopConfigDialog for the right controller when the ⚙ is clicked', async () => {
-    renderDashboard();
-    await screen.findByText('TIC-009');
-    expect(screen.queryByRole('dialog')).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: /config/i }));
-
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/Configurar Loop #9/)).toBeInTheDocument();
-    // Full ai_config round-trips into the dialog: the FUZZY engine radio is checked.
-    const fuzzyRadio = within(dialog).getByRole('radio', { name: 'FUZZY' }) as HTMLInputElement;
-    expect(fuzzyRadio.checked).toBe(true);
+  it('preselects the loop named by ?loop= so a bad-actor row lands on it', () => {
+    renderDashboard(CONTROLLERS, '/?loop=2');
+    expect(screen.getByRole('complementary', { name: 'Faceplate TIC-202' })).toBeVisible();
   });
 
-  it('opens the Faceplate dialog for the right controller when the ⤢ is clicked', async () => {
+  it('ignores a ?loop= that names no configured loop', () => {
+    renderDashboard(CONTROLLERS, '/?loop=nope');
+    expect(screen.getByRole('complementary', { name: 'Faceplate FIC-101' })).toBeVisible();
+  });
+
+  it('stacks the faceplate under the trend below 1024 and splits them above', () => {
     renderDashboard();
-    await screen.findByText('TIC-009');
-    expect(screen.queryByRole('dialog')).toBeNull();
+    const detail = screen.getByTestId('dashboard-detail');
+    expect(detail.className).toContain('flex-col');
+    expect(detail.className).toContain('lg:flex-row');
+    // ~320px faceplate only once the row layout applies.
+    expect(screen.getByRole('complementary', { name: 'Faceplate FIC-101' }).className).toContain(
+      'lg:w-80',
+    );
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: /open faceplate/i }));
+  it('keeps the alarm footer mounted with the loops', () => {
+    renderDashboard();
+    expect(screen.getByRole('contentinfo', { name: 'Alarm summary' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'ACK ALL' })).toBeInTheDocument();
+  });
 
-    const dialog = await screen.findByRole('dialog');
-    // The faceplate surface renders inside the dialog, labelled by the controller tag.
-    expect(within(dialog).getByRole('complementary', { name: /faceplate TIC-009/i })).toBeInTheDocument();
+  it('keeps the footer reachable when there are no loops at all', () => {
+    renderDashboard([]);
+    expect(screen.getByText('Nenhuma malha configurada.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'ACK ALL' })).toBeInTheDocument();
+  });
+
+  it('stays silent about simulation while the twin is stopped', () => {
+    renderDashboard();
+    expect(screen.queryByRole('status', { name: 'Simulation mode' })).toBeNull();
+  });
+
+  it('tells the operator when the numbers on the Loops page come from a model', async () => {
+    const { queryClient } = renderDashboard();
+    queryClient.setQueryData(queryKeys.simulatorStatus, {
+      enabled: true,
+      running: true,
+      controllers: {},
+    });
+    expect(await screen.findByRole('status', { name: 'Simulation mode' })).toBeVisible();
+  });
+
+  /**
+   * E2E-047 — the whole defect in one assertion: the last frame is still on
+   * screen (blanking it would be worse), but nothing about it may read as the
+   * plant's current state.
+   */
+  it('marks every card reading as not current once the bus goes quiet', () => {
+    const frozen = createFakeRealtime({ stale: true, staleSince: Date.now() - 30_000 });
+    renderDashboard(CONTROLLERS, '/', frozen);
+    act(() => {
+      frozen.emit(statusEnvelope(1, 1, { pv: ff(11.5) }));
+    });
+    const [first] = within(screen.getByRole('region', { name: 'Malhas' })).getAllByRole('listitem');
+    const pv = within(first).getByRole('meter', { name: 'PV' });
+    expect(pv).toHaveAttribute('aria-valuenow', '11.5');
+    expect(pv).toHaveAttribute('aria-valuetext', expect.stringContaining('desatualizado'));
   });
 });

@@ -1,73 +1,66 @@
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { AnalogBar } from './AnalogBar';
 
 const scale = { euMin: 0, euMax: 200, unit: '°C' };
 
-function fillWidth(el: HTMLElement): number {
-  // fill is a child with inline width: NN% (or scaleX transform); read the % number
-  const fill = el.querySelector('[data-testid="bar-fill"]') as HTMLElement;
-  const w = fill.style.width || fill.style.transform;
-  const m = /([\d.]+)/.exec(w);
-  return m ? parseFloat(m[1]) : NaN;
-}
-
-describe('AnalogBar instrumentation', () => {
-  it('meter exposes aria value bounds and current value', () => {
+describe('AnalogBar', () => {
+  it('exposes a meter role with EU range and value text', () => {
     render(<AnalogBar label="PV" value={150.2} scale={scale} />);
-    const meter = screen.getByRole('meter');
+    const meter = screen.getByRole('meter', { name: 'PV' });
     expect(meter).toHaveAttribute('aria-valuemin', '0');
     expect(meter).toHaveAttribute('aria-valuemax', '200');
     expect(meter).toHaveAttribute('aria-valuenow', '150.2');
+    expect(meter).toHaveAttribute('aria-valuetext', '150.2 °C');
   });
 
-  it('fill position maps measurably to PV vs scale (50 < 100 < 150)', () => {
-    const { rerender, container } = render(<AnalogBar label="PV" value={50} scale={scale} />);
-    const low = fillWidth(container);
-    rerender(<AnalogBar label="PV" value={100} scale={scale} />);
-    const mid = fillWidth(container);
-    rerender(<AnalogBar label="PV" value={150} scale={scale} />);
-    const high = fillWidth(container);
-    expect(mid).toBeCloseTo(50, 1); // 100/200 = 50%
-    expect(low).toBeLessThan(mid);
-    expect(mid).toBeLessThan(high);
+  it('fill width tracks the clamped fraction (sanctioned dynamic inline style)', () => {
+    render(<AnalogBar label="PV" value={100} scale={scale} />);
+    // jsdom serializes "50.00%" → "50%" when reading element.style.width;
+    // both forms assert the same fraction.
+    expect(screen.getByTestId('analog-bar-fill').style.width).toMatch(/^50(\.\d+)?%$/);
   });
 
-  it('renders neutral fill when alarm is normal (no alarm token applied)', () => {
-    const { container } = render(<AnalogBar label="PV" value={100} scale={scale} alarm="normal" />);
-    const fill = container.querySelector('[data-testid="bar-fill"]') as HTMLElement;
-    expect(fill.getAttribute('data-alarm')).toBe('normal');
+  it('alarm level swaps the fill token var, never a raw color', () => {
+    render(<AnalogBar label="PV" value={100} scale={scale} alarm="crit" />);
+    expect(screen.getByTestId('analog-bar-fill').style.background).toBe('var(--alarm-crit)');
   });
 
-  it('applies critical alarm fill ONLY on abnormal state', () => {
-    const { container } = render(<AnalogBar label="PV" value={195} scale={scale} alarm="critical" />);
-    const fill = container.querySelector('[data-testid="bar-fill"]') as HTMLElement;
-    expect(fill.getAttribute('data-alarm')).toBe('critical');
-    const value = screen.getByTestId('bar-value');
-    expect(value).toHaveStyle({ fontWeight: '600' });
+  it('renders the SP marker when spValue is given', () => {
+    render(<AnalogBar label="PV" value={100} scale={scale} spValue={150} />);
+    expect(screen.getByTestId('analog-bar-sp').style.left).toMatch(/^75(\.\d+)?%$/);
   });
 
-  it('shows SP marker only when spValue is given (PV-bar signature)', () => {
-    const { rerender, container } = render(<AnalogBar label="PV" value={150} scale={scale} />);
-    expect(container.querySelector('[data-testid="sp-marker"]')).toBeNull();
-    rerender(<AnalogBar label="PV" value={150} scale={scale} spValue={152} />);
-    expect(container.querySelector('[data-testid="sp-marker"]')).not.toBeNull();
+  it('missing value: 0% fill, em dash, aria-valuetext "sem dados"', () => {
+    render(<AnalogBar label="CO" value={null} scale={scale} />);
+    expect(screen.getByTestId('analog-bar-fill').style.width).toMatch(/^0(\.\d+)?%$/);
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByRole('meter', { name: 'CO' })).toHaveAttribute('aria-valuetext', 'sem dados');
   });
 
-  it('renders placeholder and omits aria-valuenow when value is missing', () => {
-    render(<AnalogBar label="PV" value={undefined} scale={scale} />);
-    const meter = screen.getByRole('meter');
-    expect(meter).not.toHaveAttribute('aria-valuenow');
-    expect(screen.getByTestId('bar-value')).toHaveTextContent('—');
+  /**
+   * E2E-047 — a frozen reading must never be presented as the current one.
+   * These three channels are independent on purpose: ink for a glance, the
+   * `*` mark for a colour-blind or dimmed screen, `aria-valuetext` for a
+   * screen reader.
+   */
+  it('a stale reading is dimmed, marked and announced as such', () => {
+    render(<AnalogBar label="PV" value={150.2} scale={scale} stale />);
+    const meter = screen.getByRole('meter', { name: 'PV' });
+    expect(meter).toHaveAttribute('aria-valuetext', '150.2 °C (desatualizado)');
+    expect(meter).toHaveAttribute('aria-valuenow', '150.2'); // the value is kept, not blanked
+    expect(screen.getByText('*')).toBeInTheDocument();
+    expect(screen.getByText('150.2').className).toContain('text-text-disabled');
   });
 
-  it('honors the decimals prop in the value readout', () => {
-    render(<AnalogBar label="PV" value={12.345} scale={scale} decimals={2} />);
-    expect(screen.getByTestId('bar-value')).toHaveTextContent('12.35');
+  it('a stale reading stops asserting an alarm level it can no longer see', () => {
+    render(<AnalogBar label="PV" value={100} scale={scale} alarm="crit" stale />);
+    expect(screen.getByTestId('analog-bar-fill').style.background).toBe('var(--text-disabled)');
   });
 
-  it('defaults to 1 decimal when decimals prop is omitted', () => {
-    render(<AnalogBar label="PV" value={12.345} scale={scale} />);
-    expect(screen.getByTestId('bar-value')).toHaveTextContent('12.3');
+  it('a fresh reading carries no stale marking', () => {
+    render(<AnalogBar label="PV" value={150.2} scale={scale} />);
+    expect(screen.getByRole('meter', { name: 'PV' })).toHaveAttribute('aria-valuetext', '150.2 °C');
+    expect(screen.queryByText('*')).not.toBeInTheDocument();
   });
 });

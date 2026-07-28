@@ -1,103 +1,112 @@
 import { useState } from 'react';
-import { useOpcuaStatus } from '../../api/executive';
-import { useConnect, useDisconnect, useSaveEndpoint } from './useOpcua';
+import type { ApiError } from '@/api/client';
+import type { ConnectionState } from '@/api/types';
+import { useCan } from '@/auth/useCan';
+import { Badge } from '@/components/Badge';
+import { Button } from '@/components/Button';
+import { Field, Input } from '@/components/Field';
+import { useConnect, useDisconnect, useOpcuaStatus, useSaveEndpoint } from './useOpcua';
 
 /**
- * OPC-UA connection panel (Task 8.3). Inline/CSS migrated to flat ISA-101 token
- * utilities. ONLINE is the only healthy state; CONNECTING/RECONNECTING are
- * transitional (warning); everything else reads as down/critical. The state dot
- * color is data-driven, so it stays an inline state/alarm token var.
+ * OPC-UA session control (§9 `opcua.configure`, admin-only).
+ *
+ * ONLINE is the only healthy state; CONNECTING/RECONNECTING are transitional
+ * and everything else is down. The badge tone is the ONLY color here — ISA-101
+ * keeps chrome quiet and spends color on abnormality (§6.3).
  */
-function dotColor(state: string): string {
-  if (state === 'ONLINE') return 'var(--state-running)';
-  if (state === 'CONNECTING' || state === 'RECONNECTING') return 'var(--alarm-warning)';
-  return 'var(--alarm-critical)';
+
+const STATE_TONE: Record<ConnectionState, 'neutral' | 'warn' | 'crit'> = {
+  ONLINE: 'neutral',
+  CONNECTING: 'warn',
+  RECONNECTING: 'warn',
+  OFFLINE: 'crit',
+};
+
+/** Turn the backend's own refusal into the operator's language (§11). */
+export function connectionErrorMessage(error: ApiError): string {
+  if (error.status === 422) return 'O endpoint deve começar com opc.tcp://';
+  if (error.kind === 'forbidden') return 'Sua conta não pode alterar a conexão OPC-UA.';
+  if (error.kind === 'network') return 'Sem resposta do servidor.';
+  return 'Não foi possível alterar a conexão OPC-UA.';
 }
 
-const INPUT =
-  'numeric flex-[1_1_18rem] min-w-[12rem] bg-surface text-text border border-border-strong rounded-control px-3 py-2 ' +
-  'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--state-running)]';
-
-const BUTTON =
-  'cursor-pointer bg-surface text-text border border-border-strong rounded-control px-4 py-2 ' +
-  'hover:bg-surface-container-high disabled:opacity-50 disabled:cursor-not-allowed';
-
-const BUTTON_PRIMARY =
-  'cursor-pointer bg-surface text-[var(--state-running)] border border-[var(--state-running)] rounded-control px-4 py-2 ' +
-  'hover:bg-surface-container-high disabled:opacity-50 disabled:cursor-not-allowed';
-
 export function ConnectionPanel() {
-  const status = useOpcuaStatus();
+  const canConfigure = useCan('opcua.configure');
+  const status = useOpcuaStatus(canConfigure);
   const save = useSaveEndpoint();
   const connect = useConnect();
   const disconnect = useDisconnect();
-  const [endpoint, setEndpoint] = useState('');
+  const [typed, setTyped] = useState<string | null>(null);
 
-  const current = status.data?.endpoint ?? '';
-  const value = endpoint || current;
-  const state = status.data?.state ?? 'OFFLINE';
-  const online = state === 'ONLINE';
-
-  async function handleConnect() {
-    if (value && value !== current) await save.mutateAsync(value);
-    await connect.mutateAsync(value || undefined);
+  if (!canConfigure) {
+    return (
+      <p className="p-4 text-sm text-text-soft">
+        Somente administradores podem configurar a conexão OPC-UA.
+      </p>
+    );
   }
+
+  const stored = status.data?.endpoint ?? '';
+  const endpoint = typed ?? stored;
+  const state: ConnectionState = status.data?.state ?? 'OFFLINE';
+  const busy = save.isPending || connect.isPending || disconnect.isPending;
+  const failure = save.error ?? connect.error ?? disconnect.error ?? null;
+
+  const handleConnect = async (): Promise<void> => {
+    try {
+      // PUT first: /opcua/connect only persists the endpoint for this attempt.
+      if (endpoint !== '' && endpoint !== stored) await save.mutateAsync(endpoint);
+      await connect.mutateAsync(endpoint === '' ? undefined : endpoint);
+    } catch {
+      /* surfaced by `failure` below */
+    }
+  };
 
   return (
     <section
-      className="flex flex-col gap-3 border border-border rounded-card bg-surface-container p-4"
-      aria-label="OPC-UA connection"
+      aria-label="Conexão OPC-UA"
+      className="flex flex-col gap-3 border border-rule bg-surface p-3"
     >
-      <div className="flex items-center gap-3 flex-wrap">
-        <label
-          className="uppercase tracking-[0.04em] text-text-secondary"
-          style={{ fontSize: 'var(--text-xs)' }}
-          htmlFor="opc-endpoint"
+      <div className="flex flex-wrap items-end gap-3">
+        <Field
+          label="Endpoint"
+          htmlFor="opcua-endpoint"
+          className="min-w-64 flex-1"
+          description="Endereço do servidor OPC-UA (opc.tcp://host:porta)."
         >
-          Endpoint
-        </label>
-        <input
-          id="opc-endpoint"
-          className={INPUT}
-          style={{ fontSize: 'var(--text-sm)' }}
-          type="text"
-          placeholder="opc.tcp://host:4840"
-          value={value}
-          onChange={(e) => setEndpoint(e.target.value)}
-        />
-        <span
-          className="inline-flex items-center gap-2 numeric text-text-secondary"
-          style={{ fontSize: 'var(--text-xs)' }}
-          aria-live="polite"
-        >
-          <span
-            aria-hidden
-            className="h-[9px] w-[9px] rounded-pill"
-            style={{ backgroundColor: dotColor(state) }}
+          <Input
+            id="opcua-endpoint"
+            type="text"
+            className="numeric"
+            placeholder="opc.tcp://host:4840"
+            aria-describedby="opcua-endpoint-desc"
+            value={endpoint}
+            onChange={(e) => setTyped(e.target.value)}
           />
+        </Field>
+        <Badge tone={STATE_TONE[state]} aria-live="polite" className="mb-2">
           {state}
-        </span>
+        </Badge>
       </div>
+
       <div className="flex gap-2">
-        <button
-          type="button"
-          className={BUTTON_PRIMARY}
-          style={{ fontSize: 'var(--text-sm)' }}
-          onClick={handleConnect}
-          disabled={connect.isPending}
-        >
+        <Button variant="primary" disabled={busy} onClick={() => void handleConnect()}>
           Connect
-        </button>
-        <button
-          type="button"
-          className={BUTTON}
-          style={{ fontSize: 'var(--text-sm)' }}
-          onClick={() => disconnect.mutateAsync()}
-          disabled={!online || disconnect.isPending}
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={busy || state !== 'ONLINE'}
+          onClick={() => void disconnect.mutateAsync().catch(() => undefined)}
         >
           Disconnect
-        </button>
+        </Button>
       </div>
+
+      {failure !== null ? (
+        <p role="alert" className="text-xs font-medium text-alarm-crit">
+          {connectionErrorMessage(failure)}
+        </p>
+      ) : null}
     </section>
   );
 }

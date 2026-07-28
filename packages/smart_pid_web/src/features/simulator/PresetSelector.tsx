@@ -1,26 +1,43 @@
+import { useId } from 'react';
+import { cn } from '@/lib/utils';
 import { PRESET_NAMES, type ProcessPresetName } from './types';
 
-interface Props {
+export interface PresetSelectorProps {
   value: ProcessPresetName;
-  onChange: (p: ProcessPresetName) => void;
+  onChange: (preset: ProcessPresetName) => void;
 }
 
-export function PresetSelector({ value, onChange }: Props): JSX.Element {
+/** Shared with DisturbanceControls — the flat instrument look for a native select. */
+export const NATIVE_SELECT_CLASS = cn(
+  'min-h-11 w-full rounded-control border border-rule-strong bg-surface-sunk px-2 text-sm text-text',
+  'outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+);
+
+/**
+ * Process model behind the twin. Deliberately a NATIVE `<select>`, not the
+ * Radix `Select`: the value is server-owned (the POST invalidates the status
+ * snapshot and the refetch decides what is selected), and e2e/simulator drives
+ * it with `selectOption`, which only speaks to a real `<select>`.
+ */
+export function PresetSelector({ value, onChange }: PresetSelectorProps) {
+  const id = useId();
   return (
-    <label htmlFor="simulator-preset">
-      <span>Process preset</span>
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-2xs font-medium uppercase tracking-wider text-text-soft">
+        Process preset
+      </label>
       <select
-        id="simulator-preset"
-        aria-label="Process preset"
+        id={id}
+        className={NATIVE_SELECT_CLASS}
         value={value}
         onChange={(e) => onChange(e.target.value as ProcessPresetName)}
       >
-        {PRESET_NAMES.map((p) => (
-          <option key={p} value={p}>
-            {p}
+        {PRESET_NAMES.map((preset) => (
+          <option key={preset} value={preset}>
+            {preset}
           </option>
         ))}
       </select>
-    </label>
+    </div>
   );
 }

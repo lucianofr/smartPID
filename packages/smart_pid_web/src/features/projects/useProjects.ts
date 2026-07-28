@@ -1,46 +1,89 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { projectApi } from './projectApi';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from '@tanstack/react-query';
+import type { ApiError } from '@/api/client';
+import { endpoints } from '@/api/endpoints';
+import { queryKeys } from '@/api/queryKeys';
+import type { ProjectListResponse, ProjectMeta } from '@/api/types';
 
-const LIST_KEY = ['projects', 'list'] as const;
+/**
+ * Portable `.spid` project management (routers/project.py).
+ *
+ * Every route below `/project` except `/current` is `require_admin`, so each
+ * hook takes the caller's `projects.manage` verdict as its `enabled` gate — a
+ * `user` session must never spend a request, or a retry storm, on a certain 403.
+ *
+ * All four mutations invalidate the same roster key: the backend list is the
+ * single source of truth for size and loop count, and both change on import.
+ */
 
-export function useProjectList() {
-  return useQuery({ queryKey: LIST_KEY, queryFn: projectApi.list });
-}
-
-function invalidating(qc: ReturnType<typeof useQueryClient>) {
-  return () => {
-    void qc.invalidateQueries({ queryKey: LIST_KEY });
-  };
-}
-
-export function useCreateProject() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (name: string) => projectApi.create(name),
-    onSuccess: invalidating(qc),
+export function useProjectList(enabled = true): UseQueryResult<ProjectListResponse, ApiError> {
+  return useQuery<ProjectListResponse, ApiError>({
+    queryKey: queryKeys.projects,
+    enabled,
+    queryFn: () => endpoints.projectList(),
   });
 }
 
-export function useOpenProject() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (name: string) => projectApi.open(name),
-    onSuccess: invalidating(qc),
+function useRosterMutation<TArg>(
+  mutationFn: (arg: TArg) => Promise<ProjectMeta | void>,
+): UseMutationResult<ProjectMeta | void, ApiError, TArg> {
+  const queryClient = useQueryClient();
+  return useMutation<ProjectMeta | void, ApiError, TArg>({
+    mutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+    },
   });
 }
 
-export function useImportProject() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ file, name }: { file: File; name?: string }) => projectApi.import(file, name),
-    onSuccess: invalidating(qc),
-  });
+export function useCreateProject(): UseMutationResult<ProjectMeta | void, ApiError, string> {
+  return useRosterMutation((name: string) => endpoints.createProject(name));
 }
 
-export function useDeleteProject() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (name: string) => projectApi.remove(name),
-    onSuccess: invalidating(qc),
-  });
+export function useOpenProject(): UseMutationResult<ProjectMeta | void, ApiError, string> {
+  return useRosterMutation((name: string) => endpoints.openProject(name));
+}
+
+export interface ImportArgs {
+  file: File;
+  name?: string;
+}
+
+export function useImportProject(): UseMutationResult<ProjectMeta | void, ApiError, ImportArgs> {
+  return useRosterMutation(({ file, name }: ImportArgs) => endpoints.importProject(file, name));
+}
+
+export function useDeleteProject(): UseMutationResult<ProjectMeta | void, ApiError, string> {
+  return useRosterMutation((name: string) => endpoints.deleteProject(name));
+}
+
+/**
+ * §11 taxonomy → operator language. The backend raises exactly two 409s here
+ * (`Project 'x' already exists` from new/import, `Cannot delete the active
+ * project 'x'` from delete — project_service.py), so both get a real pt-BR
+ * reason; an unforeseen conflict still echoes the server detail rather than
+ * collapsing into "falhou".
+ *
+ * Import adds a third refusal: 507 when the projects volume is too full to
+ * stage the archive. That is an operator-actionable server condition, not a
+ * bad file, so it must not be phrased like one.
+ */
+export function projectErrorMessage(error: ApiError, fallback: string): string {
+  if (error.status === 413) return 'O arquivo excede o tamanho máximo aceito pelo servidor.';
+  if (error.status === 507) return 'Sem espaço em disco no servidor para receber o arquivo.';
+  if (error.status === 400) return 'Arquivo .spid inválido.';
+  if (error.kind === 'conflict') {
+    if (/already exists/i.test(error.detail)) return 'Já existe um projeto com esse nome.';
+    if (/active project/i.test(error.detail)) return 'Não é possível excluir o projeto ativo.';
+    return error.detail;
+  }
+  if (error.kind === 'not-found') return 'Projeto não encontrado.';
+  if (error.kind === 'forbidden') return 'Sua conta não pode gerenciar projetos.';
+  if (error.kind === 'network') return 'Sem resposta do servidor.';
+  return fallback;
 }

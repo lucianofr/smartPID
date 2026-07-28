@@ -1,0 +1,122 @@
+import { type ReactNode } from 'react';
+import { Settings } from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { Button } from '@/components/Button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/DropdownMenu';
+import { useAuth } from '@/auth/AuthContext';
+import { useTheme, type ThemeId } from '@/theme/ThemeProvider';
+import { cn } from '@/lib/utils';
+import { WelcomeGate } from '@/features/projects/WelcomeGate';
+import { appRoutes, cfgRoutes, navRoutes } from './routes';
+import { ConnectionBanner } from './ConnectionBanner';
+
+export interface AppShellProps {
+  children?: ReactNode;
+}
+
+const NAV_LINK_CLASS = cn(
+  'inline-flex min-h-11 min-w-11 items-center rounded-control px-3 text-sm font-medium',
+  'text-text-soft outline-none hover:bg-surface-sunk hover:text-text',
+  'focus-visible:ring-2 focus-visible:ring-focus-ring',
+);
+
+export function AppShell({ children }: AppShellProps) {
+  const { logout, user } = useAuth();
+  const { theme, setTheme, themes } = useTheme();
+  const navigate = useNavigate();
+  // An `adminOnly` route redirects a user back to `/`, so offering it in the
+  // configuration menu would only advertise a dead end (phase 10).
+  const visible = appRoutes.filter((r) => r.adminOnly !== true || user?.role === 'admin');
+  const nav = navRoutes(visible);
+  const cfg = cfgRoutes(visible);
+
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-bg text-text">
+      <header className="flex shrink-0 items-center gap-2 border-b border-rule bg-surface px-3 py-1.5">
+        {/* With `Executivo` visible in the nav the wordmark link is redundant as
+            a route to it; the brand points at the landing route instead. */}
+        <NavLink
+          to="/"
+          className={cn(
+            // min-w-0 + truncate: at the §6.9 320px floor the wordmark, nav and
+            // action cluster together exceed the viewport and the page gained a
+            // horizontal scrollbar. The brand is the only element here that can
+            // give way — nav already scrolls and the actions are load-bearing.
+            'type-display min-w-0 shrink truncate rounded-control px-1 text-sm uppercase tracking-widest text-text',
+            'outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+          )}
+        >
+          Smart PID
+        </NavLink>
+        <nav aria-label="Navegação principal" className="flex min-w-0 items-center gap-1 overflow-x-auto">
+          {nav.map((route) => (
+            <NavLink
+              key={route.path}
+              to={route.path}
+              end={route.path === '/'}
+              className={({ isActive }) => cn(NAV_LINK_CLASS, isActive && 'bg-surface-sunk text-text')}
+            >
+              {route.nav.label}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" aria-label="Configurações">
+                <Settings className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Tema</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={theme}
+                onValueChange={(next) => setTheme(next as ThemeId)}
+              >
+                {themes.map((t) => (
+                  <DropdownMenuRadioItem key={t.id} value={t.id}>
+                    {t.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+              {cfg.length > 0 ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Administração</DropdownMenuLabel>
+                  {cfg.map((route) => (
+                    <DropdownMenuItem key={route.path} onSelect={() => navigate(route.path)}>
+                      {route.cfg.label}
+                    </DropdownMenuItem>
+                  ))}
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant="ghost" onClick={logout}>
+            Sair
+          </Button>
+        </div>
+      </header>
+
+      {/* Directly under the top bar and above every route: whether the numbers
+          below are current is the first thing an operator must be able to read. */}
+      <ConnectionBanner />
+
+      <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+
+      {/* Admin-only, once per session, and only when the roster actually loaded. */}
+      <WelcomeGate />
+    </div>
+  );
+}
+
+

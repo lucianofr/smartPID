@@ -1,9 +1,30 @@
 <!doctype html>
-<html lang="en" data-theme="isa101">
+<html lang="pt-BR" data-theme="neon">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Smart PID</title>
+    <link rel="preload" href="/src/assets/fonts/archivo-latin-var.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/src/assets/fonts/geist-mono-latin-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/src/assets/fonts/geist-mono-latin-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/src/assets/fonts/orbitron-latin-var.woff2" as="font" type="font/woff2" crossorigin />
+    <script>
+      // Pre-paint theme (§6.8): apply the persisted theme before first paint so a
+      // returning Phosphor user never flashes Neon. Mirrors LEGACY_THEME_MAP in
+      // src/theme/ThemeProvider.tsx — ThemeProvider.test.tsx enforces the sync,
+      // including that this fallback equals DEFAULT_THEME.
+      (function () {
+        try {
+          var stored = localStorage.getItem('spid.theme');
+          var legacy = { 'dark-room': 'phosphor', 'md3-dark': 'recorder', 'md3-light': 'recorder', 'ocean': 'recorder' };
+          var valid = ['recorder', 'phosphor', 'isa101', 'neon'];
+          var theme = valid.indexOf(stored) >= 0 ? stored : legacy[stored] || 'neon';
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {
+          /* no storage: keep the static neon default */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

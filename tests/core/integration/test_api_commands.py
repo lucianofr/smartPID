@@ -162,10 +162,10 @@ class _FakeOPCUA:
 
 class TestWriteTuningCommand:
     @pytest.mark.asyncio
-    async def test_any_authenticated_user_allowed(
+    async def test_rejects_user_role(
         self, client: AsyncClient, user_headers: dict[str, str], api_deps: dict, app
     ) -> None:
-        """Single-admin deployment: any authenticated user may write tuning."""
+        """POST /commands/tuning is admin-only (spec §9.2 Appendix A)."""
         cid = await _create_and_start_controller(api_deps)
         fake = _FakeOPCUA()
         app.state.opcua_adapter = fake
@@ -174,7 +174,8 @@ class TestWriteTuningCommand:
             json={"controller_id": cid, "kp": 5.0},
             headers=user_headers,
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 403
+        assert fake.written is None
 
     @pytest.mark.asyncio
     async def test_no_auth_returns_401(self, client: AsyncClient) -> None:

@@ -1,92 +1,155 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
-import type { ReactNode } from 'react';
-
-const stats = [
-  {
-    controller_id: 1, iae: 12.5, itae: 200, ise: 30, mse: 1.1, std_dev: 0.8,
-    total_variation: 4.2, variability_sp: 0.03, variability_range: 0.04, sample_count: 600,
-  },
-  {
-    controller_id: 2, iae: 7.5, itae: 100, ise: 15, mse: 0.6, std_dev: 0.5,
-    total_variation: 1.8, variability_sp: 0.05, variability_range: 0.06, sample_count: 600,
-  },
-];
-const controllers = [
-  { id: 1, name: 'FIC-101', mode: 'AUTO' },
-  { id: 2, name: 'TIC-202', mode: 'MAN' },
-];
-
-vi.mock('../realtime/useRealtime', () => ({
-  useRealtime: () => ({
-    connected: true,
-    lastStatus: new Map(),
-    lastStats: new Map(),
-    subscribe: () => () => {},
-    onResync: () => () => {},
-  }),
-}));
-
-vi.mock('../api/client', () => ({
-  apiGet: vi.fn((path: string) => {
-    if (path === '/controllers/stats') return Promise.resolve(stats);
-    if (path === '/controllers') return Promise.resolve(controllers);
-    if (path === '/opcua/status') {
-      return Promise.resolve({ state: 'ONLINE', endpoint: 'opc.tcp://x:4840' });
-    }
-    if (path === '/alarms/active') return Promise.resolve([]); // AlarmBar
-    if (path.startsWith('/alarms/ai-history')) return Promise.resolve([]); // querystring
-    return Promise.resolve(null); // ai-status -> '—'; tuning-rec -> null
-  }),
-  apiPost: vi.fn(() => Promise.resolve(null)),
-  ApiError: class ApiError extends Error {},
-}));
-
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AnyEnvelope, StatsData } from '@/lib/envelope';
+import { createFakeRealtime, createQueryClient, TestProviders } from '@/test/providers';
+import { appRoutes } from '@/app/routes';
 import { ExecutiveDashboardPage } from './ExecutiveDashboardPage';
-import { ThemeProvider } from '../theme/ThemeProvider';
 
-function wrapper({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return (
-    <QueryClientProvider client={qc}>
-      <ThemeProvider>
-        <MemoryRouter>{children}</MemoryRouter>
-      </ThemeProvider>
-    </QueryClientProvider>
-  );
+const METRICS: StatsData = {
+  iae: 12.5,
+  ise: 30,
+  itae: 200,
+  mse: 1.1,
+  std_dev: 0.8,
+  total_variation: 4.2,
+  variability_range: 0.04,
+  variability_sp: 0.03,
+  sample_count: 600,
+  mean_abs_error: 0,
+  osc: 0,
+  pk_pk_error: 0,
+  recent_pk_pk_error: 0,
+  recent_reversals: 0,
+  reversals: 0,
+  tv_per_sample: 0,
+  zero_crossings: 0,
+};
+
+const CONTROLLERS = [
+  {
+    id: 1,
+    name: 'FIC-101',
+    description: 'Flow',
+    mode: 'AUTO',
+    optimization_enabled: true,
+    ai_config: { engine: 'FUZZY' },
+  },
+  {
+    id: 2,
+    name: 'TIC-202',
+    description: 'Temp',
+    mode: 'MAN',
+    optimization_enabled: false,
+    ai_config: { engine: 'NONE' },
+  },
+];
+
+const fetchMock = vi.fn();
+
+beforeEach(() => {
+  sessionStorage.setItem('smart-pid-token', 'jwt');
+  vi.stubGlobal('fetch', fetchMock);
+  fetchMock.mockImplementation((path: string) => {
+    const body =
+      path.startsWith('/api/controllers/stats') ? [{ ...METRICS, controller_id: 1 }]
+      : path.startsWith('/api/controllers') ? CONTROLLERS
+      : path.startsWith('/api/opcua/status') ? { state: 'ONLINE', endpoint: 'opc.tcp://x' }
+      : path.startsWith('/api/system/status')
+        ? { status: 'running', uptime_s: 3661, active_controllers: 2, bus_active: true, api_version: '2.0.0' }
+      : path.startsWith('/api/alarms/ai-history') ? []
+      : path.startsWith('/api/auth/me') ? { user_id: 1, username: 'admin', role: 'admin' }
+      : null;
+    if (body === null) return Promise.reject(new Error(`unstubbed ${path}`));
+    return Promise.resolve({ ok: true, status: 200, json: async () => body });
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  fetchMock.mockReset();
+  sessionStorage.clear();
+});
+
+function renderPage() {
+  const realtime = createFakeRealtime();
+  return {
+    realtime,
+    ...render(
+      <TestProviders queryClient={createQueryClient()} realtime={realtime.value}>
+        <ExecutiveDashboardPage />
+      </TestProviders>,
+    ),
+  };
 }
 
 describe('ExecutiveDashboardPage', () => {
-  beforeEach(() => vi.clearAllMocks());
+  it('answers the four buyer questions on one screen', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId('kpi-iae')).toHaveTextContent('12.50'));
 
-  it('renders aggregate KPI values equal to the values derived from mocked REST', async () => {
-    render(<ExecutiveDashboardPage />, { wrapper });
-    // avgIae = (12.5+7.5)/2 = 10.00 ; totalTv = 4.2+1.8 = 6.00
-    // avgVariabilityRange = (0.04+0.06)/2 = 0.05 -> 5.0% ; autoPct = 1/2 = 50%
-    // The KPI cards mount immediately with seeded zeros, then the /controllers/stats
-    // query resolves and re-renders the real numbers; wait on that resolved value.
-    expect(await screen.findByText('10.00')).toBeInTheDocument();
-    expect(screen.getByTestId('kpi-iae')).toHaveTextContent('10.00');
-    expect(screen.getByTestId('kpi-tv')).toHaveTextContent('6.00');
-    expect(screen.getByTestId('kpi-variability')).toHaveTextContent('5.0%');
     expect(screen.getByTestId('kpi-auto')).toHaveTextContent('50.0%');
-    expect(screen.getByTestId('kpi-loops')).toHaveTextContent('2');
+    expect(screen.getByTestId('kpi-ai')).toHaveTextContent('50.0%');
+    expect(screen.getByTestId('kpi-variability')).toHaveTextContent('4.0%');
+    expect(screen.getByRole('region', { name: 'Retorno da IA' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Saúde do backend' })).toBeVisible();
+    expect(screen.getByRole('link', { name: 'FIC-101' })).toHaveAttribute('href', '/?loop=1');
   });
 
-  it('shows OPC ONLINE for both loops and marks AUTO/MAN health', async () => {
-    render(<ExecutiveDashboardPage />, { wrapper });
-    expect(await screen.findByTestId('health-FIC-101-opc')).toHaveTextContent('ONLINE');
-    expect(screen.getByTestId('health-FIC-101-state')).toHaveTextContent('running');
-    expect(screen.getByTestId('health-TIC-202-state')).toHaveTextContent('running');
+  it('reports OPC reachability and uptime next to each loop', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId('health-FIC-101-opc')).toHaveTextContent('ONLINE'));
+    expect(screen.getByTestId('health-uptime')).toHaveTextContent('1 h 1 min');
+    expect(screen.getByTestId('health-cpu')).toHaveTextContent('—');
   });
 
-  it('changing the period selector keeps the dashboard mounted (period-window selection)', async () => {
-    render(<ExecutiveDashboardPage />, { wrapper });
-    const select = await screen.findByLabelText('Aggregation period');
-    fireEvent.change(select, { target: { value: '24h' } });
-    expect((select as HTMLSelectElement).value).toBe('24h');
-    expect(screen.getByTestId('executive-dashboard')).toBeInTheDocument();
+  it('lets a live stats frame move the KPI without a refetch', async () => {
+    const { realtime } = renderPage();
+    await waitFor(() => expect(screen.getByTestId('kpi-iae')).toHaveTextContent('12.50'));
+
+    const frame: AnyEnvelope = {
+      type: 'stats',
+      loop_id: 1,
+      seq: 2,
+      ts: 2,
+      data: { ...METRICS, iae: 9 },
+    };
+    act(() => realtime.emit(frame));
+
+    expect(screen.getByTestId('kpi-iae')).toHaveTextContent('9.00');
+  });
+
+  it('re-windows the AI history when the period changes', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId('kpi-iae')).toHaveTextContent('12.50'));
+    const before = fetchMock.mock.calls.filter((c: unknown[]) =>
+      String(c[0]).includes('/alarms/ai-history'),
+    ).length;
+
+    fireEvent.change(screen.getByLabelText('Período'), { target: { value: '1h' } });
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/alarms/ai-history'))
+          .length,
+      ).toBeGreaterThan(before),
+    );
+    expect(within(screen.getByRole('region', { name: 'Retorno da IA' })).getByText('Última hora')).toBeVisible();
+  });
+
+  it('says the AI window cannot be scored instead of showing zeros', async () => {
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText('Dados insuficientes para comparar antes e depois.')).toBeVisible(),
+    );
+  });
+});
+
+describe('/executive registration', () => {
+  it('is reachable from the top bar, both consultative and unrestricted', () => {
+    const route = appRoutes.find((r) => r.path === '/executive');
+    expect(route).toBeDefined();
+    expect(route?.nav).toEqual({ label: 'Executivo', order: 50 });
+    expect(route?.cfg).toBeUndefined();
+    expect(route?.adminOnly).toBeUndefined();
   });
 });

@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from smart_pid_core.adapters.inbound.api.auth import create_access_token
+
 if TYPE_CHECKING:
     from httpx import AsyncClient
 
@@ -47,3 +49,69 @@ class TestJWTValidation:
             "/controllers", headers={"Authorization": "Bearer invalid.token.here"}
         )
         assert resp.status_code == 401
+
+
+class TestLegacyRoleClaims:
+    """Spec §9.5: tokens minted before the cutover carry uppercase roles for
+    up to 8h. They are rejected with 401 — one forced re-login, no mapping."""
+
+    @pytest.mark.asyncio
+    async def test_legacy_role_claims_rejected_with_401(
+        self, client: AsyncClient, api_deps: dict
+    ) -> None:
+        for legacy_role in ("ADMIN", "SUPERVISOR", "OPERATOR"):
+            token = create_access_token(
+                user_id=1,
+                username="admin",
+                role=legacy_role,
+                secret=api_deps["settings"].jwt_secret,
+            )
+            resp = await client.get(
+                "/controllers", headers={"Authorization": f"Bearer {token}"}
+            )
+            assert resp.status_code == 401, f"role={legacy_role!r} must be 401"
+
+    @pytest.mark.asyncio
+    async def test_login_now_mints_lowercase_role_accepted_by_api(
+        self, client: AsyncClient
+    ) -> None:
+        login = await client.post(
+            "/auth/login", json={"username": "admin", "password": "admin"}
+        )
+        assert login.status_code == 200
+        token = login.json()["access_token"]
+        resp = await client.get(
+            "/controllers", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert resp.status_code == 200
+
+
+class TestMe:
+    @pytest.mark.asyncio
+    async def test_me_returns_admin_claims(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        resp = await client.get("/auth/me", headers=admin_headers)
+        assert resp.status_code == 200
+        assert resp.json() == {"user_id": 1, "username": "admin", "role": "admin"}
+
+    @pytest.mark.asyncio
+    async def test_me_returns_user_claims(
+        self, client: AsyncClient, user_headers: dict[str, str]
+    ) -> None:
+        resp = await client.get("/auth/me", headers=user_headers)
+        assert resp.status_code == 200
+        assert resp.json() == {"user_id": 2, "username": "operator", "role": "user"}
+
+    @pytest.mark.asyncio
+    async def test_me_requires_token(self, client: AsyncClient) -> None:
+        resp = await client.get("/auth/me")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_refresh_works_for_user_role(
+        self, client: AsyncClient, user_headers: dict[str, str]
+    ) -> None:
+        resp = await client.post("/auth/refresh", headers=user_headers)
+        assert resp.status_code == 200
+        assert "access_token" in resp.json()

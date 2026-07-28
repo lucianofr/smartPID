@@ -1,39 +1,38 @@
-export type AlarmType = 'HIHI' | 'HI' | 'LO' | 'LOLO' | 'DV_HI' | 'DV_LO';
-export type AlarmPriority = 'CRITICAL' | 'WARNING' | 'ADVISORY' | 'LOG';
-export type AlarmStatus = 'UNACKNOWLEDGED' | 'ACKNOWLEDGED' | 'CLEARED_UNACK';
+import type {
+  AlarmConfigResponse,
+  AlarmConfigUpdate,
+  AlarmPriority,
+  AlarmRow,
+  AlarmRowStatus,
+  AlarmThreshold,
+  AlarmTypeName,
+} from '@/api/types';
 
-/** One row from GET /alarms/active (bare dict — typed here by hand, see Task 0.2). */
-export interface ActiveAlarm {
-  id: number;
-  controller_id: number;
-  controller_name: string;
-  alarm_type: AlarmType;
-  priority: AlarmPriority;
-  value: number;
-  limit: number;
-  timestamp: string; // ISO UTC
-  cleared_at: string | null;
-  acknowledged: number; // 0 | 1
-  ack_by_user: string | null;
-  ack_at: string | null;
-  status: AlarmStatus;
-}
+/**
+ * Alarm domain vocabulary. Every name here is an alias of the generated
+ * OpenAPI type re-exported by `api/types` — one boundary to the backend
+ * schema, so an enum change breaks the build instead of drifting silently.
+ */
 
-export interface AlarmThreshold {
-  alarm_type: AlarmType;
-  priority: AlarmPriority; // backend default "WARNING"
-  limit: number; // default 0.0
-  enabled: boolean; // default true
-  deadband: number; // default 0.0
-  delay_on_s: number; // default 0.0
-  delay_off_s: number; // default 0.0
-}
+/** `AlarmPriority` (smart_pid_domain/enums.py) — the four §6.4 severities. */
+export type AlarmSeverity = AlarmPriority;
 
-export interface AlarmConfigResponse {
-  controller_id: number;
-  thresholds: AlarmThreshold[];
-}
+/** `AlarmType` — the six configurable limit kinds. */
+export type AlarmType = AlarmTypeName;
 
-export interface AlarmConfigUpdate {
-  thresholds: AlarmThreshold[];
-}
+/** Row-level ack/clear state (alarm_repo.py CASE) — see lib/alarmMachine.ts. */
+export type AlarmStatus = AlarmRowStatus;
+
+/** One row of `GET /alarms/active` or `GET /alarms/history`. */
+export type ActiveAlarm = AlarmRow;
+
+export type { AlarmConfigResponse, AlarmConfigUpdate, AlarmThreshold };
+
+/** Limit kinds in operator order — HIHI at the top, deviations last. */
+export const ALARM_TYPES = ['HIHI', 'HI', 'LO', 'LOLO', 'DV_HI', 'DV_LO'] as const;
+
+/**
+ * The four analog limits, ordered high→low. Deviation limits (DV_HI/DV_LO) are
+ * relative to setpoint and carry no cross-limit ordering rule.
+ */
+export const ORDERED_LIMIT_TYPES = ['HIHI', 'HI', 'LO', 'LOLO'] as const;

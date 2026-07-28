@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from functools import cache
 
 import httpx
 import pytest
@@ -21,6 +22,35 @@ from smart_pid_core.config import CoreSettings
 from smart_pid_domain.models.controller import PIDParams
 
 
+@cache
+def _cached_hash(password: str) -> str:
+    """bcrypt is deliberately slow — hash each fixture password once, not per test."""
+    return hash_password(password)
+
+
+async def principal_headers(api_deps, username: str, role: str) -> dict[str, str]:
+    """Create the user row for a principal and mint a matching token.
+
+    Authorization re-reads the stored user record on every request (E2E-044),
+    so a token naming a user that does not exist is rejected with 401 — a
+    header fixture has to seed the identity it claims. Only the requested
+    principal is added, so a test that never asks for a second admin keeps
+    the single-admin deployment shape the ``/users`` guards are specified
+    against.
+    """
+    user_repo: UserRepository = api_deps["user_repo"]
+    user = await user_repo.get_by_username(username)
+    if user is None:
+        user = await user_repo.create(username, _cached_hash(username), role)
+    token = create_access_token(
+        user_id=user.id,
+        username=user.username,
+        role=role,
+        secret=api_deps["settings"].jwt_secret,
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
 @pytest.fixture
 def sample_pid_params() -> PIDParams:
     return PIDParams(gain=1.5, reset=10.0, rate=2.0, alpha=0.125, deadband=0.0)
@@ -32,13 +62,13 @@ async def api_deps(tmp_path):
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
-    historian = SQLiteHistorian(repo)
+    historian = SQLiteHistorian(repo.session_factory)
     user_db_path = tmp_path / "users.db"
     user_repo = UserRepository(user_db_path)
     await user_repo.initialize()
-    alarm_repo = AlarmRepository(repo)
-    audit_repo = AuditRepository(repo)
-    system_event_repo = SystemEventRepository(repo.db)
+    alarm_repo = AlarmRepository(repo.session_factory)
+    audit_repo = AuditRepository(repo.session_factory)
+    system_event_repo = SystemEventRepository(repo.session_factory)
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
     loop_manager = LoopManager(bus=bus)
@@ -48,9 +78,7 @@ async def api_deps(tmp_path):
         max_upload_bytes=1 * 1024 * 1024,  # 1 MB cap for upload-size tests
     )  # type: ignore[call-arg]
 
-    # Seed admin user
-    admin_hash = hash_password("admin")
-    await user_repo.create("admin", admin_hash, "ADMIN")
+    await user_repo.create("admin", _cached_hash("admin"), "admin")
 
     projects_dir = tmp_path / "projects"
     projects_dir.mkdir()
@@ -75,7 +103,7 @@ async def api_deps(tmp_path):
     loop_manager.stop_all()
     bus.stop()
     await user_repo.close()
-    await repo.db.close()
+    await repo.close()
 
 
 @pytest.fixture
@@ -108,23 +136,15 @@ async def client(app):
 
 
 @pytest.fixture
-def admin_headers(api_deps) -> dict[str, str]:
-    """Pre-authenticated admin JWT headers."""
-    token = create_access_token(
-        user_id=1, username="admin", role="ADMIN",
-        secret=api_deps["settings"].jwt_secret,
-    )
-    return {"Authorization": f"Bearer {token}"}
+async def admin_headers(api_deps) -> dict[str, str]:
+    """Pre-authenticated admin JWT headers (the seeded admin, user_id 1)."""
+    return await principal_headers(api_deps, "admin", "admin")
 
 
 @pytest.fixture
-def user_headers(api_deps) -> dict[str, str]:
-    """Pre-authenticated operator JWT headers."""
-    token = create_access_token(
-        user_id=2, username="operator", role="OPERATOR",
-        secret=api_deps["settings"].jwt_secret,
-    )
-    return {"Authorization": f"Bearer {token}"}
+async def user_headers(api_deps) -> dict[str, str]:
+    """Pre-authenticated user-role JWT headers (seeds "operator", user_id 2)."""
+    return await principal_headers(api_deps, "operator", "user")
 
 
 @pytest.fixture
@@ -138,13 +158,14 @@ async def alarm_repo(api_deps):
 
 
 @pytest.fixture
-def supervisor_headers(api_deps) -> dict[str, str]:
-    """Pre-authenticated supervisor JWT headers."""
-    token = create_access_token(
-        user_id=3, username="supervisor", role="SUPERVISOR",
-        secret=api_deps["settings"].jwt_secret,
-    )
-    return {"Authorization": f"Bearer {token}"}
+async def supervisor_headers(api_deps) -> dict[str, str]:
+    """TEMPORARY alias of admin_headers (distinct identity, "supervisor").
+
+    The SUPERVISOR tier no longer exists (spec §9.4 maps it to admin).
+    Removed in the call-site-switch task once consumers migrate to
+    admin_headers.
+    """
+    return await principal_headers(api_deps, "supervisor", "admin")
 
 
 @pytest.fixture
@@ -153,7 +174,7 @@ async def sim_api_deps(tmp_path):
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
-    historian = SQLiteHistorian(repo)
+    historian = SQLiteHistorian(repo.session_factory)
     user_db_path = tmp_path / "users.db"
     user_repo = UserRepository(user_db_path)
     await user_repo.initialize()
@@ -166,8 +187,7 @@ async def sim_api_deps(tmp_path):
         simulator_interval_ms=50,
     )  # type: ignore[call-arg]
 
-    admin_hash = hash_password("admin")
-    await user_repo.create("admin", admin_hash, "ADMIN")
+    await user_repo.create("admin", _cached_hash("admin"), "admin")
 
     from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
     simulator_adapter = SimulatorAdapter(settings=settings)
@@ -186,7 +206,7 @@ async def sim_api_deps(tmp_path):
     loop_manager.stop_all()
     bus.stop()
     await user_repo.close()
-    await repo.db.close()
+    await repo.close()
 
 
 @pytest.fixture

@@ -1,177 +1,220 @@
-@import "tailwindcss";
-@import "./theme/tokens.css";
-@import "./theme/themes.css";
+@import 'tailwindcss';
+@import './assets/fonts/fonts.css';
+@import './theme/tokens.css';
+@import './theme/themes.css';
 
 /*
  * Token bridge (Tailwind v4, CSS-first).
  *
- * `@theme inline` maps Tailwind utility namespaces onto the EXISTING token-contract
- * CSS variables defined in `theme/tokens.css` (:root) and `theme/themes.css`
- * ([data-theme='…']). Because `inline` makes each utility emit `var(--…)` instead of
- * snapshotting a value, every utility re-resolves at runtime when `data-theme` flips —
- * keeping all 5 themes working without rebuilding.
- *
- * This block ONLY references contract variables; it never redefines them.
+ * `@theme inline` maps Tailwind utility namespaces onto the §6.4 contract
+ * variables. Because `inline` makes each utility emit `var(--…)` instead of
+ * snapshotting a value, every utility re-resolves at runtime when [data-theme]
+ * flips. This block ONLY references contract variables; it never redefines them.
  */
 @theme inline {
   /* Colors → var(--…) from themes.css ([data-theme]) */
   --color-bg: var(--bg);
   --color-surface: var(--surface);
-  --color-surface-container: var(--surface-container);
-  --color-surface-container-high: var(--surface-container-high);
-  --color-field-bg: var(--field-bg);
+  --color-surface-sunk: var(--surface-sunk);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
   --color-text: var(--text);
-  --color-text-secondary: var(--text-secondary);
+  --color-text-soft: var(--text-soft);
   --color-text-disabled: var(--text-disabled);
-  --color-border: var(--border);
-  --color-border-strong: var(--border-strong);
-  --color-divider: var(--divider);
-  --color-alarm-critical: var(--alarm-critical);
-  --color-alarm-warning: var(--alarm-warning);
-  --color-alarm-diag: var(--alarm-diag);
-  --color-bar-fill: var(--bar-fill);
+  --color-focus-ring: var(--focus-ring);
+  --color-selection: var(--selection);
+  --color-scrim: var(--scrim);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-sunk: var(--accent-sunk);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+  --color-alarm-crit: var(--alarm-crit);
+  --color-alarm-crit-bg: var(--alarm-crit-bg);
+  --color-alarm-warn: var(--alarm-warn);
+  --color-alarm-warn-bg: var(--alarm-warn-bg);
+  --color-alarm-adv: var(--alarm-adv);
+  --color-alarm-adv-bg: var(--alarm-adv-bg);
+  --color-alarm-log: var(--alarm-log);
+  --color-on-alarm: var(--on-alarm);
+  --color-state-running: var(--state-running);
+  --color-state-stopped: var(--state-stopped);
+  --color-state-error: var(--state-error);
+  --color-state-oos: var(--state-oos);
+  --color-trace-pv: var(--trace-pv);
+  --color-trace-sp: var(--trace-sp);
+  --color-trace-co: var(--trace-co);
+  --color-trend-grid: var(--trend-grid);
+  --color-trend-axis: var(--trend-axis);
+  --color-trend-bg: var(--trend-bg);
   --color-bar-track: var(--bar-track);
+  --color-bar-fill: var(--bar-fill);
+  --color-bar-marker: var(--bar-marker);
 
-  /* Radius → var(--…) from tokens.css (overridden per-theme in themes.css) */
+  /* Fonts */
+  --font-display: var(--font-display);
+  --font-ui: var(--font-ui);
+  --font-data: var(--font-data);
+
+  /* Font sizes (text-2xs … text-2xl utilities) */
+  --text-2xs: var(--text-2xs);
+  --text-xs: var(--text-xs);
+  --text-sm: var(--text-sm);
+  --text-base: var(--text-base);
+  --text-lg: var(--text-lg);
+  --text-xl: var(--text-xl);
+  --text-2xl: var(--text-2xl);
+
+  /* Radius */
   --radius-card: var(--radius-card);
   --radius-control: var(--radius-control);
   --radius-pill: var(--radius-pill);
 
-  /* Fonts → var(--…) from tokens.css */
-  --font-ui: var(--font-ui);
-  --font-data: var(--font-data);
-
-  /* Spacing → var(--sp-*) from tokens.css */
-  --spacing-1: var(--sp-1);
-  --spacing-2: var(--sp-2);
-  --spacing-3: var(--sp-3);
-  --spacing-4: var(--sp-4);
-  --spacing-5: var(--sp-5);
-  --spacing-6: var(--sp-6);
-  --spacing-8: var(--sp-8);
-  --spacing-10: var(--sp-10);
-  --spacing-12: var(--sp-12);
-
-  /* Durations → var(--dur-*) from tokens.css */
+  /* Durations / easing */
   --transition-duration-fast: var(--dur-fast);
   --transition-duration-normal: var(--dur-normal);
   --transition-duration-slow: var(--dur-slow);
-
-  /* Easings → var(--ease-*) from tokens.css */
   --ease-out: var(--ease-out);
   --ease-standard: var(--ease-standard);
 }
 
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: var(--text-base);
+  }
+  ::selection {
+    background: var(--selection);
+  }
+
+  /* §6.2 display face: Archivo Expanded (wdth 125). NEVER for numerals. */
+  .type-display {
+    font-family: var(--font-display);
+    font-stretch: 125%;
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.01em;
+  }
+
+  /* §6.2 data face: every numeral in the product. Tabular + slashed zero. */
+  .numeric {
+    font-family: var(--font-data);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'zero' 1;
+    letter-spacing: 0;
+  }
+
+  /* §11 global reduced-motion policy (floor, not per-feature). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
 /*
- * Alarms (Task 4.1) — the ONLY surface where color is allowed (CRIT/WARN/DIAG),
- * always paired with a geometric glyph SHAPE + text so severity rides 3 redundant
- * channels (ISA-101 §8.2). Folded here from AlarmBar.css / AlarmPanel.css /
- * AlarmConfigForm.css (those files removed). Static structural styling lives as
- * Tailwind token utilities on the components; this layer carries only what cannot
- * be expressed inline: the keyframe selectors, the reduced-motion media block, and
- * the clip-path glyph shapes. Stale token names from the old CSS (--space-*,
- * --surface-2, --text-muted) are remapped to real contract tokens.
+ * Alarm presentation (§6.4). Severity is text + SHAPE + color; acknowledgement
+ * is weight + blink (motion) or weight + border + badge (reduced motion). No
+ * channel here is color-only, and every color is a themes.css contract var.
  */
 @layer components {
-  /* §6b latitude — executive KPI hero entrance. The ONE restrained motion
-     affordance on the exec screen: a compositor-only fade + rise (opacity +
-     transform), disabled under prefers-reduced-motion. No shadow/gradient. */
-  .exec-kpi-enter {
-    animation: exec-kpi-rise var(--dur-normal) var(--ease-out) both;
-  }
-  @keyframes exec-kpi-rise {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .exec-kpi-enter {
-      animation: none;
-    }
-  }
-
-  /* §6b latitude — login card entrance. The ONE restrained motion affordance on
-     the login screen: a compositor-only fade + rise (opacity + transform),
-     disabled under prefers-reduced-motion. No shadow/gradient. */
-  .login-card-enter {
-    animation: login-card-rise var(--dur-slow) var(--ease-out) both;
-  }
-  @keyframes login-card-rise {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .login-card-enter {
-      animation: none;
-    }
-  }
-
-  /* ISA-101 §8.2 — geometric SHAPE, never color alone (shared by bar + panel). */
   .sev-icon {
+    display: inline-block;
     width: 10px;
     height: 10px;
-    display: inline-block;
+    flex: none;
     background: currentColor;
   }
   .sev-icon--octagon {
     clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
-    color: var(--alarm-critical);
   }
   .sev-icon--triangle {
     clip-path: polygon(50% 0, 100% 100%, 0 100%);
-    color: var(--alarm-warning);
   }
   .sev-icon--diamond {
     clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-    color: var(--alarm-diag);
   }
   .sev-icon--dot {
     border-radius: 50%;
-    color: var(--text-secondary);
   }
 
-  /* §6.4 — blink ONLY the icon/counter opacity on unacked buckets (compositor-safe). */
-  .alarm-bar__bucket.is-unacked .sev-icon,
-  .alarm-bar__bucket.is-unacked .alarm-bar__n {
-    animation: alarm-blink 1s step-start infinite;
-  }
-  /* §6.4 — blink ONLY the icon opacity on unacked rows; never the whole row. */
-  .alarm-row.is-unacked .sev-icon {
+  .sev-critical { color: var(--alarm-crit); }
+  .sev-warning { color: var(--alarm-warn); }
+  .sev-advisory { color: var(--alarm-adv); }
+  .sev-log { color: var(--alarm-log); }
+
+  /* Blink the GLYPH opacity only — never the row, never the text (compositor-safe). */
+  .alarm-blink .sev-icon {
     animation: alarm-blink 1s step-start infinite;
   }
   @keyframes alarm-blink {
-    0%, 50% { opacity: 1; }
-    51%, 100% { opacity: 0.4; }
+    0%,
+    50% {
+      opacity: 1;
+    }
+    51%,
+    100% {
+      opacity: 0.4;
+    }
   }
 
-  /* 3px severity side-stripe + subtle bg on unacked panel rows (§5.5/§10). */
+  /*
+   * §10.5 glow. Four rules, four surfaces: unacked alarm rows, severity badges,
+   * the focus ring and primary-button hover/active. Nothing else — no state dot,
+   * no card border, no header, no body text. Outside neon every token is
+   * `0 0 #0000`, a valid no-op <shadow>, so these rules cost nothing there.
+   *
+   * The bloom is STATIC. The only pulse on an unacked alarm is the glyph blink
+   * above, already killed under prefers-reduced-motion.
+   */
+
+  /* 3 px severity stripe on unacknowledged rows — a shape cue, not a fill. */
   .alarm-row.is-unacked {
-    box-shadow: inset 3px 0 0 0 var(--alarm-stripe, currentColor);
+    box-shadow: inset 3px 0 0 0 currentColor, var(--glow-alarm);
   }
-  .alarm-row.sev-critical.is-unacked {
-    background: var(--alarm-critical-bg, transparent);
-    --alarm-stripe: var(--alarm-critical);
+  .alarm-row.sev-critical.is-unacked { background: var(--alarm-crit-bg); }
+  .alarm-row.sev-warning.is-unacked { background: var(--alarm-warn-bg); }
+  .alarm-row.sev-advisory.is-unacked { background: var(--alarm-adv-bg); }
+
+  /* Severity badges (Badge tones crit/warn/adv). */
+  .badge-glow {
+    box-shadow: var(--glow-alarm);
   }
-  .alarm-row.sev-warning.is-unacked {
-    background: var(--alarm-warning-bg, transparent);
-    --alarm-stripe: var(--alarm-warning);
+
+  /*
+   * Focus ring. Tailwind's `ring-2` composes `var(--tw-shadow)` as the outermost
+   * layer of its box-shadow, so assigning that variable blooms the ring without
+   * a per-component class and without out-cascading the ring itself. A plain
+   * `box-shadow` here would be beaten by the utility layer and do nothing.
+   */
+  :focus-visible {
+    --tw-shadow: var(--glow-focus);
   }
-  .alarm-row.sev-advisory.is-unacked {
-    background: var(--alarm-diag-bg, transparent);
-    --alarm-stripe: var(--alarm-diag);
+
+  /* Primary button, pressed or hovered — interactive affordance, not chrome. */
+  .btn-primary:hover,
+  .btn-primary:active {
+    box-shadow: var(--glow-accent);
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .alarm-bar__bucket.is-unacked .sev-icon,
-    .alarm-bar__bucket.is-unacked .alarm-bar__n,
-    .alarm-row.is-unacked .sev-icon {
+    .alarm-blink .sev-icon {
       animation: none;
     }
-    /* Motion-free re-encode: heavier weight + underline (paired with the React
-       count badge + assertive live region rendered by AlarmBar). */
-    .alarm-bar__bucket.is-unacked .alarm-bar__n {
-      font-weight: var(--fw-bold);
-      text-decoration: underline;
-    }
+    /* Motion-free re-encode of "new vs seen": heavier weight + underline,
+       paired with the React-rendered unacked badge and live region. */
+    .is-unacked .alarm-count,
     .alarm-row.is-unacked .alarm-row__state {
       font-weight: var(--fw-bold);
       text-decoration: underline;

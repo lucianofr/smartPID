@@ -1,54 +1,71 @@
-import type { AutoSPRequest, AutoDisturbanceRequest } from './types';
+import { useId } from 'react';
+import { Switch } from '@/components/Switch';
+import {
+  AUTO_DISTURBANCE_DEFAULTS,
+  AUTO_SP_DEFAULTS,
+  type AutoDisturbanceRequest,
+  type AutoSPRequest,
+} from './types';
 
-interface Props {
+export interface AutoTogglesProps {
   autoSp: AutoSPRequest | null;
   autoDisturbance: AutoDisturbanceRequest | null;
-  onSetAutoSp: (b: AutoSPRequest) => void;
-  onSetAutoDisturbance: (b: AutoDisturbanceRequest) => void;
+  onSetAutoSp: (body: AutoSPRequest) => void;
+  onSetAutoDisturbance: (body: AutoDisturbanceRequest) => void;
 }
 
+/**
+ * Unattended twin exercisers. Only the enable flag is operator-editable — the
+ * bands ride the server's current values (or its schema defaults on first
+ * enable), which is what keeps re-enabling from silently resetting a band an
+ * engineer tuned through the API.
+ */
 export function AutoToggles({
   autoSp,
   autoDisturbance,
   onSetAutoSp,
   onSetAutoDisturbance,
-}: Props): JSX.Element {
-  const spOn = autoSp?.enabled ?? false;
-  const distOn = autoDisturbance?.enabled ?? false;
+}: AutoTogglesProps) {
+  const spId = useId();
+  const distId = useId();
+
   return (
-    <fieldset>
-      <legend>Automation</legend>
-      <label>
-        <span>Auto-SP</span>
-        <input
-          type="checkbox"
-          role="switch"
-          aria-label="Auto-SP"
-          checked={spOn}
-          onChange={(e) =>
+    <fieldset className="flex flex-col gap-2 border-t border-rule pt-3">
+      <legend className="text-2xs font-medium uppercase tracking-wider text-text-soft">
+        Automation
+      </legend>
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor={spId} className="text-sm text-text">
+          Auto-SP
+        </label>
+        <Switch
+          id={spId}
+          checked={autoSp?.enabled ?? false}
+          onCheckedChange={(enabled) =>
             onSetAutoSp({
-              enabled: e.target.checked,
-              sp_min_pct: autoSp?.sp_min_pct ?? 30,
-              sp_max_pct: autoSp?.sp_max_pct ?? 70,
+              enabled,
+              sp_min_pct: autoSp?.sp_min_pct ?? AUTO_SP_DEFAULTS.sp_min_pct,
+              sp_max_pct: autoSp?.sp_max_pct ?? AUTO_SP_DEFAULTS.sp_max_pct,
             })
           }
         />
-      </label>
-      <label>
-        <span>Auto-disturbance</span>
-        <input
-          type="checkbox"
-          role="switch"
-          aria-label="Auto-disturbance"
-          checked={distOn}
-          onChange={(e) =>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor={distId} className="text-sm text-text">
+          Auto-disturbance
+        </label>
+        <Switch
+          id={distId}
+          checked={autoDisturbance?.enabled ?? false}
+          onCheckedChange={(enabled) =>
             onSetAutoDisturbance({
-              enabled: e.target.checked,
-              max_amplitude_pct: autoDisturbance?.max_amplitude_pct ?? 10,
+              enabled,
+              max_amplitude_pct:
+                autoDisturbance?.max_amplitude_pct ?? AUTO_DISTURBANCE_DEFAULTS.max_amplitude_pct,
             })
           }
         />
-      </label>
+      </div>
     </fieldset>
   );
 }

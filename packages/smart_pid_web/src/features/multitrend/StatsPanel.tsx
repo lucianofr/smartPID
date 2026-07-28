@@ -1,54 +1,100 @@
-import { formatMetric, formatVariabilityPct } from './format';
-import type { StatsRow } from './types';
+import { EmptyState, ErrorState, LoadingState } from '@/components/MissingState';
+import { formatNumber, formatPercent } from '@/lib/format';
+import type { StatsRow } from './useStats';
 
-interface Props {
-  rows: StatsRow[];
+/**
+ * Loop performance metrics (§6.8) — one row per loop, metrics as columns, so
+ * an operator compares the SAME metric down a column instead of hunting it in
+ * per-loop cards.
+ *
+ * `src/lib/format` is the only formatter here: the deleted client's private
+ * `multitrend/format.ts` (formatMetric / formatVariabilityPct) was folded into
+ * `formatNumber` / `formatPercent` in phase 3 and must not come back.
+ */
+
+const METRIC_DECIMALS = 2;
+
+interface Metric {
+  label: string;
+  value(row: StatsRow): string;
+  title: string;
 }
 
-const METRICS: ReadonlyArray<{ label: string; pick: (r: StatsRow) => string }> = [
-  { label: 'IAE', pick: (r) => formatMetric(r.iae) },
-  { label: 'ITAE', pick: (r) => formatMetric(r.itae) },
-  { label: 'ISE', pick: (r) => formatMetric(r.ise) },
-  { label: 'MSE', pick: (r) => formatMetric(r.mse) },
-  { label: 'σ', pick: (r) => formatMetric(r.sigma) },
-  { label: 'TV', pick: (r) => formatMetric(r.tv) },
-  { label: '2σ/RANGE', pick: (r) => formatVariabilityPct(r.varRange) },
-  { label: '2σ/SP', pick: (r) => formatVariabilityPct(r.varSp) },
+const METRICS: readonly Metric[] = [
+  { label: 'IAE', title: 'Integral do erro absoluto', value: (r) => formatNumber(r.iae, METRIC_DECIMALS) },
+  { label: 'ISE', title: 'Integral do erro quadrático', value: (r) => formatNumber(r.ise, METRIC_DECIMALS) },
+  { label: 'ITAE', title: 'Integral do erro absoluto ponderada no tempo', value: (r) => formatNumber(r.itae, METRIC_DECIMALS) },
+  { label: 'MSE', title: 'Erro quadrático médio', value: (r) => formatNumber(r.mse, METRIC_DECIMALS) },
+  { label: 'σ', title: 'Desvio padrão do erro', value: (r) => formatNumber(r.sigma, METRIC_DECIMALS) },
+  { label: '2σ/SP', title: 'Variabilidade relativa ao setpoint', value: (r) => formatPercent(r.varSp) },
+  { label: '2σ/Range', title: 'Variabilidade relativa à faixa', value: (r) => formatPercent(r.varRange) },
+  { label: 'TV', title: 'Variação total do sinal de controle', value: (r) => formatNumber(r.tv, METRIC_DECIMALS) },
 ];
 
-export function StatsPanel({ rows }: Props): JSX.Element {
-  if (rows.length === 0) {
+const CELL = 'border-b border-rule px-2 py-1.5 text-right';
+
+export interface StatsPanelProps {
+  rows: readonly StatsRow[];
+  isPending?: boolean;
+  isError?: boolean;
+  onRetry?(): void;
+}
+
+export function StatsPanel({ rows, isPending = false, isError = false, onRetry }: StatsPanelProps) {
+  if (isError) {
     return (
-      <p className="stats-panel__empty text-text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
-        No statistics available.
-      </p>
+      <ErrorState message="Não foi possível carregar as estatísticas." onRetry={onRetry} />
     );
   }
+  if (isPending) {
+    return <LoadingState label="Carregando estatísticas…" bars={3} />;
+  }
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        message="Sem estatísticas disponíveis."
+        hint="As métricas aparecem quando um worker de estatísticas está ativo."
+      />
+    );
+  }
+
   return (
-    <div className="stats-panel flex flex-col gap-3">
-      {rows.map((row) => (
-        <section
-          key={row.loopId}
-          className="stats-panel__loop border border-border bg-surface-container p-3"
-          aria-label={`Loop ${row.loopId} stats`}
-        >
-          <h3 className="stats-panel__title m-0 mb-2 text-text" style={{ fontSize: 'var(--text-base)' }}>
-            Loop {row.loopId}
-          </h3>
-          <dl className="stats-panel__grid m-0 grid gap-2 grid-cols-[repeat(auto-fit,minmax(96px,1fr))]">
-            {METRICS.map((m) => (
-              <div key={m.label} className="stats-panel__cell flex flex-col gap-0.5">
-                <dt className="text-text-secondary" style={{ fontSize: 'var(--text-xs)' }}>
-                  {m.label}
-                </dt>
-                <dd className="numeric m-0 text-text" style={{ fontSize: 'var(--text-sm)' }}>
-                  {m.pick(row)}
-                </dd>
-              </div>
+    <div className="min-w-0 overflow-x-auto border border-rule bg-surface-sunk">
+      <table className="w-full border-collapse text-xs">
+        <caption className="px-2 py-1.5 text-left text-2xs uppercase tracking-wider text-text-soft">
+          Estatísticas
+        </caption>
+        <thead className="text-text-soft">
+          <tr>
+            <th scope="col" className="border-b border-rule px-2 py-1.5 text-left">
+              Malha
+            </th>
+            {METRICS.map((metric) => (
+              <th key={metric.label} scope="col" title={metric.title} className={CELL}>
+                {metric.label}
+              </th>
             ))}
-          </dl>
-        </section>
-      ))}
+            <th scope="col" className={CELL}>
+              Amostras
+            </th>
+          </tr>
+        </thead>
+        <tbody className="text-text">
+          {rows.map((row) => (
+            <tr key={row.loopId}>
+              <th scope="row" className="numeric border-b border-rule px-2 py-1.5 text-left font-normal">
+                Loop {row.loopId}
+              </th>
+              {METRICS.map((metric) => (
+                <td key={metric.label} className={`numeric ${CELL}`}>
+                  {metric.value(row)}
+                </td>
+              ))}
+              <td className={`numeric ${CELL}`}>{row.sampleCount}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

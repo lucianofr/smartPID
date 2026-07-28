@@ -1,71 +1,78 @@
 import { useState } from 'react';
-import { useOpcuaStatus } from '../api/executive';
-import { AppShell } from '../components/shell/AppShell';
-import { ProjectImportDropzone } from '../features/projects/ProjectImportDropzone';
-import { ProjectList } from '../features/projects/ProjectList';
-import { useCreateProject } from '../features/projects/useProjects';
+import { ApiError } from '@/api/client';
+import { useCan } from '@/auth/useCan';
+import { Button } from '@/components/Button';
+import { Field, Input } from '@/components/Field';
+import { ProjectImportDropzone } from '@/features/projects/ProjectImportDropzone';
+import { ProjectList } from '@/features/projects/ProjectList';
+import { projectErrorMessage, useCreateProject } from '@/features/projects/useProjects';
 
-const NEW_LABEL = 'flex flex-col gap-1 uppercase tracking-[0.04em] text-text-secondary';
-
-const NEW_INPUT = 'bg-surface text-text border border-border rounded-control px-3 py-2';
-
-const NEW_BUTTON =
-  'cursor-pointer bg-surface text-text border border-border rounded-control px-4 py-2 disabled:text-text-disabled disabled:cursor-not-allowed';
-
-export function ProjectsPage(): JSX.Element {
-  const opcQ = useOpcuaStatus();
-  const opcDown = opcQ.data ? opcQ.data.state !== 'ONLINE' : false;
+/**
+ * Portable project management (`[cfg] › Projects`, admin-only).
+ *
+ * A rejected create KEEPS the typed name: the only 409 the backend raises here
+ * is "a project with this name already exists", and the operator is about to
+ * edit that name rather than retype it from scratch.
+ */
+export function ProjectsPage() {
+  const canManage = useCan('projects.manage');
   const create = useCreateProject();
   const [name, setName] = useState('');
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return;
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const handleCreate = async (): Promise<void> => {
+    const trimmed = name.trim();
+    if (trimmed === '') return;
+    setFailure(null);
     try {
-      await create.mutateAsync(name.trim());
+      await create.mutateAsync(trimmed);
       setName('');
-    } catch {
-      /* surfaced via create.isError */
+    } catch (error) {
+      setFailure(
+        error instanceof ApiError
+          ? projectErrorMessage(error, 'Não foi possível criar o projeto.')
+          : 'Não foi possível criar o projeto.',
+      );
     }
-  }
+  };
+
   return (
-    <AppShell opcDown={opcDown}>
-      <div className="flex flex-col gap-6 max-w-[60rem]">
-        <header>
-          <h1 className="m-0 text-text" style={{ fontSize: 'var(--text-2xl)' }}>
-            Projects
-          </h1>
-        </header>
-        <form
-          className="flex items-end gap-3 p-4 bg-surface-container border border-border rounded-card"
-          onSubmit={handleCreate}
-        >
-          <label className={NEW_LABEL} style={{ fontSize: 'var(--text-xs)' }} htmlFor="new-name">
-            New project name
-            <input
-              id="new-name"
-              className={NEW_INPUT}
-              style={{ fontSize: 'var(--text-sm)' }}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-          <button
-            type="submit"
-            className={NEW_BUTTON}
-            style={{ fontSize: 'var(--text-sm)' }}
-            disabled={create.isPending}
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <header className="shrink-0 border-b border-rule px-3 py-2">
+        <h1 className="type-display text-lg text-text">Projetos</h1>
+      </header>
+      <div className="flex flex-col gap-4 p-3">
+        {canManage ? (
+          <form
+            aria-label="Novo projeto"
+            className="flex flex-wrap items-end gap-3 border border-rule bg-surface p-3"
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleCreate();
+            }}
           >
-            Create
-          </button>
-        </form>
-        {create.isError && (
-          <p role="alert" className="mt-2 text-alarm-critical" style={{ fontSize: 'var(--text-sm)' }}>
-            {create.error instanceof Error ? create.error.message : 'Create failed'}
+            <Field label="New project name" htmlFor="project-new-name" className="min-w-56 flex-1">
+              <Input
+                id="project-new-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </Field>
+            <Button type="submit" variant="primary" className="mb-0" disabled={create.isPending}>
+              Create
+            </Button>
+          </form>
+        ) : null}
+        {failure !== null ? (
+          <p role="alert" className="text-xs font-medium text-alarm-crit">
+            {failure}
           </p>
-        )}
+        ) : null}
         <ProjectImportDropzone />
         <ProjectList />
       </div>
-    </AppShell>
+    </div>
   );
 }

@@ -1,101 +1,103 @@
+import { Button } from '@/components/Button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '../../components/ui/dialog';
+} from '@/components/Dialog';
 import type { TuningRecommendation } from './commandApi';
 
 export interface ConfirmApplyTuningDialogProps {
   controllerId: number;
+  tag: string;
   recommendation: TuningRecommendation;
   open: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-  /** Surfaced when the write to the external PID is rejected; keeps the dialog open. */
+  pending?: boolean;
+  /** Kept open on rejection (409 = loop not in AUTO, 404 = already consumed). */
   error?: string;
+  onConfirm(): void;
+  onCancel(): void;
 }
 
-// Flat ISA-101 token utilities. The 3-column grid template + token-var spacing is
-// the only genuinely-dynamic styling kept inline (no Tailwind grid-cols token for it).
-const GRID_STYLE: React.CSSProperties = {
-  gridTemplateColumns: 'auto 1fr 1fr',
-  gap: 'var(--sp-1) var(--sp-3)',
-};
-const HEAD_CELL = 'uppercase tracking-wide text-text-secondary';
-const REC_VALUE = 'font-semibold text-text';
-
-function Row({ label, current, recommended }: { label: string; current: number; recommended: number }) {
+function Row({
+  label,
+  current,
+  recommended,
+}: {
+  label: string;
+  current: number;
+  recommended: number;
+}) {
   return (
     <>
-      <span className={HEAD_CELL} style={{ fontSize: 'var(--text-xs)' }}>
-        {label}
-      </span>
-      <span>{current}</span>
-      <span className={REC_VALUE}>{recommended}</span>
+      <span className="text-2xs font-medium uppercase tracking-wider text-text-soft">{label}</span>
+      <span className="numeric text-sm text-text-soft">{current}</span>
+      <span className="numeric text-sm font-semibold text-text">{recommended}</span>
     </>
   );
 }
 
+/**
+ * The one gate between an AI recommendation and a live PID write. Nothing is
+ * posted until `Confirm Write`; the before/after table is the whole point of
+ * the stop (§11 "every destructive write requires confirmation").
+ */
 export function ConfirmApplyTuningDialog({
   controllerId,
+  tag,
   recommendation,
   open,
+  pending = false,
+  error,
   onConfirm,
   onCancel,
-  error,
 }: ConfirmApplyTuningDialogProps) {
   const { recommended_kp, recommended_ti, recommended_td } = recommendation;
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) onCancel(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onCancel();
+      }}
+    >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Apply tuning to controller #{controllerId}</DialogTitle>
+          <DialogTitle>Aplicar sintonia — {tag}</DialogTitle>
+          <DialogDescription>
+            Escrita direta no PID da malha #{controllerId}. Kp={recommended_kp} Ti={recommended_ti}{' '}
+            Td={recommended_td}.
+          </DialogDescription>
         </DialogHeader>
-        <p
-          className="text-alarm-warning border border-alarm-warning rounded-control px-3 py-2"
-          style={{ fontSize: 'var(--text-sm)' }}
-        >
-          You are writing Kp={recommended_kp} Ti={recommended_ti} Td={recommended_td} to controller #
-          {controllerId}.
-        </p>
-        <div className="grid items-baseline" style={{ ...GRID_STYLE, fontSize: 'var(--text-sm)' }}>
-          <span className={HEAD_CELL} style={{ fontSize: 'var(--text-xs)' }} />
-          <span className={HEAD_CELL} style={{ fontSize: 'var(--text-xs)' }}>
-            Current
-          </span>
-          <span className={HEAD_CELL} style={{ fontSize: 'var(--text-xs)' }}>
-            Recommended
+
+        <div className="grid grid-cols-[auto_1fr_1fr] items-baseline gap-x-4 gap-y-1">
+          <span />
+          <span className="text-2xs font-medium uppercase tracking-wider text-text-soft">Atual</span>
+          <span className="text-2xs font-medium uppercase tracking-wider text-text-soft">
+            Recomendado
           </span>
           <Row label="Kp" current={recommendation.current_kp} recommended={recommended_kp} />
           <Row label="Ti" current={recommendation.current_ti} recommended={recommended_ti} />
           <Row label="Td" current={recommendation.current_td} recommended={recommended_td} />
         </div>
-        <p className="italic text-text-secondary" style={{ fontSize: 'var(--text-xs)' }}>
-          {recommendation.reason}
-        </p>
-        {error ? (
-          <p
-            className="text-alarm-critical border border-alarm-critical rounded-control px-3 py-2"
-            style={{ fontSize: 'var(--text-sm)' }}
-            role="alert"
-          >
+
+        <p className="text-xs italic text-text-soft">{recommendation.reason}</p>
+
+        {error !== undefined ? (
+          <p role="alert" className="text-sm font-medium text-alarm-crit">
             {error}
           </p>
         ) : null}
+
         <DialogFooter>
-          <button type="button" onClick={onCancel}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="border-2 border-alarm-warning rounded-control bg-transparent font-semibold text-text px-4 py-1.5 cursor-pointer"
-          >
+          <Button variant="secondary" onClick={onCancel}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" disabled={pending} onClick={onConfirm}>
             Confirm Write
-          </button>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

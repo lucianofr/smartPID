@@ -17,6 +17,7 @@ from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
+from smart_pid_core.application.tuning_store import TuningRecommendationStore
 from smart_pid_core.config import CoreSettings
 from smart_pid_domain.enums import TuningRecStatus
 
@@ -44,12 +45,12 @@ async def deps(tmp_path):
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
-    historian = SQLiteHistorian(repo)
+    historian = SQLiteHistorian(repo.session_factory)
     user_db_path = tmp_path / "users.db"
     user_repo = UserRepository(user_db_path)
     await user_repo.initialize()
-    alarm_repo = AlarmRepository(repo)
-    audit_repo = AuditRepository(repo)
+    alarm_repo = AlarmRepository(repo.session_factory)
+    audit_repo = AuditRepository(repo.session_factory)
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
     loop_manager = LoopManager(bus=bus, execution_mode="monitor")
@@ -58,8 +59,11 @@ async def deps(tmp_path):
         execution_mode="monitor",
     )  # type: ignore[call-arg]
 
+    # Both principals must exist: authorization reads the role off the stored
+    # record on every request (E2E-044), not off the token claim.
     admin_hash = hash_password("admin")
-    await user_repo.create("admin", admin_hash, "ADMIN")
+    await user_repo.create("admin", admin_hash, "admin")      # id 1
+    await user_repo.create("operator", admin_hash, "user")    # id 2
 
     yield {
         "repo": repo,
@@ -74,7 +78,7 @@ async def deps(tmp_path):
     loop_manager.stop_all()
     bus.stop()
     await user_repo.close()
-    await repo.db.close()
+    await repo.close()
 
 
 def _make_app(deps_dict):
@@ -91,7 +95,7 @@ def _make_app(deps_dict):
 
 def _operator_headers(settings) -> dict[str, str]:
     token = create_access_token(
-        user_id=2, username="operator", role="OPERATOR",
+        user_id=2, username="operator", role="user",
         secret=settings.jwt_secret,
     )
     return {"Authorization": f"Bearer {token}"}
@@ -117,7 +121,7 @@ class TestGetTuningRecommendation:
     async def test_returns_recommendation_when_exists(self, deps) -> None:
         app = _make_app(deps)
         rec = _FakeRec(controller_id=1)
-        app.state.tuning_recommendations = {1: rec}
+        app.state.tuning_store.put(rec)
         headers = _operator_headers(deps["settings"])
 
         transport = ASGITransport(app=app)
@@ -141,7 +145,7 @@ class TestGetTuningRecommendation:
     @pytest.mark.asyncio
     async def test_requires_authentication(self, deps) -> None:
         app = _make_app(deps)
-        app.state.tuning_recommendations = {1: _FakeRec()}
+        app.state.tuning_store.put(_FakeRec())
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
@@ -152,7 +156,7 @@ class TestGetTuningRecommendation:
     async def test_operator_can_access(self, deps) -> None:
         """Operator role should be able to view tuning recommendations."""
         app = _make_app(deps)
-        app.state.tuning_recommendations = {1: _FakeRec()}
+        app.state.tuning_store.put(_FakeRec())
         headers = _operator_headers(deps["settings"])
 
         transport = ASGITransport(app=app)
@@ -166,7 +170,7 @@ class TestGetTuningRecommendation:
     async def test_source_field_optional(self, deps) -> None:
         """source is None when domain model lacks it (backwards compat)."""
         app = _make_app(deps)
-        app.state.tuning_recommendations = {1: _FakeRec()}
+        app.state.tuning_store.put(_FakeRec())
         headers = _operator_headers(deps["settings"])
 
         transport = ASGITransport(app=app)
@@ -178,10 +182,10 @@ class TestGetTuningRecommendation:
         assert resp.json()["source"] is None
 
     @pytest.mark.asyncio
-    async def test_empty_recommendations_dict_returns_404(self, deps) -> None:
-        """Explicit empty dict in app.state still returns 404."""
+    async def test_empty_store_returns_404(self, deps) -> None:
+        """A store with nothing for this controller still returns 404."""
         app = _make_app(deps)
-        app.state.tuning_recommendations = {}
+        app.state.tuning_store.put(_FakeRec(controller_id=7))
         headers = _operator_headers(deps["settings"])
 
         transport = ASGITransport(app=app)
@@ -192,10 +196,11 @@ class TestGetTuningRecommendation:
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_no_tuning_recommendations_attr_returns_404(self, deps) -> None:
-        """When app.state has no tuning_recommendations at all, returns 404."""
+    async def test_expired_recommendation_reports_expired(self, deps) -> None:
+        """An aged-out entry stays visible but no longer reads as pending."""
         app = _make_app(deps)
-        # Don't set tuning_recommendations on app.state at all
+        app.state.tuning_store = TuningRecommendationStore(expiry_seconds=0.0)
+        app.state.tuning_store.put(_FakeRec(controller_id=1))
         headers = _operator_headers(deps["settings"])
 
         transport = ASGITransport(app=app)
@@ -203,4 +208,5 @@ class TestGetTuningRecommendation:
             resp = await client.get(
                 "/commands/tuning-recommendations/1", headers=headers,
             )
-        assert resp.status_code == 404
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "expired"

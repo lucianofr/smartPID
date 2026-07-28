@@ -1,134 +1,237 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import type { FFSignal, StatusData } from '../../realtime/envelope';
+import type { ReactNode } from 'react';
+import { act, renderHook } from '@testing-library/react';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { statusEnvelope } from '@/test/fixtures';
+import { createFakeRealtime, TestProviders } from '@/test/providers';
+import { freeSlot, MAX_SLOTS } from './types';
+import { TREND_SELECTION_KEY } from './trendSelectionStore';
+import { useMultiTrendModel } from './useMultiTrendModel';
 
-// Backing store for the mock. In production `lastStatus` is a fresh Map
-// reference on every WS frame (context update via useSyncExternalStore), which
-// is what re-runs the appending effect; the mock emulates that by snapshotting
-// a NEW Map on each call so a frame set between rerenders is observed.
-const store = new Map<number, StatusData>();
-vi.mock('../../realtime/useRealtime', () => ({
-  useRealtime: () => ({
-    connected: true,
-    lastStatus: new Map(store),
-    lastStats: new Map(),
-    subscribe: () => () => {},
-    onResync: () => () => {},
-  }),
-}));
+const controllerA = { id: 1 };
+const controllerB = { id: 2 };
 
-import { useMultiTrendModel, toEpochSeconds } from './useMultiTrendModel';
+/** `null` roster = the stats query has not resolved; nothing is reconciled. */
+function setup(roster: readonly number[] | null = null) {
+  const realtime = createFakeRealtime();
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <TestProviders realtime={realtime.value}>{children}</TestProviders>
+  );
+  return { realtime, ...renderHook(() => useMultiTrendModel(roster), { wrapper }) };
+}
 
-const sig = (value: number): FFSignal => ({
-  value,
-  severity: 'GOOD',
-  limit_bits: '0',
-  sub_status: 'NON_SPECIFIC',
+beforeEach(() => {
+  localStorage.clear();
 });
 
-// pv/sp/co arrive as FFSignal objects; timestamp is an ISO-8601 string in
-// execute mode (pid_worker) and a numeric epoch in monitor mode (monitor_worker)
-// — see realtime/envelope.ts.
-const frame = (pv: number, ts: string | number): StatusData => ({
-  pv: sig(pv),
-  sp: sig(pv + 1),
-  co: sig(50),
-  bkcal_in: sig(0),
-  bkcal_out: sig(0),
-  mode: 'AUTO',
-  kp: 1,
-  ti: 1,
-  td: 0,
-  integral_val: 0,
-  timestamp: ts,
+describe('useMultiTrendModel slot invariants', () => {
+  it('assigns a controller with every signal on, then toggles one off', () => {
+    const { result } = setup();
+    act(() => result.current.assign(0, controllerA));
+    act(() => result.current.toggleSeries(0, 'co'));
+    expect(result.current.slots[0]).toMatchObject({
+      controllerId: 1,
+      series: { pv: true, sp: true, co: false },
+    });
+  });
+
+  it('rejects a slot index outside the four-slot grid', () => {
+    const { result } = setup();
+    expect(() => result.current.assign(MAX_SLOTS, controllerA)).toThrow(
+      'slot must be between 0 and 3',
+    );
+    expect(() => result.current.assign(-1, controllerA)).toThrow('slot must be between 0 and 3');
+    expect(() => result.current.toggleSeries(4, 'pv')).toThrow('slot must be between 0 and 3');
+  });
+
+  it('starts with four free slots and releases one on clear', () => {
+    const { result } = setup();
+    expect(result.current.slots).toHaveLength(MAX_SLOTS);
+    expect(result.current.slots.every((s) => s.controllerId === null)).toBe(true);
+    act(() => result.current.assign(2, controllerB));
+    expect(result.current.slots[2].controllerId).toBe(2);
+    act(() => result.current.clear(2));
+    expect(result.current.slots[2].controllerId).toBeNull();
+  });
+
+  it('never plots more than four controllers', () => {
+    const { result } = setup();
+    for (let id = 1; id <= MAX_SLOTS; id += 1) act(() => result.current.toggleSignal(id, 'pv'));
+    expect(result.current.isFull).toBe(true);
+    act(() => result.current.toggleSignal(9, 'pv'));
+    expect(result.current.isSelected(9, 'pv')).toBe(false);
+    expect(result.current.slots.map((s) => s.controllerId)).toEqual([1, 2, 3, 4]);
+  });
 });
 
-const sec = (iso: string): number => Date.parse(iso) / 1000;
-
-describe('toEpochSeconds', () => {
-  it('returns a numeric epoch (monitor mode) unchanged', () => {
-    expect(toEpochSeconds(1_750_000_000)).toBe(1_750_000_000);
+describe('useMultiTrendModel flat signal toggling', () => {
+  it('occupies the first free slot with only the toggled signal', () => {
+    const { result } = setup();
+    act(() => result.current.toggleSignal(7, 'co'));
+    expect(result.current.slots[0]).toMatchObject({
+      controllerId: 7,
+      series: { pv: false, sp: false, co: true },
+    });
+    expect(result.current.isSelected(7, 'co')).toBe(true);
+    expect(result.current.selection).toEqual([{ loopId: 7, signal: 'co' }]);
   });
 
-  it('parses an ISO-8601 string (execute mode) to epoch seconds', () => {
-    expect(toEpochSeconds('2026-01-01T00:00:01Z')).toBe(
-      Date.parse('2026-01-01T00:00:01Z') / 1000,
-    );
+  it('frees the slot once the loop has no signal left', () => {
+    const { result } = setup();
+    act(() => result.current.toggleSignal(7, 'co'));
+    act(() => result.current.toggleSignal(7, 'co'));
+    expect(result.current.slots[0].controllerId).toBeNull();
+    expect(result.current.selection).toEqual([]);
   });
 
-  it('returns NaN for unparseable input', () => {
-    expect(Number.isNaN(toEpochSeconds('not-a-date'))).toBe(true);
+  it('orders selection by slot, then pv/sp/co', () => {
+    const { result } = setup();
+    act(() => result.current.toggleSignal(2, 'co'));
+    act(() => result.current.toggleSignal(2, 'pv'));
+    act(() => result.current.toggleSignal(5, 'sp'));
+    expect(result.current.selection).toEqual([
+      { loopId: 2, signal: 'pv' },
+      { loopId: 2, signal: 'co' },
+      { loopId: 5, signal: 'sp' },
+    ]);
   });
 });
 
-describe('useMultiTrendModel', () => {
-  beforeEach(() => store.clear());
-
-  it('accumulates selected loop frames into aligned series', () => {
-    const { result, rerender } = renderHook(() =>
-      useMultiTrendModel({ maxSeconds: 1e9, maxPoints: 1e9 }),
-    );
-    act(() => result.current.setSelection([{ loopId: 1, variable: 'pv' }]));
-    act(() => result.current.setPxWidth(1000));
-
-    const t1 = '2026-01-01T00:00:01Z';
-    const t2 = '2026-01-01T00:00:02Z';
-    store.set(1, frame(10, t1));
-    rerender();
-    store.set(1, frame(11, t2));
-    rerender();
-
-    expect(result.current.series.data[0]).toEqual([sec(t1), sec(t2)]);
-    expect(result.current.series.data[1]).toEqual([10, 11]);
+describe('useMultiTrendModel live buffers', () => {
+  it('buffers frames only for occupied slots', () => {
+    const { realtime, result } = setup();
+    act(() => result.current.toggleSignal(1, 'pv'));
+    act(() => {
+      realtime.emit(statusEnvelope(1, 1, { timestamp: 1000, pv: { value: 10, severity: 'GOOD', limit_bits: 'NONE', sub_status: 'NON_SPECIFIC' } }));
+      realtime.emit(statusEnvelope(1, 2, { timestamp: 1001, pv: { value: 11, severity: 'GOOD', limit_bits: 'NONE', sub_status: 'NON_SPECIFIC' } }));
+      realtime.emit(statusEnvelope(3, 3, { timestamp: 1002 }));
+    });
+    const [slot0] = result.current.slotSeries;
+    expect(slot0.keys).toEqual([{ loopId: 1, signal: 'pv' }]);
+    expect(slot0.data[0]).toEqual([1000, 1001]);
+    expect(slot0.data[1]).toEqual([10, 11]);
+    // Loop 3 was never assigned, so it has no slot and no buffer.
+    expect(result.current.slotSeries[1].keys).toEqual([]);
   });
 
-  it('stops appending while paused', () => {
-    const { result, rerender } = renderHook(() =>
-      useMultiTrendModel({ maxSeconds: 1e9, maxPoints: 1e9 }),
-    );
-    act(() => result.current.setSelection([{ loopId: 1, variable: 'pv' }]));
-    act(() => result.current.setPxWidth(1000));
+  it('de-dupes a coalesced frame that repeats the last timestamp', () => {
+    const { realtime, result } = setup();
+    act(() => result.current.toggleSignal(1, 'pv'));
+    act(() => {
+      realtime.emit(statusEnvelope(1, 1, { timestamp: 1000 }));
+      realtime.emit(statusEnvelope(1, 2, { timestamp: 1000 }));
+    });
+    expect(result.current.slotSeries[0].data[0]).toEqual([1000]);
+  });
 
-    store.set(1, frame(10, '2026-01-01T00:00:01Z'));
-    rerender();
+  it('stops accumulating while paused', () => {
+    const { realtime, result } = setup();
+    act(() => result.current.toggleSignal(1, 'pv'));
+    act(() => realtime.emit(statusEnvelope(1, 1, { timestamp: 1000 })));
     act(() => result.current.setPaused(true));
-    store.set(1, frame(99, '2026-01-01T00:00:02Z'));
-    rerender();
-
-    expect(result.current.series.data[1]).toEqual([10]);
+    act(() => realtime.emit(statusEnvelope(1, 2, { timestamp: 1001 })));
+    expect(result.current.slotSeries[0].data[0]).toEqual([1000]);
+    act(() => result.current.setPaused(false));
+    act(() => realtime.emit(statusEnvelope(1, 3, { timestamp: 1002 })));
+    expect(result.current.slotSeries[0].data[0]).toEqual([1000, 1002]);
   });
 
-  it('accumulates monitor-mode frames whose timestamp is a numeric epoch', () => {
-    const { result, rerender } = renderHook(() =>
-      useMultiTrendModel({ maxSeconds: 1e9, maxPoints: 1e9 }),
+  it('drops a loop buffer when its slot is released', () => {
+    const { realtime, result } = setup();
+    act(() => result.current.toggleSignal(1, 'pv'));
+    act(() => realtime.emit(statusEnvelope(1, 1, { timestamp: 1000 })));
+    act(() => result.current.toggleSignal(1, 'pv'));
+    act(() => result.current.toggleSignal(1, 'pv'));
+    expect(result.current.slotSeries[0].data[0]).toEqual([]);
+  });
+});
+
+describe('useMultiTrendModel persistence and reconciliation', () => {
+  it('restores a stored layout on mount', () => {
+    localStorage.setItem(
+      TREND_SELECTION_KEY,
+      JSON.stringify([
+        { controllerId: 3, series: { pv: true, sp: false, co: true } },
+        freeSlot(),
+        freeSlot(),
+        freeSlot(),
+      ]),
     );
-    act(() => result.current.setSelection([{ loopId: 1, variable: 'pv' }]));
-    act(() => result.current.setPxWidth(1000));
-
-    // monitor_worker.py publishes time.time() -> a float epoch seconds NUMBER.
-    const epoch = 1_750_000_000;
-    store.set(1, frame(10, epoch));
-    rerender();
-
-    expect(result.current.series.data[0]).toEqual([epoch]);
-    expect(result.current.series.data[1]).toEqual([10]);
+    const { result } = setup();
+    expect(result.current.slots[0]).toEqual({
+      controllerId: 3,
+      series: { pv: true, sp: false, co: true },
+    });
+    expect(result.current.isSelected(3, 'co')).toBe(true);
   });
 
-  it('de-dupes coalesced frames with an identical timestamp', () => {
-    const { result, rerender } = renderHook(() =>
-      useMultiTrendModel({ maxSeconds: 1e9, maxPoints: 1e9 }),
+  it('persists every selection change', () => {
+    const { result } = setup();
+    act(() => result.current.assign(1, controllerB));
+    const stored = JSON.parse(localStorage.getItem(TREND_SELECTION_KEY) ?? 'null') as unknown[];
+    expect(stored).toHaveLength(MAX_SLOTS);
+    expect(stored[1]).toEqual({ controllerId: 2, series: { pv: true, sp: true, co: true } });
+  });
+
+  it('releases a restored slot whose loop is absent from the roster', () => {
+    localStorage.setItem(
+      TREND_SELECTION_KEY,
+      JSON.stringify([
+        { controllerId: 3, series: { pv: true, sp: true, co: true } },
+        { controllerId: 1, series: { pv: true, sp: false, co: false } },
+        freeSlot(),
+        freeSlot(),
+      ]),
     );
-    act(() => result.current.setSelection([{ loopId: 1, variable: 'pv' }]));
-    act(() => result.current.setPxWidth(1000));
+    const { result } = setup([1, 2]);
+    expect(result.current.slots[0]).toEqual(freeSlot());
+    expect(result.current.slots[1].controllerId).toBe(1);
+  });
 
-    const t1 = '2026-01-01T00:00:01Z';
-    store.set(1, frame(10, t1));
-    rerender();
-    // Same timestamp (last-value coalesced re-delivery): must not append again.
-    store.set(1, frame(12, t1));
-    rerender();
+  it('releases a restored slot that has no signal enabled', () => {
+    localStorage.setItem(
+      TREND_SELECTION_KEY,
+      JSON.stringify([
+        { controllerId: 1, series: { pv: false, sp: false, co: false } },
+        freeSlot(),
+        freeSlot(),
+        freeSlot(),
+      ]),
+    );
+    const { result } = setup([1]);
+    expect(result.current.slots[0]).toEqual(freeSlot());
+  });
 
-    expect(result.current.series.data[0]).toEqual([sec(t1)]);
-    expect(result.current.series.data[1]).toEqual([10]);
+  it('reconciles nothing while the roster is still null', () => {
+    localStorage.setItem(
+      TREND_SELECTION_KEY,
+      JSON.stringify([
+        { controllerId: 99, series: { pv: true, sp: true, co: true } },
+        freeSlot(),
+        freeSlot(),
+        freeSlot(),
+      ]),
+    );
+    const { result } = setup(null);
+    expect(result.current.slots[0].controllerId).toBe(99);
+  });
+
+  it('ignores malformed storage and starts from four free slots', () => {
+    localStorage.setItem(TREND_SELECTION_KEY, '{"nope":true}');
+    const { result } = setup();
+    expect(result.current.slots).toEqual([freeSlot(), freeSlot(), freeSlot(), freeSlot()]);
+  });
+
+  it('never restores paused', () => {
+    localStorage.setItem(
+      TREND_SELECTION_KEY,
+      JSON.stringify([
+        { controllerId: 1, series: { pv: true, sp: true, co: true } },
+        freeSlot(),
+        freeSlot(),
+        freeSlot(),
+      ]),
+    );
+    const { result } = setup([1]);
+    expect(result.current.paused).toBe(false);
   });
 });

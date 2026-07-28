@@ -1,75 +1,71 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { apiGet } from '../api/client';
-import { AppShell } from '../components/shell/AppShell';
-import { RealtimeTrend } from '../components/RealtimeTrend';
-import { SimulationModeBanner } from '../features/simulator/SimulationModeBanner';
-import { SimulatorControlPanel } from '../features/simulator/SimulatorControlPanel';
-import { useSimulatorStatus } from '../features/simulator/useSimulatorStatus';
-import { useTwinTrend } from '../features/simulator/twinTrend';
+import { useId, useState } from 'react';
+import { EmptyState } from '@/components/MissingState';
+import { useControllers } from '@/features/dashboard/useControllers';
+import { SimulationModeBanner } from '@/features/simulator/SimulationModeBanner';
+import { SimulatorControlPanel } from '@/features/simulator/SimulatorControlPanel';
+import { TwinTrend } from '@/features/simulator/TwinTrend';
+import { useSimulatorStatus } from '@/features/simulator/useSimulatorStatus';
+import { NATIVE_SELECT_CLASS } from '@/features/simulator/PresetSelector';
 
-interface OpcuaStatus {
-  state: string;
-  endpoint: string | null;
-}
-
-export function SimulatorPage(): JSX.Element {
-  // OPC status is POLLED via REST (same pattern as DashboardPage/MultiTrendPage).
-  const opcua = useQuery({
-    queryKey: ['opcua-status'],
-    queryFn: () => apiGet<OpcuaStatus>('/opcua/status'),
-    refetchInterval: 5_000,
-  });
-  const opcDown = opcua.data ? opcua.data.state !== 'ONLINE' : false;
-
+/**
+ * Digital-twin workspace (§6.9 `Sim`).
+ *
+ * NOT admin-route-guarded: twin SP/mode/CO are `loop.operate`, so an operator
+ * has business here even though every configuration control is hidden from
+ * them. The loop list comes from the twin snapshot when it is readable and
+ * falls back to the controller roster when it is not — an operator who cannot
+ * read /simulator/status can still watch the twin they are allowed to drive.
+ */
+export function SimulatorPage() {
+  const loopSelectId = useId();
   const { data } = useSimulatorStatus();
-  const ids = data
-    ? Object.keys(data.controllers)
-        .map(Number)
-        .sort((a, b) => a - b)
-    : [];
-  const [selected, setSelected] = useState<number | null>(null);
-  const controllerId = selected ?? ids[0] ?? null;
-  const trend = useTwinTrend(controllerId);
+  const controllers = useControllers();
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  const simIds = Object.keys(data?.controllers ?? {}).map(Number);
+  const ids = (simIds.length > 0 ? simIds : (controllers.data ?? []).map((c) => c.id)).sort(
+    (a, b) => a - b,
+  );
+  const controllerId = ids.find((id) => id === selectedId) ?? ids[0];
 
   return (
-    <AppShell opcDown={opcDown}>
-      <SimulationModeBanner />
-      <div className="grid grid-cols-12 gap-4 items-start">
-        <div className="col-span-12 [@media(min-width:960px)]:col-span-4 flex flex-col gap-4 min-w-0">
-          {ids.length > 1 && (
-            <label className="flex flex-col gap-1">
-              <span>Loop</span>
-              <select
-                className="bg-surface text-text border border-border rounded-control px-2 py-1"
-                style={{ fontSize: 'var(--text-sm)' }}
-                aria-label="Simulator loop"
-                value={controllerId ?? ''}
-                onChange={(e) => setSelected(Number(e.target.value))}
-              >
-                {ids.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {controllerId != null ? (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <SimulationModeBanner running={data?.running === true} />
+      {controllerId === undefined ? (
+        <EmptyState
+          message="Nenhuma malha disponível para simulação."
+          hint="Cadastre um controlador ou inicie o simulador."
+        />
+      ) : (
+        <div className="grid min-h-0 flex-1 grid-cols-1 items-start gap-4 overflow-auto p-3 lg:grid-cols-[minmax(20rem,1fr)_2fr]">
+          <div className="flex min-w-0 flex-col gap-3">
+            {ids.length > 1 ? (
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor={loopSelectId}
+                  className="text-2xs font-medium uppercase tracking-wider text-text-soft"
+                >
+                  Simulator loop
+                </label>
+                <select
+                  id={loopSelectId}
+                  className={NATIVE_SELECT_CLASS}
+                  value={controllerId}
+                  onChange={(e) => setSelectedId(Number(e.target.value))}
+                >
+                  {ids.map((id) => (
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
             <SimulatorControlPanel controllerId={controllerId} />
-          ) : (
-            <p className="text-text-secondary">
-              No simulator loops available. Start the simulator to begin.
-            </p>
-          )}
+          </div>
+          <TwinTrend key={controllerId} controllerId={controllerId} />
         </div>
-        <section
-          className="col-span-12 [@media(min-width:960px)]:col-span-8 flex flex-col gap-3 min-w-0 border border-border rounded-card bg-surface-container p-4"
-          aria-label="Twin response trend"
-        >
-          <RealtimeTrend data={trend} />
-        </section>
-      </div>
-    </AppShell>
+      )}
+    </div>
   );
 }

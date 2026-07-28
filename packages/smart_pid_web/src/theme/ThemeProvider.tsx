@@ -1,21 +1,51 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { THEME_IDS, type ContractThemeId } from './contract';
 
-export type ThemeId = 'isa101' | 'dark-room' | 'md3-dark' | 'md3-light' | 'ocean';
+export type ThemeId = ContractThemeId;
 
 export const THEMES: ReadonlyArray<{ id: ThemeId; label: string }> = [
+  { id: 'recorder', label: 'Recorder' },
+  { id: 'phosphor', label: 'Phosphor' },
   { id: 'isa101', label: 'ISA-101' },
-  { id: 'dark-room', label: 'Dark Room' },
-  { id: 'md3-dark', label: 'Material 3 Dark' },
-  { id: 'md3-light', label: 'Material 3 Light' },
-  { id: 'ocean', label: 'Ocean' },
+  // §10.2: the siblings are instruments (paper chart recorder, CRT phosphor).
+  // Neon breaks that pattern on purpose — it needs no explanation.
+  { id: 'neon', label: 'Neon' },
 ];
 
-const STORAGE_KEY = 'spid.theme';
-const DEFAULT_THEME: ThemeId = 'isa101';
+export const STORAGE_KEY = 'spid.theme';
+/** §10.2/D9: a demo must open on the theme the directive asked for. */
+export const DEFAULT_THEME: ThemeId = 'neon';
+
+/**
+ * §6.8 stored-value migration. Without it a returning user with
+ * `spid.theme='ocean'` silently falls to the default constant.
+ * Mirrored by the pre-paint script in index.html (test-enforced).
+ */
+export const LEGACY_THEME_MAP: Readonly<Record<string, ThemeId>> = {
+  'dark-room': 'phosphor',
+  'md3-dark': 'recorder',
+  'md3-light': 'recorder',
+  ocean: 'recorder',
+};
+
+function isThemeId(v: string | null): v is ThemeId {
+  return v !== null && (THEME_IDS as readonly string[]).includes(v);
+}
+
+/** Pure resolution: valid passthrough → legacy migration → default. */
+export function resolveStoredTheme(raw: string | null): ThemeId {
+  if (isThemeId(raw)) return raw;
+  if (raw !== null && raw in LEGACY_THEME_MAP) return LEGACY_THEME_MAP[raw];
+  return DEFAULT_THEME;
+}
 
 function readStored(): ThemeId {
-  const v = localStorage.getItem(STORAGE_KEY);
-  return THEMES.some((t) => t.id === v) ? (v as ThemeId) : DEFAULT_THEME;
+  const raw = localStorage.getItem(STORAGE_KEY);
+  const resolved = resolveStoredTheme(raw);
+  if (raw !== null && raw !== resolved) {
+    localStorage.setItem(STORAGE_KEY, resolved); // migrate once
+  }
+  return resolved;
 }
 
 interface ThemeCtx {
@@ -23,6 +53,7 @@ interface ThemeCtx {
   setTheme: (t: ThemeId) => void;
   themes: typeof THEMES;
 }
+
 const Ctx = createContext<ThemeCtx | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

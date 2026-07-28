@@ -1,10 +1,14 @@
-// Fixture: must produce NO lint error.
-// Every color comes from a token utility (bridged in index.css via `@theme inline`),
-// and the surface is flat (no shadow, no gradient, no bevel).
+// Fixture: must produce NO guard hit — every color is a §6.4 token utility.
 export function TokenColorClean() {
   return (
-    <div className="bg-surface text-text border border-border rounded-none">
-      token-only, flat surface
+    <div className="border border-rule bg-surface text-text">
+      <span className="text-text-soft">token-only</span>
+      <button
+        type="button"
+        className="bg-accent text-on-accent outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+      >
+        ok
+      </button>
     </div>
   );
 }

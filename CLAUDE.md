@@ -96,7 +96,7 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 - `SPID_JWT_SECRET` — Obrigatorio (auth)
 - `SPID_LOG_LEVEL` — Default: INFO
 - `SPID_OPCUA_ENDPOINT` — Default: opc.tcp://localhost:4840
-- `SPID_API_PORT` / `SPID_API_HOST` — Default: 8000 / 0.0.0.0
+- `SPID_API_PORT` / `SPID_API_HOST` — Default: 8000 / 127.0.0.1 (loopback por padrao, TD-004; exponha com `SPID_API_HOST=0.0.0.0` apenas de forma explicita)
 - `SPID_ZMQ_PUBLISH_PORT` — Default: 5555
 - `SPID_SIMULATOR_ENABLED` / `SPID_SIMULATOR_PORT` — Default: false / 4849
 - `SPID_PROJECTS_DIR` — Default: ~/.smart-pid/projects/ (diretorio de projetos gerenciados pelo backend)
@@ -126,7 +126,15 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 Phases 4/5/6 sao paralelizaveis apos Phase 3a.
 
 ## Convencoes
-- **Branching obrigatorio — REGRA INVIOLAVEL**: Toda e qualquer modificacao de codigo, correcao de bug, melhoria ou introducao de novo recurso DEVE ser feita em uma **nova branch dedicada** criada especificamente para aquela tarefa. **NUNCA utilize branches ja existentes** de outras tarefas. **NUNCA faca modificacoes diretamente na main.** O fluxo obrigatorio e: (1) criar branch nova a partir de main com nome descritivo (ex: `feat/controller-tooltips`, `fix/pid-gain-validation`), (2) fazer as modificacoes e commits nessa branch, (3) aguardar aprovacao explicita do usuario, (4) so entao executar o merge para main. **Esta regra se aplica a TODOS os agentes e subagentes sem excecao.**
+- **Branching obrigatorio — REGRA INVIOLAVEL**: Toda e qualquer modificacao de codigo, correcao de bug, melhoria ou introducao de novo recurso DEVE ser feita em uma **nova branch dedicada** criada especificamente para aquela tarefa. **NUNCA utilize branches ja existentes** de outras tarefas. **NUNCA faca modificacoes diretamente na main.** O fluxo obrigatorio e:
+  1. Fazer `git checkout main && git pull` para partir da main atualizada
+  2. Criar branch nova com nome descritivo (ex: `feat/controller-tooltips`, `fix/pid-gain-validation`)
+  3. **ANTES de qualquer modificacao de arquivo**, executar `git branch --show-current` e VERIFICAR que o output e EXATAMENTE o nome da branch que voce acabou de criar. Se o output for `main`, outra branch de outro agente, ou qualquer branch que voce NAO criou nesta sessao, **PARE IMEDIATAMENTE** e corrija antes de prosseguir. Esta verificacao e obrigatoria e deve ser logada no output.
+  4. Fazer as modificacoes e commits nessa branch
+  5. Aguardar aprovacao explicita do usuario
+  6. So entao executar o merge para main
+  
+  **ATENCAO — MISTURA DE BRANCHES ENTRE AGENTES**: Multiplos agentes/subagentes podem estar trabalhando simultaneamente. Cada agente so pode modificar arquivos na branch que ELE PROPRIO criou. Se ao verificar `git branch --show-current` o agente detectar que esta em uma branch que nao criou, deve fazer `git stash` (se houver mudancas), voltar para main, e criar sua propria branch. **Esta regra se aplica a TODOS os agentes e subagentes sem excecao.**
 - **Specs obrigatorias ao alterar UI**: Toda modificacao na interface (widgets, layout, cards, paginas, temas) DEVE ser acompanhada da atualizacao dos documentos de especificacao em `docs/` que descrevem o componente alterado. Isso inclui: `docs/smartPID.md`, `docs/smartPIDv2.md`, `docs/identidade_visual_*.md`, e as specs em `docs/superpowers/specs/`. Nao commitar codigo de UI sem atualizar as specs correspondentes.
 - TDD: write failing test -> implement -> green -> commit
 - Commits convencionais: feat(scope), fix(scope), chore(scope)

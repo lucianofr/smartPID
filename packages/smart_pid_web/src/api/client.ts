@@ -1,75 +1,175 @@
+/**
+ * Transport-only REST client. Single base URL, single auth-injection point,
+ * §11 error taxonomy. Endpoint definitions live in ./endpoints.ts; generated
+ * OpenAPI types in ./generated/openapi.ts (phase-2 hermetic codegen).
+ */
+
+export type ApiErrorKind =
+  | 'unauthorized' // 401 → clear session, redirect to login (§11)
+  | 'forbidden' // 403 → toast "sem permissão", refetch me/capabilities (§11)
+  | 'not-found' // 404 → remove stale entity, MissingState (§11)
+  | 'conflict' // 409 → show reason, preserve form state (§11)
+  | 'validation' // 422 → field-level messages (§11)
+  | 'opcua-down' // 502 → loop-level banner, writes disabled (§11)
+  | 'server' // other 5xx → generic failure with retry (§11)
+  | 'network'; // transport failure → offline banner (§11)
+
+export interface ValidationIssue {
+  loc: (string | number)[];
+  msg: string;
+  type: string;
+}
+
+/** Per-call transport options. */
+export interface RequestOptions {
+  /**
+   * Suppress the global §11 403 side effects (toast + `/auth/me` refetch) for a
+   * route that is admin-only BY DESIGN, where a `user` session being refused is
+   * the expected outcome rather than an error worth surfacing. The ApiError is
+   * still thrown — the caller must still handle it. Never silences 401.
+   */
+  silentForbidden?: boolean;
+}
+
+export function classifyStatus(status: number): ApiErrorKind {
+  if (status === 401) return 'unauthorized';
+  if (status === 403) return 'forbidden';
+  if (status === 404) return 'not-found';
+  if (status === 409) return 'conflict';
+  if (status === 422) return 'validation';
+  if (status === 502) return 'opcua-down';
+  return 'server';
+}
+
 export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public detail: string,
-  ) {
+  readonly status: number;
+  readonly kind: ApiErrorKind;
+  readonly detail: string;
+  readonly fields: ValidationIssue[];
+
+  constructor(status: number, kind: ApiErrorKind, detail: string, fields: ValidationIssue[] = []) {
     super(detail);
     this.name = 'ApiError';
+    this.status = status;
+    this.kind = kind;
+    this.detail = detail;
+    this.fields = fields;
   }
 }
 
-let tokenGetter: () => string | null = () => null;
-export function setTokenGetter(fn: () => string | null): void {
-  tokenGetter = fn;
+export interface AuthHooks {
+  getToken(): string | null;
+  onUnauthorized?(error: ApiError): void;
+  onForbidden?(error: ApiError): void;
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = tokenGetter();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const j = await res.json();
-      if (j?.detail) detail = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail);
-    } catch {
-      /* non-JSON error body */
+let hooks: AuthHooks = { getToken: () => null };
+
+/** AuthProvider registers itself here — the ONLY coupling between api and auth. */
+export function setAuthHooks(next: AuthHooks): void {
+  hooks = next;
+}
+
+const BASE = '/api';
+
+function isValidationIssue(v: unknown): v is ValidationIssue {
+  if (typeof v !== 'object' || v === null) return false;
+  const i = v as Record<string, unknown>;
+  return Array.isArray(i.loc) && typeof i.msg === 'string' && typeof i.type === 'string';
+}
+
+async function toApiError(res: Response): Promise<ApiError> {
+  const kind = classifyStatus(res.status);
+  let detail = res.statusText;
+  let fields: ValidationIssue[] = [];
+  try {
+    const body: unknown = await res.json();
+    const d = (body as { detail?: unknown }).detail;
+    if (typeof d === 'string') {
+      detail = d; // error_handlers.py:22-34 shape
+    } else if (Array.isArray(d)) {
+      fields = d.filter(isValidationIssue); // FastAPI 422 shape
+      detail = fields.map((f) => f.msg).join('; ') || detail;
     }
-    throw new ApiError(res.status, detail);
+  } catch {
+    /* non-JSON error body */
   }
+  return new ApiError(res.status, kind, detail, fields);
+}
+
+/**
+ * §11 global side effects. `silentForbidden` opts a single call out of the
+ * 403 branch: some routes are admin-only BY DESIGN and a `user` session is
+ * expected to be refused (e.g. the simulator-status probe the realtime resync
+ * runs on every reconnect). Those callers already handle the refusal locally;
+ * without this opt-out the transport would raise a "Sem permissão" toast and a
+ * wasted `/auth/me` refetch on every reconnect for a perfectly normal session.
+ * 401 is never silenced — an expired token must always reach the logout path.
+ */
+function dispatchAuthSideEffects(err: ApiError, opts?: RequestOptions): void {
+  if (err.kind === 'unauthorized') hooks.onUnauthorized?.(err);
+  if (err.kind === 'forbidden' && !opts?.silentForbidden) hooks.onForbidden?.(err);
+}
+
+function authHeaders(): Record<string, string> {
+  const token = hooks.getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function run(path: string, init: RequestInit, opts?: RequestOptions): Promise<Response> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, init);
+  } catch {
+    throw new ApiError(0, 'network', 'network failure');
+  }
+  if (!res.ok) {
+    const err = await toApiError(res);
+    dispatchAuthSideEffects(err, opts);
+    throw err;
+  }
+  return res;
+}
+
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  opts?: RequestOptions,
+): Promise<T> {
+  const headers: Record<string, string> = { ...authHeaders() };
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const res = await run(
+    path,
+    {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+    opts,
+  );
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
-export const apiGet = <T>(path: string) => request<T>('GET', path);
-export const apiPost = <T>(path: string, body?: unknown) => request<T>('POST', path, body);
-export const apiPut = <T>(path: string, body?: unknown) => request<T>('PUT', path, body);
-export const apiDelete = <T>(path: string) => request<T>('DELETE', path);
+export const api = {
+  get: <T>(path: string, opts?: RequestOptions) => request<T>('GET', path, undefined, opts),
+  post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
+  put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
+  /** Partial update — the only verb PATCH /users/{id} accepts (phase 10). */
+  patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
+  delete: <T>(path: string) => request<T>('DELETE', path),
 
-// Authenticated binary GET: the Bearer token is sent as a header (there is no auth
-// cookie), so a plain <a href> navigation would lose it and 401. Use this to fetch
-// protected file responses (e.g. export downloads) as a Blob.
-export async function apiDownload(path: string): Promise<Blob> {
-  const headers: Record<string, string> = {};
-  const token = tokenGetter();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`/api${path}`, { headers });
-  if (!res.ok) throw new ApiError(res.status, res.statusText);
-  return res.blob();
-}
+  /** Authenticated binary GET (Bearer travels in a header; <a href> would lose it). */
+  async download(path: string): Promise<Blob> {
+    const res = await run(path, { method: 'GET', headers: authHeaders() });
+    return res.blob();
+  },
 
-// Authenticated multipart POST: omit Content-Type so the browser sets the multipart
-// boundary; Bearer goes in the header (no auth cookie). Mirrors apiDownload's auth.
-export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
-  const headers: Record<string, string> = {};
-  const token = tokenGetter();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`/api${path}`, { method: 'POST', headers, body: form });
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const j = await res.json();
-      if (j?.detail) detail = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail);
-    } catch {
-      /* non-JSON error body */
-    }
-    throw new ApiError(res.status, detail);
-  }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
-}
+  /** Authenticated multipart POST — no manual Content-Type (browser sets the boundary). */
+  async upload<T>(path: string, form: FormData): Promise<T> {
+    const res = await run(path, { method: 'POST', headers: authHeaders(), body: form });
+    if (res.status === 204) return undefined as T;
+    return (await res.json()) as T;
+  },
+};

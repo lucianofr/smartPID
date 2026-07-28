@@ -14,17 +14,22 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 // Stub the WebSocket: emit `auth_ok` on send(), then expose __pushStatus so the test can emit
 // live `status` frames for any loop on demand. pv/sp/co are FFSignal objects and `timestamp` is
 // an ISO string (twinTrend derives the x axis via Date.parse). Copied from multitrend.spec.ts.
+//
+// `seq` advances MONOTONICALLY per connection: the phase-3 tracker reads a repeated seq as a
+// gap, and a gap forces a §7 resync that buffers (and coalesces) every later status frame —
+// the twin trend would flat-line and the socket would recycle behind it.
 async function stubWebSocket(page: Page): Promise<void> {
   await page.addInitScript(() => {
     sessionStorage.setItem('smart-pid-token', 'jwt-e2e');
     // Suppress the post-login WelcomeDialog so its overlay does not intercept clicks.
     sessionStorage.setItem('spid.welcome-seen', '1');
 
+    let seq = 0;
     const statusFrame = (loopId: number, pv: number, sp: number, co: number, isoTs: string) =>
       JSON.stringify({
         type: 'status',
         loop_id: loopId,
-        seq: 1,
+        seq: (seq += 1),
         ts: 1,
         data: {
           pv: { value: pv, severity: 'GOOD', limit_bits: 'NONE', sub_status: 'NON_SPECIFIC' },
@@ -50,6 +55,10 @@ async function stubWebSocket(page: Page): Promise<void> {
       constructor(url: string) {
         super();
         this.url = url;
+        // Sockets opened so far. StrictMode's mount/cleanup/remount opens a small fixed
+        // number; a rejected §7 resync closes the socket and the count never stops climbing.
+        const probe = window as unknown as { __wsCount?: number };
+        probe.__wsCount = (probe.__wsCount ?? 0) + 1;
         // Push a fresh status frame for a loop; each call uses a distinct ISO timestamp so the
         // twin trend's de-dupe (last-t equality) does not drop it.
         (
@@ -80,15 +89,46 @@ async function stubWebSocket(page: Page): Promise<void> {
   });
 }
 
-// AppShell + page shell dependencies (login, OPC poll, AlarmBar).
-async function mockShell(page: Page): Promise<void> {
+// AppShell + page shell dependencies, plus the WHOLE §7 resync set.
+//
+// Two hard requirements, both learned the hard way:
+//  1. GET /api/auth/me MUST be stubbed. `useCan` is deny-by-default, so without it the
+//     `simulator.configure` region never renders and Start/Preset/Inject do not exist.
+//  2. Every resync call MUST be stubbed. React StrictMode remounts the provider, so the second
+//     connection always runs a resync; one unmocked call rejects it, and a failed resync closes
+//     the socket and reconnect-loops forever. /simulator/status comes from mockSimulator.
+async function mockShell(page: Page, role: 'admin' | 'user' = 'admin'): Promise<void> {
   await page.route('**/api/auth/login', (route) =>
     route.fulfill({ json: { access_token: 'jwt-e2e', token_type: 'bearer' } }),
+  );
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({ json: { user_id: 1, username: role, role } }),
+  );
+  await page.route('**/api/controllers', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 1,
+          name: 'SIM-001',
+          description: 'twin',
+          mode: 'AUTO',
+          pv: 50,
+          sp: 50,
+          co: 0,
+          pv_scale: { eu_min: 0, eu_max: 100, unit: '%' },
+          out_scale: { eu_min: 0, eu_max: 100, unit: '%' },
+        },
+      ],
+    }),
+  );
+  await page.route('**/api/controllers/*/ai/status', (route) =>
+    route.fulfill({ json: { controller_id: 1, running: false, engine: 'NONE' } }),
   );
   await page.route('**/api/opcua/status', (route) =>
     route.fulfill({ json: { state: 'ONLINE', endpoint: 'opc.tcp://localhost:4840' } }),
   );
   await page.route('**/api/alarms/active', (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/alarms/history**', (route) => route.fulfill({ json: [] }));
 }
 
 // Drive several live twin frames into the trend for the given loop.
@@ -257,5 +297,49 @@ test.describe('Simulator page', () => {
 
     // DELETE sets step_active:false -> refetch -> Remove disabled.
     await expect(remove).toBeDisabled();
+  });
+});
+
+// GET /simulator/status is admin-only. A `user` session therefore hits a real 403 during the §7
+// resync, and that 403 must stay a DESIGNED state: the page keeps working and, above all, the
+// socket does not recycle. `resync` swallows a forbidden simulator status on purpose, and
+// `useSimulatorStatus` never issues the call at all without `simulator.configure`.
+test.describe('Simulator page for a plain operator', () => {
+  test('renders a restricted state on a 403 without recycling the socket', async ({ page }) => {
+    await stubWebSocket(page);
+    await mockShell(page, 'user');
+    await page.route('**/api/simulator/status', (route) =>
+      route.fulfill({ status: 403, json: { detail: 'Admin role required' } }),
+    );
+
+    await page.goto('/simulator');
+
+    await expect(page.getByRole('status', { name: /simulation mode/i })).toBeVisible();
+    await expect(page.getByText('Simulador gerenciado pelo administrador')).toBeVisible();
+    // No configuration control leaks through.
+    await expect(page.getByRole('button', { name: /^start$/i })).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: /process preset/i })).toHaveCount(0);
+
+    // The operator can still watch the twin they are allowed to drive.
+    await expect(page.getByLabel(/twin response trend/i)).toBeVisible();
+    await pushFrames(page, 1, 3);
+    await expect(page.getByRole('group', { name: /twin mode/i })).toBeVisible();
+
+    // A resync that rejected on the 403 would close the socket and reconnect on a 500 ms
+    // backoff that doubles. Sampling twice across a 2 s window spans 500/1000/2000 ms, so a
+    // steady count is real evidence of a settled connection — not just a slow loop.
+    const socketCount = () =>
+      page.evaluate(() => {
+        // Counter installed by stubWebSocket's init script; not part of any DOM type.
+        const probe = window as unknown as { __wsCount?: number };
+        return probe.__wsCount ?? 0;
+      });
+
+    await page.waitForTimeout(1_500);
+    const settled = await socketCount();
+    await page.waitForTimeout(2_000);
+    expect(await socketCount()).toBe(settled);
+    // StrictMode's mount/cleanup/remount accounts for the handful that DID open.
+    expect(settled).toBeLessThanOrEqual(4);
   });
 });

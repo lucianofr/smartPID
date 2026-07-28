@@ -36,12 +36,12 @@ async def secure_client(tmp_path):
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
-    historian = SQLiteHistorian(repo)
+    historian = SQLiteHistorian(repo.session_factory)
     user_repo = UserRepository(tmp_path / "users.db")
     await user_repo.initialize()
-    alarm_repo = AlarmRepository(repo)
-    audit_repo = AuditRepository(repo)
-    system_event_repo = SystemEventRepository(repo.db)
+    alarm_repo = AlarmRepository(repo.session_factory)
+    audit_repo = AuditRepository(repo.session_factory)
+    system_event_repo = SystemEventRepository(repo.session_factory)
     bus = EventBus(url_prefix=f"inproc://test_{uuid.uuid4().hex[:8]}")
     bus.start()
     loop_manager = LoopManager(bus=bus)
@@ -73,7 +73,7 @@ async def secure_client(tmp_path):
     loop_manager.stop_all()
     bus.stop()
     await user_repo.close()
-    await repo.db.close()
+    await repo.close()
 
 
 class TestSecurityHeaders:
@@ -147,7 +147,12 @@ class TestTrustedHost:
 
 
 class TestConfigDefault:
-    def test_api_host_defaults_to_loopback(self) -> None:
+    def test_api_host_defaults_to_loopback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # _env_file=None only silences .env; a SPID_API_HOST exported in the
+        # developer shell would still shadow the code default under test.
+        monkeypatch.delenv("SPID_API_HOST", raising=False)
         settings = CoreSettings(
             _env_file=None,
             jwt_secret="test-secret-key-minimum-32-bytes!",

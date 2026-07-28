@@ -59,10 +59,13 @@ class TestEnums:
         assert ProcessSpeed.SLOW.stats_window_s == 7200
 
     def test_process_speed_speed_factor(self) -> None:
-        assert ProcessSpeed.ULTRA_FAST.speed_factor == 0.30
-        assert ProcessSpeed.FAST.speed_factor == 0.15
-        assert ProcessSpeed.MEDIUM.speed_factor == 0.08
-        assert ProcessSpeed.SLOW.speed_factor == 0.04
+        # Retuned by c39158c ("improve RL learning speed"): every tier moved up
+        # one notch from the original table, so these are the deliberate
+        # product values, not drift.
+        assert ProcessSpeed.ULTRA_FAST.speed_factor == 0.50
+        assert ProcessSpeed.FAST.speed_factor == 0.30
+        assert ProcessSpeed.MEDIUM.speed_factor == 0.15
+        assert ProcessSpeed.SLOW.speed_factor == 0.08
 
     def test_process_speed_label(self) -> None:
         assert "Motors" in ProcessSpeed.ULTRA_FAST.label
@@ -88,9 +91,9 @@ class TestEnums:
         assert OptimizerState.STOP == "STOP"
 
     def test_user_role_values(self) -> None:
-        assert UserRole.ADMIN == "ADMIN"
-        assert UserRole.SUPERVISOR == "SUPERVISOR"
-        assert UserRole.OPERATOR == "OPERATOR"
+        assert UserRole.ADMIN == "admin"
+        assert UserRole.USER == "user"
+        assert {r.value for r in UserRole} == {"admin", "user"}
 
 
 class TestPIDParams:

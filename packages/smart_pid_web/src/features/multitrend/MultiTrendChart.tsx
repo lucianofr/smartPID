@@ -1,29 +1,77 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import type { AlignedSeries } from './multiTrendData';
-import { seriesColor, seriesStroke } from './signals';
-import { buildUplotTheme, readTrendTokens } from '../../lib/uplotTheme';
+import { buildUplotTheme, readTrendTokens, type UplotTheme } from '@/lib/uplotTheme';
+import { cn } from '@/lib/utils';
+import type { TimeSync } from './timeSync';
+import { signalLabel, type AlignedSeries, type Signal } from './types';
 
-interface Props {
+/**
+ * One cell of the multi-trend grid: a single loop's enabled signals over the
+ * shared time axis. Every row comes from the same window buffer, so the series
+ * cannot drift off the x column.
+ *
+ * Scale pinning: an untouched chart auto-follows the live window. The first
+ * drag-zoom pins it, which (a) publishes the range to the siblings and (b)
+ * stops `setData` from resetting scales — live samples must never yank a view
+ * the operator just framed. uPlot's dblclick reset releases the pin.
+ */
+
+const JSDOM = /jsdom/i;
+const CO_SCALE = 'co';
+const PV_SCALE = 'pv';
+
+export interface MultiTrendChartProps {
+  /** Stable sync identity, e.g. `slot-0`. */
+  id: string;
   series: AlignedSeries;
-  onPxWidth: (px: number) => void;
+  ariaLabel: string;
+  sync?: TimeSync;
+  /** Reports the drawable width so the caller can size decimation buckets. */
+  onPxWidth?(px: number): void;
+  height?: number;
+  testId?: string;
+  className?: string;
 }
 
-interface ReadoutCell {
-  label: string;
-  value: string;
+function seriesOptions(key: { signal: Signal }, theme: UplotTheme): uPlot.Series {
+  if (key.signal === 'sp') {
+    return {
+      stroke: theme.series.sp.stroke,
+      width: theme.series.sp.width,
+      dash: theme.series.sp.dash,
+      scale: PV_SCALE,
+    };
+  }
+  if (key.signal === 'co') {
+    return { stroke: theme.series.co.stroke, width: theme.series.co.width, scale: CO_SCALE };
+  }
+  return { stroke: theme.series.pv.stroke, width: theme.series.pv.width, scale: PV_SCALE };
 }
 
-function fmt(value: number | null | undefined): string {
-  return value == null ? '—' : value.toFixed(2);
-}
-
-export function MultiTrendChart({ series, onPxWidth }: Props): JSX.Element {
-  const ref = useRef<HTMLDivElement>(null);
-  const plot = useRef<uPlot | null>(null);
+export function MultiTrendChart({
+  id,
+  series,
+  ariaLabel,
+  sync,
+  onPxWidth,
+  height = 240,
+  testId,
+  className,
+}: MultiTrendChartProps) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const plotRef = useRef<uPlot | null>(null);
   const [themeKey, setThemeKey] = useState(0);
-  const [readout, setReadout] = useState<ReadoutCell[]>([]);
+
+  // Read from uPlot hooks without rebuilding the plot when they change.
+  const syncRef = useRef(sync);
+  syncRef.current = sync;
+  const pxRef = useRef(onPxWidth);
+  pxRef.current = onPxWidth;
+  const pinnedRef = useRef(false);
+
+  const shape = series.keys.map((k) => `${k.loopId}:${k.signal}`).join(',');
+  const aligned = useMemo(() => series.data as uPlot.AlignedData, [series.data]);
 
   useEffect(() => {
     const obs = new MutationObserver(() => setThemeKey((k) => k + 1));
@@ -32,97 +80,100 @@ export function MultiTrendChart({ series, onPxWidth }: Props): JSX.Element {
   }, []);
 
   useEffect(() => {
-    if (!ref.current) return;
-    const el = ref.current;
-    const width = el.clientWidth || 800;
-    const height = el.clientHeight || 360;
-    onPxWidth(width);
-
+    const el = hostRef.current;
+    if (!el || (typeof window !== 'undefined' && JSDOM.test(window.navigator.userAgent))) return;
     const theme = buildUplotTheme(readTrendTokens(getComputedStyle(document.documentElement)));
-    const labels = series.keys.map((k) => `L${k.loopId} ${k.variable.toUpperCase()}`);
-    const weightFor = (variable: string): number =>
-      variable === 'sp' ? theme.series.sp.width : variable === 'co' ? theme.series.co.width : theme.series.pv.width;
+    const width = el.clientWidth || 640;
+    pxRef.current?.(width);
 
-    const uSeries: uPlot.Series[] = [
-      {}, // x
-      ...series.keys.map((k, i) => ({
-        label: labels[i],
-        stroke: seriesStroke(seriesColor(k)),
-        width: weightFor(k.variable),
-        dash: k.variable === 'sp' ? [6, 4] : undefined, // SP dashed (no color-only encoding)
-        scale: k.variable === 'co' ? 'co' : 'pv',
-        points: { show: false },
-      })),
-    ];
+    const axis = {
+      stroke: theme.axesStroke,
+      font: theme.axisFont,
+      grid: { stroke: theme.gridStroke, width: 1 },
+      ticks: { stroke: theme.gridStroke, width: 1 },
+    };
 
     const opts: uPlot.Options = {
       width,
       height,
-      series: uSeries,
-      scales: { x: { time: false }, pv: {}, co: { range: [0, 100] } },
+      legend: { show: true, live: true },
+      cursor: { x: true, y: true, drag: { x: true, y: false } },
+      scales: { x: { time: true }, [PV_SCALE]: {}, [CO_SCALE]: { range: [0, 100] } },
       axes: [
-        { stroke: theme.axesStroke, font: theme.axisFont, grid: { stroke: theme.gridStroke } },
-        { scale: 'pv', stroke: theme.axesStroke, font: theme.axisFont, grid: { stroke: theme.gridStroke } },
-        { scale: 'co', side: 1, stroke: theme.axesStroke, font: theme.axisFont, grid: { show: false } },
+        axis,
+        { ...axis, scale: PV_SCALE },
+        { ...axis, scale: CO_SCALE, side: 1, grid: { show: false } },
       ],
-      cursor: { ...theme.cursor, drag: { x: true, y: false } },
-      legend: { live: true },
+      series: [
+        {},
+        ...series.keys.map((key) => ({ label: signalLabel(key), ...seriesOptions(key, theme) })),
+      ],
       hooks: {
-        setCursor: [
-          (u) => {
-            const idx = u.cursor.idx;
-            if (idx == null) {
-              setReadout([]);
-              return;
-            }
-            setReadout(labels.map((label, i) => ({ label, value: fmt(u.data[i + 1]?.[idx]) })));
+        // A drag-zoom is the only thing that pins the view; live auto-follow
+        // must not publish, or two live charts would fight over the x range.
+        setSelect: [() => { pinnedRef.current = true; }],
+        setScale: [
+          (u, key) => {
+            if (key !== 'x' || !pinnedRef.current) return;
+            const { min, max } = u.scales.x;
+            if (min === undefined || max === undefined) return;
+            syncRef.current?.publish(id, { min, max });
           },
         ],
       },
     };
 
     try {
-      plot.current = new uPlot(opts, series.data as uPlot.AlignedData, el);
+      plotRef.current = new uPlot(opts, aligned, el);
     } catch {
       /* jsdom has no canvas measure; ignore in tests */
     }
-    return () => {
-      plot.current?.destroy();
-      plot.current = null;
+
+    const release = () => {
+      pinnedRef.current = false;
     };
-    // Re-create on series-shape change OR theme change (themeKey); data updates handled below.
+    el.addEventListener('dblclick', release);
+
+    const ro = new ResizeObserver(() => {
+      const w = el.clientWidth;
+      if (w <= 0) return;
+      plotRef.current?.setSize({ width: w, height });
+      pxRef.current?.(w);
+    });
+    ro.observe(el);
+
+    return () => {
+      el.removeEventListener('dblclick', release);
+      ro.disconnect();
+      plotRef.current?.destroy();
+      plotRef.current = null;
+    };
+    // Series COUNT and labels are baked at construction; data flows through setData.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [series.keys.map((k) => `${k.loopId}:${k.variable}`).join(','), themeKey]);
+  }, [shape, themeKey, height, id]);
 
   useEffect(() => {
-    plot.current?.setData(series.data as uPlot.AlignedData);
-  }, [series.data]);
+    plotRef.current?.setData(aligned, !pinnedRef.current);
+  }, [aligned]);
+
+  useEffect(() => {
+    if (!sync) return;
+    return sync.register({
+      id,
+      setX: (range) => {
+        pinnedRef.current = true;
+        plotRef.current?.setScale('x', { min: range.min, max: range.max });
+      },
+    });
+  }, [sync, id]);
 
   return (
-    <div className="flex h-full w-full flex-col bg-surface border border-border">
-      <div
-        ref={ref}
-        data-testid="multitrend-chart"
-        className="min-h-0 w-full flex-1"
-        style={{ background: 'var(--trend-bg)' }}
-      />
-      <dl
-        data-testid="multitrend-readout"
-        aria-label="Trend cursor readout"
-        className="numeric flex flex-wrap gap-x-4 gap-y-0.5 border-t border-border px-3 py-1.5 text-text-secondary"
-        style={{ fontSize: 'var(--text-xs)' }}
-      >
-        {readout.length === 0 ? (
-          <span className="text-text-secondary">Hover to read values</span>
-        ) : (
-          readout.map((cell) => (
-            <span key={cell.label} className="inline-flex gap-1.5">
-              <dt>{cell.label}</dt>
-              <dd className="text-text">{cell.value}</dd>
-            </span>
-          ))
-        )}
-      </dl>
-    </div>
+    <section
+      aria-label={ariaLabel}
+      data-testid={testId}
+      className={cn('flex min-w-0 flex-col border border-rule bg-trend-bg', className)}
+    >
+      <div ref={hostRef} className="w-full min-w-0" style={{ height }} />
+    </section>
   );
 }

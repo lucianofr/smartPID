@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from smart_pid_core.adapters.inbound.api.app import create_app
 from smart_pid_core.adapters.inbound.api.auth import create_access_token
 from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
+from smart_pid_core.adapters.outbound.user_repo import User
 from smart_pid_core.config import CoreSettings
 
 
@@ -22,6 +23,19 @@ def _make_settings() -> CoreSettings:
 def _mock_opcua() -> MagicMock:
     m = MagicMock()
     m.register_controller.return_value = {}
+    return m
+
+
+def _mock_user_repo() -> MagicMock:
+    """Authorization resolves the token against the store on every request
+    (E2E-044), so the mock has to answer with a real, active principal."""
+    m = MagicMock()
+    m.get_by_id = AsyncMock(
+        return_value=User(
+            id=1, username="tester", password_hash="x",
+            role="admin", created_at="",
+        )
+    )
     return m
 
 
@@ -40,7 +54,7 @@ def client():
         app = create_app(
             repo=mock_repo,
             historian=MagicMock(),
-            user_repo=MagicMock(),
+            user_repo=_mock_user_repo(),
             loop_manager=MagicMock(),
             settings=settings,
             simulator_adapter=adapter,

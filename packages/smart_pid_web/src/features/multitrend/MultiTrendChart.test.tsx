@@ -1,29 +1,37 @@
-import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { MultiTrendChart } from './MultiTrendChart';
-import type { AlignedSeries } from './multiTrendData';
+import type { TimeSync } from './timeSync';
 
-// uPlot needs canvas measure APIs jsdom lacks (stubbed in setup.ts); assert the
-// chart mount + §6d tabular readout DOM nodes render, not canvas pixels.
+const SERIES = {
+  keys: [
+    { loopId: 1, signal: 'pv' as const },
+    { loopId: 1, signal: 'co' as const },
+  ],
+  data: [
+    [1, 2],
+    [10, 11],
+    [40, 41],
+  ],
+};
+
 describe('MultiTrendChart', () => {
-  // Empty (but shaped) data: uPlot mounts without a deferred canvas draw that would
-  // hit jsdom's missing Path2D (same convention as RealtimeTrend.test).
-  const series: AlignedSeries = {
-    keys: [{ loopId: 1, variable: 'pv' }],
-    data: [[], []],
-  };
-
-  it('preserves the multitrend-chart mount node', () => {
-    render(<MultiTrendChart series={series} onPxWidth={() => {}} />);
-    expect(screen.getByTestId('multitrend-chart')).toBeInTheDocument();
+  it('renders an addressable, labelled chart host', () => {
+    render(
+      <MultiTrendChart id="slot-0" series={SERIES} ariaLabel="Tendência Loop 1" testId="slot-0" />,
+    );
+    expect(screen.getByTestId('slot-0')).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Tendência Loop 1' })).toBeInTheDocument();
   });
 
-  it('renders a tabular cursor readout node', () => {
-    render(<MultiTrendChart series={series} onPxWidth={() => {}} />);
-    const readout = screen.getByTestId('multitrend-readout');
-    expect(readout).toBeInTheDocument();
-    expect(readout.className).toContain('numeric');
-    // No hover in jsdom → idle prompt is shown in the readout.
-    expect(within(readout).getByText(/hover to read values/i)).toBeInTheDocument();
+  it('joins the shared time sync and leaves it on unmount', () => {
+    const off = vi.fn();
+    const sync: TimeSync = { register: vi.fn(() => off), publish: vi.fn() };
+    const { unmount } = render(
+      <MultiTrendChart id="slot-2" series={SERIES} ariaLabel="Tendência Loop 1" sync={sync} />,
+    );
+    expect(sync.register).toHaveBeenCalledWith(expect.objectContaining({ id: 'slot-2' }));
+    unmount();
+    expect(off).toHaveBeenCalled();
   });
 });

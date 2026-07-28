@@ -1,108 +1,125 @@
-import { useState } from 'react';
-import type { HistoryParams, TelemetryFrame } from './useHistory';
-import { EmptyState, LoadingState } from '../../components/MissingState';
+import { useId, useState } from 'react';
+import type { TelemetryFrame } from '@/api/types';
+import { Button } from '@/components/Button';
+import { EmptyState, ErrorState, LoadingState } from '@/components/MissingState';
+import { cn } from '@/lib/utils';
+import { MultiTrendChart } from './MultiTrendChart';
+import { historySeries, historyWindow, HISTORY_UNITS, type HistoryUnit, type HistoryWindow } from './useHistory';
 
-interface Props {
-  controllerId: number;
-  onQuery: (params: HistoryParams) => void;
-  frames: TelemetryFrame[];
+/**
+ * Duration-based history replay (§6.8). The window is `Janela` × `Unidade`
+ * ending now; the request never fires on keystroke, only on
+ * `Carregar histórico` — a half-typed duration is not a question.
+ */
+
+const CONTROL = cn(
+  'min-h-11 rounded-control border border-rule-strong bg-surface-sunk px-2 text-sm text-text',
+  'outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+);
+
+const UNIT_LABEL: Record<HistoryUnit, string> = {
+  segundo: 'Segundos',
+  minuto: 'Minutos',
+  hora: 'Horas',
+};
+
+export interface HistoryQueryProps {
+  /** null = no loop selected; the form cannot be submitted. */
+  controllerId: number | null;
+  frames: readonly TelemetryFrame[];
   count: number;
-  isLoading: boolean;
-  /** True once a query has been submitted — lets us distinguish "not yet run" from "ran, empty". */
-  hasQueried?: boolean;
+  isPending: boolean;
+  isError: boolean;
+  /** Distinguishes "not asked yet" from "asked, nothing there". */
+  hasQueried: boolean;
+  onLoad(window: HistoryWindow): void;
 }
-
-function toIso(localValue: string): string | undefined {
-  if (!localValue) return undefined;
-  return new Date(localValue).toISOString();
-}
-
-const fieldClass = 'flex flex-col gap-0.5 text-text-secondary';
 
 export function HistoryQuery({
   controllerId,
-  onQuery,
   frames,
   count,
-  isLoading,
-  hasQueried = false,
-}: Props): JSX.Element {
-  const [start, setStart] = useState('');
-  const [end, setEnd] = useState('');
-  const [limit, setLimit] = useState(1000);
+  isPending,
+  isError,
+  hasQueried,
+  onLoad,
+}: HistoryQueryProps) {
+  const amountId = useId();
+  const unitId = useId();
+  const [amount, setAmount] = useState(30);
+  const [unit, setUnit] = useState<HistoryUnit>('minuto');
+  const [pxWidth, setPxWidth] = useState(800);
 
-  const submit = (): void => {
-    onQuery({ controllerId, start: toIso(start), end: toIso(end), limit });
+  const submit = () => {
+    if (controllerId === null) return;
+    onLoad(historyWindow(controllerId, amount, unit));
   };
 
   return (
     <section
-      className="history-query flex flex-col gap-2 border border-border bg-surface-container p-3"
-      aria-label="History query"
+      aria-label="Histórico"
+      className="flex min-w-0 flex-col gap-2 border border-rule bg-surface-sunk p-3"
     >
-      <div className="history-query__form flex flex-wrap items-end gap-2" style={{ fontSize: 'var(--text-xs)' }}>
-        <label className={fieldClass}>
-          Start
-          <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
-        </label>
-        <label className={fieldClass}>
-          End
-          <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
-        </label>
-        <label className={fieldClass}>
-          Limit
+      <h2 className="text-2xs uppercase tracking-wider text-text-soft">Histórico</h2>
+      <div className="flex flex-wrap items-end gap-2">
+        <label htmlFor={amountId} className="flex flex-col gap-1 text-2xs text-text-soft">
+          Janela
           <input
+            id={amountId}
             type="number"
-            className="numeric"
             min={1}
-            max={10000}
-            value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
+            max={9999}
+            value={amount}
+            onChange={(e) => setAmount(Number(e.target.value))}
+            className={cn(CONTROL, 'numeric w-24')}
           />
         </label>
-        <button type="button" onClick={submit}>
-          Query
-        </button>
-      </div>
-      <p className="history-query__count text-text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
-        {isLoading ? 'Loading…' : `${count} frame(s)`}
-      </p>
-      {isLoading && (
-        <LoadingState testId="history-loading" label="Querying history…" bars={3} />
-      )}
-      {!isLoading && hasQueried && frames.length === 0 && (
-        <EmptyState
-          testId="history-empty"
-          message="No history for this range."
-          hint="Widen the start/end window or raise the limit."
-        />
-      )}
-      {frames.length > 0 && (
-        <table className="history-query__table numeric w-full border-collapse text-left" style={{ fontSize: 'var(--text-xs)' }}>
-          <thead className="text-text-secondary">
-            <tr>
-              <th className="border-b border-border px-1 py-0.5">Time</th>
-              <th className="border-b border-border px-1 py-0.5">PV</th>
-              <th className="border-b border-border px-1 py-0.5">SP</th>
-              <th className="border-b border-border px-1 py-0.5">CO</th>
-              <th className="border-b border-border px-1 py-0.5">Mode</th>
-              <th className="border-b border-border px-1 py-0.5">Status</th>
-            </tr>
-          </thead>
-          <tbody className="text-text">
-            {frames.slice(0, 200).map((f, i) => (
-              <tr key={`${f.timestamp}-${i}`}>
-                <td className="px-1 py-0.5">{f.timestamp}</td>
-                <td className="px-1 py-0.5">{f.pv}</td>
-                <td className="px-1 py-0.5">{f.sp}</td>
-                <td className="px-1 py-0.5">{f.co}</td>
-                <td className="px-1 py-0.5">{f.mode}</td>
-                <td className="px-1 py-0.5">{f.status}</td>
-              </tr>
+        <label htmlFor={unitId} className="flex flex-col gap-1 text-2xs text-text-soft">
+          Unidade
+          <select
+            id={unitId}
+            value={unit}
+            onChange={(e) => setUnit(e.target.value as HistoryUnit)}
+            className={cn(CONTROL, 'w-32')}
+          >
+            {HISTORY_UNITS.map((u) => (
+              <option key={u} value={u}>
+                {UNIT_LABEL[u]}
+              </option>
             ))}
-          </tbody>
-        </table>
-      )}
+          </select>
+        </label>
+        <Button variant="secondary" onClick={submit} disabled={controllerId === null}>
+          Carregar histórico
+        </Button>
+      </div>
+
+      {isPending && hasQueried ? <LoadingState label="Carregando histórico…" bars={2} /> : null}
+
+      {isError ? (
+        <ErrorState message="Não foi possível carregar o histórico." onRetry={submit} />
+      ) : null}
+
+      {!isPending && !isError && hasQueried && frames.length === 0 ? (
+        <EmptyState
+          message="Sem histórico nesta janela."
+          hint="Aumente a janela ou verifique se o historiador está gravando."
+        />
+      ) : null}
+
+      {frames.length > 0 && controllerId !== null ? (
+        <>
+          <p className="numeric text-2xs text-text-soft">{count} amostras</p>
+          <MultiTrendChart
+            id="history"
+            testId="multitrend-history-chart"
+            ariaLabel={`Histórico Loop ${controllerId}`}
+            series={historySeries(controllerId, frames, pxWidth)}
+            onPxWidth={setPxWidth}
+            height={200}
+          />
+        </>
+      ) : null}
     </section>
   );
 }

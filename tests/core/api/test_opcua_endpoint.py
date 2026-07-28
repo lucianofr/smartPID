@@ -55,16 +55,16 @@ def _make_test_app():
 def _mock_admin_user():
     """Override auth dependency to return admin claims."""
     from smart_pid_core.adapters.inbound.api.dependencies import (
-        require_authenticated_admin,
+        require_admin,
     )
     from smart_pid_domain.dtos.auth import UserClaims
 
-    admin = UserClaims(user_id="1", username="admin", role="ADMIN")
+    admin = UserClaims(user_id="1", username="admin", role="admin")
 
     def override():
         return admin
 
-    return require_authenticated_admin, override
+    return require_admin, override
 
 
 class TestPutOPCUAEndpoint:
@@ -224,7 +224,7 @@ class TestProjectServiceOPCUA:
             opcua_adapter=mock_opcua_adapter,
         )
 
-        asyncio.get_event_loop().run_until_complete(service.open_project("myproj"))
+        asyncio.run(service.open_project("myproj"))
 
         mock_repo.get_meta.assert_any_await("opcua_endpoint")
         mock_opcua_adapter.set_endpoint.assert_called_once_with("opc.tcp://saved:4840")
@@ -250,7 +250,7 @@ class TestProjectServiceOPCUA:
             opcua_adapter=mock_opcua_adapter,
         )
 
-        asyncio.get_event_loop().run_until_complete(service.open_project("myproj"))
+        asyncio.run(service.open_project("myproj"))
 
         mock_opcua_adapter.stop.assert_called()
         mock_opcua_adapter.set_endpoint.assert_not_called()
@@ -270,6 +270,6 @@ class TestProjectServiceOPCUA:
         )
         (tmp_path / "projects").mkdir(parents=True, exist_ok=True)
 
-        asyncio.get_event_loop().run_until_complete(service.new_project("newproj"))
+        asyncio.run(service.new_project("newproj"))
 
         mock_opcua_adapter.stop.assert_called()

@@ -1,37 +1,62 @@
-import type { AlarmPriority, AlarmStatus } from './types';
+import type { AlarmSeverity, AlarmStatus } from './types';
 
-const RANK: Record<AlarmPriority, number> = {
-  CRITICAL: 0,
-  WARNING: 1,
-  ADVISORY: 2,
-  LOG: 3,
-};
+/**
+ * The four-severity presentation language (§6.4).
+ *
+ * Severity travels on THREE channels — text (`label`), shape (`glyph`) and
+ * color (`token`). Color alone is banned, so nothing here may be consumed
+ * without also rendering the label or the glyph.
+ *
+ * `token` names a themes.css contract variable; callers hand it to CSS via
+ * `severityVar()` or `severityClass()` and never inline a literal color.
+ */
 
 export type SeverityGlyph = 'octagon' | 'triangle' | 'diamond' | 'dot';
 
-const GLYPH: Record<AlarmPriority, SeverityGlyph> = {
-  CRITICAL: 'octagon',
-  WARNING: 'triangle',
-  ADVISORY: 'diamond',
-  LOG: 'dot',
+export interface SeverityPresentation {
+  label: AlarmSeverity;
+  glyph: SeverityGlyph;
+  token: string;
+}
+
+/** Wire order — also the sort order (most severe first). */
+export const ALARM_SEVERITIES = ['CRITICAL', 'WARNING', 'ADVISORY', 'LOG'] as const;
+
+export const SEVERITY_PRESENTATION: Record<AlarmSeverity, SeverityPresentation> = {
+  CRITICAL: { label: 'CRITICAL', glyph: 'octagon', token: '--alarm-crit' },
+  WARNING: { label: 'WARNING', glyph: 'triangle', token: '--alarm-warn' },
+  ADVISORY: { label: 'ADVISORY', glyph: 'diamond', token: '--alarm-adv' },
+  LOG: { label: 'LOG', glyph: 'dot', token: '--alarm-log' },
 };
 
-/** Lower number = higher severity (CRITICAL=0). Used for sort + counters. */
-export function priorityRank(p: AlarmPriority): number {
-  return RANK[p];
+export function severity(value: AlarmSeverity): SeverityPresentation {
+  return SEVERITY_PRESENTATION[value];
 }
 
-/** ISA-101 §8.2: severity is also a SHAPE, never color alone. */
-export function severityIcon(p: AlarmPriority): SeverityGlyph {
-  return GLYPH[p];
+/** Lower rank = more severe. Drives flood sorting and bucket order. */
+export function priorityRank(value: AlarmSeverity): number {
+  return ALARM_SEVERITIES.indexOf(value);
 }
 
-/** Stable CSS class token → resolves to --alarm-* / --alarm-*-bg in themes.css. */
-export function severityClass(p: AlarmPriority): string {
-  return `sev-${p.toLowerCase()}`;
+/** An unknown wire priority must still be VISIBLE; LOG is the non-escalating bucket. */
+export function toSeverity(priority: string): AlarmSeverity {
+  const upper = priority.toUpperCase();
+  return (ALARM_SEVERITIES as readonly string[]).includes(upper)
+    ? (upper as AlarmSeverity)
+    : 'LOG';
 }
 
-/** Unacked rows blink (icon/counter opacity); ACKNOWLEDGED rows are stable (§6.4). */
-export function isUnacked(status: AlarmStatus): boolean {
+/** Stable class hook — `sev-critical` … resolves the glyph + stripe in index.css. */
+export function severityClass(value: AlarmSeverity): string {
+  return `sev-${value.toLowerCase()}`;
+}
+
+/** `var(--alarm-crit)` for the one inline channel (footer bucket color). */
+export function severityVar(value: AlarmSeverity): string {
+  return `var(${severity(value).token})`;
+}
+
+/** Unacked drives the non-color channel (weight + glyph + blink, §6.4). */
+export function isUnackedStatus(status: AlarmStatus): boolean {
   return status === 'UNACKNOWLEDGED' || status === 'CLEARED_UNACK';
 }

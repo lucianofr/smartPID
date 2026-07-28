@@ -1,20 +1,20 @@
-import { useOpcuaStatus } from '../api/executive';
-import { AppShell } from '../components/shell/AppShell';
-import { SettingsForm } from '../features/settings/SettingsForm';
+import { SettingsForm } from '@/features/settings/SettingsForm';
 
-export function SettingsPage(): JSX.Element {
-  const opcQ = useOpcuaStatus();
-  const opcDown = opcQ.data ? opcQ.data.state !== 'ONLINE' : false;
+/**
+ * Application preferences (`[cfg] › Settings`). Route-guarded `adminOnly`, and
+ * the form re-checks `settings.manage` — the guard protects the URL, the
+ * capability check protects the controls.
+ */
+export function SettingsPage() {
   return (
-    <AppShell opcDown={opcDown}>
-      <div className="flex flex-col gap-6">
-        <header>
-          <h1 className="m-0 font-semibold text-text" style={{ fontSize: 'var(--text-xl)' }}>
-            Settings
-          </h1>
-        </header>
-        <SettingsForm />
-      </div>
-    </AppShell>
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <header className="shrink-0 border-b border-rule px-3 py-2">
+        <h1 className="type-display text-lg text-text">Configurações</h1>
+        <p className="text-xs text-text-soft">
+          Preferências locais deste navegador — não alteram o servidor.
+        </p>
+      </header>
+      <SettingsForm />
+    </div>
   );
 }

@@ -1,173 +1,238 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { ReactElement } from 'react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { endpoints } from '@/api/endpoints';
+import { queryKeys } from '@/api/queryKeys';
+import type { AiStatus, Role } from '@/api/types';
+import type { AiData, RealtimeEnvelope } from '@/lib/envelope';
+import { makeController } from '@/test/fixtures';
+import { createFakeRealtime, createQueryClient, TestProviders } from '@/test/providers';
 import { AiPanel } from '../AiPanel';
-import { ApiError } from '../../../api/client';
-import type { AiStatus, TuningRecommendation } from '../commandApi';
-import type { AiData, RealtimeEnvelope, RealtimeType } from '../../../realtime/envelope';
+import { tuningRecommendationKey } from '../useAiControls';
+import type { TuningRecommendation } from '../commandApi';
 
-const aiActionMutate = vi.fn();
-const applyTuningMock = vi.fn();
+const fetchMock = vi.fn();
 
-let aiStatus: { data: AiStatus | undefined } = { data: undefined };
-let tuningRec: { data: TuningRecommendation | undefined } = { data: undefined };
+const PENDING: TuningRecommendation = {
+  controller_id: 5,
+  current_kp: 1.2,
+  current_ti: 30,
+  current_td: 0,
+  recommended_kp: 1.5,
+  recommended_ti: 25,
+  recommended_td: 0,
+  reason: 'Fuzzy convergiu',
+  timestamp: 1,
+  status: 'pending',
+  source: 'FUZZY',
+};
 
-vi.mock('../useAiControls', () => ({
-  useAiStatus: () => aiStatus,
-  useTuningRecommendation: () => tuningRec,
-  useAiAction: () => ({ mutate: aiActionMutate, error: null }),
-}));
-
-vi.mock('../commandApi', () => ({
-  applyTuning: (...args: unknown[]) => applyTuningMock(...args),
-}));
-
-// Capture the handler registered for the 'ai' realtime type so tests can drive frames.
-let aiHandler: ((env: RealtimeEnvelope<AiData>) => void) | null = null;
-const unsubscribe = vi.fn();
-
-vi.mock('../../../realtime/useRealtime', () => ({
-  useRealtime: () => ({
-    subscribe: (type: RealtimeType, handler: (env: RealtimeEnvelope<AiData>) => void) => {
-      if (type === 'ai') aiHandler = handler;
-      return unsubscribe;
-    },
-  }),
-}));
-
-function makeStatus(overrides: Partial<AiStatus> = {}): AiStatus {
+function aiEvent(seq: number, overrides: Partial<AiData> = {}): RealtimeEnvelope<AiData> & {
+  type: 'ai';
+} {
   return {
-    controller_id: 7,
-    engine: 'fuzzy',
-    objective: 'sp_tracking',
-    speed: 'medium',
-    current_ki: 0.5,
-    last_gamma: 0.12,
-    enabled: true,
-    ...overrides,
+    type: 'ai',
+    loop_id: 5,
+    seq,
+    ts: seq,
+    data: {
+      controller_id: 5,
+      gamma: 0.42,
+      new_ki: 0.03,
+      engine: 'FUZZY',
+      objective: 'SP_TRACKING',
+      integral_type: 'TIME_TI',
+      execution_mode: 'SUPERVISORY',
+      reasoning: 'erro alto, subindo Ki',
+      timestamp: '2026-07-26T10:00:00Z',
+      ...overrides,
+    },
   };
 }
 
-function aiFrame(loopId: number, data: AiData): RealtimeEnvelope<AiData> {
-  return { type: 'ai', loop_id: loopId, seq: 1, ts: 0, data };
+/** Backend default: an engine configured but never started. */
+const aiStatus = (overrides: Partial<AiStatus> = {}): AiStatus => ({
+  controller_id: 5,
+  engine: 'FUZZY',
+  objective: 'SP_TRACKING',
+  speed: 'MEDIUM',
+  current_ki: 0.03,
+  last_gamma: null,
+  enabled: false,
+  paused: false,
+  ...overrides,
+});
+
+function renderAi(
+  options: {
+    role?: Role;
+    recommendation?: TuningRecommendation;
+    engine?: string;
+    status?: Partial<AiStatus>;
+  } = {},
+) {
+  const role = options.role ?? 'admin';
+  sessionStorage.setItem('smart-pid-token', 'jwt');
+  vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
+  const controller = makeController({ id: 5, name: 'PIC-005' });
+  controller.ai_config = { ...controller.ai_config, engine: options.engine ?? 'FUZZY' };
+  const queryClient = createQueryClient();
+  queryClient.setQueryData(queryKeys.controllers, [controller]);
+  queryClient.setQueryData(queryKeys.aiStatus(5), { ...aiStatus(), ...options.status });
+  if (options.recommendation !== undefined) {
+    queryClient.setQueryData(tuningRecommendationKey(5), options.recommendation);
+  }
+  const realtime = createFakeRealtime();
+  return {
+    realtime,
+    ...render(
+      <TestProviders queryClient={queryClient} realtime={realtime.value}>
+        <AiPanel controllerId={5} tag="PIC-005" />
+      </TestProviders>,
+    ),
+  };
 }
 
-function renderWithClient(ui: ReactElement) {
-  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
-}
+const postedPaths = (): string[] =>
+  fetchMock.mock.calls
+    .filter((call) => (call[1] as RequestInit).method === 'POST')
+    .map((call) => String(call[0]));
 
-const pendingRec: TuningRecommendation = {
-  controller_id: 7,
-  current_kp: 1.5,
-  current_ti: 30,
-  current_td: 2,
-  recommended_kp: 1.8,
-  recommended_ti: 25,
-  recommended_td: 1.5,
-  reason: 'IAE improvement',
-  timestamp: 1,
-  status: 'pending',
-  source: 'fuzzy',
-};
+beforeEach(() => {
+  sessionStorage.clear();
+  fetchMock.mockReset();
+  fetchMock.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  );
+  vi.stubGlobal('fetch', fetchMock);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe('AiPanel', () => {
-  beforeEach(() => {
-    aiStatus = { data: makeStatus() };
-    tuningRec = { data: undefined };
-    aiHandler = null;
+  it('is absent entirely for the user role', async () => {
+    renderAi({ role: 'user', recommendation: PENDING });
+    await waitFor(() => expect(screen.queryByTestId('ai-panel')).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Start' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Apply tuning' })).not.toBeInTheDocument();
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
+  it('drives the optimizer lifecycle without touching the block mode', async () => {
+    renderAi();
+    fireEvent.click(await screen.findByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(postedPaths()).toContain('/api/controllers/5/ai/start'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    await waitFor(() => expect(postedPaths()).toContain('/api/controllers/5/ai/pause'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    await waitFor(() => expect(postedPaths()).toContain('/api/controllers/5/ai/stop'));
+
+    // AUTO/MAN is a separate concern: no mode command may ride along.
+    expect(postedPaths().some((p) => p.includes('/commands/mode'))).toBe(false);
   });
 
-  it('renders status fields from useAiStatus', () => {
-    renderWithClient(<AiPanel controllerId={7} />);
-    const text = screen.getByTestId('ai-panel').textContent ?? '';
-    expect(text).toContain('fuzzy');
-    expect(text).toContain('sp_tracking');
-    expect(text).toContain('0.5');
-    expect(text).toContain('0.12');
+  // E2E-022. `enabled` alone cannot express three states: a paused engine is
+  // still `enabled`, so `enabled ? RUN : STOP` reports PAUSE as RUN.
+  it.each([
+    { enabled: false, paused: false, state: 'STOP' },
+    { enabled: false, paused: true, state: 'STOP' },
+    { enabled: true, paused: false, state: 'RUN' },
+    { enabled: true, paused: true, state: 'PAUSE' },
+  ])('reads $state from enabled=$enabled paused=$paused', async ({ enabled, paused, state }) => {
+    renderAi({ status: { enabled, paused } });
+    const badge = await screen.findByTestId('ai-lifecycle');
+    expect(badge).toHaveAttribute('data-state', state);
+    // Text, not colour: the code itself must be legible in the header.
+    expect(badge).toHaveTextContent(state);
+    for (const other of ['RUN', 'PAUSE', 'STOP'].filter((s) => s !== state)) {
+      expect(badge).not.toHaveTextContent(other);
+    }
   });
 
-  it.each(['start', 'stop', 'pause'] as const)(
-    '%s button calls useAiAction mutate with the action',
-    (action) => {
-      renderWithClient(<AiPanel controllerId={7} />);
-      fireEvent.click(screen.getByRole('button', { name: new RegExp(action, 'i') }));
-      expect(aiActionMutate).toHaveBeenCalledWith({ id: 7, action });
-    },
-  );
+  it('announces the paused hold in pt-BR, not by tone alone', async () => {
+    renderAi({ status: { enabled: true, paused: true } });
+    const badge = await screen.findByTestId('ai-lifecycle');
+    expect(badge).toHaveAttribute('role', 'status');
+    expect(badge).toHaveTextContent('otimizador pausado');
+  });
 
-  it('updates the displayed strategy from an incoming ai frame for the matching loop', () => {
-    renderWithClient(<AiPanel controllerId={7} />);
-    expect(aiHandler).not.toBeNull();
+  it('flips RUN → PAUSE once the status refetch lands after Pause', async () => {
+    renderAi({ status: { enabled: true, paused: false } });
+    expect(await screen.findByTestId('ai-lifecycle')).toHaveAttribute('data-state', 'RUN');
 
-    // Drive a frame for the matching loop.
-    act(() => {
-      aiHandler?.(aiFrame(7, { gamma: -0.4, ki: 0.7, strategy: 'disturbance' }));
+    // The refetch `useAiAction` triggers is the only channel the state travels on.
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const body =
+        (init?.method ?? 'GET') === 'GET' && String(input).endsWith('/ai/status')
+          ? aiStatus({ enabled: true, paused: true })
+          : { ok: true };
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
     });
-    expect(screen.getByText(/disturbance/i)).toBeInTheDocument();
-  });
 
-  it('ignores an ai frame for a different loop', () => {
-    renderWithClient(<AiPanel controllerId={7} />);
-    act(() => {
-      aiHandler?.(aiFrame(99, { gamma: -0.4, ki: 0.7, strategy: 'other-loop-strategy' }));
-    });
-    expect(screen.queryByText(/other-loop-strategy/i)).toBeNull();
-  });
-
-  it('apply-tuning button is disabled without a pending recommendation', () => {
-    renderWithClient(<AiPanel controllerId={7} />);
-    expect(screen.getByRole('button', { name: /apply tuning/i })).toBeDisabled();
-  });
-
-  it('apply-tuning flow: enabled with pending rec, opens confirm, confirm calls applyTuning', async () => {
-    tuningRec = { data: pendingRec };
-    applyTuningMock.mockResolvedValue({ ok: true });
-    renderWithClient(<AiPanel controllerId={7} />);
-
-    const applyBtn = screen.getByRole('button', { name: /apply tuning/i });
-    expect(applyBtn).toBeEnabled();
-    expect(applyTuningMock).not.toHaveBeenCalled();
-
-    fireEvent.click(applyBtn);
-    // confirm dialog open, but applyTuning must not have fired yet
-    expect(applyTuningMock).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole('button', { name: /confirm write/i }));
-    await waitFor(() => expect(applyTuningMock).toHaveBeenCalledWith(7));
-  });
-
-  it('keeps the confirm dialog open and surfaces the error when apply-tuning is rejected', async () => {
-    tuningRec = { data: pendingRec };
-    applyTuningMock.mockRejectedValue(new ApiError(409, 'External PID is in MAN mode'));
-    renderWithClient(<AiPanel controllerId={7} />);
-
-    fireEvent.click(screen.getByRole('button', { name: /apply tuning/i }));
-    fireEvent.click(screen.getByRole('button', { name: /confirm write/i }));
-
-    // Error surfaced to the operator.
-    expect(await screen.findByText(/External PID is in MAN mode/i)).toBeInTheDocument();
-    // Dialog stays open so the operator can react.
-    expect(screen.getByRole('button', { name: /confirm write/i })).toBeInTheDocument();
-  });
-
-  it('closes the confirm dialog after a successful apply-tuning write', async () => {
-    tuningRec = { data: pendingRec };
-    applyTuningMock.mockResolvedValue({ ok: true });
-    renderWithClient(<AiPanel controllerId={7} />);
-
-    fireEvent.click(screen.getByRole('button', { name: /apply tuning/i }));
-    expect(screen.getByRole('button', { name: /confirm write/i })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /confirm write/i }));
-
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: /confirm write/i })).toBeNull(),
+      expect(screen.getByTestId('ai-lifecycle')).toHaveAttribute('data-state', 'PAUSE'),
     );
   });
+
+  it('keeps Apply tuning inert until a recommendation is pending', async () => {
+    renderAi();
+    expect(await screen.findByRole('button', { name: 'Apply tuning' })).toBeDisabled();
+  });
+
+  it('writes the recommendation only after Confirm Write', async () => {
+    renderAi({ recommendation: PENDING });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply tuning' }));
+    const dialog = await screen.findByRole('dialog');
+    // The before/after table is the reason the stop exists.
+    expect(within(dialog).getByText('1.5')).toBeVisible();
+    expect(postedPaths()).not.toContain('/api/commands/apply-tuning/5');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm Write' }));
+    await waitFor(() => expect(postedPaths()).toContain('/api/commands/apply-tuning/5'));
+  });
+
+  it('keeps the dialog open and shows why when the write is rejected', async () => {
+    renderAi({ recommendation: PENDING });
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply tuning' }));
+    const dialog = await screen.findByRole('dialog');
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: 'malha não está em AUTO' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm Write' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('malha não está em AUTO');
+    expect(screen.getByRole('dialog')).toBeVisible();
+  });
+
+  it('streams LOG.AI events into the terminal box', async () => {
+    const { realtime } = renderAi();
+    const log = await screen.findByRole('log', { name: 'LOG.AI' });
+    expect(log).toHaveTextContent('Sem eventos de IA.');
+
+    act(() => {
+      realtime.emit(aiEvent(1));
+      realtime.emit(aiEvent(2, { reasoning: 'estabilizou' }));
+    });
+
+    expect(log).toHaveTextContent('erro alto, subindo Ki');
+    expect(log).toHaveTextContent('estabilizou');
+  });
+
 });

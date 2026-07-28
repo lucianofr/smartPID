@@ -1,15 +1,29 @@
 import { expect, test } from '@playwright/test';
 
-// Fatia 2 — command surface e2e. No real backend: all /api/* is mocked via page.route and
-// the WebSocket is stubbed via addInitScript (mirrors login-dashboard.spec.ts). The stub
-// re-emits an updated `status` frame on demand so SP/mode readouts can be asserted live.
+// Command surface e2e. No real backend: every /api/* route is mocked with
+// page.route and the WebSocket is stubbed via addInitScript. The stub re-emits
+// an updated `status` frame on demand so SP/mode readouts can be asserted live.
+//
+// Two harness rules apply here as well (see helpers/harness.ts): GET /auth/me is
+// always stubbed — `useCan` is deny-by-default, so the admin surfaces would not
+// render without it — and every emitted envelope advances `seq` monotonically,
+// because a repeated seq reads as a gap and forces a §7 resync (which React
+// StrictMode already runs once on mount), so the whole resync set is stubbed.
 
 const FULL_CONTROLLER = {
   id: 5,
   name: 'PIC-005',
   description: 'Pressure',
-  pv_decimals: 1,
-  pv_unit: '°C',
+  mode: 'AUTO',
+  pv: 150.2,
+  sp: 152,
+  co: 64,
+  pv_scale: { eu_min: 0, eu_max: 300, unit: '°C' },
+  out_scale: { eu_min: 0, eu_max: 100, unit: '%' },
+  permitted_modes: ['MAN', 'AUTO'],
+  sp_lo_lim: 0,
+  sp_hi_lim: 300,
+  process_speed: 'MEDIUM',
   pid_params: { gain: 1.2, reset: 30, rate: 0, alpha: 0.1, deadband: 0 },
   pid_structure: 'ISA',
   ai_config: {
@@ -69,15 +83,21 @@ test('fatia 2 commands: setpoint, mode, guarded apply-tuning, AI actions', async
   await page.route('**/api/auth/login', (route) =>
     route.fulfill({ json: { access_token: 'jwt-e2e', token_type: 'bearer' } }),
   );
-  await page.route('**/api/controllers', (route) =>
-    route.fulfill({ json: [FULL_CONTROLLER] }),
+  await page.route('**/api/auth/me', (route) =>
+    route.fulfill({ json: { user_id: 1, username: 'admin', role: 'admin' } }),
   );
+  await page.route('**/api/controllers', (route) => route.fulfill({ json: [FULL_CONTROLLER] }));
   await page.route('**/api/opcua/status', (route) =>
     route.fulfill({ json: { state: 'ONLINE', endpoint: 'opc.tcp://localhost:4840' } }),
   );
-  await page.route('**/api/controllers/5/ai/status', (route) =>
-    route.fulfill({ json: AI_STATUS }),
+  // §7 resync set — StrictMode's second mount runs a resync on first load.
+  await page.route('**/api/alarms/active', (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/alarms/history**', (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/alarms/ack-all', (route) => route.fulfill({ json: { acked: 0 } }));
+  await page.route('**/api/simulator/status', (route) =>
+    route.fulfill({ json: { running: false, controllers: [] } }),
   );
+  await page.route('**/api/controllers/5/ai/status', (route) => route.fulfill({ json: AI_STATUS }));
   await page.route('**/api/commands/tuning-recommendations/5', (route) =>
     route.fulfill({ json: PENDING_REC }),
   );
@@ -104,13 +124,16 @@ test('fatia 2 commands: setpoint, mode, guarded apply-tuning, AI actions', async
   // Stub the WebSocket: auth_ok + an initial AUTO status frame; expose a hook to push
   // a fresh status frame from the test so live SP/mode updates can be asserted.
   await page.addInitScript(() => {
-    const statusFrame = (sp: number, mode: string) =>
-      JSON.stringify({
+    let seq = 0;
+    const statusFrame = (sp: number, mode: string) => {
+      seq += 1;
+      return JSON.stringify({
         type: 'status',
         loop_id: 5,
-        seq: 1,
-        ts: 1,
+        seq,
+        ts: 1750000000 + seq,
         data: {
+          controller_id: 5,
           pv: { value: 150.2, severity: 'GOOD', limit_bits: 'NONE', sub_status: 'NON_SPECIFIC' },
           sp: { value: sp, severity: 'GOOD', limit_bits: 'NONE', sub_status: 'NON_SPECIFIC' },
           co: { value: 64, severity: 'GOOD', limit_bits: 'NONE', sub_status: 'NON_SPECIFIC' },
@@ -124,21 +147,23 @@ test('fatia 2 commands: setpoint, mode, guarded apply-tuning, AI actions', async
           timestamp: '2026-06-19T00:00:00Z',
         },
       });
+    };
 
     class StubWS extends EventTarget {
       url: string;
       readyState = 1;
       onopen: (() => void) | null = null;
       onmessage: ((e: MessageEvent) => void) | null = null;
-      onclose: (() => void) | null = null;
+      onclose: ((e: { code: number }) => void) | null = null;
       constructor(url: string) {
         super();
         this.url = url;
         // Expose a pusher so the test can emit fresh frames.
-        (window as unknown as { __pushStatus?: (sp: number, mode: string) => void }).__pushStatus = (
-          sp: number,
-          mode: string,
-        ) => this.onmessage?.(new MessageEvent('message', { data: statusFrame(sp, mode) }));
+        const hooked = window as unknown as {
+          __pushStatus?: (sp: number, mode: string) => void;
+        };
+        hooked.__pushStatus = (sp: number, mode: string) =>
+          this.onmessage?.(new MessageEvent('message', { data: statusFrame(sp, mode) }));
         setTimeout(() => this.onopen?.(), 0);
       }
       send() {
@@ -148,7 +173,7 @@ test('fatia 2 commands: setpoint, mode, guarded apply-tuning, AI actions', async
         }, 0);
       }
       close() {
-        this.onclose?.();
+        this.onclose?.({ code: 1000 });
       }
     }
     // @ts-expect-error override
@@ -163,25 +188,26 @@ test('fatia 2 commands: setpoint, mode, guarded apply-tuning, AI actions', async
   await page.getByLabel('Senha').fill('pw');
   await page.getByRole('button', { name: 'Entrar' }).click();
 
-  await expect(page.getByText('PIC-005')).toBeVisible();
-  // Footer mode reflects the AUTO status frame.
-  await expect(page.locator('span.numeric', { hasText: /^AUTO$/ })).toBeVisible();
+  await expect(page.getByText('PIC-005').first()).toBeVisible();
+  // The card mode badge reflects the AUTO status frame. Scoped to the card: the
+  // faceplate renders the same live mode in an identical `span.numeric` badge.
+  const card = page.getByRole('listitem').filter({ hasText: 'PIC-005' });
+  await expect(card.locator('span.numeric', { hasText: /^AUTO$/ })).toBeVisible();
 
   // --- Setpoint: change SP and click Set -> POST /commands/setpoint fires.
   await page.getByRole('spinbutton', { name: 'Setpoint' }).fill('60');
   await page.getByRole('button', { name: 'Set setpoint' }).click();
   await expect.poll(() => calls.setpoint).toBe(1);
 
-  // --- Mode: switch to MAN -> POST /commands/mode fires; live frame flips the footer.
+  // --- Mode: switch to MAN -> POST /commands/mode fires; live frame flips the badge.
   await page.getByRole('combobox', { name: 'Mode' }).selectOption('MAN');
   await expect.poll(() => calls.mode).toBe(1);
   await page.evaluate(() => {
-    (window as unknown as { __pushStatus?: (sp: number, mode: string) => void }).__pushStatus?.(
-      152,
-      'MAN',
-    );
+    // Installed by the WebSocket stub above; the compiler cannot see that.
+    const hooked = window as unknown as { __pushStatus?: (sp: number, mode: string) => void };
+    hooked.__pushStatus?.(152, 'MAN');
   });
-  await expect(page.locator('span.numeric', { hasText: /^MAN$/ })).toBeVisible();
+  await expect(card.locator('span.numeric', { hasText: /^MAN$/ })).toBeVisible();
 
   // --- Apply tuning: NOT written until the confirmation "Confirm Write" is clicked.
   await page.getByRole('button', { name: 'Apply tuning' }).click();
@@ -189,6 +215,7 @@ test('fatia 2 commands: setpoint, mode, guarded apply-tuning, AI actions', async
   expect(calls.applyTuning).toBe(0);
   await page.getByRole('button', { name: /confirm write/i }).click();
   await expect.poll(() => calls.applyTuning).toBe(1);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 
   // --- AI actions: Start / Pause / Stop each POST /controllers/5/ai/{action}.
   await page.getByRole('button', { name: 'Start', exact: true }).click();

@@ -1,217 +1,360 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
+import { useCan } from '@/auth/useCan';
+import { Button } from '@/components/Button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '../../components/ui/dialog';
-import { useUpdateControllerMutation } from './useCommands';
-import { hasErrors, validateLimits, validatePidParams } from './validation';
+} from '@/components/Dialog';
+import { Field, Input } from '@/components/Field';
+import { toast } from '@/components/Toast';
+import type {
+  AiConfigDto,
+  ControllerResponse,
+  OpcuaNode,
+  ScaleConfigDto,
+  TagBindingsDto,
+} from '@/api/types';
+import { cn } from '@/lib/utils';
 import {
-  AI_ENGINES,
-  OBJECTIVES,
-  type AiConfigForm,
+  EXECUTION_MODES,
+  INTEGRAL_TYPES,
+  PID_STRUCTURES,
+  SHED_OPTIONS,
   type AiEngine,
-  type FieldErrors,
+  type ControlObjective,
+  type ExecutionMode,
   type LimitsForm,
   type PidParamsForm,
-  type PidStructure,
+  type ProcessSpeed,
 } from './types';
-
-export interface LoopConfigDialogProps {
-  controllerId: number;
-  open: boolean;
-  onClose: () => void;
-  initial: {
-    pid: PidParamsForm;
-    limits: LimitsForm;
-    pidStructure: PidStructure;
-    ai: AiConfigForm;
-  };
-}
-
-type Section = 'pid' | 'ai' | 'limits';
-type SectionState = Record<Section, boolean>;
-
-const PID_STRUCTURES: PidStructure[] = ['ISA', 'PARALLEL', 'SERIES'];
+import {
+  useCreateControllerMutation,
+  useDeleteControllerMutation,
+  useUpdateControllerMutation,
+} from './useCommands';
+import { hasErrors, validateAiConfig, validateLimits, validatePidParams } from './validation';
+import {
+  NODE_ID_FIELDS,
+  NodeIdField,
+  nodeIdLabel,
+  TagPickerDialog,
+  type NodeIdKey,
+} from './TagPicker';
+import { AiConfigSection } from './AiConfigSection';
 
 /**
- * Flat ISA-101 loop-config form bodies. Inline-style blocks migrated to token
- * utilities (Task 8.2). The dialog shell is the shadcn Dialog (Task 8.1). The
- * NONE/FUZZY/RL engine radios stay NATIVE (`getByLabelText('RL')` is frozen) and
- * the Structure/Objective selectors stay native `<select>`s, all restyled flat.
- * Numeric inputs carry `numeric` (tabular numerals, §6). Font sizes stay inline as
- * `var(--text-*)` (no Tailwind type-scale mapping in the `@theme inline` bridge).
+ * Sections the DCS owns while the loop is SUPERVISORY. Smart PID only watches
+ * that loop — showing tuning, scaling or shed here would invite a write that
+ * the DCS immediately overrides. In DDC the PID runs here, so all of it applies.
  */
-const LABEL = 'w-36 flex-shrink-0 text-text-secondary';
+export const DDC_SECTIONS = [
+  'PID Tuning',
+  'Scaling & Limits',
+  'Filters & IO',
+  'Shed & Safety',
+  'PID Structure',
+  'Integral Type',
+] as const;
 
-const FIELD =
-  'numeric w-32 bg-field-bg text-text border border-border rounded-control px-2 py-1 ' +
-  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)] ' +
-  'aria-[invalid=true]:border-border-strong';
+export interface LoopConfigDialogProps {
+  controller: ControllerResponse;
+  open: boolean;
+  onClose(): void;
+}
 
-const SELECT =
-  'numeric w-auto bg-field-bg text-text border border-border rounded-control px-2 py-1 cursor-pointer ' +
-  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)]';
+const SELECT_CLASS = cn(
+  'numeric min-h-11 w-full rounded-control border border-rule-strong bg-surface-sunk px-3 py-2',
+  'text-sm text-text outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+  'disabled:cursor-not-allowed disabled:text-text-disabled',
+);
 
-const SECTION_HEADER =
-  'w-full cursor-pointer bg-transparent border-0 border-b border-border text-left text-text py-2 font-semibold ' +
-  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)]';
-
-const FOOTER_BUTTON =
-  'cursor-pointer bg-surface-container-high text-text border border-border rounded-control px-3 py-1 ' +
-  'transition-colors duration-fast hover:bg-surface-container active:bg-field-bg ' +
-  'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)] ' +
-  'disabled:text-text-disabled disabled:cursor-not-allowed disabled:hover:bg-surface-container-high';
-
-function ErrorText({ message }: { message: string | null | undefined }) {
-  if (!message) return null;
+function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <span role="alert" className="text-alarm-warning" style={{ fontSize: 'var(--text-2xs)' }}>
-      {message}
-    </span>
-  );
-}
-
-interface NumberFieldProps {
-  id: string;
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  error?: string;
-}
-
-function NumberField({ id, label, value, onChange, error }: NumberFieldProps) {
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-3">
-        <label htmlFor={id} className={LABEL} style={{ fontSize: 'var(--text-xs)' }}>
-          {label}
-        </label>
-        <input
-          id={id}
-          className={FIELD}
-          type="number"
-          inputMode="decimal"
-          value={Number.isNaN(value) ? '' : value}
-          onChange={(e) => onChange(Number(e.target.value))}
-          style={{ fontSize: 'var(--text-sm)' }}
-          aria-invalid={Boolean(error)}
-        />
-      </div>
-      <ErrorText message={error} />
-    </div>
-  );
-}
-
-interface CollapsibleProps {
-  label: string;
-  expanded: boolean;
-  onToggle: () => void;
-  children: ReactNode;
-}
-
-function Collapsible({ label, expanded, onToggle, children }: CollapsibleProps) {
-  return (
-    <section className="flex flex-col gap-2">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className={SECTION_HEADER}
-        style={{ fontSize: 'var(--text-base)' }}
-      >
-        {label}
-      </button>
-      {expanded ? <div className="flex flex-col gap-2">{children}</div> : null}
+    <section aria-label={label} className="flex flex-col gap-2 border-t border-rule pt-3">
+      <h3 className="text-2xs font-medium uppercase tracking-wider text-text-soft">{label}</h3>
+      <div className="grid grid-cols-2 gap-2">{children}</div>
     </section>
   );
 }
 
-const finitePositive = (v: number): string | undefined =>
-  Number.isFinite(v) && v >= 0 ? undefined : 'Must be a finite, non-negative number';
-
-function validateAi(ai: AiConfigForm): FieldErrors {
-  if (ai.engine === 'NONE') return {};
-  const e: FieldErrors = {};
-  e.dead_time_l = finitePositive(ai.dead_time_l);
-  if (!Number.isFinite(ai.limit_min)) e.limit_min = 'Must be a number';
-  if (!Number.isFinite(ai.limit_max)) e.limit_max = 'Must be a number';
-  if (ai.engine === 'RL') {
-    if (!Number.isFinite(ai.rl_fallback_kp)) e.rl_fallback_kp = 'Must be a number';
-    if (!Number.isFinite(ai.rl_fallback_kd)) e.rl_fallback_kd = 'Must be a number';
-    e.rl_learning_rate = finitePositive(ai.rl_learning_rate);
-    e.rl_train_interval = finitePositive(ai.rl_train_interval);
-  }
-  return e;
+interface NumberFieldProps {
+  label: string;
+  value: number;
+  disabled: boolean;
+  error?: string;
+  onChange(value: number): void;
 }
 
-export function LoopConfigDialog({
-  controllerId,
+function NumberField({ label, value, disabled, error, onChange }: NumberFieldProps) {
+  const id = useId();
+  return (
+    <Field label={label} htmlFor={id} error={error}>
+      <Input
+        id={id}
+        type="number"
+        inputMode="decimal"
+        className="numeric"
+        value={Number.isFinite(value) ? value : ''}
+        disabled={disabled}
+        invalid={error !== undefined}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+    </Field>
+  );
+}
+
+interface TextFieldProps {
+  label: string;
+  value: string;
+  disabled: boolean;
+  onChange(value: string): void;
+}
+
+function TextField({ label, value, disabled, onChange }: TextFieldProps) {
+  const id = useId();
+  return (
+    <Field label={label} htmlFor={id}>
+      <Input id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
+    </Field>
+  );
+}
+
+interface SelectFieldProps {
+  label: string;
+  value: string;
+  options: readonly string[];
+  disabled: boolean;
+  onChange(value: string): void;
+}
+
+function SelectField({ label, value, options, disabled, onChange }: SelectFieldProps) {
+  const id = useId();
+  return (
+    <Field label={label} htmlFor={id}>
+      <select
+        id={id}
+        className={SELECT_CLASS}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
+/** Type-the-tag gate. A misclick must never be able to delete a live loop. */
+function DeleteConfirm({
+  tag,
   open,
-  onClose,
-  initial,
-}: LoopConfigDialogProps) {
+  pending,
+  onConfirm,
+  onCancel,
+}: {
+  tag: string;
+  open: boolean;
+  pending: boolean;
+  onConfirm(): void;
+  onCancel(): void;
+}) {
+  const id = useId();
+  const [typed, setTyped] = useState('');
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onCancel();
+      }}
+    >
+      <DialogContent role="alertdialog">
+        <DialogHeader>
+          <DialogTitle>Excluir {tag}?</DialogTitle>
+          <DialogDescription>
+            A malha, seu histórico de sintonia e seus alarmes são removidos. Não há desfazer.
+          </DialogDescription>
+        </DialogHeader>
+        <Field label={`Digite ${tag} para confirmar`} htmlFor={id}>
+          <Input id={id} value={typed} onChange={(e) => setTyped(e.target.value)} />
+        </Field>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onCancel}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" disabled={typed !== tag || pending} onClick={onConfirm}>
+            Excluir definitivamente
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type Draft = {
+  name: string;
+  description: string;
+  execution_mode: ExecutionMode;
+  scan_rate_s: number;
+  pid: PidParamsForm;
+  limits: LimitsForm;
+  pv_scale: ScaleConfigDto;
+  bindings: Pick<TagBindingsDto, 'node_id_pv' | 'node_id_sp' | 'node_id_co' | 'node_id_ti'>;
+  pid_structure: string;
+  integral_type: string;
+  shed_opt: string;
+  shed_time_s: number;
+  max_tuning_change_pct: number;
+  low_cut: number;
+  ff_gain: number;
+  process_speed: ProcessSpeed;
+  ai: {
+    engine: AiEngine;
+    objective: ControlObjective;
+    dead_time_l: number;
+    limit_min: number;
+    limit_max: number;
+  };
+};
+
+function toDraft(c: ControllerResponse): Draft {
+  const pid = c.pid_params ?? { gain: 1, reset: 10, rate: 0, alpha: 0.125, deadband: 0 };
+  const pv = c.pv_scale ?? { eu_min: 0, eu_max: 100, unit: '' };
+  const tags = c.tag_bindings;
+  const ai = c.ai_config as Partial<AiConfigDto> | undefined;
+  return {
+    name: c.name,
+    description: c.description ?? '',
+    execution_mode: (c.execution_mode as ExecutionMode | undefined) ?? 'SUPERVISORY',
+    scan_rate_s: c.scan_rate_s ?? 1,
+    pid: { ...pid },
+    limits: {
+      out_hi_lim: c.out_hi_lim ?? 100,
+      out_lo_lim: c.out_lo_lim ?? 0,
+      arw_hi_lim: c.arw_hi_lim ?? 100,
+      arw_lo_lim: c.arw_lo_lim ?? 0,
+      sp_hi_lim: c.sp_hi_lim ?? 100,
+      sp_lo_lim: c.sp_lo_lim ?? 0,
+      pv_ftime: c.pv_ftime ?? 0,
+      sp_ftime: c.sp_ftime ?? 0,
+      sp_rate_up: c.sp_rate_up ?? 0,
+      sp_rate_dn: c.sp_rate_dn ?? 0,
+    },
+    pv_scale: { ...pv },
+    bindings: {
+      node_id_pv: tags?.node_id_pv ?? '',
+      node_id_sp: tags?.node_id_sp ?? '',
+      node_id_co: tags?.node_id_co ?? '',
+      node_id_ti: tags?.node_id_ti ?? '',
+    },
+    pid_structure: c.pid_structure ?? 'ISA',
+    integral_type: c.integral_type ?? 'TIME_TI',
+    shed_opt: c.shed_opt ?? 'MAN',
+    shed_time_s: c.shed_time_s ?? 10,
+    max_tuning_change_pct: c.max_tuning_change_pct ?? 10,
+    low_cut: c.low_cut ?? 0,
+    ff_gain: c.ff_gain ?? 1,
+    process_speed: (c.process_speed as ProcessSpeed | undefined) ?? 'MEDIUM',
+    ai: {
+      engine: (ai?.engine as AiEngine | undefined) ?? 'NONE',
+      objective: (ai?.objective as ControlObjective | undefined) ?? 'DISTURBANCE_REJECTION',
+      dead_time_l: ai?.dead_time_l ?? 1,
+      limit_min: ai?.limit_min ?? 0.1,
+      limit_max: ai?.limit_max ?? 100,
+    },
+  };
+}
+
+/**
+ * Controller configuration (§6.10). Identification, execution mode, scan rate
+ * and the OPC-UA bindings are always editable; everything the DCS owns appears
+ * only for a DDC loop. `controllers.manage` gates the writes — a user still
+ * gets the read-only view, because "you cannot see it" is not the same promise
+ * as "you cannot change it", and the backend enforces the second one.
+ */
+export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialogProps) {
+  const canManage = useCan('controllers.manage');
   const update = useUpdateControllerMutation();
+  const remove = useDeleteControllerMutation();
 
-  const [pid, setPid] = useState<PidParamsForm>(initial.pid);
-  const [structure, setStructure] = useState<PidStructure>(initial.pidStructure);
-  const [limits, setLimits] = useState<LimitsForm>(initial.limits);
-  const [ai, setAi] = useState<AiConfigForm>(initial.ai);
-  const [expanded, setExpanded] = useState<SectionState>({
-    pid: true,
-    ai: true,
-    limits: true,
+  const [draft, setDraft] = useState<Draft>(() => toDraft(controller));
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  /** Which binding the open tag picker writes to; `null` = picker closed. */
+  const [picking, setPicking] = useState<NodeIdKey | null>(null);
+
+  const readOnly = !canManage;
+  const isDdc = draft.execution_mode === 'DDC';
+  const pidErrors = isDdc ? validatePidParams(draft.pid) : {};
+  const limitErrors = isDdc ? validateLimits(draft.limits) : {};
+  const aiErrors = validateAiConfig({
+    engine: draft.ai.engine,
+    dead_time_l: draft.ai.dead_time_l,
+    limit_min: draft.ai.limit_min,
+    limit_max: draft.ai.limit_max,
   });
+  const blocked =
+    hasErrors(pidErrors) ||
+    hasErrors(limitErrors) ||
+    hasErrors(aiErrors) ||
+    draft.name.trim() === '';
 
-  const pidErrors = validatePidParams(pid);
-  const limitsErrors = validateLimits(limits);
-  const aiErrors = validateAi(ai);
-  const disabled =
-    hasErrors(pidErrors) || hasErrors(limitsErrors) || hasErrors(aiErrors);
+  const patchPid = (key: keyof PidParamsForm, value: number): void =>
+    setDraft((p) => ({ ...p, pid: { ...p.pid, [key]: value } }));
+  const patchLimit = (key: keyof LimitsForm, value: number): void =>
+    setDraft((p) => ({ ...p, limits: { ...p.limits, [key]: value } }));
+  const patchBinding = (key: NodeIdKey, value: string): void =>
+    setDraft((p) => ({ ...p, bindings: { ...p.bindings, [key]: value } }));
 
-  const setPidField = (key: keyof PidParamsForm, value: number) =>
-    setPid((prev) => ({ ...prev, [key]: value }));
-  const setLimitField = (key: keyof LimitsForm, value: number) =>
-    setLimits((prev) => ({ ...prev, [key]: value }));
-  const setAiNumber = (key: keyof AiConfigForm, value: number) =>
-    setAi((prev) => ({ ...prev, [key]: value }));
+  /**
+   * The picker never decides the target — `picking` is the field whose own
+   * button opened it, so a browse started from CO can only ever land in CO.
+   */
+  const bindPickedNode = (node: OpcuaNode): void => {
+    if (picking === null) return;
+    patchBinding(picking, node.node_id);
+    setPicking(null);
+  };
 
-  const toggle = (next: Section) =>
-    setExpanded((prev) => ({ ...prev, [next]: !prev[next] }));
-
-  const handleSave = () => {
-    if (disabled) return;
+  const save = (): void => {
     update.mutate(
       {
-        id: controllerId,
+        id: controller.id,
         patch: {
-          pid_params: {
-            gain: pid.gain,
-            reset: pid.reset,
-            rate: pid.rate,
-            alpha: pid.alpha,
-            deadband: pid.deadband,
-          },
-          pid_structure: structure,
+          name: draft.name,
+          description: draft.description,
+          execution_mode: draft.execution_mode,
+          scan_rate_s: draft.scan_rate_s,
+          tag_bindings: { ...controller.tag_bindings, ...draft.bindings },
+          process_speed: draft.process_speed,
           ai_config: {
-            engine: ai.engine,
-            objective: ai.objective,
-            dead_time_l: ai.dead_time_l,
-            limit_min: ai.limit_min,
-            limit_max: ai.limit_max,
-            rl_fallback_kp: ai.rl_fallback_kp,
-            rl_fallback_kd: ai.rl_fallback_kd,
-            rl_learning_rate: ai.rl_learning_rate,
-            rl_train_interval: ai.rl_train_interval,
+            engine: draft.ai.engine,
+            objective: draft.ai.objective,
+            dead_time_l: draft.ai.dead_time_l,
+            limit_min: draft.ai.limit_min,
+            limit_max: draft.ai.limit_max,
           },
-          out_hi_lim: limits.out_hi_lim,
-          out_lo_lim: limits.out_lo_lim,
-          arw_hi_lim: limits.arw_hi_lim,
-          arw_lo_lim: limits.arw_lo_lim,
-          pv_ftime: limits.pv_ftime,
-          sp_ftime: limits.sp_ftime,
+          ...(isDdc
+            ? {
+                pid_params: draft.pid,
+                pid_structure: draft.pid_structure,
+                integral_type: draft.integral_type,
+                pv_scale: draft.pv_scale,
+                shed_opt: draft.shed_opt,
+                shed_time_s: draft.shed_time_s,
+                max_tuning_change_pct: draft.max_tuning_change_pct,
+                low_cut: draft.low_cut,
+                ff_gain: draft.ff_gain,
+                ...draft.limits,
+              }
+            : {}),
         },
       },
       { onSuccess: () => onClose() },
@@ -219,235 +362,414 @@ export function LoopConfigDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Configurar {controller.name}</DialogTitle>
+          <DialogDescription>
+            Malha #{controller.id}. Campos de sintonia aparecem apenas em DDC.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid grid-cols-2 gap-2">
+          <TextField
+            label="Nome"
+            value={draft.name}
+            disabled={readOnly}
+            onChange={(v) => setDraft((p) => ({ ...p, name: v }))}
+          />
+          <TextField
+            label="Descrição"
+            value={draft.description}
+            disabled={readOnly}
+            onChange={(v) => setDraft((p) => ({ ...p, description: v }))}
+          />
+          <SelectField
+            label="Modo de execução"
+            value={draft.execution_mode}
+            options={EXECUTION_MODES}
+            disabled={readOnly}
+            onChange={(v) => setDraft((p) => ({ ...p, execution_mode: v as ExecutionMode }))}
+          />
+          <NumberField
+            label="Taxa de varredura (s)"
+            value={draft.scan_rate_s}
+            disabled={readOnly}
+            onChange={(v) => setDraft((p) => ({ ...p, scan_rate_s: v }))}
+          />
+          {NODE_ID_FIELDS.map(({ key, label }) => (
+            <NodeIdField
+              key={key}
+              label={label}
+              value={draft.bindings[key]}
+              disabled={readOnly}
+              onChange={(v) => patchBinding(key, v)}
+              onBrowse={canManage ? () => setPicking(key) : undefined}
+            />
+          ))}
+        </div>
+
+        {isDdc ? (
+          <>
+            <Section label="PID Tuning">
+              <NumberField
+                label="Ganho (Kp)"
+                value={draft.pid.gain}
+                disabled={readOnly}
+                error={pidErrors.gain}
+                onChange={(v) => patchPid('gain', v)}
+              />
+              <NumberField
+                label="Reset (Ti)"
+                value={draft.pid.reset}
+                disabled={readOnly}
+                error={pidErrors.reset}
+                onChange={(v) => patchPid('reset', v)}
+              />
+              <NumberField
+                label="Rate (Td)"
+                value={draft.pid.rate}
+                disabled={readOnly}
+                error={pidErrors.rate}
+                onChange={(v) => patchPid('rate', v)}
+              />
+              <NumberField
+                label="Filtro derivativo (alpha)"
+                value={draft.pid.alpha}
+                disabled={readOnly}
+                error={pidErrors.alpha}
+                onChange={(v) => patchPid('alpha', v)}
+              />
+              <NumberField
+                label="Banda morta"
+                value={draft.pid.deadband}
+                disabled={readOnly}
+                error={pidErrors.deadband}
+                onChange={(v) => patchPid('deadband', v)}
+              />
+            </Section>
+
+            <Section label="Scaling & Limits">
+              <NumberField
+                label="PV mín."
+                value={draft.pv_scale.eu_min}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, pv_scale: { ...p.pv_scale, eu_min: v } }))}
+              />
+              <NumberField
+                label="PV máx."
+                value={draft.pv_scale.eu_max}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, pv_scale: { ...p.pv_scale, eu_max: v } }))}
+              />
+              <TextField
+                label="Unidade PV"
+                value={draft.pv_scale.unit}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, pv_scale: { ...p.pv_scale, unit: v } }))}
+              />
+              <NumberField
+                label="Saída mín."
+                value={draft.limits.out_lo_lim}
+                disabled={readOnly}
+                error={limitErrors.out_lo_lim}
+                onChange={(v) => patchLimit('out_lo_lim', v)}
+              />
+              <NumberField
+                label="Saída máx."
+                value={draft.limits.out_hi_lim}
+                disabled={readOnly}
+                error={limitErrors.out_hi_lim}
+                onChange={(v) => patchLimit('out_hi_lim', v)}
+              />
+              <NumberField
+                label="ARW mín."
+                value={draft.limits.arw_lo_lim}
+                disabled={readOnly}
+                error={limitErrors.arw_lo_lim}
+                onChange={(v) => patchLimit('arw_lo_lim', v)}
+              />
+              <NumberField
+                label="ARW máx."
+                value={draft.limits.arw_hi_lim}
+                disabled={readOnly}
+                error={limitErrors.arw_hi_lim}
+                onChange={(v) => patchLimit('arw_hi_lim', v)}
+              />
+              <NumberField
+                label="SP mín."
+                value={draft.limits.sp_lo_lim}
+                disabled={readOnly}
+                error={limitErrors.sp_lo_lim}
+                onChange={(v) => patchLimit('sp_lo_lim', v)}
+              />
+              <NumberField
+                label="SP máx."
+                value={draft.limits.sp_hi_lim}
+                disabled={readOnly}
+                error={limitErrors.sp_hi_lim}
+                onChange={(v) => patchLimit('sp_hi_lim', v)}
+              />
+            </Section>
+
+            <Section label="Filters & IO">
+              <NumberField
+                label="Filtro PV (s)"
+                value={draft.limits.pv_ftime}
+                disabled={readOnly}
+                error={limitErrors.pv_ftime}
+                onChange={(v) => patchLimit('pv_ftime', v)}
+              />
+              <NumberField
+                label="Filtro SP (s)"
+                value={draft.limits.sp_ftime}
+                disabled={readOnly}
+                error={limitErrors.sp_ftime}
+                onChange={(v) => patchLimit('sp_ftime', v)}
+              />
+              <NumberField
+                label="Rampa SP subida"
+                value={draft.limits.sp_rate_up}
+                disabled={readOnly}
+                error={limitErrors.sp_rate_up}
+                onChange={(v) => patchLimit('sp_rate_up', v)}
+              />
+              <NumberField
+                label="Rampa SP descida"
+                value={draft.limits.sp_rate_dn}
+                disabled={readOnly}
+                error={limitErrors.sp_rate_dn}
+                onChange={(v) => patchLimit('sp_rate_dn', v)}
+              />
+              <NumberField
+                label="Corte baixo"
+                value={draft.low_cut}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, low_cut: v }))}
+              />
+              <NumberField
+                label="Ganho FF"
+                value={draft.ff_gain}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, ff_gain: v }))}
+              />
+            </Section>
+
+            <Section label="Shed & Safety">
+              <SelectField
+                label="Modo de shed"
+                value={draft.shed_opt}
+                options={SHED_OPTIONS}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, shed_opt: v }))}
+              />
+              <NumberField
+                label="Tempo de shed (s)"
+                value={draft.shed_time_s}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, shed_time_s: v }))}
+              />
+              <NumberField
+                label="Mudança máx. de sintonia (%)"
+                value={draft.max_tuning_change_pct}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, max_tuning_change_pct: v }))}
+              />
+            </Section>
+
+            <Section label="PID Structure">
+              <SelectField
+                label="Estrutura"
+                value={draft.pid_structure}
+                options={PID_STRUCTURES}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, pid_structure: v }))}
+              />
+            </Section>
+
+            <Section label="Integral Type">
+              <SelectField
+                label="Tipo integral"
+                value={draft.integral_type}
+                options={INTEGRAL_TYPES}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, integral_type: v }))}
+              />
+            </Section>
+          </>
+        ) : null}
+
+        {/* Not DDC-gated: these fields are what SETS the optimizer state, and
+            the optimizer runs for a SUPERVISORY loop too. */}
+        <Section label="AI Optimization">
+          <AiConfigSection
+            value={{ ...draft.ai, speed: draft.process_speed }}
+            errors={aiErrors}
+            disabled={readOnly}
+            onChange={(patch) =>
+              setDraft((p) => {
+                const { speed, ...ai } = patch;
+                return {
+                  ...p,
+                  process_speed: speed ?? p.process_speed,
+                  ai: { ...p.ai, ...ai },
+                };
+              })
+            }
+          />
+        </Section>
+
+        {update.error !== null ? (
+          <p role="alert" className="text-sm font-medium text-alarm-crit">
+            {update.error.detail}
+          </p>
+        ) : null}
+
+        <DialogFooter>
+          {canManage ? (
+            <Button
+              variant="destructive"
+              className="mr-auto"
+              disabled={remove.isPending}
+              onClick={() => setConfirmDelete(true)}
+            >
+              Excluir
+            </Button>
+          ) : null}
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          {canManage ? (
+            <Button variant="primary" disabled={blocked || update.isPending} onClick={save}>
+              Salvar
+            </Button>
+          ) : null}
+        </DialogFooter>
+      </DialogContent>
+
+      {canManage ? (
+        <TagPickerDialog
+          field={nodeIdLabel(picking)}
+          onSelect={bindPickedNode}
+          onClose={() => setPicking(null)}
+        />
+      ) : null}
+
+      {canManage ? (
+        <DeleteConfirm
+          tag={controller.name}
+          open={confirmDelete}
+          pending={remove.isPending}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() =>
+            remove.mutate(controller.id, {
+              onSuccess: () => {
+                setConfirmDelete(false);
+                toast({ title: 'Malha excluída', description: controller.name });
+                onClose();
+              },
+            })
+          }
+        />
+      ) : null}
+    </Dialog>
+  );
+}
+
+export interface NewLoopDialogProps {
+  open: boolean;
+  onClose(): void;
+  onCreated?(controller: ControllerResponse): void;
+}
+
+/**
+ * Create is deliberately thin: `ControllerCreate` defaults every field but the
+ * name, so the operator names the loop here and tunes it in the dialog above
+ * rather than facing forty inputs before the row even exists.
+ */
+export function NewLoopDialog({ open, onClose, onCreated }: NewLoopDialogProps) {
+  const create = useCreateControllerMutation();
+  const nameId = useId();
+  const descriptionId = useId();
+  const modeId = useId();
+
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>('SUPERVISORY');
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Configurar Loop #{controllerId}</DialogTitle>
+          <DialogTitle>Nova malha</DialogTitle>
+          <DialogDescription>
+            O restante da configuração fica disponível em Configurar na malha criada.
+          </DialogDescription>
         </DialogHeader>
-        <Collapsible label="PID" expanded={expanded.pid} onToggle={() => toggle('pid')}>
-        <NumberField
-          id="cfg-gain"
-          label="Gain (Kp)"
-          value={pid.gain}
-          onChange={(v) => setPidField('gain', v)}
-          error={pidErrors.gain}
-        />
-        <NumberField
-          id="cfg-reset"
-          label="Reset (Ti)"
-          value={pid.reset}
-          onChange={(v) => setPidField('reset', v)}
-          error={pidErrors.reset}
-        />
-        <NumberField
-          id="cfg-rate"
-          label="Rate (Td)"
-          value={pid.rate}
-          onChange={(v) => setPidField('rate', v)}
-          error={pidErrors.rate}
-        />
-        <NumberField
-          id="cfg-alpha"
-          label="Derivative filter (alpha)"
-          value={pid.alpha}
-          onChange={(v) => setPidField('alpha', v)}
-          error={pidErrors.alpha}
-        />
-        <NumberField
-          id="cfg-deadband"
-          label="Deadband"
-          value={pid.deadband}
-          onChange={(v) => setPidField('deadband', v)}
-          error={pidErrors.deadband}
-        />
-        <div className="flex items-center gap-3">
-          <label htmlFor="cfg-structure" className={LABEL} style={{ fontSize: 'var(--text-xs)' }}>
-            Structure
-          </label>
+
+        <Field label="Nome" htmlFor={nameId}>
+          <Input id={nameId} value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label="Descrição" htmlFor={descriptionId}>
+          <Input
+            id={descriptionId}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </Field>
+        <Field label="Modo de execução" htmlFor={modeId}>
           <select
-            id="cfg-structure"
-            value={structure}
-            onChange={(e) => setStructure(e.target.value as PidStructure)}
-            className={SELECT}
-            style={{ fontSize: 'var(--text-sm)' }}
+            id={modeId}
+            className={SELECT_CLASS}
+            value={executionMode}
+            onChange={(e) => setExecutionMode(e.target.value as ExecutionMode)}
           >
-            {PID_STRUCTURES.map((s) => (
-              <option key={s} value={s}>
-                {s}
+            {EXECUTION_MODES.map((option) => (
+              <option key={option} value={option}>
+                {option}
               </option>
             ))}
           </select>
-        </div>
-      </Collapsible>
+        </Field>
 
-      <Collapsible
-        label="Otimização IA"
-        expanded={expanded.ai}
-        onToggle={() => toggle('ai')}
-      >
-        <fieldset className="border-0 m-0 p-0">
-          <legend className="text-text-secondary" style={{ fontSize: 'var(--text-xs)' }}>
-            Engine
-          </legend>
-          <div className="flex gap-4">
-            {AI_ENGINES.map((engine: AiEngine) => (
-              <label
-                key={engine}
-                className="inline-flex items-center gap-1"
-                style={{ fontSize: 'var(--text-sm)' }}
-              >
-                <input
-                  type="radio"
-                  name="ai-engine"
-                  value={engine}
-                  checked={ai.engine === engine}
-                  onChange={() => setAi((prev) => ({ ...prev, engine }))}
-                />
-                {engine}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
-        {ai.engine !== 'NONE' ? (
-          <>
-            <div className="flex items-center gap-3">
-              <label htmlFor="cfg-objective" className={LABEL} style={{ fontSize: 'var(--text-xs)' }}>
-                Objective
-              </label>
-              <select
-                id="cfg-objective"
-                value={ai.objective}
-                onChange={(e) => setAi((prev) => ({ ...prev, objective: e.target.value }))}
-                className={SELECT}
-                style={{ fontSize: 'var(--text-sm)' }}
-              >
-                {OBJECTIVES.map((o) => (
-                  <option key={o} value={o}>
-                    {o}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <NumberField
-              id="cfg-dead-time"
-              label="Dead time L"
-              value={ai.dead_time_l}
-              onChange={(v) => setAiNumber('dead_time_l', v)}
-              error={aiErrors.dead_time_l}
-            />
-            <NumberField
-              id="cfg-limit-min"
-              label="Ki limit min"
-              value={ai.limit_min}
-              onChange={(v) => setAiNumber('limit_min', v)}
-              error={aiErrors.limit_min}
-            />
-            <NumberField
-              id="cfg-limit-max"
-              label="Ki limit max"
-              value={ai.limit_max}
-              onChange={(v) => setAiNumber('limit_max', v)}
-              error={aiErrors.limit_max}
-            />
-          </>
+        {create.error !== null ? (
+          <p role="alert" className="text-sm font-medium text-alarm-crit">
+            {create.error.detail}
+          </p>
         ) : null}
 
-        {ai.engine === 'RL' ? (
-          <>
-            <NumberField
-              id="cfg-rl-fallback-kp"
-              label="RL fallback Kp"
-              value={ai.rl_fallback_kp}
-              onChange={(v) => setAiNumber('rl_fallback_kp', v)}
-              error={aiErrors.rl_fallback_kp}
-            />
-            <NumberField
-              id="cfg-rl-fallback-kd"
-              label="RL fallback Kd"
-              value={ai.rl_fallback_kd}
-              onChange={(v) => setAiNumber('rl_fallback_kd', v)}
-              error={aiErrors.rl_fallback_kd}
-            />
-            <NumberField
-              id="cfg-rl-learning-rate"
-              label="RL learning rate"
-              value={ai.rl_learning_rate}
-              onChange={(v) => setAiNumber('rl_learning_rate', v)}
-              error={aiErrors.rl_learning_rate}
-            />
-            <NumberField
-              id="cfg-rl-train-interval"
-              label="RL train interval"
-              value={ai.rl_train_interval}
-              onChange={(v) => setAiNumber('rl_train_interval', v)}
-              error={aiErrors.rl_train_interval}
-            />
-          </>
-        ) : null}
-      </Collapsible>
-
-      <Collapsible
-        label="Limites"
-        expanded={expanded.limits}
-        onToggle={() => toggle('limits')}
-      >
-        <NumberField
-          id="cfg-out-hi"
-          label="Output high limit"
-          value={limits.out_hi_lim}
-          onChange={(v) => setLimitField('out_hi_lim', v)}
-          error={limitsErrors.out_hi_lim}
-        />
-        <NumberField
-          id="cfg-out-lo"
-          label="Output low limit"
-          value={limits.out_lo_lim}
-          onChange={(v) => setLimitField('out_lo_lim', v)}
-          error={limitsErrors.out_lo_lim}
-        />
-        <NumberField
-          id="cfg-arw-hi"
-          label="ARW high limit"
-          value={limits.arw_hi_lim}
-          onChange={(v) => setLimitField('arw_hi_lim', v)}
-          error={limitsErrors.arw_hi_lim}
-        />
-        <NumberField
-          id="cfg-arw-lo"
-          label="ARW low limit"
-          value={limits.arw_lo_lim}
-          onChange={(v) => setLimitField('arw_lo_lim', v)}
-          error={limitsErrors.arw_lo_lim}
-        />
-        <NumberField
-          id="cfg-pv-ftime"
-          label="PV filter time"
-          value={limits.pv_ftime}
-          onChange={(v) => setLimitField('pv_ftime', v)}
-          error={limitsErrors.pv_ftime}
-        />
-        <NumberField
-          id="cfg-sp-ftime"
-          label="SP filter time"
-          value={limits.sp_ftime}
-          onChange={(v) => setLimitField('sp_ftime', v)}
-          error={limitsErrors.sp_ftime}
-        />
-      </Collapsible>
-        <ErrorText message={update.error?.detail} />
         <DialogFooter>
-          <button type="button" onClick={onClose} className={FOOTER_BUTTON}>
+          <Button variant="secondary" onClick={onClose}>
             Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={disabled || update.isPending}
-            className={FOOTER_BUTTON}
+          </Button>
+          <Button
+            variant="primary"
+            disabled={name.trim() === '' || create.isPending}
+            onClick={() =>
+              create.mutate(
+                { name: name.trim(), description, execution_mode: executionMode },
+                {
+                  onSuccess: (controller) => {
+                    toast({ title: 'Malha criada', description: controller.name });
+                    onCreated?.(controller);
+                    onClose();
+                  },
+                },
+              )
+            }
           >
-            Salvar
-          </button>
+            Criar
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

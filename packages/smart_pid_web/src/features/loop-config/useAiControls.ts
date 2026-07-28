@@ -5,46 +5,61 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import type { ApiError } from '../../api/client';
+import type { ApiError } from '@/api/client';
+import { queryKeys } from '@/api/queryKeys';
+import type { AiStatus } from '@/api/types';
 import {
   getAiStatus,
   getTuningRecommendation,
   sendAiAction,
   type AiAction,
-  type AiStatus,
   type TuningRecommendation,
 } from './commandApi';
 
-export function useAiStatus(controllerId: number): UseQueryResult<AiStatus, ApiError> {
-  // 404 = loop has no AI worker (expected state, not transient) -> do not retry.
+/** Pending recommendation for one loop; not part of the §7 resync set. */
+export const tuningRecommendationKey = (controllerId: number) =>
+  ['tuning', 'recommendation', controllerId] as const;
+
+/**
+ * Optimizer state. `queryKeys.aiStatus` is the key the §7 resync primes, so the
+ * panel shows the resynced status without a second fetch.
+ */
+export function useAiStatus(
+  controllerId: number,
+  enabled = true,
+): UseQueryResult<AiStatus, ApiError> {
   return useQuery<AiStatus, ApiError>({
-    queryKey: ['ai', 'status', controllerId],
+    queryKey: queryKeys.aiStatus(controllerId),
     queryFn: () => getAiStatus(controllerId),
+    enabled,
+    // 404 = the loop has no AI worker. A settled state, not a transient failure.
     retry: false,
   });
 }
 
 export function useTuningRecommendation(
   controllerId: number,
+  enabled = true,
 ): UseQueryResult<TuningRecommendation, ApiError> {
-  // 404 = no pending recommendation (expected state, not transient) -> do not retry.
   return useQuery<TuningRecommendation, ApiError>({
-    queryKey: ['tuning', 'rec', controllerId],
+    queryKey: tuningRecommendationKey(controllerId),
     queryFn: () => getTuningRecommendation(controllerId),
+    enabled,
+    // 404 = nothing pending. Same reasoning as above.
     retry: false,
   });
 }
 
 export function useAiAction(): UseMutationResult<
-  unknown,
+  Record<string, unknown>,
   ApiError,
   { id: number; action: AiAction }
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, action }) => sendAiAction(id, action),
+    mutationFn: ({ id, action }: { id: number; action: AiAction }) => sendAiAction(id, action),
     onSuccess: (_data, { id }) => {
-      void queryClient.invalidateQueries({ queryKey: ['ai', 'status', id] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.aiStatus(id) });
     },
   });
 }

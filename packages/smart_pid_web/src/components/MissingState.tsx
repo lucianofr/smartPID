@@ -1,132 +1,84 @@
 import type { ReactNode } from 'react';
+import { Button } from '@/components/Button';
+import { cn } from '@/lib/utils';
 
 /**
- * Mandated missing states (Task 9.1 — §6a), ISA-101-legal.
- *
- * Three flat, token-only surfaces shared across the migrated screens:
- *  - <LoadingState>  static placeholder bars + greyed last-known value + `aria-busy`.
- *                    NO shimmer / skeleton animation (ISA-101: motion must not draw
- *                    the operator's eye; a loading screen has nothing actionable).
- *  - <EmptyState>    an explicit, per-surface "nothing here" message.
- *  - <ErrorState>    desaturated `--alarm-diag` token treatment (via the
- *                    `text-alarm-diag`/`border-alarm-diag` utilities — never the
- *                    critical-red token) + a retry/reconnect affordance.
- *
- * All three are pure presentational; callers own the data branching. No raw
- * colors, no box-shadow/gradient, no `animate-*` — the static bars are plain
- * token-filled rectangles so the file stays inside the ISA-101 source-guard.
+ * Designed missing states (§11): loading and empty are states, not spinners
+ * over blank space; 5xx/disconnect never renders blank. LoadingState is STATIC
+ * (no shimmer/skeleton animation) — motion must not draw the operator's eye.
  */
 
-const BAR = 'h-2 rounded-control bg-bar-track';
-
-/** Static (non-animated) placeholder bars. Widths vary only to read as "rows". */
 const BAR_WIDTHS = ['w-2/3', 'w-1/2', 'w-3/4', 'w-2/5'] as const;
 
-interface LoadingStateProps {
-  /** Stable hook the surface test asserts `aria-busy` on. */
-  testId: string;
+export interface LoadingStateProps {
   label: string;
-  /** Number of static placeholder bars (default 4). */
   bars?: number;
-  /** Optional greyed last-known value carried over while refreshing. */
+  /** Greyed last-known value carried over while refreshing. */
   lastKnown?: ReactNode;
+  className?: string;
 }
 
-export function LoadingState({ testId, label, bars = 4, lastKnown }: LoadingStateProps): JSX.Element {
-  const count = Math.max(1, bars);
+export function LoadingState({ label, bars = 4, lastKnown, className }: LoadingStateProps) {
   return (
-    <div
-      data-testid={testId}
-      role="status"
-      aria-busy="true"
-      aria-live="polite"
-      className="flex flex-col gap-2 p-4"
-    >
-      <span className="text-text-secondary" style={{ fontSize: 'var(--text-sm)' }}>
-        {label}
-      </span>
-      {lastKnown != null && (
-        <span
-          data-testid="loading-last-known"
-          className="text-text-disabled"
-          style={{ fontSize: 'var(--text-sm)' }}
-        >
-          {lastKnown}
-        </span>
-      )}
-      <div className="flex flex-col gap-2" aria-hidden="true">
-        {Array.from({ length: count }, (_, i) => (
-          <span
-            key={i}
-            data-testid="loading-bar"
-            className={`${BAR} ${BAR_WIDTHS[i % BAR_WIDTHS.length]}`}
-          />
-        ))}
-      </div>
+    <div aria-busy="true" aria-label={label} className={cn('flex flex-col gap-2 p-4', className)}>
+      <span className="text-sm text-text-soft">{label}</span>
+      {Array.from({ length: bars }, (_, i) => (
+        <div
+          key={i}
+          data-slot="loading-bar"
+          className={cn('h-2 bg-bar-track', BAR_WIDTHS[i % BAR_WIDTHS.length])}
+        />
+      ))}
+      {lastKnown ? <div className="text-text-disabled">{lastKnown}</div> : null}
     </div>
   );
 }
 
-interface EmptyStateProps {
-  testId: string;
+export interface EmptyStateProps {
   message: string;
   hint?: string;
+  action?: ReactNode;
+  className?: string;
 }
 
-export function EmptyState({ testId, message, hint }: EmptyStateProps): JSX.Element {
+export function EmptyState({ message, hint, action, className }: EmptyStateProps) {
   return (
-    <div
-      data-testid={testId}
-      role="status"
-      className="flex flex-col items-center gap-1 p-6 text-center text-text-secondary"
-    >
-      <span style={{ fontSize: 'var(--text-base)' }}>{message}</span>
-      {hint != null && (
-        <span className="text-text-disabled" style={{ fontSize: 'var(--text-sm)' }}>
-          {hint}
-        </span>
-      )}
+    <div className={cn('flex flex-col items-center gap-2 p-8 text-center', className)}>
+      <p className="text-sm font-medium text-text">{message}</p>
+      {hint ? <p className="text-xs text-text-soft">{hint}</p> : null}
+      {action}
     </div>
   );
 }
 
-interface ErrorStateProps {
-  testId: string;
+export interface ErrorStateProps {
   message: string;
-  /** Retry/reconnect affordance label + handler. */
-  actionLabel: string;
-  onAction: () => void;
-  /** Optional stale-data indication rendered alongside the message. */
+  onRetry?: () => void;
+  retryLabel?: string;
+  /** Stale last-known content shown greyed under the error. */
   stale?: ReactNode;
+  className?: string;
 }
 
 export function ErrorState({
-  testId,
   message,
-  actionLabel,
-  onAction,
+  onRetry,
+  retryLabel = 'Tentar novamente',
   stale,
-}: ErrorStateProps): JSX.Element {
+  className,
+}: ErrorStateProps) {
   return (
     <div
-      data-testid={testId}
       role="alert"
-      className="flex flex-wrap items-center gap-3 border border-alarm-diag p-3 text-alarm-diag"
-      style={{ fontSize: 'var(--text-sm)' }}
+      className={cn('flex flex-col items-start gap-2 border border-rule-strong bg-surface-sunk p-4', className)}
     >
-      <span>{message}</span>
-      {stale != null && (
-        <span data-testid="error-stale" className="text-text-secondary">
-          {stale}
-        </span>
-      )}
-      <button
-        type="button"
-        onClick={onAction}
-        className="ml-auto cursor-pointer rounded-control border border-alarm-diag bg-surface px-3 py-1 text-alarm-diag hover:border-border-strong"
-      >
-        {actionLabel}
-      </button>
+      <p className="text-sm font-medium text-text">{message}</p>
+      {stale ? <div className="text-xs text-text-disabled">{stale}</div> : null}
+      {onRetry ? (
+        <Button variant="secondary" size="sm" onClick={onRetry}>
+          {retryLabel}
+        </Button>
+      ) : null}
     </div>
   );
 }

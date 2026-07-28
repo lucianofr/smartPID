@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
 
-from smart_pid_core.adapters.inbound.api.dependencies import require_authenticated_admin
+from smart_pid_core.adapters.inbound.api.dependencies import require_user
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
 from smart_pid_domain.models.export_models import ExportJob, ExportRequest
 
@@ -27,7 +27,7 @@ def get_export_worker(request: Request):
 @router.post("", response_model=ExportJob, status_code=status.HTTP_201_CREATED)
 async def create_export(
     body: ExportRequest,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_user)],
     worker: Annotated[object, Depends(get_export_worker)],
 ) -> ExportJob:
     """Create a new export job."""
@@ -37,7 +37,7 @@ async def create_export(
 @router.get("/{export_id}", response_model=ExportJob)
 async def get_export_status(
     export_id: str,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_user)],
     worker: Annotated[object, Depends(get_export_worker)],
 ) -> ExportJob:
     """Get the status of an export job."""
@@ -53,7 +53,7 @@ async def get_export_status(
 @router.get("/{export_id}/download")
 async def download_export(
     export_id: str,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_user)],
     worker: Annotated[object, Depends(get_export_worker)],
 ) -> FileResponse:
     """Download the completed export file."""

@@ -1,27 +1,67 @@
-import { describe, it, expect } from 'vitest';
-import { valueToFraction } from './scale';
+import { describe, expect, it } from 'vitest';
+import {
+  clampToScale,
+  ticks,
+  valueToFraction,
+  valueToPercent,
+  type Scale,
+} from './scale';
 
-const scale = { euMin: 0, euMax: 200, unit: '°C' };
+const s: Scale = { euMin: 0, euMax: 200, unit: '°C' };
 
 describe('valueToFraction', () => {
-  it('maps mid-span to 0.5', () => {
-    expect(valueToFraction(100, scale)).toBeCloseTo(0.5, 5);
+  it('maps and clamps into 0..1', () => {
+    expect(valueToFraction(100, s)).toBe(0.5);
+    expect(valueToFraction(-50, s)).toBe(0);
+    expect(valueToFraction(400, s)).toBe(1);
   });
-  it('maps min to 0 and max to 1', () => {
-    expect(valueToFraction(0, scale)).toBe(0);
-    expect(valueToFraction(200, scale)).toBe(1);
+
+  it('degenerate span yields 0', () => {
+    expect(valueToFraction(10, { euMin: 5, euMax: 5, unit: '' })).toBe(0);
   });
-  it('clamps below min and above max', () => {
-    expect(valueToFraction(-50, scale)).toBe(0);
-    expect(valueToFraction(250, scale)).toBe(1);
+});
+
+describe('ticks', () => {
+  it('generates evenly spaced inclusive ticks (default 5)', () => {
+    expect(ticks({ euMin: 0, euMax: 100, unit: '%' })).toEqual([0, 25, 50, 75, 100]);
   });
-  it('monotonic: higher PV -> higher fraction', () => {
-    expect(valueToFraction(150, scale)).toBeGreaterThan(valueToFraction(50, scale));
+
+  it('respects count and the minimum of 2', () => {
+    expect(ticks(s, 3)).toEqual([0, 100, 200]);
+    expect(ticks(s, 1)).toEqual([0, 200]);
   });
-  it('handles a non-zero min span (e.g. 4-20 range)', () => {
-    expect(valueToFraction(12, { euMin: 4, euMax: 20, unit: 'mA' })).toBeCloseTo(0.5, 5);
+
+  it('degenerate span collapses to [euMin, euMin]', () => {
+    expect(ticks({ euMin: 7, euMax: 7, unit: '' })).toEqual([7, 7]);
   });
-  it('degenerate span returns 0 (no div-by-zero)', () => {
-    expect(valueToFraction(5, { euMin: 10, euMax: 10, unit: '' })).toBe(0);
+});
+
+describe('valueToPercent (phase-3 extension)', () => {
+  const scale = { euMin: 0, euMax: 200, unit: '°C' };
+  it('maps the scale span onto 0..100', () => {
+    expect(valueToPercent(0, scale)).toBe(0);
+    expect(valueToPercent(100, scale)).toBe(50);
+    expect(valueToPercent(200, scale)).toBe(100);
+  });
+  it('clamps out-of-range values (inherits valueToFraction clamping)', () => {
+    expect(valueToPercent(-50, scale)).toBe(0);
+    expect(valueToPercent(999, scale)).toBe(100);
+  });
+  it('degenerate span → 0 (matches valueToFraction)', () => {
+    expect(valueToPercent(5, { euMin: 10, euMax: 10, unit: '' })).toBe(0);
+  });
+});
+
+describe('clampToScale (phase-3 extension)', () => {
+  const scale = { euMin: -10, euMax: 10, unit: 'bar' };
+  it('passes in-range values through', () => {
+    expect(clampToScale(3.5, scale)).toBe(3.5);
+  });
+  it('clamps to the engineering-unit bounds', () => {
+    expect(clampToScale(-99, scale)).toBe(-10);
+    expect(clampToScale(99, scale)).toBe(10);
+  });
+  it('degenerate span → euMin', () => {
+    expect(clampToScale(7, { euMin: 4, euMax: 4, unit: '' })).toBe(4);
   });
 });

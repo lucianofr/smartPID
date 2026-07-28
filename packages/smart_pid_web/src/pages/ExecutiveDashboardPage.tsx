@@ -1,200 +1,99 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { useRealtime } from '../realtime/useRealtime';
-import { periodRange, type PeriodKey } from '../lib/period';
+import { useId, useState } from 'react';
+import { ErrorState, LoadingState } from '@/components/MissingState';
+import { AiRoiPanel } from '@/features/executive/AiRoiPanel';
+import { BadActorsTable } from '@/features/executive/BadActorsTable';
+import { BackendHealthPanel } from '@/features/executive/BackendHealthPanel';
+import { ExecutiveKpiBand } from '@/features/executive/ExecutiveKpiCard';
 import {
-  fromRestStats,
-  fromWsStats,
-  aggregate,
-  formatKpi,
-  variabilityOutOfTarget,
-  type LoopKpis,
-} from '../lib/kpi';
-import {
-  useAiHistory,
-  useAiStatus,
-  useAllStats,
-  useControllers,
-  useOpcuaStatus,
-  useTuningRecommendation,
-} from '../api/executive';
-import { AppShell } from '../components/shell/AppShell';
-import { ExecutiveKPICard } from '../components/ExecutiveKPICard';
-import { LoopHealthRow, type LoopHealth } from '../components/LoopHealthRow';
-import { PeriodSelector } from '../components/PeriodSelector';
-import { TuningRecommendationCard } from '../components/TuningRecommendationCard';
+  PERIOD_OPTIONS,
+  useExecutiveData,
+  type ExecutivePeriod,
+} from '@/features/executive/useExecutiveData';
+import { cn } from '@/lib/utils';
 
-type OpcState = 'OFFLINE' | 'CONNECTING' | 'ONLINE' | 'RECONNECTING';
+/**
+ * Executive dashboard (§13 phase 9).
+ *
+ * Resolved §15 decision: this reuses the operational AppShell. The buyer keeps
+ * the same navigation, session and alarm context as the operator, and there is
+ * no evidence a second shell would help — so the latitude is spent on LAYOUT
+ * (a wide, quiet KPI band over a two-column detail row), never on a second
+ * token vocabulary. Every numeral is Geist Mono via `.numeric` (§6.2), and no
+ * healthy state is painted green.
+ *
+ * The page owns no fetching: `useExecutiveData` seeds from REST and overlays
+ * the live bus, reusing the roster, stats and status hooks the operational
+ * pages already own.
+ */
 
-/** Modes are UPPERCASE. OOS/IMAN are error states; an unmonitored loop with no live
- *  frame and an empty/BYPASS mode is stopped; everything else is running. */
-function healthOf(mode: string, hasLiveStatus: boolean): LoopHealth {
-  if (mode === 'OOS' || mode === 'IMAN') return 'error';
-  if (!hasLiveStatus && (mode === '' || mode === 'BYPASS')) return 'stopped';
-  return 'running';
-}
+const CONTROL = cn(
+  'min-h-11 rounded-control border border-rule-strong bg-surface-sunk px-2 text-sm text-text',
+  'outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+);
 
-/** Per-loop AI engine + tuning recommendation. Lives as its own component so each
- *  loop gets an isolated hook scope (Rules of Hooks); calling the per-loop hooks
- *  inside a parent .map() would be a violation. */
-function LoopTuningDetail({ loopId, loopName }: { loopId: number; loopName: string }) {
-  const recQ = useTuningRecommendation(loopId);
-  const aiQ = useAiStatus(loopId);
+export function ExecutiveDashboardPage() {
+  const periodId = useId();
+  const [period, setPeriod] = useState<ExecutivePeriod>('24h');
+  const data = useExecutiveData(period);
+  const periodLabel = PERIOD_OPTIONS.find((o) => o.key === period)?.label ?? '';
+
   return (
     <div
-      className="flex flex-col gap-2 border border-border bg-surface-container px-4 py-4 rounded-card"
-      data-testid={`loop-detail-${loopId}`}
+      data-testid="executive-dashboard"
+      className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3"
     >
-      <span
-        className="text-text-secondary"
-        data-testid={`ai-engine-${loopId}`}
-        style={{ fontSize: 'var(--text-sm)' }}
-      >
-        {aiQ.data?.engine ?? '—'}
-      </span>
-      <TuningRecommendationCard loopName={loopName} rec={recQ.data ?? null} />
-    </div>
-  );
-}
-
-export function ExecutiveDashboardPage(): JSX.Element {
-  const [period, setPeriod] = useState<PeriodKey>('1h');
-  const range = useMemo(() => periodRange(period), [period]);
-
-  const qc = useQueryClient();
-  const { lastStatus, lastStats, onResync } = useRealtime();
-
-  const statsQ = useAllStats();
-  const ctrlQ = useControllers();
-  const opcQ = useOpcuaStatus();
-  const aiHistoryQ = useAiHistory(range);
-
-  useEffect(
-    () =>
-      onResync(() => {
-        void qc.invalidateQueries({ queryKey: ['controllers'] });
-        void qc.invalidateQueries({ queryKey: ['controllers', 'stats'] });
-        void qc.invalidateQueries({ queryKey: ['opcua-status'] });
-      }),
-    [onResync, qc],
-  );
-
-  const controllers = useMemo(() => ctrlQ.data ?? [], [ctrlQ.data]);
-  const opcState = (opcQ.data?.state ?? 'OFFLINE') as OpcState;
-  const opcDown = opcQ.data ? opcQ.data.state !== 'ONLINE' : false;
-
-  // Live status mode wins over the REST snapshot mode, per loop.
-  const modesById = useMemo(() => {
-    const m = new Map<number, string>();
-    for (const c of controllers) m.set(c.id, lastStatus.get(c.id)?.mode ?? c.mode);
-    return m;
-  }, [controllers, lastStatus]);
-
-  // Per-loop KPIs: REST snapshot seeded first, then the live WS frame overwrites per id.
-  const loopKpis: LoopKpis[] = useMemo(() => {
-    const byId = new Map<number, LoopKpis>();
-    for (const r of statsQ.data ?? []) byId.set(r.controller_id, fromRestStats(r));
-    for (const c of controllers) {
-      const live = lastStats.get(c.id);
-      if (live) byId.set(c.id, fromWsStats(c.id, live));
-    }
-    return [...byId.values()];
-  }, [statsQ.data, controllers, lastStats]);
-
-  const agg = useMemo(() => aggregate(loopKpis, modesById), [loopKpis, modesById]);
-  const tuningEvents = aiHistoryQ.data?.length ?? 0;
-
-  return (
-    <AppShell opcDown={opcDown}>
-      <div data-testid="executive-dashboard">
-        <header className="flex items-center justify-between gap-4 mb-6">
-          <h1
-            className="text-text"
-            style={{
-              fontSize: 'var(--text-xl)',
-              lineHeight: 'var(--lh-tight)',
-              fontWeight: 'var(--fw-semibold)',
-            }}
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <h1 className="type-display text-lg uppercase tracking-widest text-text">
+          Painel executivo
+        </h1>
+        <label htmlFor={periodId} className="flex flex-col gap-1 text-2xs text-text-soft">
+          Período
+          <select
+            id={periodId}
+            value={period}
+            onChange={(e) => setPeriod(e.target.value as ExecutivePeriod)}
+            className={cn(CONTROL, 'w-44')}
           >
-            Executive Dashboard
-          </h1>
-          <PeriodSelector value={period} onChange={setPeriod} />
-        </header>
+            {PERIOD_OPTIONS.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </header>
 
-        <section
-          className="grid gap-4 mb-8 [grid-template-columns:repeat(auto-fill,minmax(180px,1fr))]"
-          aria-label="Aggregate KPIs"
-          data-testid="aggregate-kpis"
-        >
-          <ExecutiveKPICard
-            label="Loops in AUTO"
-            value={formatKpi(agg.autoPct / 100, 'pct')}
-            testId="kpi-auto"
-          />
-          <ExecutiveKPICard
-            label="Avg variability 2σ/RANGE"
-            value={formatKpi(agg.avgVariabilityRange, 'pct')}
-            delta={{
-              dir: 'up',
-              value: formatKpi(agg.avgVariabilityRange, 'pct'),
-              outOfTarget: variabilityOutOfTarget(agg.avgVariabilityRange),
-            }}
-            testId="kpi-variability"
-          />
-          <ExecutiveKPICard
-            label="Total valve travel (TV)"
-            value={formatKpi(agg.totalTv, 'index')}
-            testId="kpi-tv"
-          />
-          <ExecutiveKPICard
-            label="Avg IAE"
-            value={formatKpi(agg.avgIae, 'index')}
-            testId="kpi-iae"
-          />
-          <ExecutiveKPICard
-            label="Loops"
-            value={formatKpi(agg.loopCount, 'count')}
-            testId="kpi-loops"
-          />
-        </section>
+      {data.isError ? (
+        <ErrorState
+          message="Não foi possível carregar todos os indicadores."
+          onRetry={data.refetch}
+        />
+      ) : null}
 
-        <section
-          className="flex flex-col gap-3 mb-8"
-          aria-label="Loop health"
-          data-testid="loop-health"
-        >
-          {controllers.map((c) => {
-            const live = lastStatus.get(c.id);
-            const mode = live?.mode ?? c.mode;
-            return (
-              <LoopHealthRow
-                key={c.id}
-                name={c.name}
-                mode={mode}
-                health={healthOf(mode, live != null)}
-                opc={opcState}
-              />
-            );
-          })}
-        </section>
+      {data.isPending ? (
+        <LoadingState label="Carregando indicadores…" bars={4} />
+      ) : (
+        <ExecutiveKpiBand kpis={data.kpis} />
+      )}
 
-        <section
-          className="flex flex-col gap-3 mb-8"
-          aria-label="Per-loop tuning"
-          data-testid="loop-tuning"
-        >
-          <p
-            data-testid="tuning-events-count"
-            className="text-text-secondary"
-            style={{ fontSize: 'var(--text-sm)' }}
-          >
-            {tuningEvents} tuning events in period
-          </p>
-          {controllers.map((c) => (
-            <LoopTuningDetail key={c.id} loopId={c.id} loopName={c.name} />
-          ))}
-        </section>
+      <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_24rem]">
+        <div className="flex min-w-0 flex-col gap-3">
+          <BadActorsTable
+            loops={data.badActors}
+            isPending={data.isPending}
+            isError={data.isError}
+            onRetry={data.refetch}
+          />
+          <AiRoiPanel roi={data.roi} tuningEvents={data.tuningEvents} periodLabel={periodLabel} />
+        </div>
+
+        <BackendHealthPanel
+          state={data.health}
+          opc={data.opc}
+          loops={data.loops}
+          event={data.lastSystemEvent}
+        />
       </div>
-    </AppShell>
+    </div>
   );
 }

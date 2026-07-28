@@ -1,5 +1,4 @@
 """Simulator control router."""
-from __future__ import annotations
 
 import logging
 from typing import Annotated
@@ -9,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_repo,
     get_simulator_adapter,
-    require_authenticated_admin,
+    require_admin,
+    require_user,
 )
 from smart_pid_core.adapters.inbound.sim_persistence import persist_sim_config
 from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter  # noqa: TC001
@@ -38,7 +38,7 @@ router = APIRouter()
 
 @router.post("/start", response_model=CommandResponse)
 async def start_simulator(
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
@@ -57,7 +57,7 @@ async def start_simulator(
 
 @router.post("/stop", response_model=CommandResponse)
 async def stop_simulator(
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
     adapter.stop()
@@ -66,7 +66,7 @@ async def stop_simulator(
 
 @router.get("/status", response_model=SimulatorStatusResponse)
 async def get_status(
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> SimulatorStatusResponse:
     return SimulatorStatusResponse(
@@ -76,7 +76,7 @@ async def get_status(
 
 @router.get("/opcua/status", response_model=OPCUAServerStatus)
 async def get_opcua_status(
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> OPCUAServerStatus:
     return OPCUAServerStatus(
@@ -88,7 +88,7 @@ async def get_opcua_status(
 
 @router.post("/opcua/start", response_model=CommandResponse)
 async def start_opcua_server(
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
     adapter.start_opcua()
@@ -97,7 +97,7 @@ async def start_opcua_server(
 
 @router.post("/opcua/stop", response_model=CommandResponse)
 async def stop_opcua_server(
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
     adapter.stop_opcua()
@@ -107,7 +107,7 @@ async def stop_opcua_server(
 @router.post("/preset", response_model=CommandResponse)
 async def set_preset(
     body: SimulatorPresetRequest,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
@@ -119,7 +119,7 @@ async def set_preset(
 @router.put("/parameters", response_model=CommandResponse)
 async def set_parameters(
     body: SimulatorParametersRequest,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
@@ -131,7 +131,7 @@ async def set_parameters(
 @router.post("/disturbance", response_model=CommandResponse)
 async def inject_disturbance(
     body: SimulatorDisturbanceRequest,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
     if body.type == "step":
@@ -146,7 +146,7 @@ async def inject_disturbance(
 @router.delete("/disturbance/{controller_id}", response_model=CommandResponse)
 async def clear_disturbance(
     controller_id: int,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
     try:
@@ -160,7 +160,7 @@ async def clear_disturbance(
 async def enable_pid(
     controller_id: int,
     body: SimulatorPIDEnableRequest,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
@@ -177,7 +177,7 @@ async def enable_pid(
 async def set_pid_params(
     controller_id: int,
     body: SimulatorPIDParamsRequest,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
@@ -193,7 +193,7 @@ async def set_pid_params(
 async def set_pid_sp(
     controller_id: int,
     body: SimulatorPIDSPRequest,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_user)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
@@ -209,7 +209,7 @@ async def set_pid_sp(
 async def set_co(
     controller_id: int,
     body: SimulatorPIDSPRequest,  # reuse — same shape (float 0-100)
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_user)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
@@ -225,7 +225,7 @@ async def set_co(
 async def set_pid_mode(
     controller_id: int,
     body: SimulatorPIDModeRequest,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_user)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
@@ -241,7 +241,7 @@ async def set_pid_mode(
 @router.get("/{controller_id}/pid/status", response_model=SimulatorPIDStatusResponse)
 async def get_pid_status(
     controller_id: int,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> SimulatorPIDStatusResponse:
     try:
@@ -255,7 +255,7 @@ async def get_pid_status(
 async def set_auto_sp(
     controller_id: int,
     body: AutoSPRequest,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> ControllerSimStatus:
@@ -271,7 +271,7 @@ async def set_auto_sp(
 async def set_auto_disturbance(
     controller_id: int,
     body: AutoDisturbanceRequest,
-    _user: Annotated[UserClaims, Depends(require_authenticated_admin)],
+    _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> ControllerSimStatus:

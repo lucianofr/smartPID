@@ -1,87 +1,134 @@
-import type { ThemeId } from './ThemeProvider';
-export type { ThemeId };
+/**
+ * Per-theme token VALUE MIRROR for the build-time contrast gate. Mirrors
+ * themes.css exactly (sync-tested there); guard-exempt (token-guard EXCLUDE_FILES).
+ * Field → token: camelCase of the §6.4 name (surfaceSunk → --surface-sunk, …).
+ */
+export type GateThemeId = 'recorder' | 'phosphor' | 'neon';
 
-// Canonical per-theme token VALUE map used for build-time contrast assertions.
-// Mirrors themes.css exactly; the test asserts the pairs designers committed to.
-//
-// Field -> contract token mapping (each row below links to a [data-theme] block in themes.css):
-//   bg            -> --bg
-//   surface       -> --surface
-//   surfaceHigh   -> --surface-container-high
-//   text          -> --text
-//   textSecondary -> --text-secondary
-//   alarmCritical -> --alarm-critical
-//   alarmWarning  -> --alarm-warning
-//   alarmDiag     -> --alarm-diag
-//   onAlarm       -> --on-alarm
-// Keep hex values in sync with themes.css; the hardened gate in themeContrast.test.ts
-// (wcag-contrast source of truth + APCA cross-check) fails the build on regression.
 export interface ThemePalette {
   bg: string;
   surface: string;
-  surfaceHigh: string;
+  surfaceSunk: string;
+  ruleStrong: string;
   text: string;
-  textSecondary: string;
-  alarmCritical: string;
-  alarmWarning: string;
-  alarmDiag: string;
+  textSoft: string;
+  focusRing: string;
+  selection: string;
+  accent: string;
+  accentHover: string;
+  onAccent: string;
+  alarmCrit: string;
+  alarmCritBg: string;
+  alarmWarn: string;
+  alarmWarnBg: string;
+  alarmAdv: string;
+  alarmAdvBg: string;
+  alarmLog: string;
   onAlarm: string;
+  stateRunning: string;
+  stateStopped: string;
+  stateError: string;
+  tracePv: string;
+  traceSp: string;
+  traceCo: string;
+  trendBg: string;
+  barTrack: string;
+  barFill: string;
+  barMarker: string;
 }
 
-export const PALETTES: Record<ThemeId, ThemePalette> = {
-  isa101: {
-    bg: '#1E1E1E',
-    surface: '#2D2D30',
-    surfaceHigh: '#333337',
-    text: '#E0E0E0',
-    textSecondary: '#ABABAB',
-    alarmCritical: '#FF3333',
-    alarmWarning: '#FF8800',
-    alarmDiag: '#AA55FF',
+export const PALETTES: Record<GateThemeId, ThemePalette> = {
+  recorder: {
+    bg: '#F7F8FA',
+    surface: '#FFFFFF',
+    surfaceSunk: '#EEF1F5',
+    ruleStrong: '#7C8894',
+    text: '#16202B',
+    textSoft: '#5A6875',
+    focusRing: '#16202B',
+    selection: '#DCEBEB',
+    accent: '#0E6B6B',
+    accentHover: '#0B5757',
+    onAccent: '#FFFFFF',
+    alarmCrit: '#C02026',
+    alarmCritBg: '#F7DCDC',
+    alarmWarn: '#9E5E00',
+    alarmWarnBg: '#F5E3CC',
+    alarmAdv: '#6B4FA8',
+    alarmAdvBg: '#E8E1F4',
+    alarmLog: '#5A6875',
     onAlarm: '#FFFFFF',
+    stateRunning: '#7C8894',
+    stateStopped: '#5A6875',
+    stateError: '#C02026',
+    tracePv: '#1B4F87',
+    traceSp: '#7C8894',
+    traceCo: '#BC7211',
+    trendBg: '#EEF1F5',
+    barTrack: '#EEF1F5',
+    barFill: '#5A6875',
+    barMarker: '#16202B',
   },
-  'dark-room': {
-    bg: '#000000',
-    surface: '#0D0D11',
-    surfaceHigh: '#15151A',
-    text: '#B0B0B8',
-    textSecondary: '#666670',
-    alarmCritical: '#D92525',
-    alarmWarning: '#D9A000',
-    alarmDiag: '#8A6AD9',
-    onAlarm: '#F2E6E6',
+  phosphor: {
+    bg: '#0A0E14',
+    surface: '#131A24',
+    surfaceSunk: '#0E141C',
+    ruleStrong: '#54697F',
+    text: '#D6DEE8',
+    textSoft: '#8894A3',
+    focusRing: '#D6DEE8',
+    selection: '#16304A',
+    accent: '#23A6A6',
+    accentHover: '#2FBDBD',
+    onAccent: '#0A0E14',
+    alarmCrit: '#FF4D4D',
+    alarmCritBg: '#3A0E0E',
+    alarmWarn: '#FFA51F',
+    alarmWarnBg: '#3A2A00',
+    alarmAdv: '#A98BFF',
+    alarmAdvBg: '#241A3E',
+    alarmLog: '#8894A3',
+    onAlarm: '#0A0E14',
+    stateRunning: '#5E7080',
+    stateStopped: '#8894A3',
+    stateError: '#FF4D4D',
+    tracePv: '#9FC8F0',
+    traceSp: '#6E7B8A',
+    traceCo: '#E39B3D',
+    trendBg: '#0A0E14',
+    barTrack: '#0E141C',
+    barFill: '#5E7080',
+    barMarker: '#8FB6D6',
   },
-  'md3-dark': {
-    bg: '#141218',
-    surface: '#211F26',
-    surfaceHigh: '#2B2930',
-    text: '#E6E0E9',
-    textSecondary: '#CAC4D0',
-    alarmCritical: '#F2B8B5',
-    alarmWarning: '#FFDC99',
-    alarmDiag: '#D0BCFF',
-    onAlarm: '#F9DEDC',
-  },
-  'md3-light': {
-    bg: '#FDF8FD',
-    surface: '#F7F2FA',
-    surfaceHigh: '#ECE6F0',
-    text: '#1D1B20',
-    textSecondary: '#49454F',
-    alarmCritical: '#B3261E',
-    alarmWarning: '#8A5000',
-    alarmDiag: '#6750A4',
-    onAlarm: '#FFFFFF',
-  },
-  ocean: {
-    bg: '#0A1620',
-    surface: '#0F2030',
-    surfaceHigh: '#16304A',
-    text: '#D6E2EC',
-    textSecondary: '#7E97AC',
-    alarmCritical: '#FF4D4D',
-    alarmWarning: '#FFB020',
-    alarmDiag: '#9B6BFF',
-    onAlarm: '#FFFFFF',
+  neon: {
+    bg: '#07070E',
+    surface: '#101226',
+    surfaceSunk: '#0A0B18',
+    ruleStrong: '#5A60A8',
+    text: '#E9ECFF',
+    textSoft: '#A6ADDC',
+    focusRing: '#00E5FF',
+    selection: '#1B2A5C',
+    accent: '#00E5FF',
+    accentHover: '#66F2FF',
+    onAccent: '#04040A',
+    alarmCrit: '#FF2D6F',
+    alarmCritBg: '#3A0A1C',
+    alarmWarn: '#FFB020',
+    alarmWarnBg: '#3A2600',
+    alarmAdv: '#C77DFF',
+    alarmAdvBg: '#28123E',
+    alarmLog: '#A6ADDC',
+    onAlarm: '#04040A',
+    stateRunning: '#39FF88',
+    stateStopped: '#A6ADDC',
+    stateError: '#FF2D6F',
+    tracePv: '#00F0FF',
+    traceSp: '#B8BEE8',
+    traceCo: '#FFA630',
+    trendBg: '#07070E',
+    barTrack: '#12142A',
+    barFill: '#00E5FF',
+    barMarker: '#FFFFFF',
   },
 };

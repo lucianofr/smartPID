@@ -40,14 +40,14 @@ async def _create_loop_with_ai_worker(api_deps: dict, *, enabled: bool = True) -
 class TestOptimizationToggle:
     @pytest.mark.asyncio
     async def test_disable_optimization_persists_and_reports(
-        self, client: AsyncClient, user_headers: dict[str, str], api_deps: dict
+        self, client: AsyncClient, admin_headers: dict[str, str], api_deps: dict
     ) -> None:
         cid = await _create_loop_with_ai_worker(api_deps, enabled=True)
 
         resp = await client.post(
             "/commands/optimization",
             json={"controller_id": cid, "enabled": False},
-            headers=user_headers,
+            headers=admin_headers,
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -66,14 +66,14 @@ class TestOptimizationToggle:
 
     @pytest.mark.asyncio
     async def test_enable_optimization_persists_and_reports(
-        self, client: AsyncClient, user_headers: dict[str, str], api_deps: dict
+        self, client: AsyncClient, admin_headers: dict[str, str], api_deps: dict
     ) -> None:
         cid = await _create_loop_with_ai_worker(api_deps, enabled=False)
 
         resp = await client.post(
             "/commands/optimization",
             json={"controller_id": cid, "enabled": True},
-            headers=user_headers,
+            headers=admin_headers,
         )
         assert resp.status_code == 200
         assert resp.json()["enabled"] is True
@@ -86,12 +86,12 @@ class TestOptimizationToggle:
 
     @pytest.mark.asyncio
     async def test_optimization_unknown_controller(
-        self, client: AsyncClient, user_headers: dict[str, str]
+        self, client: AsyncClient, admin_headers: dict[str, str]
     ) -> None:
         resp = await client.post(
             "/commands/optimization",
             json={"controller_id": 9999, "enabled": True},
-            headers=user_headers,
+            headers=admin_headers,
         )
         assert resp.status_code == 404
 

@@ -1,19 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type ThemeId } from './themeContrast';
+import { CONTRACT_TOKENS, THEME_IDS } from './contract';
 
-// Proves the `@theme inline` bridge (Task 0.2) re-resolves at runtime: Tailwind utilities like
-// `bg-surface` map to `var(--surface)`, so once `--surface`/`--bg` re-resolve on a `data-theme`
-// flip every utility tracks the new theme. We assert the underlying contract tokens re-resolve.
-//
-// jsdom does not apply imported .css files, so we inject themes.css into a <style> element — jsdom
-// then resolves `[data-theme]` custom properties through getComputedStyle exactly as a browser does.
-
-const THEMES: ThemeId[] = ['isa101', 'dark-room', 'md3-dark', 'md3-light', 'ocean'];
-const BRIDGED_TOKENS = ['--bg', '--surface', '--surface-container-high', '--text'] as const;
-
-const themesCssPath = resolve(process.cwd(), 'src/theme/themes.css');
+const CSS_FILES = ['src/theme/tokens.css', 'src/theme/themes.css'];
 let styleEl: HTMLStyleElement;
 
 function resolved(token: string): string {
@@ -22,7 +12,7 @@ function resolved(token: string): string {
 
 beforeAll(() => {
   styleEl = document.createElement('style');
-  styleEl.textContent = readFileSync(themesCssPath, 'utf8');
+  styleEl.textContent = CSS_FILES.map((p) => readFileSync(resolve(process.cwd(), p), 'utf8')).join('\n');
   document.head.appendChild(styleEl);
 });
 
@@ -31,31 +21,63 @@ afterAll(() => {
   document.documentElement.removeAttribute('data-theme');
 });
 
-describe('@theme inline bridge re-resolves contract tokens on data-theme flip', () => {
-  it.each(THEMES)('%s: every bridged token resolves to a non-empty value', (id) => {
+describe('§6.4 token contract resolves under every [data-theme]', () => {
+  it.each(THEME_IDS)('%s: every contract token resolves non-empty', (id) => {
     document.documentElement.setAttribute('data-theme', id);
-    for (const token of BRIDGED_TOKENS) {
+    for (const token of CONTRACT_TOKENS) {
       expect(resolved(token), `${id} ${token}`).not.toBe('');
     }
   });
 
-  it('--bg re-resolves to a DIFFERENT value when [data-theme] flips (runtime swap, not static)', () => {
-    document.documentElement.setAttribute('data-theme', 'isa101');
-    const isa = resolved('--bg');
-    document.documentElement.setAttribute('data-theme', 'md3-light');
-    const md3Light = resolved('--bg');
-    expect(isa).not.toBe('');
-    expect(md3Light).not.toBe('');
-    expect(md3Light).not.toBe(isa);
+  it('--bg re-resolves on a data-theme flip (runtime swap, not a static snapshot)', () => {
+    document.documentElement.setAttribute('data-theme', 'recorder');
+    expect(resolved('--bg')).toBe('#F7F8FA');
+    document.documentElement.setAttribute('data-theme', 'phosphor');
+    expect(resolved('--bg')).toBe('#0A0E14');
   });
 
-  it('--surface (the bg-surface utility target) differs across at least two themes', () => {
-    const values = new Set<string>();
-    for (const id of THEMES) {
-      document.documentElement.setAttribute('data-theme', id);
-      values.add(resolved('--surface'));
+  it('trend widths carry px units consumable by parseFloat (uplotTheme contract)', () => {
+    document.documentElement.setAttribute('data-theme', 'recorder');
+    expect(resolved('--trend-pv-width')).toBe('2px');
+    expect(Number.parseFloat(resolved('--trend-sp-width'))).toBe(1.5);
+  });
+
+  it('the contract holds 48 tokens — 41 palette + 3 type + the four §10.5 glow tokens', () => {
+    expect(CONTRACT_TOKENS).toHaveLength(48);
+    for (const token of ['--glow-alarm', '--glow-focus', '--glow-accent', '--glow-trace']) {
+      expect(CONTRACT_TOKENS, token).toContain(token);
     }
-    // All five surfaces are distinct in the committed palette; require at least two to prove the swap.
-    expect(values.size).toBeGreaterThanOrEqual(2);
+  });
+
+  it('--glow-trace carries px so parseFloat reads it (the halo is "token non-zero")', () => {
+    document.documentElement.setAttribute('data-theme', 'phosphor');
+    expect(resolved('--glow-trace')).toBe('4px');
+    expect(Number.parseFloat(resolved('--glow-trace'))).toBe(4);
+    document.documentElement.setAttribute('data-theme', 'recorder');
+    expect(Number.parseFloat(resolved('--glow-trace'))).toBe(0);
+    document.documentElement.setAttribute('data-theme', 'isa101');
+    expect(Number.parseFloat(resolved('--glow-trace'))).toBe(0);
+  });
+
+  it('the bloom tokens are valid <shadow> values, never the uncomposable `none`', () => {
+    for (const id of ['recorder', 'phosphor', 'isa101']) {
+      document.documentElement.setAttribute('data-theme', id);
+      for (const token of ['--glow-alarm', '--glow-focus', '--glow-accent']) {
+        expect(resolved(token), `${id} ${token}`).toBe('0 0 #0000');
+      }
+    }
+  });
+
+  it('--font-display is per-theme while --font-ui and --font-data stay global', () => {
+    const tokensCss = readFileSync(resolve(process.cwd(), 'src/theme/tokens.css'), 'utf8');
+    expect(tokensCss).not.toMatch(/--font-display\s*:/);
+    expect(tokensCss).toMatch(/--font-ui\s*:/);
+    expect(tokensCss).toMatch(/--font-data\s*:/);
+
+    const archivo = "'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif";
+    for (const id of ['recorder', 'phosphor', 'isa101']) {
+      document.documentElement.setAttribute('data-theme', id);
+      expect(resolved('--font-display'), id).toBe(archivo);
+    }
   });
 });

@@ -1,33 +1,43 @@
-import { valueToFraction, type Scale } from '../lib/scale';
+import { formatNumber } from '@/lib/format';
+import { valueToFraction, type Scale } from '@/lib/scale';
+import { cn } from '@/lib/utils';
 
-export type AlarmLevel = 'normal' | 'warning' | 'critical';
+export type AnalogBarAlarm = 'normal' | 'warn' | 'crit';
 
 export interface AnalogBarProps {
   label: string;
   value: number | null | undefined;
   scale: Scale;
   spValue?: number;
-  alarm?: AlarmLevel;
-  size?: 'card' | 'faceplate';
+  alarm?: AnalogBarAlarm;
   decimals?: number;
+  size?: 'card' | 'faceplate';
+  /**
+   * The bus stopped delivering: this is the last value seen, not the current
+   * one (E2E-047). Overrides `alarm` — a frozen reading cannot testify to the
+   * plant being normal OR in alarm.
+   */
+  stale?: boolean;
+  className?: string;
 }
 
 /**
- * Fill color per alarm level. These are CSS-variable references (theme contract
- * tokens), not raw color literals — and they are runtime-selected, so the fill
- * background MUST stay an inline style (mandated by the DOM-freeze §3a + §6
- * inventory: the test reads `bar-fill.style.width`, and the fill is one of the
- * two sanctioned dynamic inline styles).
+ * Fill color per alarm level — token var() references selected at runtime
+ * (one of the two sanctioned dynamic inline styles; the other is the width %).
+ * Normal fill is gray (--bar-fill): green never means "ok" (§6.4).
  */
-const ALARM_FILL: Record<AlarmLevel, string> = {
+const ALARM_FILL: Record<AnalogBarAlarm, string> = {
   normal: 'var(--bar-fill)',
-  warning: 'var(--alarm-warning)',
-  critical: 'var(--alarm-critical)',
+  warn: 'var(--alarm-warn)',
+  crit: 'var(--alarm-crit)',
 };
 
-const TRACK_HEIGHT: Record<NonNullable<AnalogBarProps['size']>, number> = {
-  card: 8,
-  faceplate: 14,
+/** A stale bar drops to the disabled ink: not normal, not in alarm — unknown. */
+const STALE_FILL = 'var(--text-disabled)';
+
+const TRACK_HEIGHT: Record<NonNullable<AnalogBarProps['size']>, string> = {
+  card: 'h-2',
+  faceplate: 'h-3.5',
 };
 
 export function AnalogBar({
@@ -36,66 +46,63 @@ export function AnalogBar({
   scale,
   spValue,
   alarm = 'normal',
-  size = 'card',
   decimals = 1,
+  size = 'card',
+  stale = false,
+  className,
 }: AnalogBarProps) {
   const finite = typeof value === 'number' && Number.isFinite(value);
   const pct = (finite ? valueToFraction(value, scale) * 100 : 0).toFixed(2);
   const spPct = spValue !== undefined ? (valueToFraction(spValue, scale) * 100).toFixed(2) : null;
-  const showSp = label === 'PV' && spPct !== null;
-  const display = finite ? value.toFixed(decimals) : '—';
+  const reading = finite ? `${formatNumber(value, decimals)} ${scale.unit}` : 'sem dados';
 
   return (
-    <div className="analog-bar flex items-center gap-2" data-size={size}>
-      <span className="analog-bar__label w-6 text-text-secondary">{label}</span>
+    <div className={cn('flex items-center gap-2', className)} data-stale={stale ? 'true' : undefined}>
+      <span className="w-8 shrink-0 text-2xs font-medium uppercase tracking-wider text-text-soft">
+        {label}
+      </span>
       <div
-        className="analog-bar__track relative flex-1 bg-bar-track overflow-hidden rounded-pill"
-        data-size={size}
         role="meter"
-        aria-label={`${label} ${display} ${scale.unit}`}
+        aria-label={label}
         aria-valuemin={scale.euMin}
         aria-valuemax={scale.euMax}
         aria-valuenow={finite ? value : undefined}
-        style={{ height: TRACK_HEIGHT[size] }}
+        // Screen readers get the same warning the sighted operator gets from
+        // the dimmed ink — the number alone would read as current.
+        aria-valuetext={stale && finite ? `${reading} (desatualizado)` : reading}
+        className={cn(
+          'relative min-w-16 grow overflow-hidden bg-bar-track',
+          TRACK_HEIGHT[size],
+          // Diagonal hatch over the whole track: the classic "this reading is
+          // not live" overlay, built from a contract token so the color guard
+          // and every theme still hold.
+          stale &&
+            'after:pointer-events-none after:absolute after:inset-0 after:bg-[repeating-linear-gradient(135deg,transparent_0_3px,var(--text-disabled)_3px_4px)]',
+        )}
       >
         <div
-          data-testid="bar-fill"
-          data-alarm={alarm}
+          data-testid="analog-bar-fill"
           className="absolute inset-y-0 left-0"
-          // §3a / §6: dynamic width + runtime-selected fill color stay inline —
-          // Tailwind cannot express a runtime `%` width nor the per-alarm token swap.
-          style={{ width: `${pct}%`, background: ALARM_FILL[alarm] }}
+          style={{ width: `${pct}%`, background: stale ? STALE_FILL : ALARM_FILL[alarm] }}
         />
-        {showSp && (
-          <span
-            data-testid="sp-marker"
-            aria-hidden
-            className="analog-bar__sp-marker absolute top-0 h-0 w-0"
-            // §3a / §6: marker position is a runtime `%` (stays inline). The
-            // triangle borders use a theme token color, so they stay inline too.
-            style={{
-              left: `${spPct}%`,
-              top: -3,
-              borderLeft: '4px solid transparent',
-              borderRight: '4px solid transparent',
-              borderTop: '5px solid var(--bar-marker)',
-              transform: 'translateX(-50%)',
-            }}
+        {spPct !== null ? (
+          <div
+            data-testid="analog-bar-sp"
+            aria-hidden="true"
+            className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-bar-marker"
+            style={{ left: `${spPct}%` }}
           />
-        )}
+        ) : null}
       </div>
       <span
-        data-testid="bar-value"
-        className="analog-bar__value numeric font-data tabular-nums text-right text-text"
-        style={{
-          minWidth: 64,
-          fontWeight: alarm === 'normal' ? 400 : 600,
-        }}
+        className={cn(
+          'numeric w-16 shrink-0 text-right text-sm',
+          stale ? 'text-text-disabled' : 'text-text',
+        )}
       >
-        {display}{' '}
-        <span className="text-text-secondary" style={{ fontSize: 'var(--text-2xs)' }}>
-          {scale.unit}
-        </span>
+        {/* The DCS bad-quality mark, in the mono column so digits stay aligned. */}
+        {stale && finite ? <span aria-hidden="true">*</span> : null}
+        {formatNumber(value, decimals)}
       </span>
     </div>
   );

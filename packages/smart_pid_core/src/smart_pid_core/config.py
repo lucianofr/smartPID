@@ -53,8 +53,22 @@ class CoreSettings(BaseSettings):
     projects_dir: Path = Path.home() / ".smart-pid" / "projects"
 
     # Maximum size (bytes) accepted for a .spid project import upload.
-    # Protects the single-process daemon from memory-exhaustion / disk-fill DoS.
-    max_upload_bytes: int = 50 * 1024 * 1024  # 50 MB
+    #
+    # This is an abuse ceiling, NOT a memory guard. The upload is streamed into
+    # a staging file one chunk at a time and never materialised in RAM, so the
+    # resident cost of an import is one chunk whatever the archive weighs. The
+    # default therefore only has to clear what GET /project/download can emit:
+    # a plant with a few months of Log_Processo history is comfortably past the
+    # old 50 MB value, which made the documented download -> import round-trip
+    # impossible for every project with real history (E2E-040).
+    max_upload_bytes: int = 2 * 1024 * 1024 * 1024  # 2 GiB
+
+    # Free space (bytes) that must remain on the projects filesystem for an
+    # import to be accepted. This, not max_upload_bytes, is the disk-fill
+    # guard: a per-request cap never bounded total usage, since N sequential
+    # uploads of (cap - 1) bytes fill any volume. This refuses the upload with
+    # 507 as soon as the volume gets tight, however many requests it took.
+    min_free_disk_bytes: int = 1 * 1024 * 1024 * 1024  # 1 GiB
 
     # Simulator
     simulator_enabled: bool = False

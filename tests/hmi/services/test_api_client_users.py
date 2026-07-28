@@ -22,34 +22,34 @@ def _make_client(status: int = 200, json_body: dict | list | None = None) -> API
 
 def test_list_users():
     data = [
-        {"id": 1, "username": "admin", "role": "ADMIN", "active": True, "created_at": "2026-01-01"},
-        {"id": 2, "username": "op1", "role": "OPERATOR",
+        {"id": 1, "username": "admin", "role": "admin", "active": True, "created_at": "2026-01-01"},
+        {"id": 2, "username": "op1", "role": "user",
          "active": True, "created_at": "2026-01-02"},
     ]
     client = _make_client(200, data)
     users = client.list_users()
     assert len(users) == 2
     assert users[0].username == "admin"
-    assert users[1].role == "OPERATOR"
+    assert users[1].role == "user"
 
 
 def test_create_user():
-    data = {"id": 3, "username": "newuser", "role": "OPERATOR", "active": True, "created_at": ""}
+    data = {"id": 3, "username": "newuser", "role": "user", "active": True, "created_at": ""}
     client = _make_client(201, data)
-    user = client.create_user("newuser", "pass123", "OPERATOR")
+    user = client.create_user("newuser", "pass123", "user")
     assert user.username == "newuser"
-    assert user.role == "OPERATOR"
+    assert user.role == "user"
 
 
 def test_update_user():
-    data = {"id": 2, "username": "op1", "role": "SUPERVISOR", "active": True, "created_at": ""}
+    data = {"id": 2, "username": "op1", "role": "admin", "active": True, "created_at": ""}
     client = _make_client(200, data)
-    user = client.update_user(2, role="SUPERVISOR")
-    assert user.role == "SUPERVISOR"
+    user = client.update_user(2, role="admin")
+    assert user.role == "admin"
 
 
 def test_deactivate_user():
-    data = {"id": 2, "username": "op1", "role": "OPERATOR", "active": False, "created_at": ""}
+    data = {"id": 2, "username": "op1", "role": "user", "active": False, "created_at": ""}
     client = _make_client(200, data)
     user = client.deactivate_user(2)
     assert user.active is False

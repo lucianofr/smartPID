@@ -1,0 +1,335 @@
+"""Unit tests for the AIWorker full-retune producer.
+
+Drives ``_observe_steady_state`` / ``_maybe_recommend_retune`` directly so the
+steady-state gates and the gain fit can be exercised without waiting on the
+worker's timer.  The bus-driven path is covered by
+``tests/core/integration/test_tuning_recommendation_flow.py``.
+"""
+from __future__ import annotations
+
+import logging
+
+import msgpack
+import pytest
+
+from smart_pid_core.application.tuning_store import TuningRecommendationStore
+from smart_pid_core.application.workers.ai_worker import AIWorker
+from smart_pid_domain.enums import (
+    AIEngine,
+    ControlObjective,
+    IntegralType,
+    TuningRecStatus,
+)
+from smart_pid_domain.models.controller import (
+    AIConfig,
+    Controller,
+    PIDParams,
+    ScaleConfig,
+)
+
+_AI_WORKER_LOGGER = "smart_pid_core.application.workers.ai_worker"
+
+
+class _StubBus:
+    """AIWorker only touches the bus from its thread; constructing needs none."""
+
+
+class _StubPub:
+    def __init__(self) -> None:
+        self.sent: list[tuple[bytes, dict]] = []
+
+    def send(self, topic: bytes, payload: bytes) -> None:
+        self.sent.append((topic, msgpack.unpackb(payload)))
+
+
+def _quiet_stats(
+    pk_pk: float = 0.0, samples: float = 60.0, tv: float = 0.0,
+) -> dict[str, float]:
+    return {
+        "pk_pk_error": pk_pk, "sample_count": samples,
+        "tv_per_sample": tv, "osc": 0.0,
+    }
+
+
+def _controller(
+    *,
+    integral_type: IntegralType = IntegralType.TIME_TI,
+    objective: ControlObjective = ControlObjective.SP_TRACKING,
+) -> Controller:
+    return Controller(
+        id=1, name="TIC-P", scan_rate_s=0.02, tss_s=0.20,
+        integral_type=integral_type,
+        pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
+        pv_scale=ScaleConfig(eu_min=0.0, eu_max=100.0),
+        ai_config=AIConfig(
+            engine=AIEngine.FUZZY, objective=objective,
+            dead_time_l=0.04, limit_min=0.001, limit_max=1000.0,
+        ),
+    )
+
+
+def _worker(controller: Controller, store: TuningRecommendationStore) -> AIWorker:
+    worker = AIWorker(
+        bus=_StubBus(),  # type: ignore[arg-type]
+        controller=controller,
+        tuning_store=store,
+    )
+    worker._last_mode = "AUTO"
+    worker._has_telemetry = True
+    worker._latest_stats = _quiet_stats()
+    return worker
+
+
+_HELD_SP = 50.0
+
+
+def _feed(
+    worker: AIWorker,
+    points: list[tuple[float, float]],
+    *,
+    pk_pk: float = 0.0,
+    tv: float = 0.0,
+    sp: float = _HELD_SP,
+) -> None:
+    """Present each (CO %, PV %) pair as a fresh settled observation.
+
+    SP is held fixed across the whole sequence, and the cadence / SP-hold
+    clocks are wound back so each call is eligible without real waiting.
+    """
+    for co, pv in points:
+        worker._last_co = co
+        worker._last_pv = pv
+        worker._last_sp = sp
+        worker._latest_stats = _quiet_stats(pk_pk=pk_pk, tv=tv)
+        worker._last_ss_record_mono = 0.0
+        worker._observed_sp = sp
+        worker._sp_changed_mono = 0.0
+        worker._observe_steady_state()
+
+
+_LINEAR = [(20.0, 30.0), (40.0, 60.0), (60.0, 90.0)]  # PV = 1.5 * CO
+
+
+class TestSteadyStateObservation:
+    def test_records_settled_points(self) -> None:
+        w = _worker(_controller(), TuningRecommendationStore())
+        _feed(w, _LINEAR)
+        assert len(w._ss_points) == 3
+        assert w._estimate_process_gain() == pytest.approx(1.5)
+
+    def test_rejects_moving_pv(self) -> None:
+        """A large error excursion with SP fixed means PV is still moving."""
+        w = _worker(_controller(), TuningRecommendationStore())
+        _feed(w, _LINEAR, pk_pk=50.0)
+        assert w._ss_points == {}
+
+    def test_rejects_moving_valve(self) -> None:
+        """PV can look quiet for a scan or two while CO is still travelling."""
+        w = _worker(_controller(), TuningRecommendationStore())
+        _feed(w, _LINEAR, tv=2.0)
+        assert w._ss_points == {}
+
+    def test_accepts_steady_offset(self) -> None:
+        """PV parked off SP is still a point on the process curve."""
+        w = _worker(_controller(), TuningRecommendationStore())
+        _feed(w, _LINEAR, sp=_HELD_SP)  # PV 30/60/90 vs SP 50
+        assert len(w._ss_points) == 3
+        assert w._estimate_process_gain() == pytest.approx(1.5)
+
+    def test_rejects_window_straddling_an_sp_step(self) -> None:
+        """Right after an SP move the window holds a transient, not a steady state."""
+        w = _worker(_controller(), TuningRecommendationStore())
+        for co, pv in _LINEAR:
+            w._last_co, w._last_pv = co, pv
+            w._last_sp = pv  # a different SP each pass = a fresh SP step
+            w._last_ss_record_mono = 0.0
+            w._observe_steady_state()
+        assert w._ss_points == {}
+
+    def test_rejects_unpopulated_stats_window(self) -> None:
+        w = _worker(_controller(), TuningRecommendationStore())
+        _feed(w, _LINEAR)
+        w._ss_points.clear()
+        for co, pv in _LINEAR:
+            w._last_co, w._last_pv, w._last_sp = co, pv, _HELD_SP
+            w._latest_stats = _quiet_stats(samples=3.0)
+            w._last_ss_record_mono = 0.0
+            w._observe_steady_state()
+        assert w._ss_points == {}
+
+    def test_rejects_non_auto_mode(self) -> None:
+        w = _worker(_controller(), TuningRecommendationStore())
+        w._last_mode = "MAN"
+        _feed(w, _LINEAR)
+        assert w._ss_points == {}
+
+    def test_cadence_gate_blocks_back_to_back_records(self) -> None:
+        """Without a full TSS between records the stats window is stale."""
+        w = _worker(_controller(), TuningRecommendationStore())
+        _feed(w, _LINEAR[:1])
+        for co, pv in _LINEAR[1:]:
+            w._last_co, w._last_pv, w._last_sp = co, pv, _HELD_SP
+            w._observe_steady_state()  # no _last_ss_record_mono reset
+        assert len(w._ss_points) == 1
+
+    def test_same_operating_point_collapses_to_one_bucket(self) -> None:
+        w = _worker(_controller(), TuningRecommendationStore())
+        _feed(w, [(40.0, 60.0), (40.4, 60.6), (41.0, 61.5)])
+        assert len(w._ss_points) == 1
+
+    def test_bucket_capacity_is_bounded(self) -> None:
+        w = _worker(_controller(), TuningRecommendationStore())
+        _feed(w, [(float(co), 1.5 * co) for co in range(0, 100, 5)])
+        assert len(w._ss_points) <= 8
+
+
+class TestGainEstimation:
+    def test_too_few_points_is_unknown(self) -> None:
+        w = _worker(_controller(), TuningRecommendationStore())
+        _feed(w, _LINEAR[:2])
+        assert w._estimate_process_gain() is None
+
+    def test_insufficient_co_travel_is_unknown(self) -> None:
+        w = _worker(_controller(), TuningRecommendationStore())
+        # Three buckets but only 1.2 % of CO between the extremes.
+        _feed(w, [(40.0, 60.0), (41.0, 61.5), (41.2, 61.8)])
+        assert w._estimate_process_gain() is None
+
+    def test_uncorrelated_cloud_is_unknown(self) -> None:
+        """Closed-loop constant-SP operation carries no gain information."""
+        w = _worker(_controller(), TuningRecommendationStore())
+        _feed(w, [(20.0, 50.0), (40.0, 50.2), (60.0, 49.9), (80.0, 50.1)])
+        assert w._estimate_process_gain() is None
+
+    def test_reverse_acting_gain_is_negative(self) -> None:
+        w = _worker(_controller(), TuningRecommendationStore())
+        _feed(w, [(20.0, 90.0), (40.0, 60.0), (60.0, 30.0)])
+        assert w._estimate_process_gain() == pytest.approx(-1.5)
+
+
+class TestSkipDiagnostics:
+    """The "why is there no recommendation?" trail."""
+
+    def test_logs_reason_when_gain_unknown(self, caplog) -> None:
+        w = _worker(_controller(), TuningRecommendationStore())
+        with caplog.at_level(logging.INFO, logger=_AI_WORKER_LOGGER):
+            w._maybe_recommend_retune(_StubPub())
+        assert "tuning_retune_skip cid=1 reason=gain_unidentifiable" in caplog.text
+
+    def test_reason_is_edge_triggered(self, caplog) -> None:
+        """An unidentifiable loop must not fill the log every AI tick."""
+        w = _worker(_controller(), TuningRecommendationStore())
+        with caplog.at_level(logging.INFO, logger=_AI_WORKER_LOGGER):
+            for _ in range(5):
+                w._maybe_recommend_retune(_StubPub())
+        assert caplog.text.count("tuning_retune_skip") == 1
+
+    def test_logs_the_new_reason_when_it_changes(self, caplog) -> None:
+        w = _worker(_controller(integral_type=IntegralType.GAIN_KI),
+                    TuningRecommendationStore())
+        with caplog.at_level(logging.INFO, logger=_AI_WORKER_LOGGER):
+            w._maybe_recommend_retune(_StubPub())
+        assert "reason=integral_type_not_time_ti" in caplog.text
+
+
+class TestRetuneProduction:
+    def test_produces_pending_recommendation(self) -> None:
+        store = TuningRecommendationStore()
+        w = _worker(_controller(), store)
+        pub = _StubPub()
+        _feed(w, _LINEAR)
+        w._maybe_recommend_retune(pub)
+
+        tracked = store.get(1)
+        assert tracked is not None
+        assert tracked.status == TuningRecStatus.PENDING
+        rec = tracked.recommendation
+        assert rec.recommended_kp == pytest.approx(0.5)
+        assert rec.recommended_ti == pytest.approx(0.06)
+        assert rec.recommended_td == pytest.approx(0.04 * 0.04 / 0.12)
+        assert rec.current_kp == pytest.approx(1.0)
+        assert rec.current_ti == pytest.approx(10.0)
+
+    def test_publishes_tuning_recommended_off_the_action_topic(self) -> None:
+        """It must never ride ACTION.AI.*, which IOWorker writes to the PLC."""
+        w = _worker(_controller(), TuningRecommendationStore())
+        pub = _StubPub()
+        _feed(w, _LINEAR)
+        w._maybe_recommend_retune(pub)
+
+        assert len(pub.sent) == 1
+        topic, payload = pub.sent[0]
+        assert topic == b"EVENT.TUNING_REC.1"
+        assert not topic.startswith(b"ACTION.AI")
+        assert payload["recommended_kp"] == pytest.approx(0.5)
+        assert payload["controller_id"] == 1
+        assert "IMC" in payload["reason"]
+
+    def test_no_gain_produces_nothing(self) -> None:
+        store = TuningRecommendationStore()
+        w = _worker(_controller(), store)
+        w._maybe_recommend_retune(_StubPub())
+        assert store.get(1) is None
+
+    def test_gain_ki_loops_are_skipped(self) -> None:
+        """The IMC rule yields an integral time; a Ki node has other units."""
+        store = TuningRecommendationStore()
+        w = _worker(_controller(integral_type=IntegralType.GAIN_KI), store)
+        pub = _StubPub()
+        _feed(w, _LINEAR)
+        w._maybe_recommend_retune(pub)
+        assert store.get(1) is None
+        assert pub.sent == []
+
+    def test_no_store_is_a_no_op(self) -> None:
+        controller = _controller()
+        w = AIWorker(bus=_StubBus(), controller=controller)  # type: ignore[arg-type]
+        w._last_mode = "AUTO"
+        w._has_telemetry = True
+        pub = _StubPub()
+        _feed(w, _LINEAR)
+        w._maybe_recommend_retune(pub)
+        assert pub.sent == []
+
+    def test_repeat_tick_does_not_republish(self) -> None:
+        """Anti-churn: an unchanged proposal is not raised twice."""
+        store = TuningRecommendationStore()
+        w = _worker(_controller(), store)
+        pub = _StubPub()
+        _feed(w, _LINEAR)
+        w._maybe_recommend_retune(pub)
+        first = store.get(1).recommendation.id
+        for _ in range(3):
+            w._maybe_recommend_retune(pub)
+        assert len(pub.sent) == 1
+        assert store.get(1).recommendation.id == first
+
+    def test_materially_different_model_republishes(self) -> None:
+        store = TuningRecommendationStore()
+        w = _worker(_controller(), store)
+        pub = _StubPub()
+        _feed(w, _LINEAR)
+        w._maybe_recommend_retune(pub)
+        first = store.get(1).recommendation.id
+
+        # Process gain halves -> Kp doubles, well past the 10 % gate.
+        w._ss_points.clear()
+        _feed(w, [(20.0, 15.0), (40.0, 30.0), (60.0, 45.0)])
+        w._maybe_recommend_retune(pub)
+
+        assert len(pub.sent) == 2
+        second = store.get(1)
+        assert second.recommendation.id != first
+        assert second.recommendation.recommended_kp == pytest.approx(1.0)
+
+    def test_objective_changes_the_proposal(self) -> None:
+        store = TuningRecommendationStore()
+        w = _worker(
+            _controller(objective=ControlObjective.SURGE_LEVEL), store,
+        )
+        _feed(w, _LINEAR)
+        w._maybe_recommend_retune(_StubPub())
+        rec = store.get(1).recommendation
+        # lambda = max(3*0.04, 0.8*0.04) = 0.12 -> Kp = 0.12 / (2*1.5*0.16)
+        assert rec.recommended_kp == pytest.approx(0.12 / 0.48)
+        assert "SURGE_LEVEL" in rec.reason
