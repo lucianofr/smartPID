@@ -9,6 +9,7 @@ import logging
 import math
 from collections import deque
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 
@@ -22,8 +23,6 @@ class AIDecision:
     membership_values: dict[str, dict[str, float]] | None = None
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from smart_pid_domain.enums import ControlObjective, ProcessSpeed
 
 logger = logging.getLogger(__name__)
@@ -722,14 +721,14 @@ class RLEngine:
             obs_space = spaces.Box(
                 low=-1.0, high=1.0, shape=(OBS_DIM,), dtype=np.float32
             )
-            action_space = spaces.Box(
+            act_space = spaces.Box(
                 low=-1.0, high=1.0, shape=(ACTION_DIM,), dtype=np.float32
             )
 
             # Create a dummy env spec for sb3
             class _DummyEnv(gym.Env):
                 observation_space = obs_space
-                action_space = action_space
+                action_space = act_space
 
                 def reset(self, *, seed=None, options=None):
                     return np.zeros(OBS_DIM, dtype=np.float32), {}
@@ -784,8 +783,15 @@ class RLEngine:
                 "Install with: pip install smart-pid-core[ai]"
             )
         from stable_baselines3 import SAC
+        from stable_baselines3.common.utils import configure_logger  # type: ignore
 
         self._model = SAC.load(str(path))
+        # Same fix as _init_sb3_model: BaseAlgorithm.train() reads the
+        # `logger` property, which sb3 only sets inside set_logger()/
+        # _setup_learn() — SAC.load() does neither, so the first online
+        # train() call after a resume would raise AttributeError without
+        # this (previously swallowed by _try_online_train's except clause).
+        self._model.set_logger(configure_logger(verbose=0))
         self._is_trained = True
         logger.info("rl_model_loaded path=%s", str(path))
 
