@@ -69,18 +69,28 @@ export function AuthProvider({ children, onPermissionDenied }: AuthProviderProps
   }, []);
 
   // Single api↔auth coupling point: token injection + §11 401/403 side effects.
-  useEffect(() => {
-    setAuthHooks({
-      getToken: () => tokenRef.current,
-      onUnauthorized: () => logout(),
-      onForbidden: () => {
-        onPermissionDenied?.();
-        void refreshUser().catch(() => {
-          /* refresh failure surfaces via the failing call itself */
-        });
-      },
-    });
-  }, [logout, refreshUser, onPermissionDenied]);
+  //
+  // Wired synchronously in the render body, NOT a `useEffect`. `AuthProvider`
+  // wraps the whole tree (App.tsx), including every route/query component
+  // that fires its own request on mount. React commits effects bottom-up —
+  // a descendant's mount effect runs BEFORE this component's own effects —
+  // so on a cold load/reload a child's very first fetch could race ahead of
+  // an effect-based registration and see the pre-wired `getToken: () => null`
+  // default from api/client.ts, draw a real (but spurious) 401 for a session
+  // that IS valid, and then this component's real `onUnauthorized: () => logout()`
+  // — wired moments later by the time that response lands — incorrectly wipes
+  // it. Registering here, during render, guarantees the hooks are live before
+  // React even begins mounting any descendant.
+  setAuthHooks({
+    getToken: () => tokenRef.current,
+    onUnauthorized: () => logout(),
+    onForbidden: () => {
+      onPermissionDenied?.();
+      void refreshUser().catch(() => {
+        /* refresh failure surfaces via the failing call itself */
+      });
+    },
+  });
 
   // Session restore: storage has a token but this mount has no user yet.
   useEffect(() => {
