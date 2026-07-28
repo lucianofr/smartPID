@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { hex as wcagHex } from 'wcag-contrast';
 import { PALETTES, type GateThemeId, type ThemePalette } from './themeContrast';
 
-const THEMES: GateThemeId[] = ['recorder', 'phosphor'];
+// §10.1/D10: WCAG is a different standard from ISA-101. The operator dropped the
+// ISA-101 doctrine for neon; the accessibility floor does not move with it.
+const THEMES: GateThemeId[] = ['recorder', 'phosphor', 'neon'];
 const TEXT_FLOOR = 4.5; // WCAG 1.4.3 normal text (§12)
 const NONTEXT_FLOOR = 3.0; // WCAG 1.4.11 non-text (§12)
 

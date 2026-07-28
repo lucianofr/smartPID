@@ -3,7 +3,7 @@
  * themes.css exactly (sync-tested there); guard-exempt (token-guard EXCLUDE_FILES).
  * Field → token: camelCase of the §6.4 name (surfaceSunk → --surface-sunk, …).
  */
-export type GateThemeId = 'recorder' | 'phosphor';
+export type GateThemeId = 'recorder' | 'phosphor' | 'neon';
 
 export interface ThemePalette {
   bg: string;
@@ -99,5 +99,36 @@ export const PALETTES: Record<GateThemeId, ThemePalette> = {
     barTrack: '#0E141C',
     barFill: '#5E7080',
     barMarker: '#8FB6D6',
+  },
+  neon: {
+    bg: '#07070E',
+    surface: '#101226',
+    surfaceSunk: '#0A0B18',
+    ruleStrong: '#5A60A8',
+    text: '#E9ECFF',
+    textSoft: '#A6ADDC',
+    focusRing: '#00E5FF',
+    selection: '#1B2A5C',
+    accent: '#00E5FF',
+    accentHover: '#66F2FF',
+    onAccent: '#04040A',
+    alarmCrit: '#FF2D6F',
+    alarmCritBg: '#3A0A1C',
+    alarmWarn: '#FFB020',
+    alarmWarnBg: '#3A2600',
+    alarmAdv: '#C77DFF',
+    alarmAdvBg: '#28123E',
+    alarmLog: '#A6ADDC',
+    onAlarm: '#04040A',
+    stateRunning: '#39FF88',
+    stateStopped: '#A6ADDC',
+    stateError: '#FF2D6F',
+    tracePv: '#00F0FF',
+    traceSp: '#B8BEE8',
+    traceCo: '#FFA630',
+    trendBg: '#07070E',
+    barTrack: '#12142A',
+    barFill: '#00E5FF',
+    barMarker: '#FFFFFF',
   },
 };
