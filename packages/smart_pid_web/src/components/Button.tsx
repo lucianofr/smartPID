@@ -17,7 +17,8 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: 'bg-accent text-on-accent hover:bg-accent-hover active:bg-accent-sunk',
+        // `btn-primary` is the §10.5 hover/active bloom hook (src/index.css).
+        primary: 'btn-primary bg-accent text-on-accent hover:bg-accent-hover active:bg-accent-sunk',
         secondary: 'border border-rule-strong bg-surface text-text hover:bg-surface-sunk',
         ghost: 'text-text-soft hover:bg-surface-sunk hover:text-text',
         destructive: 'bg-alarm-crit text-on-alarm hover:opacity-90',

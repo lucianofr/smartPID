@@ -169,13 +169,44 @@
     }
   }
 
+  /*
+   * §10.5 glow. Four rules, four surfaces: unacked alarm rows, severity badges,
+   * the focus ring and primary-button hover/active. Nothing else — no state dot,
+   * no card border, no header, no body text. Outside neon every token is
+   * `0 0 #0000`, a valid no-op <shadow>, so these rules cost nothing there.
+   *
+   * The bloom is STATIC. The only pulse on an unacked alarm is the glyph blink
+   * above, already killed under prefers-reduced-motion.
+   */
+
   /* 3 px severity stripe on unacknowledged rows — a shape cue, not a fill. */
   .alarm-row.is-unacked {
-    box-shadow: inset 3px 0 0 0 currentColor;
+    box-shadow: inset 3px 0 0 0 currentColor, var(--glow-alarm);
   }
   .alarm-row.sev-critical.is-unacked { background: var(--alarm-crit-bg); }
   .alarm-row.sev-warning.is-unacked { background: var(--alarm-warn-bg); }
   .alarm-row.sev-advisory.is-unacked { background: var(--alarm-adv-bg); }
+
+  /* Severity badges (Badge tones crit/warn/adv). */
+  .badge-glow {
+    box-shadow: var(--glow-alarm);
+  }
+
+  /*
+   * Focus ring. Tailwind's `ring-2` composes `var(--tw-shadow)` as the outermost
+   * layer of its box-shadow, so assigning that variable blooms the ring without
+   * a per-component class and without out-cascading the ring itself. A plain
+   * `box-shadow` here would be beaten by the utility layer and do nothing.
+   */
+  :focus-visible {
+    --tw-shadow: var(--glow-focus);
+  }
+
+  /* Primary button, pressed or hovered — interactive affordance, not chrome. */
+  .btn-primary:hover,
+  .btn-primary:active {
+    box-shadow: var(--glow-accent);
+  }
 
   @media (prefers-reduced-motion: reduce) {
     .alarm-blink .sev-icon {

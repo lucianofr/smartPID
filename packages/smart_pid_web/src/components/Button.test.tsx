@@ -21,10 +21,14 @@ describe('Button', () => {
   it('variant classes are token-only', () => {
     const { rerender } = render(<Button variant="primary">a</Button>);
     expect(screen.getByRole('button').className).toContain('bg-accent');
+    // §10.5 bloom hook — primary only; secondary/ghost/destructive stay flat.
+    expect(screen.getByRole('button').className).toContain('btn-primary');
     rerender(<Button variant="destructive">a</Button>);
     expect(screen.getByRole('button').className).toContain('bg-alarm-crit');
+    expect(screen.getByRole('button').className).not.toContain('btn-primary');
     rerender(<Button variant="ghost">a</Button>);
     expect(screen.getByRole('button').className).toContain('text-text-soft');
+    expect(screen.getByRole('button').className).not.toContain('btn-primary');
   });
 
   it('disabled blocks activation', () => {

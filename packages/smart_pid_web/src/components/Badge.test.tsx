@@ -20,4 +20,17 @@ describe('Badge', () => {
     render(<Badge>0 alarmes</Badge>);
     expect(screen.getByText('0 alarmes').className).toContain('text-text-soft');
   });
+
+  it('carries the §10.5 bloom hook on severity tones and never on chrome tones', () => {
+    const { rerender } = render(<Badge tone="crit">crit</Badge>);
+    expect(screen.getByText('crit').className).toContain('badge-glow');
+    rerender(<Badge tone="warn">warn</Badge>);
+    expect(screen.getByText('warn').className).toContain('badge-glow');
+    rerender(<Badge tone="adv">adv</Badge>);
+    expect(screen.getByText('adv').className).toContain('badge-glow');
+    rerender(<Badge tone="neutral">neutral</Badge>);
+    expect(screen.getByText('neutral').className).not.toContain('badge-glow');
+    rerender(<Badge tone="log">log</Badge>);
+    expect(screen.getByText('log').className).not.toContain('badge-glow');
+  });
 });

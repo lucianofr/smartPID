@@ -9,9 +9,11 @@ export const badgeVariants = cva(
       tone: {
         neutral: 'border-rule text-text-soft',
         accent: 'border-accent bg-accent-soft text-accent',
-        crit: 'border-alarm-crit text-alarm-crit',
-        warn: 'border-alarm-warn text-alarm-warn',
-        adv: 'border-alarm-adv text-alarm-adv',
+        // `badge-glow` is the §10.5 bloom hook (src/index.css). Severity only —
+        // `neutral` and `log` are chrome and must never bloom.
+        crit: 'badge-glow border-alarm-crit text-alarm-crit',
+        warn: 'badge-glow border-alarm-warn text-alarm-warn',
+        adv: 'badge-glow border-alarm-adv text-alarm-adv',
         log: 'border-rule text-alarm-log',
       },
     },
