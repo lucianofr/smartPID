@@ -33,7 +33,7 @@ class CoreSettings(BaseSettings):
     # exists, the built Vite bundle is mounted at "/" after all routers/WS.
     web_dist_dir: str | None = None
     # Origins accepted on the /ws/realtime handshake (Origin header allow-list).
-    allowed_ws_origins: tuple[str, ...] = ("http://127.0.0.1:5173",)
+    allowed_ws_origins: tuple[str, ...] = ("http://127.0.0.1:5173", "http://localhost:5173")
 
     # JWT
     jwt_secret: str
