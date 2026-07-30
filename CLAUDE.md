@@ -6,7 +6,7 @@
 
 ## Stack e padroes
 - Python 3.13, uv workspace (hatchling), monorepo
-- PySide6 (HMI desktop), ZeroMQ (msgpack), aiosqlite (WAL mode)
+- ZeroMQ (msgpack), aiosqlite (WAL mode)
 - FastAPI + httpx (REST para HMI->Backend, NAO e web frontend)
 - pydantic v2 + pydantic-settings (prefixo SPID_)
 - PyJWT + bcrypt (auth, Phase 6)
@@ -31,7 +31,6 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 ### Monorepo (3 pacotes)
 - `packages/smart_pid_domain/` — Modelos, enums, eventos, excecoes (ZERO dependencias de infra)
 - `packages/smart_pid_core/` — Backend daemon (PID engine, workers, event bus, SQLite, API)
-- `packages/smart_pid_hmi/` — Cliente desktop PySide6 (stub em Phase 1)
 
 ### Estrutura do Backend (`smart_pid_core`)
 - `domain/services/` — PID engine (velocity form), mode manager (8 modos)
@@ -148,7 +147,7 @@ Phases 4/5/6 sao paralelizaveis apos Phase 3a.
 ## Compact Instructions
 Ao compactar, preserve:
 - Fase atual e quais fases ja foram concluidas
-- Decisoes de arquitetura (hexagonal, PySide6 nao PyQt6, ZMQ dual bus, monorepo 3 pacotes)
+- Decisoes de arquitetura (hexagonal, ZMQ dual bus, monorepo 3 pacotes)
 - Estado das tarefas em progresso (task number, o que falta)
 - Variaveis de ambiente obrigatorias (SPID_*)
 - Caminho do uv em Flatpak se relevante
