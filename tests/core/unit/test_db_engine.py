@@ -5,7 +5,10 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 
-from smart_pid_core.adapters.outbound.db_engine import create_sqlite_engine
+from smart_pid_core.adapters.outbound.db_engine import (
+    SQLITE_BUSY_TIMEOUT_MS,
+    create_sqlite_engine,
+)
 
 
 class TestCreateSqliteEngine:
@@ -17,7 +20,7 @@ class TestCreateSqliteEngine:
             busy = (await conn.execute(text("PRAGMA busy_timeout"))).scalar()
             fks = (await conn.execute(text("PRAGMA foreign_keys"))).scalar()
         assert journal == "wal"
-        assert busy == 5000
+        assert busy == SQLITE_BUSY_TIMEOUT_MS
         assert fks == 0  # explicitly OFF — ON DELETE CASCADE must stay inert
         await engine.dispose()
 

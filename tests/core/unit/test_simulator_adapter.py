@@ -327,7 +327,7 @@ class TestSimulatorAdapterConfigPersistence:
         adapter.enable_pid(1, True)
         adapter.set_pid_params(1, kp=2.5, ti=8.0, td=0.5)
         adapter.set_pid_mode(1, 1)
-        from smart_pid_domain.dtos.simulator import AutoSPRequest, AutoDisturbanceRequest
+        from smart_pid_domain.dtos.simulator import AutoDisturbanceRequest, AutoSPRequest
         adapter.set_auto_sp(1, AutoSPRequest(enabled=True, sp_min_pct=20.0, sp_max_pct=90.0))
         adapter.set_auto_disturbance(
             1, AutoDisturbanceRequest(enabled=True, max_amplitude_pct=15.0),
@@ -551,3 +551,71 @@ class TestSimulatorAdapterDecoupledLifecycle:
     def test_opcua_endpoint_property(self, adapter: SimulatorAdapter) -> None:
         port = adapter._settings.simulator_port
         assert adapter.opcua_endpoint == f"opc.tcp://0.0.0.0:{port}"
+
+
+class TestSimulatorAdapterRegistrationLifecycle:
+    """``has_controller`` / ``unregister_controller`` — the delete-side pair.
+
+    ``DELETE /controllers/{id}`` used to leave the simulation state behind, so
+    the tick loop kept integrating a process model for a controller that no
+    longer existed and ``/simulator/*`` kept answering for it.
+    """
+
+    def test_has_controller_reflects_registration(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        assert adapter.has_controller(7) is False
+        adapter.register_controller(7)
+        assert adapter.has_controller(7) is True
+
+    def test_unregister_removes_state_and_reports_removal(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        adapter.register_controller(7)
+        assert adapter.unregister_controller(7) is True
+        assert adapter.has_controller(7) is False
+        assert 7 not in adapter._controllers
+
+    def test_unregister_unknown_controller_is_a_no_op(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        assert adapter.unregister_controller(999) is False
+
+    def test_unregister_drops_pending_persist(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        """A queued dirty id must not outlive the controller.
+
+        The main-loop flusher drains ``consume_dirty_cids()`` and persists each
+        id, which would otherwise write a ``Configuracao_Simulador`` row back
+        for a controller that has just been deleted.
+        """
+        adapter.register_controller(7)
+        adapter._on_opcua_write(7, "kp", 2.0)
+        assert 7 in adapter._dirty_cids
+
+        adapter.unregister_controller(7)
+        assert adapter.consume_dirty_cids() == []
+
+    def test_unregistered_controller_stops_ticking(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        adapter.register_controller(7)
+        adapter.write_output(7, 50.0)
+        adapter._tick(0.1)
+        # live_process_input is written on every tick (unlike live_pv, which
+        # stays 0 until the 1.0s default dead time elapses), so it is the
+        # cheapest proof the loop actually visited this controller.
+        assert adapter._controllers[7].live_process_input == 50.0
+
+        adapter.unregister_controller(7)
+        adapter._tick(0.1)  # must not raise on the now-empty controller set
+        assert adapter.get_status() == {}
+
+    def test_unregister_leaves_other_controllers_alone(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        adapter.register_controller(1)
+        adapter.register_controller(2)
+        adapter.unregister_controller(1)
+        assert adapter.has_controller(2) is True

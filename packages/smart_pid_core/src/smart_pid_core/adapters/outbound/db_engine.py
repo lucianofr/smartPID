@@ -15,10 +15,18 @@ Engine instances built by this factory (who creates which, on which loop):
 Every engine holds exactly one pooled connection (``AsyncAdaptedQueuePool``,
 ``pool_size=1, max_overflow=0``), preserving the pre-port single-connection
 serialization per scope. A sync ``connect`` listener applies the spec-pinned
-PRAGMAs: ``journal_mode=WAL``, ``busy_timeout=5000`` (two ``.spid`` writers
-now exist under WAL), and ``foreign_keys`` explicitly OFF — the DDL's
-``ON DELETE CASCADE`` clauses are deliberately inert today; enabling FKs
-would activate cascades and new FK violations, a forbidden behavior change.
+PRAGMAs: ``journal_mode=WAL``, ``busy_timeout`` (see
+``SQLITE_BUSY_TIMEOUT_MS``; two ``.spid`` writers now exist under WAL), and
+``foreign_keys`` explicitly OFF — the DDL's ``ON DELETE CASCADE`` clauses are
+deliberately inert today; enabling FKs would activate cascades and new FK
+violations, a forbidden behavior change.
+
+Engines A and B write the same ``.spid`` concurrently. WAL admits exactly one
+writer at a time; the loser blocks in SQLite's busy handler for at most
+``busy_timeout`` and then raises ``database is locked``. The budget therefore
+has to outlast the *longest* write another engine can hold, which is set by
+``DBWorker.flush_interval_s`` (5.0 s by default) plus whatever commit and WAL
+autocheckpoint work that batch triggers on a multi-hundred-MB project file.
 """
 from __future__ import annotations
 
@@ -31,6 +39,13 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool
 if TYPE_CHECKING:
     from pathlib import Path
 
+#: How long a blocked writer waits for the WAL write lock before SQLite gives
+#: up with ``database is locked``. Sized at 3x ``DBWorker.flush_interval_s``
+#: (5.0 s) so a writer can ride out several consecutive telemetry flushes,
+#: while staying below SQLAlchemy's 30 s pool checkout timeout — a request must
+#: never be able to burn the pool wait *and* the busy wait back to back.
+SQLITE_BUSY_TIMEOUT_MS = 15_000
+
 
 def _apply_sqlite_pragmas(dbapi_connection: Any, connection_record: Any) -> None:  # noqa: ARG001
     """Sync ``connect`` listener run for every new pooled connection.
@@ -41,7 +56,7 @@ def _apply_sqlite_pragmas(dbapi_connection: Any, connection_record: Any) -> None
     """
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
     cursor.execute("PRAGMA foreign_keys=OFF")
     cursor.close()
 

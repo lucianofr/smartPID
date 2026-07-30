@@ -1,0 +1,21 @@
+# Report Registry
+
+Index of completed agent work. One line per report. See `_tech-debt.md` for
+what was deliberately deferred.
+
+## bugs
+
+- bugs-simulator-registration-20260730 | Done | A controller created through `POST /controllers` was never registered with the simulator, so every `/simulator/*` route failed until a daemon restart. Registration and a new `unregister_controller` now hook the create/delete routes; three routes that leaked a bare `KeyError` as a 500 and one that returned 200 for an unknown id share a single `_sim_controller` guard. RED proof against pristine HEAD: 16 failed / 2 passed before, all green after.
+- bugs-simulator-registration-20260730 (follow-up) | Done | CO read-through, quality propagation and mode reporting. `pid_worker._drain_telemetry` seeded CO from the first frame only, and MAN is the only branch that never reassigns it, so `co` published 0.0 GOOD forever — and froze `integral_val` with it. Mirrored the SP ownership block (whose comment already named a CO mirror that did not exist), switched unmapped-tag substitution from `FFSignal.good(0.0)` to `bad`, published the monitored controller's mode in SUPERVISORY, and gave simulator-registered controllers their own `mode_int_map`. One existing test needed editing, as predicted.
+- bugs-sim-config-schema-lock-20260730 | Done | `Configuracao_Simulador` shipped in three generations and the `pid_*` group never got a back-fill, so gen-1 project files failed the 17-column INSERT. Migration now covers every column with `PRAGMA table_info` idempotency. The `database is locked` failures were proved (300 samples, 20.2 h, exact 5.0 s minimum inter-failure gap) to be full-budget waits rather than snapshot-bypass, so `busy_timeout` 5 s to 15 s is a real fix. A failed persist no longer surfaces as a 500 when the in-memory change succeeded.
+- bugs-sim-config-schema-lock-20260730 (follow-up) | Done | The root enablers. `_retention_cleanup` slept 24 h *before* its first pass, so a daemon restarted more often than daily never pruned `Log_Processo` — the reason the active project file reached 1.08 GB. Inverted to pass-first, with deletes chunked at a measured 5,000 rows/batch (72 ms lock hold vs 361 ms at 50,000). Also fixed an `isoformat()` vs `datetime('now',...)` comparison that left rows just past the cutoff permanently unprunable, and stopped a lock error in `DBWorker._flush()` from silently killing the telemetry thread.
+- bugs-co-telemetry-mapping-20260730 | Done (diagnosis only) | Adjudicated whether `co == 0` in SUPERVISORY was defect or design. Verdict DEFECT, with wire-level evidence: the twin's `CTRL_2/PID/CO` node read 100.0 Good at the instant `STATUS.2.co.value` was 0.0. Corrected two framing assumptions — PIDWorker is the publisher, not MonitorWorker, and the twin's node is fine — which is what located the actual line. Patch routed to the Backend specialist.
+- bugs-frontend-trend-clip-tabs-20260730 | Done | The trend card's x-axis ruler was clipped because `MIN_PLOT_HEIGHT` floored the *canvas* while the well's height is content-driven, so a 168 px well rendered inside a 114 px box and 54 px escaped the card. Ruled out the two likelier candidates by measurement (the annotation had 4 px of clearance; the border rendered and was merely occluded). Fixed with `max-h-full` plus a floor of 72, and split the new E2E guard into two independent assertions after discovering `max-h-full` alone silently clips the canvas instead. Also removed a dead `border-accent` declaration kept alive only by an out-of-date test.
+
+## Conventions confirmed this round
+
+- Every subagent ran on `model: "opus"` per `CLAUDE.md`.
+- No agent committed or switched branches; all work landed uncommitted on
+  `fix/simulator-registration-and-schema` for review.
+- `test_opcua_start_stop` fails environmentally whenever a live daemon holds
+  port 4849. Stop the daemon before a full-suite run.

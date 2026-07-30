@@ -72,6 +72,12 @@ class _ControllerSim:
     live_disturbance_output: float = 0.0
 
 
+# How the simulator encodes its Mode node, and therefore the only correct
+# mode_int_map for a simulator-backed controller. _ControllerSim.pid_mode and
+# the /simulator/{id}/pid/mode route both use this encoding; the OPC-UA adapter
+# needs it to decode Mode back into a ControllerMode.
+SIMULATOR_MODE_INT_MAP: dict[str, int] = {"MAN": 0, "AUTO": 1}
+
 # OPC-UA parameters whose mutation changes persistent PID configuration.
 # CO and SP are excluded: they are transient runtime values written every
 # scan by the control loop, and persisting them would thrash the DB.
@@ -261,6 +267,36 @@ class SimulatorAdapter:
                     pv_max=pv_max,
                 )
                 self._opcua_server.register_controller(controller_id)
+
+    def has_controller(self, controller_id: int) -> bool:
+        """Return True when *controller_id* has simulation state here.
+
+        A controller can exist in the project database and still be absent
+        from the simulator (created while the daemon was running, or the
+        simulator is disabled), so callers must not infer one from the other.
+        """
+        with self._lock:
+            return controller_id in self._controllers
+
+    def unregister_controller(self, controller_id: int) -> bool:
+        """Drop a controller's simulation state. True if it was present.
+
+        Called when a controller is deleted: without it the tick loop keeps
+        integrating a process model nothing owns any more and every
+        ``/simulator/*`` route keeps answering for a loop that is gone.
+
+        The controller's OPC-UA nodes are left in the address space —
+        ``OPCUAServer`` exposes no node-removal API — but they stop being
+        updated because ``_tick`` only walks ``self._controllers``.
+        """
+        with self._lock:
+            removed = self._controllers.pop(controller_id, None) is not None
+            # Drop any pending persist for this id so the flusher cannot
+            # write a config row back for a controller that no longer exists.
+            self._dirty_cids.discard(controller_id)
+        if removed:
+            logger.info("Simulator: unregistered controller (id=%d)", controller_id)
+        return removed
 
     def set_preset(self, controller_id: int, preset: ProcessPresetName) -> None:
         with self._lock:

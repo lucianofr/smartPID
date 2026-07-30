@@ -122,6 +122,10 @@ class PIDWorker:
         self._last_trk_val: float = 0.0
         self._simulate_pv: float | None = None
         self._last_good_trk_in_d: bool = False
+        # Mode reported by the monitored controller (SUPERVISORY only). None
+        # until a telemetry frame carries one; self._mode is SmartPID's own
+        # mode and is not the same fact.
+        self._dcs_mode: str | None = None
         self._has_telemetry = False
         self._last_telem_time: float = 0.0
         self._lock = threading.Lock()
@@ -451,7 +455,21 @@ class PIDWorker:
                         "bkcal_out": _serialize_ff_signal(
                             self._last_bkcal_out,
                         ),
-                        "mode": self._mode.value,
+                        # In SUPERVISORY the DCS runs the loop, so the mode the
+                        # operator needs to see is *its* mode, not PIDWorker's
+                        # internal one (which defaults to MAN and only moves on
+                        # a REST set_mode). Falls back to the internal mode when
+                        # the producer supplies none. DDC keeps reporting the
+                        # internal mode — there SmartPID owns the loop.
+                        "mode": (
+                            self._dcs_mode
+                            if (
+                                self._controller.execution_mode
+                                is ExecutionMode.SUPERVISORY
+                                and self._dcs_mode is not None
+                            )
+                            else self._mode.value
+                        ),
                         "kp": params.gain,
                         "ti": params.reset,
                         "td": params.rate,
@@ -515,10 +533,31 @@ class PIDWorker:
                         if isinstance(val, (float, int))
                         else float(val.get("value", 0.0))
                     )
-                if not self._has_telemetry:
+                # CO ownership mirrors SP above. In DDC SmartPID computes CO
+                # and owns it, so telemetry may only SEED it. In SUPERVISORY
+                # the DCS's controller owns CO, which makes the telemetry
+                # value a *measurement* of its output — no different in kind
+                # from PV measuring the process — so each frame wins and the
+                # source's quality propagates.
+                #
+                # Seeding-only was the bug: CO was read from the first frame
+                # and never refreshed. At startup the twin's output is 0.0, and
+                # MAN (the default mode, :112) is the one branch below that
+                # never reassigns _last_co, so STATUS.co published a GOOD 0.0
+                # forever while the twin's valve moved. integral_val died with
+                # it — MAN's bumpless_transfer seeds state.cv from _last_co.
+                if (
+                    self._controller.execution_mode is not ExecutionMode.DDC
+                    or not self._has_telemetry
+                ):
                     self._last_co = _deserialize_ff_signal(
                         data.get("co", 0.0),
                     )
+                # The monitored controller's own mode, for SUPERVISORY status
+                # reporting. Absent for producers that do not supply it, in
+                # which case the publisher falls back to self._mode.
+                if "mode" in data:
+                    self._dcs_mode = str(data["mode"])
                 self._has_telemetry = True
                 self._last_telem_time = time.monotonic()
             except (KeyError, ValueError, msgpack.UnpackException):

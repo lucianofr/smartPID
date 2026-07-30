@@ -1,17 +1,16 @@
 """SQLite-backed Controller repository adapter (SQLAlchemy 2.0 async, engine A)."""
 from __future__ import annotations
 
-import contextlib
 import json
 from collections.abc import Mapping  # noqa: TC003
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, insert, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from smart_pid_core.adapters.outbound.db_engine import create_sqlite_engine
 from smart_pid_core.adapters.outbound.db_models import controladores
-
 from smart_pid_domain.enums import (
     AIEngine,
     ControllerMode,
@@ -33,6 +32,9 @@ from smart_pid_domain.models.controller import (
     StatusOpts,
     TagBindings,
 )
+
+if TYPE_CHECKING:
+    import aiosqlite
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS Controladores (
@@ -248,6 +250,51 @@ CREATE TABLE IF NOT EXISTS Configuracao_Simulador (
 );
 """
 
+# ----------------------------------------------------------------------
+# Forward migrations for pre-existing .spid files
+#
+# Any column added to _DDL after a project file could already exist MUST be
+# repeated here with the SAME default, because CREATE TABLE IF NOT EXISTS is a
+# no-op on an existing table. Applied by _apply_migrations() on every
+# open/reopen; see _add_missing_columns() for the idempotency contract.
+# ----------------------------------------------------------------------
+
+_CONTROLADORES_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("node_id_bkcal_in", "TEXT NOT NULL DEFAULT ''"),
+    ("node_id_bkcal_out", "TEXT NOT NULL DEFAULT ''"),
+    ("node_id_kp", "TEXT NOT NULL DEFAULT ''"),
+    ("node_id_ti", "TEXT NOT NULL DEFAULT ''"),
+    ("node_id_td", "TEXT NOT NULL DEFAULT ''"),
+    # AIConfig RL-specific columns + ENABLE_OPTIMIZER master flag
+    ("rl_fallback_kp", "REAL NOT NULL DEFAULT 0.6"),
+    ("rl_fallback_kd", "REAL NOT NULL DEFAULT 0.2"),
+    ("rl_learning_rate", "REAL NOT NULL DEFAULT 0.0003"),
+    ("rl_train_interval", "INTEGER NOT NULL DEFAULT 32"),
+    ("optimization_enabled", "INTEGER NOT NULL DEFAULT 1"),
+    # scan_rate_s is normally created by _migrate_scan_rate() (which converts
+    # the legacy ms value); this entry only covers a file that has neither.
+    ("scan_rate_s", "REAL NOT NULL DEFAULT 1.0"),
+    ("tss_s", "REAL NOT NULL DEFAULT 60.0"),
+)
+
+# Configuracao_Simulador shipped in three generations: 6 columns, then +pid_*
+# (11), then +auto_*/pid_sp (17). The pid_* group was added to _DDL without a
+# matching back-fill, so gen1 files hit "no column named pid_enabled" on the
+# save_sim_config INSERT. Every column that INSERT names is listed here.
+_SIM_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("pid_enabled", "INTEGER NOT NULL DEFAULT 0"),
+    ("pid_kp", "REAL NOT NULL DEFAULT 1.0"),
+    ("pid_ti", "REAL NOT NULL DEFAULT 10.0"),
+    ("pid_td", "REAL NOT NULL DEFAULT 0.0"),
+    ("pid_mode", "INTEGER NOT NULL DEFAULT 0"),
+    ("auto_sp_enabled", "INTEGER NOT NULL DEFAULT 0"),
+    ("auto_sp_min_pct", "REAL NOT NULL DEFAULT 30.0"),
+    ("auto_sp_max_pct", "REAL NOT NULL DEFAULT 70.0"),
+    ("auto_dist_enabled", "INTEGER NOT NULL DEFAULT 0"),
+    ("auto_dist_max_pct", "REAL NOT NULL DEFAULT 10.0"),
+    ("pid_sp", "REAL NOT NULL DEFAULT 50.0"),
+)
+
 
 class SQLiteRepository:
     """SQLite-backed implementation of ControllerRepository.
@@ -291,52 +338,51 @@ class SQLiteRepository:
             await self._apply_migrations(driver)
             await driver.commit()
 
-    async def _apply_migrations(self, driver) -> None:  # noqa: ANN001
-        """Add columns that may be missing from older databases."""
-        new_columns = [
-            ("node_id_bkcal_in", "TEXT NOT NULL DEFAULT ''"),
-            ("node_id_bkcal_out", "TEXT NOT NULL DEFAULT ''"),
-            ("node_id_kp", "TEXT NOT NULL DEFAULT ''"),
-            ("node_id_ti", "TEXT NOT NULL DEFAULT ''"),
-            ("node_id_td", "TEXT NOT NULL DEFAULT ''"),
-        ]
-        for col_name, col_def in new_columns:
-            with contextlib.suppress(Exception):
-                await driver.execute(
-                    f"ALTER TABLE Controladores ADD COLUMN {col_name} {col_def}",
-                )
-        # Configuracao_Simulador: auto SP / auto disturbance columns + pid_sp
-        sim_new_columns = [
-            ("auto_sp_enabled", "INTEGER NOT NULL DEFAULT 0"),
-            ("auto_sp_min_pct", "REAL NOT NULL DEFAULT 30.0"),
-            ("auto_sp_max_pct", "REAL NOT NULL DEFAULT 70.0"),
-            ("auto_dist_enabled", "INTEGER NOT NULL DEFAULT 0"),
-            ("auto_dist_max_pct", "REAL NOT NULL DEFAULT 10.0"),
-            ("pid_sp", "REAL NOT NULL DEFAULT 50.0"),
-        ]
-        for col_name, col_def in sim_new_columns:
-            with contextlib.suppress(Exception):
-                await driver.execute(
-                    f"ALTER TABLE Configuracao_Simulador ADD COLUMN {col_name} {col_def}",
-                )
+    @staticmethod
+    async def _table_columns(driver: aiosqlite.Connection, table: str) -> set[str]:
+        """Return the column names currently present on *table* (empty if absent)."""
+        cursor = await driver.execute(f"PRAGMA table_info({table})")
+        return {row[1] for row in await cursor.fetchall()}
 
-        # AIConfig RL-specific columns + ENABLE_OPTIMIZER master flag
-        ai_new_columns = [
-            ("rl_fallback_kp", "REAL NOT NULL DEFAULT 0.6"),
-            ("rl_fallback_kd", "REAL NOT NULL DEFAULT 0.2"),
-            ("rl_learning_rate", "REAL NOT NULL DEFAULT 0.0003"),
-            ("rl_train_interval", "INTEGER NOT NULL DEFAULT 32"),
-            ("optimization_enabled", "INTEGER NOT NULL DEFAULT 1"),
-        ]
-        for col_name, col_def in ai_new_columns:
-            with contextlib.suppress(Exception):
-                await driver.execute(
-                    f"ALTER TABLE Controladores ADD COLUMN {col_name} {col_def}",
-                )
+    async def _add_missing_columns(
+        self,
+        driver: aiosqlite.Connection,
+        table: str,
+        columns: tuple[tuple[str, str], ...],
+    ) -> None:
+        """Idempotently ``ADD COLUMN`` every entry of *columns* not yet present.
 
-        # Rename scan_rate_ms → scan_rate_s (convert ms to seconds)
-        cursor = await driver.execute("PRAGMA table_info(Controladores)")
-        col_names = {r[1] for r in await cursor.fetchall()}
+        Presence is decided from ``PRAGMA table_info`` rather than by swallowing
+        the resulting "duplicate column name" error, so re-running on an
+        already-current file is a no-op *and* a genuine ALTER failure still
+        propagates instead of being silently lost.
+        """
+        present = await self._table_columns(driver, table)
+        for name, definition in columns:
+            if name in present:
+                continue
+            await driver.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+    async def _apply_migrations(self, driver: aiosqlite.Connection) -> None:
+        """Bring a pre-existing .spid forward to the current ``_DDL``.
+
+        ``CREATE TABLE IF NOT EXISTS`` leaves an older table untouched, so every
+        column added to ``_DDL`` after a project file was created must also be
+        listed here. Additive ``ALTER TABLE ADD COLUMN`` only, with defaults
+        identical to ``_DDL``, and safe to re-run on a current file.
+        """
+        # scan_rate_ms → scan_rate_s must run BEFORE the declarative pass below
+        # would add scan_rate_s with its plain default, or the ms→s conversion
+        # is silently skipped.
+        await self._migrate_scan_rate(driver)
+        await self._add_missing_columns(driver, "Controladores", _CONTROLADORES_ADDED_COLUMNS)
+        await self._add_missing_columns(
+            driver, "Configuracao_Simulador", _SIM_ADDED_COLUMNS,
+        )
+
+    async def _migrate_scan_rate(self, driver: aiosqlite.Connection) -> None:
+        """Convert a legacy ``scan_rate_ms`` column into ``scan_rate_s``."""
+        col_names = await self._table_columns(driver, "Controladores")
         if "scan_rate_ms" in col_names and "scan_rate_s" not in col_names:
             await driver.execute(
                 "ALTER TABLE Controladores ADD COLUMN scan_rate_s REAL NOT NULL DEFAULT 1.0"
@@ -344,13 +390,6 @@ class SQLiteRepository:
             await driver.execute(
                 "UPDATE Controladores SET scan_rate_s = scan_rate_ms / 1000.0"
             )
-
-        # Add tss_s column
-        if "tss_s" not in col_names:
-            with contextlib.suppress(Exception):
-                await driver.execute(
-                    "ALTER TABLE Controladores ADD COLUMN tss_s REAL NOT NULL DEFAULT 60.0"
-                )
 
     # ------------------------------------------------------------------
     # CRUD
@@ -773,7 +812,7 @@ class SQLiteRepository:
             "auto_sp_max_pct": row["auto_sp_max_pct"],
             "auto_dist_enabled": bool(row["auto_dist_enabled"]),
             "auto_dist_max_pct": row["auto_dist_max_pct"],
-            "pid_sp": row["pid_sp"] if "pid_sp" in row.keys() else 50.0,
+            "pid_sp": row.get("pid_sp", 50.0),
         }
 
     # ------------------------------------------------------------------

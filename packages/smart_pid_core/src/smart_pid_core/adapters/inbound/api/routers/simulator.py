@@ -1,6 +1,8 @@
 """Simulator control router."""
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -34,6 +36,44 @@ from smart_pid_domain.dtos.simulator import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _not_registered(controller_id: int) -> HTTPException:
+    return HTTPException(
+        status_code=404,
+        detail=f"Controller {controller_id} is not registered in the simulator",
+    )
+
+
+@contextmanager
+def _sim_controller(adapter: SimulatorAdapter, controller_id: int) -> Iterator[None]:
+    """Scope a simulator operation to a controller the simulator actually has.
+
+    Every mutating adapter method addresses its state as
+    ``self._controllers[controller_id]``, i.e. it signals "not registered"
+    with a bare ``KeyError`` — the same contract as ``SQLiteRepository.get``
+    and ``OPCUAAdapter``. Translating that once, here, is what keeps an
+    unknown id a 404 on *every* route instead of a per-route obligation that
+    three of them silently forgot (``/preset``, ``/parameters``,
+    ``/disturbance`` all answered 500 for a controller the simulator had
+    never heard of).
+
+    The membership check runs first because a few adapter methods
+    (``write_output``) look their controller up with ``dict.get`` and no-op
+    on a miss, which would otherwise report success for a loop that does not
+    exist. The ``except`` still guards the window after the check.
+
+    404 rather than a domain ``ControllerNotFoundError``: the controller may
+    well exist in the project database and merely be absent *here*, so this
+    is an API-boundary fact about the simulator, not a domain fact about
+    the controller.
+    """
+    if not adapter.has_controller(controller_id):
+        raise _not_registered(controller_id)
+    try:
+        yield
+    except KeyError as exc:
+        raise _not_registered(controller_id) from exc
 
 
 @router.post("/start", response_model=CommandResponse)
@@ -111,7 +151,8 @@ async def set_preset(
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
-    adapter.set_preset(body.controller_id, body.preset)
+    with _sim_controller(adapter, body.controller_id):
+        adapter.set_preset(body.controller_id, body.preset)
     await persist_sim_config(adapter, repo, body.controller_id)
     return CommandResponse(ok=True, controller_id=body.controller_id, detail="Preset applied")
 
@@ -123,7 +164,10 @@ async def set_parameters(
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
-    adapter.set_parameters(body.controller_id, body.gain, body.tau1, body.tau2, body.dead_time)
+    with _sim_controller(adapter, body.controller_id):
+        adapter.set_parameters(
+            body.controller_id, body.gain, body.tau1, body.tau2, body.dead_time,
+        )
     await persist_sim_config(adapter, repo, body.controller_id)
     return CommandResponse(ok=True, controller_id=body.controller_id, detail="Parameters updated")
 
@@ -134,10 +178,11 @@ async def inject_disturbance(
     _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
-    if body.type == "step":
-        adapter.inject_step(body.controller_id, body.amplitude)
-    else:
-        adapter.inject_noise(body.controller_id, body.amplitude)
+    with _sim_controller(adapter, body.controller_id):
+        if body.type == "step":
+            adapter.inject_step(body.controller_id, body.amplitude)
+        else:
+            adapter.inject_noise(body.controller_id, body.amplitude)
     return CommandResponse(
         ok=True, controller_id=body.controller_id, detail=f"{body.type} disturbance injected"
     )
@@ -149,10 +194,8 @@ async def clear_disturbance(
     _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
-    try:
+    with _sim_controller(adapter, controller_id):
         adapter.clear_disturbance(controller_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     return CommandResponse(ok=True, controller_id=controller_id, detail="Disturbances cleared")
 
 
@@ -164,10 +207,8 @@ async def enable_pid(
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
-    try:
+    with _sim_controller(adapter, controller_id):
         adapter.enable_pid(controller_id, body.enabled)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     await persist_sim_config(adapter, repo, controller_id)
     state = "enabled" if body.enabled else "disabled"
     return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID {state}")
@@ -181,10 +222,8 @@ async def set_pid_params(
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
-    try:
+    with _sim_controller(adapter, controller_id):
         adapter.set_pid_params(controller_id, body.kp, body.ti, body.td)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     await persist_sim_config(adapter, repo, controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail="PID params updated")
 
@@ -197,10 +236,8 @@ async def set_pid_sp(
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
-    try:
+    with _sim_controller(adapter, controller_id):
         adapter.set_pid_sp(controller_id, body.sp)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     await persist_sim_config(adapter, repo, controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID SP={body.sp}")
 
@@ -213,10 +250,8 @@ async def set_co(
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
-    try:
+    with _sim_controller(adapter, controller_id):
         adapter.write_output(controller_id, body.sp)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     await persist_sim_config(adapter, repo, controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail=f"CO={body.sp}")
 
@@ -229,11 +264,9 @@ async def set_pid_mode(
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
-    try:
-        mode_int = 1 if body.mode == "AUTO" else 0
+    mode_int = 1 if body.mode == "AUTO" else 0
+    with _sim_controller(adapter, controller_id):
         adapter.set_pid_mode(controller_id, mode_int)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     await persist_sim_config(adapter, repo, controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID mode={body.mode}")
 
@@ -244,10 +277,8 @@ async def get_pid_status(
     _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> SimulatorPIDStatusResponse:
-    try:
+    with _sim_controller(adapter, controller_id):
         status = adapter.get_pid_status(controller_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
     return SimulatorPIDStatusResponse(**status)
 
 
@@ -259,12 +290,10 @@ async def set_auto_sp(
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> ControllerSimStatus:
-    try:
+    with _sim_controller(adapter, controller_id):
         adapter.set_auto_sp(controller_id, body)
         await persist_sim_config(adapter, repo, controller_id)
         return adapter.get_controller_status(controller_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Controller not found in simulator") from exc
 
 
 @router.put("/{controller_id}/auto-disturbance", response_model=ControllerSimStatus)
@@ -275,11 +304,7 @@ async def set_auto_disturbance(
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> ControllerSimStatus:
-    try:
+    with _sim_controller(adapter, controller_id):
         adapter.set_auto_disturbance(controller_id, body)
         await persist_sim_config(adapter, repo, controller_id)
         return adapter.get_controller_status(controller_id)
-    except KeyError as exc:
-        raise HTTPException(
-            status_code=404, detail="Controller not found in simulator"
-        ) from exc

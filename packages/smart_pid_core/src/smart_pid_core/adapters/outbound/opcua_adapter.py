@@ -292,7 +292,10 @@ class OPCUAAdapter:
             integral_val = float(await integral_node.read_value())
 
         now = datetime.now(UTC)
-        default_signal = FFSignal.good(0.0, now)
+        # An unmapped tag is the absence of a measurement, not a measurement of
+        # zero. A GOOD 0.0 tells the operator the valve is shut — actionable and
+        # wrong; BAD renders as "sem dados" instead of a confident lie.
+        default_signal = FFSignal.bad(0.0, now)
         return TelemetryFrame(
             controller_id=controller_id,
             pv=signals.get("pv", default_signal),

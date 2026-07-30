@@ -63,13 +63,27 @@ const NUMBER_INPUT = 'numeric w-14 px-2 text-sm';
 const CONTROL_LABEL = 'shrink-0 text-2xs uppercase tracking-caps text-text-soft';
 
 /**
- * Floor for the canvas. It exists for two reasons, neither cosmetic: uPlot with
- * a zero height produces a zero-sized canvas, and the E2E readiness probe
- * (`trendCanvasPainted`) waits forever on one. Kept deliberately low so a
- * cramped column clips a little rather than a lot — the dashboard's vertical
- * budget is dominated by the loop-card strip above, not by this panel.
+ * Paint guard for the canvas — NOT a design minimum, and the distinction is the
+ * whole point. uPlot with a zero height produces a zero-sized canvas and the E2E
+ * readiness probe (`trendCanvasPainted`) waits forever on one, so the height
+ * handed to `Trend` must stay positive even when the measured remainder goes to
+ * zero or negative.
+ *
+ * It must NOT exceed what the tightest supported layout can grant, because the
+ * well is `TREND_WELL_INSET_PX` taller than the canvas: a floor that outbids the
+ * remainder makes the well taller than its own container, and that overflow
+ * escapes the card entirely (see the `max-h-full` note in `Trend`). The old
+ * value of 140 did exactly that — the dashboard's vertical budget is dominated
+ * by the ~413px loop-card strip above, which leaves this panel a ~114px plot box
+ * at 1440x900, so 140 + 28 overshot by 54px and the clip ate the time ruler.
+ *
+ * Invariant, pinned by "the trend well never outgrows its plot box" in
+ * e2e/responsive.spec.ts: MIN_PLOT_HEIGHT + TREND_WELL_INSET_PX must fit the
+ * plot box at every supported desktop viewport. 72 leaves uPlot its ~30px x-axis
+ * plus ~40px of plot area, and stays clear of the ~86px the tightest of them
+ * affords. Raising it is what that E2E assertion is there to catch.
  */
-const MIN_PLOT_HEIGHT = 140;
+const MIN_PLOT_HEIGHT = 72;
 
 /**
  * Recorder strip for the selected loop (§6.7/§6.9): live window, pen tip at the

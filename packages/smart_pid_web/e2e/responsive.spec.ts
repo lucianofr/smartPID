@@ -66,6 +66,111 @@ test.describe('responsive dashboard (§6.9)', () => {
     }
   });
 
+  /**
+   * §6.9 well containment, in two independent halves — the original defect took
+   * both to fix, and each needs its own assertion or half the fix can be undone
+   * silently.
+   *
+   * The sunken well's height is content-driven: the `TREND_WELL_INSET_PX`
+   * padding ring plus the canvas. `MIN_PLOT_HEIGHT` used to outbid the flex
+   * remainder (140 + 28 into a 114px plot box at 1440x900), so the well rendered
+   * TALLER than its own container. That overflow did not stay put — it escaped
+   * the trend card's content box, painted `bg-surface-sunk` over the card's own
+   * bottom border (a descendant background paints after an ancestor's border),
+   * and was finally cut by the right column's `lg:overflow-hidden`, taking the
+   * bottom-anchored time ruler with it.
+   *
+   *  1. CONTAINMENT — the well never outgrows its plot box. Pins `max-h-full` on
+   *     the well. Without it the well escapes the card at any binding floor.
+   *  2. THE CANVAS FITS — the canvas never outgrows the well's content box. Pins
+   *     `MIN_PLOT_HEIGHT`. Containment alone would satisfy (1) by clipping the
+   *     canvas instead, which silently eats uPlot's x-axis tick labels — a
+   *     quieter regression than the one originally reported, and worse.
+   */
+  test('the trend well never outgrows its plot box, so the time ruler stays whole', async ({
+    page,
+  }) => {
+    const sizes = [
+      { width: 1920, height: 1080 },
+      { width: 1600, height: 900 },
+      { width: 1440, height: 900 },
+      { width: 1024, height: 900 },
+      { width: 1024, height: 768 },
+    ];
+
+    const measure = async () =>
+      trend(page).evaluate((well) => {
+        const plotBox = well.parentElement as HTMLElement;
+        const style = getComputedStyle(well);
+        const ruler = [...well.querySelectorAll('span')].find((s) =>
+          s.textContent?.includes('agora'),
+        );
+        let clipper: HTMLElement | null = plotBox;
+        while (clipper !== null && getComputedStyle(clipper).overflowY === 'visible') {
+          clipper = clipper.parentElement;
+        }
+        const ring = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+        return {
+          well: well.getBoundingClientRect().height,
+          box: plotBox.clientHeight,
+          // The padding ring the well cannot shed: `max-height` is a border-box
+          // limit, so no clamp can squeeze the element below its own padding.
+          ring,
+          canvas: well.querySelector('canvas')?.getBoundingClientRect().height ?? null,
+          // What the well actually has left for the canvas after its own ring.
+          wellContent: well.clientHeight - ring,
+          rulerBottom: ruler?.getBoundingClientRect().bottom ?? null,
+          clipBottom: clipper?.getBoundingClientRect().bottom ?? null,
+        };
+      });
+
+    for (const { width, height } of sizes) {
+      await gotoDashboard(page, { loops: LOOPS, width, height });
+
+      // The well is sized by a ResizeObserver, so the first paint legitimately
+      // carries the initial guess. Polling settles that without hiding a real
+      // regression: a genuinely oversized well never converges and times out.
+      //
+      // (1) The bound is `max(box, ring)`, not `box`, and that is deliberate. At
+      // 1024x768 the vertical budget is so exhausted that the plot box is 17px
+      // — narrower than the 28px ring — so containment there is geometrically
+      // impossible and the well bottoms out at the ring. Everywhere else the
+      // bound collapses to `box`.
+      await expect
+        .poll(
+          async () => {
+            const m = await measure();
+            return Math.round(m.well - Math.max(m.box, m.ring));
+          },
+          { message: `well outgrows its plot box at ${width}x${height}` },
+        )
+        .toBeLessThanOrEqual(0);
+
+      const m = await measure();
+      expect(m.rulerBottom, `time ruler rendered at ${width}x${height}`).not.toBeNull();
+      expect(m.clipBottom, `clipping ancestor found at ${width}x${height}`).not.toBeNull();
+      // The user-visible half of (1), and it holds at every size: the ruler is
+      // anchored to the well's bottom band, so a contained well is exactly what
+      // keeps it on screen.
+      expect(
+        Math.round(m.rulerBottom! - m.clipBottom!),
+        `time ruler clipped at ${width}x${height}`,
+      ).toBeLessThanOrEqual(0);
+
+      // (2) Wherever the plot box can hold the ring plus a positive canvas, the
+      // canvas must actually fit — a clipped canvas loses uPlot's x-axis tick
+      // labels. 1024x768 is exempt because its 17px box cannot hold the 28px
+      // ring at all, so there is no canvas room to be had at that size.
+      if (m.wellContent > 0) {
+        expect(m.canvas, `canvas rendered at ${width}x${height}`).not.toBeNull();
+        expect(
+          Math.round(m.canvas! - m.wellContent),
+          `canvas outgrows its well at ${width}x${height}`,
+        ).toBeLessThanOrEqual(0);
+      }
+    }
+  });
+
   test('the faceplate holds ~320px and the trend keeps >=65% at 1440', async ({ page }) => {
     await gotoDashboard(page, { loops: LOOPS, width: 1440, height: 900 });
     const fp = await box(faceplate(page, 'FIC-101'));

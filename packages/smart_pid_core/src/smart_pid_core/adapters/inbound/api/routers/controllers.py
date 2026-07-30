@@ -1,6 +1,7 @@
 """Controller CRUD router."""
 
 import json
+import logging
 from dataclasses import replace
 from typing import Annotated
 
@@ -59,7 +60,50 @@ from smart_pid_domain.models.controller import (
     TagBindings,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+def _sync_simulator_registration(
+    request: Request, controller: Controller | None, controller_id: int,
+) -> None:
+    """Add or drop a controller's simulator state to match the database.
+
+    Pass ``controller`` to register it, or ``None`` to unregister
+    ``controller_id``. No-op when the simulator is disabled
+    (``SPID_SIMULATOR_ENABLED=false`` leaves ``app.state.simulator_adapter``
+    as ``None``), so controller CRUD is unaffected in that deployment.
+
+    Registration used to happen only at daemon startup and project open, so a
+    controller created through ``POST /controllers`` was invisible to the
+    simulator until the daemon restarted and every ``/simulator/*`` call for
+    it failed. Deregistration is the mirror: a deleted loop that stays
+    registered keeps being integrated by the tick loop and keeps answering
+    ``/simulator/*``.
+
+    Failures are logged, never raised: the controller row is already
+    committed by the time this runs, so turning an adapter hiccup into a 5xx
+    would report failure for a create that actually succeeded.
+    """
+    adapter = getattr(request.app.state, "simulator_adapter", None)
+    if adapter is None:
+        return
+    try:
+        if controller is None:
+            adapter.unregister_controller(controller_id)
+        else:
+            adapter.register_controller(
+                controller.id,
+                pv_min=controller.pv_scale.eu_min,
+                pv_max=controller.pv_scale.eu_max,
+            )
+    except Exception:
+        logger.exception(
+            "simulator_registration_sync_failed controller_id=%d register=%s",
+            controller_id,
+            controller is not None,
+        )
 
 
 def _thresholds_to_alarm_config(thresholds: list[AlarmThreshold]) -> AlarmConfig:
@@ -361,12 +405,16 @@ async def list_controllers(
 @router.post("", response_model=ControllerResponse, status_code=status.HTTP_201_CREATED)
 async def create_controller(
     body: ControllerCreate,
+    request: Request,
     user: Annotated[UserClaims, Depends(require_admin)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> ControllerResponse:
     controller = _body_to_controller(body)
     saved = await repo.save(controller)
+    # The simulator only learned about controllers at startup / project open,
+    # so without this the new loop is a ghost to /simulator/* until restart.
+    _sync_simulator_registration(request, saved, saved.id)
     await audit_repo.record(
         user.user_id, user.username, AuditAction.CREATE_CONTROLLER,
         f"controller:{saved.id}", f'{{"name": "{saved.name}"}}',
@@ -499,6 +547,7 @@ def _reregister_opcua(request: Request, controller: Controller) -> None:
 @router.delete("/{controller_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_controller(
     controller_id: int,
+    request: Request,
     user: Annotated[UserClaims, Depends(require_admin)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
@@ -507,6 +556,9 @@ async def delete_controller(
         await repo.delete(controller_id)
     except KeyError:
         raise ControllerNotFoundError(controller_id) from None
+    # Mirror of create: a simulator entry for a deleted loop would keep being
+    # integrated and keep answering /simulator/* for a controller that is gone.
+    _sync_simulator_registration(request, None, controller_id)
     await audit_repo.record(
         user.user_id, user.username, AuditAction.DELETE_CONTROLLER,
         f"controller:{controller_id}", None,

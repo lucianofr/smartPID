@@ -23,6 +23,7 @@ from smart_pid_core.domain.services.pid_engine import PIDEngine
 from smart_pid_core.domain.services.pid_mode_manager import ModeManager
 from smart_pid_domain.enums import (
     ControllerMode,
+    ExecutionMode,
     LimitBits,
     ProcessType,
     SignalSeverity,
@@ -565,9 +566,15 @@ class TestOutputSelectionByMode:
     def test_manual_mode_uses_set_output(self) -> None:
         bus = _make_bus()
         try:
+            # DDC, not the SUPERVISORY default: "manual mode uses set_output"
+            # is an assertion about *ownership* of CO, and only in DDC does
+            # SmartPID own it. In SUPERVISORY the DCS's controller owns CO and
+            # each telemetry frame is a measurement that wins, so set_output
+            # has nothing to hold.
             ctrl = Controller(
                 id=1, name="T-MAN", scan_rate_s=0.1,
                 pid_params=PIDParams(gain=1.0, reset=10.0),
+                execution_mode=ExecutionMode.DDC,
             )
             worker = _make_worker(
                 bus, ctrl, mode=ControllerMode.MAN,

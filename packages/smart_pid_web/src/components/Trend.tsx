@@ -314,7 +314,23 @@ export function Trend({
       // The §6.9 sunken well. The micro-labels live in the padding band, not
       // over the plot: uPlot draws real axes inside the canvas and an overlay
       // there would collide with its own tick labels.
-      className={cn('relative w-full overflow-hidden rounded-well bg-surface-sunk p-3.5', className)}
+      //
+      // `max-h-full` is load-bearing, not defensive tidying. The well's height
+      // is content-driven (`TREND_WELL_INSET_PX` + the canvas), so a caller
+      // whose canvas height exceeds the box it measured — any floor that
+      // outbids a cramped flex remainder — used to render a well TALLER than
+      // its container. That overflow escaped the card's content box, painted
+      // its `bg-surface-sunk` straight over the card's own bottom border (a
+      // descendant background paints after an ancestor's border), and was
+      // finally cut by the nearest `overflow-hidden` ancestor — which took the
+      // bottom-anchored micro-labels with it. Clamping here keeps the padding
+      // band, and therefore every label in it, inside the box the layout
+      // actually granted; the pre-existing `overflow-hidden` then absorbs the
+      // squeeze on the canvas, which is the one part that degrades gracefully.
+      className={cn(
+        'relative max-h-full w-full overflow-hidden rounded-well bg-surface-sunk p-3.5',
+        className,
+      )}
     >
       {labels?.yTop ? <span className={cn(WELL_LABEL, 'left-3.5 top-1')}>{labels.yTop}</span> : null}
       {labels?.yBottom ? (

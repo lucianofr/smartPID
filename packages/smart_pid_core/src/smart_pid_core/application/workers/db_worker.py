@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import msgpack
+import structlog
 import zmq
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -42,6 +43,11 @@ class DBWorker:
         self._ai_log_buffer: deque[dict] = deque(maxlen=1_000)
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._log = structlog.get_logger()
+        #: Rows in the most recent telemetry batch, reported when a flush drops it.
+        self._last_batch_rows = 0
+        #: Count of dropped flushes. Non-zero means the historian has holes.
+        self.flush_failures = 0
 
     def start(self) -> None:
         self._stop_event.clear()
@@ -92,13 +98,13 @@ class DBWorker:
                         self._process_ai_log(msg)
                 except zmq.ZMQError:
                     break
-                # Flush both buffers
-                await self._flush()
-                await self._flush_ai_logs()
+                # Flush both buffers. _safe_flush never raises: a DB error here
+                # used to escape this loop and silently kill the worker thread.
+                await self._safe_flush()
         finally:
             # Final flush on shutdown, then release engine B completely.
-            await self._flush()
-            await self._flush_ai_logs()
+            # _safe_flush is non-raising, so dispose() always runs.
+            await self._safe_flush()
             await engine.dispose()
 
     def _process_message(self, msg: tuple[bytes, bytes]) -> None:
@@ -158,4 +164,39 @@ class DBWorker:
             return
         batch = list(self._buffer)
         self._buffer.clear()
+        self._last_batch_rows = len(batch)
         await self._historian.write_batch(batch)
+
+    async def _safe_flush(self) -> None:
+        """Flush both buffers; a DB error must never kill the worker thread.
+
+        Degradation is **drop the batch**, deliberately:
+
+        * ``_buffer`` is already a bounded ``deque(maxlen=10_000)`` that sheds
+          the oldest frames under pressure, so shedding on a failed write is the
+          same contract the buffer already honours.
+        * Re-queueing would head-of-line block behind a persistently locked file
+          and evict *newer* frames to hold *older* ones — a worse historian than
+          the gap it avoids.
+        * There is no backpressure path to the publisher (ZMQ SUB drops on the
+          subscriber side), so the only alternatives are drop or unbounded growth.
+
+        The live HMI telemetry path (ZMQ PUB) is untouched; only the historian
+        record has a hole, and ``flush_failures`` plus the structured log make
+        that hole observable instead of silent.
+        """
+        for label, flush in (
+            ("telemetry", self._flush),
+            ("ai_log", self._flush_ai_logs),
+        ):
+            try:
+                await flush()
+            except Exception as exc:  # noqa: BLE001 — worker must survive anything
+                self.flush_failures += 1
+                self._log.error(
+                    "historian_flush_failed",
+                    buffer=label,
+                    dropped_rows=self._last_batch_rows if label == "telemetry" else 0,
+                    total_failures=self.flush_failures,
+                    reason=str(exc),
+                )

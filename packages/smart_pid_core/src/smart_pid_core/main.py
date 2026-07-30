@@ -6,6 +6,7 @@ import contextlib
 import logging
 import signal
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,7 @@ from smart_pid_core.adapters.factory import AdapterFactory
 from smart_pid_core.adapters.inbound.api.app import create_app
 from smart_pid_core.adapters.inbound.api.auth import hash_password
 from smart_pid_core.adapters.inbound.sim_persistence import persist_sim_config
+from smart_pid_core.adapters.inbound.simulator_adapter import SIMULATOR_MODE_INT_MAP
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
@@ -28,6 +30,8 @@ from smart_pid_core.config import CoreSettings
 from smart_pid_domain.enums import UserRole
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
     from smart_pid_domain.models.alarm_config import AlarmConfig
 
 logger = structlog.get_logger()
@@ -221,27 +225,97 @@ async def _sim_persist_flusher(
                 _log.exception("sim_persist_flush_failed", controller_id=cid)
 
 
-async def _retention_cleanup(session_factory, interval_hours: int = 24) -> None:  # noqa: ANN001
-    """Daily cleanup of old alarm logs and system events."""
+#: Rows removed per retention statement. Measured on a 1.5 M-row / 142 MB
+#: ``Log_Processo``: 5 000 rows holds the WAL write lock 72 ms, 20 000 holds it
+#: 279 ms, 50 000 holds it 361 ms. 5 000 keeps a single statement an order of
+#: magnitude below the 2 s simulator-flush cadence even on a multi-hundred-MB
+#: file, so pruning never starves the other WAL writer the way the previous
+#: single unbounded DELETE did (2.87 s for 1.18 M rows, ~25-30 s at 1 GB).
+_RETENTION_BATCH_ROWS = 5_000
+
+#: Pause between batches: yields the event loop and, more importantly, drops the
+#: write lock long enough for engine B's telemetry flush to claim it.
+_RETENTION_BATCH_PAUSE_S = 0.05
+
+#: table -> retention window in days.
+_RETENTION_POLICY: tuple[tuple[str, int], ...] = (
+    ("Log_Alarmes", 30),
+    ("Log_System_Events", 30),
+    ("Log_Sintonia_IA", 7),
+    ("Log_Processo", 7),
+)
+
+
+async def _prune_table(
+    session_factory: async_sessionmaker[AsyncSession],
+    table: str,
+    cutoff_iso: str,
+    batch_rows: int,
+) -> int:
+    """Delete rows older than *cutoff_iso* from *table* in bounded batches.
+
+    Each statement is capped by ``LIMIT`` and committed on its own, so the write
+    lock is taken and released once per batch instead of being held for the whole
+    backlog. Returns the number of rows removed.
+    """
     from sqlalchemy import text
 
-    _log = structlog.get_logger()
-    _statements = (
-        "DELETE FROM Log_Alarmes WHERE timestamp <= datetime('now', '-30 days')",
-        "DELETE FROM Log_System_Events WHERE timestamp <= datetime('now', '-30 days')",
-        "DELETE FROM Log_Sintonia_IA WHERE timestamp <= datetime('now', '-7 days')",
-        "DELETE FROM Log_Processo WHERE timestamp <= datetime('now', '-7 days')",
-    )
+    total = 0
     while True:
-        await asyncio.sleep(interval_hours * 3600)
+        async with session_factory() as session:
+            result = await session.execute(
+                text(
+                    f"DELETE FROM {table} WHERE rowid IN ("  # noqa: S608
+                    f" SELECT rowid FROM {table} WHERE timestamp <= :cutoff"
+                    f" LIMIT :batch)"
+                ),
+                {"cutoff": cutoff_iso, "batch": batch_rows},
+            )
+            await session.commit()
+        removed = max(result.rowcount, 0)
+        total += removed
+        if removed < batch_rows:
+            return total
+        await asyncio.sleep(_RETENTION_BATCH_PAUSE_S)
+
+
+async def _retention_cleanup(
+    session_factory: async_sessionmaker[AsyncSession],
+    interval_hours: int = 24,
+    batch_rows: int = _RETENTION_BATCH_ROWS,
+) -> None:
+    """Prune aged log rows: first pass at startup, then every *interval_hours*.
+
+    The pass runs FIRST and sleeps afterwards. Sleeping first meant a daemon
+    restarted more often than daily never pruned anything, which is how the
+    active project file reached 1.08 GB.
+
+    This is started as a detached background task and deliberately does NOT gate
+    ``daemon_ready``: on a large backlog the first pass is tens of seconds of
+    wall clock, and an operator staring at an unresponsive UI is a worse failure
+    than an oversized file. Chunking keeps each statement's lock hold in the tens
+    of milliseconds, so the pass stays invisible to the PID and telemetry paths
+    while it runs.
+
+    Cutoffs are ISO-8601 strings built to match how every one of these tables
+    stores its ``timestamp`` (``datetime.isoformat()``). The previous predicate
+    used ``datetime('now', ...)``, whose space separator sorts below the stored
+    'T', so rows just past the cutoff compared greater and were never pruned.
+    """
+    _log = structlog.get_logger()
+    while True:
         try:
-            async with session_factory() as session:
-                for sql in _statements:
-                    await session.execute(text(sql))
-                await session.commit()
-            _log.info("retention_cleanup_complete")
+            now = datetime.now(tz=UTC)
+            removed: dict[str, int] = {}
+            for table, days in _RETENTION_POLICY:
+                cutoff = (now - timedelta(days=days)).isoformat()
+                count = await _prune_table(session_factory, table, cutoff, batch_rows)
+                if count:
+                    removed[table] = count
+            _log.info("retention_cleanup_complete", removed=removed or None)
         except Exception:
             _log.exception("retention_cleanup_error")
+        await asyncio.sleep(interval_hours * 3600)
 
 
 async def run_daemon(settings: CoreSettings) -> None:
@@ -328,10 +402,18 @@ async def run_daemon(settings: CoreSettings) -> None:
             # Simulator mode: use the simulator's actual node IDs (auto-assigned)
             # but keep mode_int_map from database (user-configured mapping)
             sim_node_ids = simulator_adapter._opcua_server.controller_node_ids
-            db_controllers = {c.id: c for c in await repo.list_all()}
+            # The mode map comes from the simulator, not the database, for the
+            # same reason the node ids do: in simulator mode the twin owns the
+            # address space, so it also owns how its Mode node is encoded. The
+            # DB's tag_bindings describe a real DCS and are empty for every
+            # controller the simulator auto-registered ({} -> read_actual_mode
+            # returns None -> every STATUS frame reported mode "UNKNOWN").
+            # Not persisted back to the project: that would duplicate a
+            # constant the simulator owns, drift if its encoding changed, and
+            # mutate the user's .spid file as a side effect of enabling the
+            # simulator.
             for ctrl_id, nodes in sim_node_ids.items():
-                db_ctrl = db_controllers.get(ctrl_id)
-                mode_map = db_ctrl.tag_bindings.mode_int_map if db_ctrl else {}
+                mode_map = dict(SIMULATOR_MODE_INT_MAP)
                 mode_node = nodes.get("mode", "")
                 opcua_adapter.register_controller(
                     controller_id=ctrl_id,
