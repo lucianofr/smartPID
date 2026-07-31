@@ -106,3 +106,25 @@ class TestSimulatorPIDClosesLoop:
         # Both should have moved, confirming PID is computing
         assert co_before > 0.0
         assert co_after > 0.0
+
+
+class TestSimulatorPIDScanRate:
+    def test_pid_acts_once_per_second_not_every_tick(self, adapter: SimulatorAdapter) -> None:
+        """CO must hold until a full 1 s scan elapses, then update."""
+        adapter.register_controller(1)
+        adapter.set_preset(1, ProcessPresetName.FLOW)
+        adapter._controllers[1].sp = 50.0
+        adapter._controllers[1].last_co = 0.0
+        adapter.enable_pid(1, enabled=True)
+        adapter.set_pid_params(1, kp=0.8, ti=4.0, td=0.0)
+        adapter.set_pid_mode(1, mode=1)  # AUTO
+
+        # 9 ticks x 100 ms = 0.9 s: below the 1 s scan, CO stays put.
+        for _ in range(9):
+            adapter._tick(0.1)
+        assert adapter._controllers[1].last_co == 0.0
+
+        # Crossing 1 s fires exactly one scan and CO moves off zero.
+        for _ in range(2):
+            adapter._tick(0.1)
+        assert adapter._controllers[1].last_co > 0.0

@@ -66,7 +66,12 @@ export function SimulatorPage() {
             <SimulatorControlPanel controllerId={controllerId} />
           </div>
           <div className="flex min-w-0 flex-col gap-2 lg:min-h-0 lg:overflow-y-auto">
-            <TwinTrend key={controllerId} controllerId={controllerId} />
+            <TwinTrend
+              key={controllerId}
+              controllerId={controllerId}
+              twinSp={controller?.sp}
+              twinCo={controller?.co}
+            />
             <div className="shrink-0">
               <ClosedLoopDiagram controller={controller} />
             </div>

@@ -14,8 +14,14 @@ export interface SimulatorStatusResult {
   isPending: boolean;
 }
 
-/** Same cadence as the OPC-UA poll — the twin moves, the snapshot must follow. */
-const POLL_MS = 5_000;
+/**
+ * 1 s poll. The Sim trend plots the twin's SP/CO from this snapshot (the WS
+ * STATUS frame carries the platform loop's SP/CO, not the twin's), so the poll
+ * rate is the trend's SP/CO sample rate. The twin's internal PID acts on a 1 s
+ * scan, so 1 s captures every CO step — a slower poll aliases the trace into
+ * coarse blocks; a faster one only re-fetches an unchanged CO.
+ */
+const POLL_MS = 1_000;
 
 /**
  * The twin snapshot behind every configuration control.

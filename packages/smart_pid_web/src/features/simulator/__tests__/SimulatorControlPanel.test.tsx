@@ -173,7 +173,7 @@ describe('SimulatorControlPanel — server-owned state', () => {
 
   it('closes manual injection while Auto-disturbance owns the disturbance', async () => {
     renderPanel({
-      status: snapshot({ auto_disturbance: { enabled: true, max_amplitude_pct: 20 } }),
+      status: snapshot({ auto_disturbance: { enabled: true, max_amplitude_pct: 20, period_s: 30 } }),
     });
     expect(await screen.findByRole('button', { name: 'Inject disturbance' })).toBeDisabled();
     expect(screen.getByRole('combobox', { name: 'Disturbance type' })).toBeDisabled();
@@ -214,7 +214,7 @@ describe('SimulatorControlPanel — server-owned state', () => {
 
   it('sends the automation band the server already holds when re-enabling', async () => {
     renderPanel({
-      status: snapshot({ auto_sp: { enabled: false, sp_min_pct: 10, sp_max_pct: 90 } }),
+      status: snapshot({ auto_sp: { enabled: false, sp_min_pct: 10, sp_max_pct: 90, period_s: 30 } }),
     });
     fireEvent.click(await screen.findByRole('switch', { name: 'Auto-SP' }));
     await waitFor(() =>
@@ -222,6 +222,7 @@ describe('SimulatorControlPanel — server-owned state', () => {
         enabled: true,
         sp_min_pct: 10,
         sp_max_pct: 90,
+        period_s: 30,
       }),
     );
   });

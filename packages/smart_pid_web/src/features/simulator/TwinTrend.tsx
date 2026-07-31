@@ -29,6 +29,15 @@ import { toTwinPoint, TWIN_WINDOW_SECONDS } from './twinTrend';
 
 export interface TwinTrendProps {
   controllerId: number;
+  /**
+   * Twin's authoritative SP/CO from `/simulator/status`. The WS STATUS frame
+   * carries the platform control-loop's SP/CO, which freeze when the twin's
+   * internal PID drives the loop itself — so PV rides the live WS frame while
+   * SP/CO come from the twin snapshot. Undefined for a restricted operator
+   * (no snapshot); the WS frame's own SP/CO are used then.
+   */
+  twinSp?: number | null;
+  twinCo?: number | null;
 }
 
 /**
@@ -62,7 +71,7 @@ const NUMBER_INPUT = 'numeric w-12 px-2 text-sm';
  * apart. Time-window and Y-scale controls mirror the dashboard's TrendPanel so
  * an engineer can zoom the same way on both screens.
  */
-export function TwinTrend({ controllerId }: TwinTrendProps) {
+export function TwinTrend({ controllerId, twinSp, twinCo }: TwinTrendProps) {
   const glow = useGlowTrace();
   const plotRef = useRef<HTMLDivElement>(null);
   const [plotBox, setPlotBox] = useState({ width: 800, height: 210 });
@@ -110,9 +119,13 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
     controllerId,
     windowSeconds(count, unit),
     plotBox.width,
+    { sp: twinSp, co: twinCo },
   );
   const frame = useRealtime<StatusData>(controllerId, 'status').last?.data;
   const point = frame === undefined ? null : toTwinPoint(frame);
+  // Twin snapshot is authoritative for SP/CO (see props); PV rides the WS frame.
+  const spValue = typeof twinSp === 'number' ? twinSp : point?.sp;
+  const coValue = typeof twinCo === 'number' ? twinCo : point?.co;
 
   return (
     <section
@@ -129,11 +142,11 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
             aria-hidden="true"
             className="mb-0.5 inline-block h-0 w-2.5 shrink-0 border-t-2 border-dashed border-trace-sp"
           />
-          <Readout label="SP" value={point?.sp} unit="%" size="sm" />
+          <Readout label="SP" value={spValue} unit="%" size="sm" />
         </div>
         <div className="flex items-center gap-1.5">
           <span aria-hidden="true" className="mb-0.5 inline-block h-0.5 w-2.5 shrink-0 bg-trace-co" />
-          <Readout label="CO" value={point?.co} unit="%" size="sm" />
+          <Readout label="CO" value={coValue} unit="%" size="sm" />
         </div>
         <div className="flex items-center gap-1.5" title="Última amostra">
           <Clock aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-text-soft" />

@@ -89,63 +89,57 @@ class TestSetAutoDisturbance:
 
 class TestAutoExcitationTick:
     def test_auto_sp_fires_after_period(self, adapter: SimulatorAdapter) -> None:
-        adapter.set_auto_sp(1, AutoSPRequest(enabled=True, sp_min_pct=40.0, sp_max_pct=60.0))
-        # get tau1 to know the period
+        adapter.set_auto_sp(
+            1, AutoSPRequest(enabled=True, sp_min_pct=40.0, sp_max_pct=60.0, period_s=1.0)
+        )
         with adapter._lock:
-            tau1 = adapter._controllers[1].tau1
-        period = max(10.0 * tau1, 1.0)
-        # run enough ticks to exceed the period
+            initial_sp = adapter._controllers[1].sp
         dt = 0.1
-        ticks = int(period / dt) + 2
-        for _ in range(ticks):
+        for _ in range(int(1.0 / dt) + 2):  # exceed the 1.0s period
             adapter._tick(dt)
-        # what we can assert: elapsed was reset (i.e., back below period)
         with adapter._lock:
-            assert adapter._controllers[1].auto_sp_elapsed_s < period
+            ctrl = adapter._controllers[1]
+            # elapsed reset after firing, and the new SP landed inside the band
+            assert ctrl.auto_sp_elapsed_s < ctrl.auto_sp_period_s
+            assert ctrl.sp != initial_sp
+            span = ctrl.pv_max - ctrl.pv_min
+            assert ctrl.pv_min + 40.0 / 100.0 * span <= ctrl.sp <= ctrl.pv_min + 60.0 / 100.0 * span
 
     def test_auto_dist_fires_after_period(self, adapter: SimulatorAdapter) -> None:
         adapter.set_auto_disturbance(
-            1, AutoDisturbanceRequest(enabled=True, max_amplitude_pct=20.0)
+            1, AutoDisturbanceRequest(enabled=True, max_amplitude_pct=20.0, period_s=1.0)
         )
-        with adapter._lock:
-            tau1 = adapter._controllers[1].tau1
-        period = max(10.0 * tau1, 1.0)
         dt = 0.1
-        ticks = int(period / dt) + 2
-        for _ in range(ticks):
+        for _ in range(int(1.0 / dt) + 2):
             adapter._tick(dt)
         with adapter._lock:
-            assert adapter._controllers[1].auto_dist_elapsed_s < period
-            assert adapter._controllers[1].step_active is True
-            span = adapter._controllers[1].pv_max - adapter._controllers[1].pv_min
-            max_amp = 20.0 / 100.0 * span  # max_amplitude_pct=20.0, span=100.0 (defaults)
-            assert abs(adapter._controllers[1].step_amplitude) <= max_amp
+            ctrl = adapter._controllers[1]
+            assert ctrl.auto_dist_elapsed_s < ctrl.auto_dist_period_s
+            assert ctrl.step_active is True
+            max_amp = 20.0 / 100.0 * (ctrl.pv_max - ctrl.pv_min)
+            assert abs(ctrl.step_amplitude) <= max_amp
+
+    def test_period_controls_cadence(self, adapter: SimulatorAdapter) -> None:
+        """A longer period must NOT fire before it elapses."""
+        adapter.set_auto_disturbance(
+            1, AutoDisturbanceRequest(enabled=True, max_amplitude_pct=20.0, period_s=5.0)
+        )
+        dt = 0.1
+        for _ in range(20):  # 2.0s — below the 5.0s period
+            adapter._tick(dt)
+        with adapter._lock:
+            assert adapter._controllers[1].step_active is False
 
     def test_zero_span_skips_excitation(self, adapter: SimulatorAdapter) -> None:
         """If pv_min == pv_max, no excitation should happen."""
         with adapter._lock:
             adapter._controllers[1].pv_min = 50.0
             adapter._controllers[1].pv_max = 50.0
-        adapter.set_auto_sp(1, AutoSPRequest(enabled=True))
+        adapter.set_auto_sp(1, AutoSPRequest(enabled=True, period_s=1.0))
         with adapter._lock:
             initial_sp = adapter._controllers[1].sp
-            tau1 = adapter._controllers[1].tau1
-        period = max(10.0 * tau1, 1.0)
         dt = 0.1
-        ticks = int(period / dt) + 2
-        for _ in range(ticks):
+        for _ in range(int(1.0 / dt) + 2):
             adapter._tick(dt)
         with adapter._lock:
             assert adapter._controllers[1].sp == initial_sp
-
-    def test_minimum_period_guard(self, adapter: SimulatorAdapter) -> None:
-        """tau1=0 should not produce zero period (minimum 1.0s)."""
-        with adapter._lock:
-            adapter._controllers[1].tau1 = 0.0
-        adapter.set_auto_sp(1, AutoSPRequest(enabled=True))
-        # Should not raise and period should be clamped to 1.0
-        dt = 0.1
-        for _ in range(15):  # 1.5s — more than 1.0s period
-            adapter._tick(dt)
-        with adapter._lock:
-            assert adapter._controllers[1].auto_sp_elapsed_s < 1.0 + dt

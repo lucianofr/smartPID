@@ -34,6 +34,15 @@ export function useTrendWindow(
   controllerId: number,
   maxSeconds: number,
   pxWidth: number,
+  /**
+   * Authoritative SP/CO for a source whose STATUS frame doesn't carry them.
+   * The digital twin self-drives via its internal PID, so the platform's
+   * STATUS reports the (frozen) control-loop SP/CO, not the twin's — the Sim
+   * page feeds the twin snapshot here so PV stays live off the WS frame while
+   * SP/CO track the twin. A finite value overrides the frame; null/undefined
+   * keeps the frame's own value (real loops pass nothing).
+   */
+  overrides?: { sp?: number | null; co?: number | null },
 ): TrendWindow {
   const { subscribe: subscribeStatus } = useRealtime<StatusData>(controllerId, 'status');
   const { subscribe: subscribeAi } = useRealtime<AiData>(controllerId, 'ai');
@@ -59,15 +68,17 @@ export function useTrendWindow(
     setRevision((r) => r + 1);
   }, [controllerId]);
 
+  const overrideRef = useRef(overrides);
+  overrideRef.current = overrides;
+
   useEffect(
     () =>
       subscribeStatus((env) => {
         const t = statusTimestampToEpoch(env.data.timestamp) ?? env.ts;
-        const pushed = bufferRef.current?.push(t, [
-          env.data.pv.value,
-          env.data.sp.value,
-          env.data.co.value,
-        ]);
+        const ov = overrideRef.current;
+        const sp = typeof ov?.sp === 'number' && Number.isFinite(ov.sp) ? ov.sp : env.data.sp.value;
+        const co = typeof ov?.co === 'number' && Number.isFinite(ov.co) ? ov.co : env.data.co.value;
+        const pushed = bufferRef.current?.push(t, [env.data.pv.value, sp, co]);
         if (pushed === true) setRevision((r) => r + 1);
       }),
     [subscribeStatus],

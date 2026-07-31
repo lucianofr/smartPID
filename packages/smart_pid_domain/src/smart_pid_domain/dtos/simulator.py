@@ -31,11 +31,13 @@ class AutoSPRequest(BaseModel):
     enabled: bool
     sp_min_pct: float = Field(ge=0.0, le=100.0, default=30.0)
     sp_max_pct: float = Field(ge=0.0, le=100.0, default=70.0)
+    period_s: float = Field(gt=0.0, default=30.0)
 
 
 class AutoDisturbanceRequest(BaseModel):
     enabled: bool
     max_amplitude_pct: float = Field(ge=0.0, le=100.0, default=10.0)
+    period_s: float = Field(gt=0.0, default=30.0)
 
 
 class ControllerSimStatus(BaseModel):

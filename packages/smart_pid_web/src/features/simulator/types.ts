@@ -37,5 +37,5 @@ export interface Dynamics {
 }
 
 /** Backend defaults (AutoSPRequest / AutoDisturbanceRequest schema defaults). */
-export const AUTO_SP_DEFAULTS = { sp_min_pct: 30, sp_max_pct: 70 } as const;
-export const AUTO_DISTURBANCE_DEFAULTS = { max_amplitude_pct: 10 } as const;
+export const AUTO_SP_DEFAULTS = { sp_min_pct: 30, sp_max_pct: 70, period_s: 30 } as const;
+export const AUTO_DISTURBANCE_DEFAULTS = { max_amplitude_pct: 10, period_s: 30 } as const;

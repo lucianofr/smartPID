@@ -75,6 +75,33 @@ describe('useTrendWindow', () => {
     expect(result.current.data.t).toEqual([1020]);
   });
 
+  it('overrides frame SP/CO with the supplied values while PV rides the frame', () => {
+    const realtime = createFakeRealtime();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <RealtimeContext.Provider value={realtime.value}>{children}</RealtimeContext.Provider>
+    );
+    const { result } = renderHook(
+      () => useTrendWindow(5, 60, 800, { sp: 77, co: 33 }),
+      { wrapper },
+    );
+    // Frame carries sp=55, co=42 (fixture defaults) — the override must win.
+    act(() => {
+      realtime.emit(statusEnvelope(5, 1, { pv: ff(10), timestamp: 1000 }));
+    });
+    expect(result.current.data.pv).toEqual([10]);
+    expect(result.current.data.sp).toEqual([77]);
+    expect(result.current.data.co).toEqual([33]);
+  });
+
+  it('keeps the frame SP/CO when no override is supplied', () => {
+    const { result, realtime } = setup();
+    act(() => {
+      realtime.emit(statusEnvelope(5, 1, { pv: ff(10), timestamp: 1000 }));
+    });
+    expect(result.current.data.sp).toEqual([55]);
+    expect(result.current.data.co).toEqual([42]);
+  });
+
   it('re-seeds retained samples when the window is resized', () => {
     const { result, realtime, rerender } = setup(5, 3600);
     act(() => {

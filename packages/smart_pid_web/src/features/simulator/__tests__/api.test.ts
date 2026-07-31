@@ -134,14 +134,14 @@ describe('simulatorApi wire contract', () => {
   });
 
   it('PUTs both automation toggles under the controller', async () => {
-    await simulatorApi.setAutoSp(1, { enabled: true, sp_min_pct: 30, sp_max_pct: 70 });
+    await simulatorApi.setAutoSp(1, { enabled: true, sp_min_pct: 30, sp_max_pct: 70, period_s: 30 });
     expect(call()).toMatchObject({
       url: '/api/simulator/1/auto-sp',
       method: 'PUT',
       body: { enabled: true, sp_min_pct: 30, sp_max_pct: 70 },
     });
     fetchMock.mockClear();
-    await simulatorApi.setAutoDisturbance(1, { enabled: false, max_amplitude_pct: 10 });
+    await simulatorApi.setAutoDisturbance(1, { enabled: false, max_amplitude_pct: 10, period_s: 30 });
     expect(call()).toMatchObject({
       url: '/api/simulator/1/auto-disturbance',
       method: 'PUT',
