@@ -1,7 +1,12 @@
 """Controller CRUD DTOs — full 30+ field coverage."""
 from __future__ import annotations
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
+
+#: Controller tag names are shown in the HMI, embedded in OPC-UA node paths and
+#: stored in every log row, so they are bounded at the API boundary rather than
+#: left to the database to truncate or the UI to overflow.
+MAX_CONTROLLER_NAME_LEN = 128
 
 # ── Nested sub-model DTOs ────────────────────────────────────────────────────
 
@@ -96,7 +101,7 @@ class IOOptsDTO(BaseModel):
 class ControllerCreate(BaseModel):
     """Payload for creating a new controller (all fields have defaults except name)."""
 
-    name: str
+    name: str = Field(min_length=1, max_length=MAX_CONTROLLER_NAME_LEN)
     description: str = ""
     execution_mode: str = "SUPERVISORY"
     scan_rate_s: float = 1.0
@@ -156,7 +161,7 @@ class ControllerCreate(BaseModel):
 class ControllerUpdate(BaseModel):
     """Patch payload — all fields optional."""
 
-    name: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=MAX_CONTROLLER_NAME_LEN)
     description: str | None = None
     execution_mode: str | None = None
     scan_rate_s: float | None = None

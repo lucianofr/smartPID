@@ -310,19 +310,10 @@ Coberto pelo passo 5 do E2E-IMP-01 (404 → 200) e por
 - **1 falha ambiental** permanece (`test_opcua_start_stop`, porta 4849 tomada
   pelo daemon do usuário) — idêntica no commit base, não tocada.
 
-### Achados auditados e **não** implementados (recomendações)
+### Achados auditados — **todos implementados** (branch `fix/audit-findings`)
 
-Levantados pelos audits paralelos e verificados, mas deixados fora para manter
-o conjunto de mudanças coeso:
-
-| Achado | Local | Severidade |
-|---|---|---|
-| SQL montado por f-string (seguro hoje, anti-padrão) | `adapters/outbound/user_repo.py:106` | Média |
-| `ControllerCreate.name` / `ProjectCreate.name` sem `min_length`/`max_length` | `dtos/controllers.py`, `dtos/project.py` | Média |
-| Comandos numéricos sem limites (`SetpointCommand.value`, `controller_id` sem `gt=0`) | `dtos/commands.py` | Média |
-| `arw_limits` pode ser configurado mais largo que `out_limits` → windup | `domain/services/pid_engine.py:108-135` | Média (segurança de controle) |
-| Multiplicador de reset-recovery fixo em `16.0`, não configurável | `domain/services/pid_engine.py:131` | Baixa |
-| `RealtimeProvider` (complexidade cognitiva 39) e `cn()` (fan-in 75) sem testes dedicados | `smart_pid_web/src/realtime/`, `src/lib/utils.ts` | Baixa |
+Os 6 achados que esta sessão havia deixado como recomendação foram corrigidos
+em seguida, numa branch dedicada. Ver a seção "Parte 2" abaixo.
 
 Pontos verificados e **descartados** como falso-positivo: os 2 561 "unused
 imports" e 178 "dead code" do tokensave (métodos alvo de `Thread(target=...)`
@@ -330,3 +321,157 @@ e helpers de spec Playwright); os pares "duplicados" `ProtectedLayout`/`App` e
 `ModeMapField`/`DeleteConfirm` (mesma forma sintática, responsabilidades
 distintas). A ordem de shutdown em `main.py` foi checada e está correta
 (`loop_manager.stop_all()` antes de `bus.stop()`).
+
+---
+
+# Parte 2 — correção dos 6 achados auditados
+
+Branch `fix/audit-findings`, a partir de `6d9b552`.
+Verificação: **1624 backend passed** (+86 testes novos) e **895 frontend
+passed / 94 arquivos**; `ruff` limpo; `tsc -b` limpo. A única falha continua
+sendo a ambiental de porta 4849. O erro de `eslint` em `AiPanel.tsx:322`
+(`label-has-associated-control`) é **pré-existente na main**, em arquivo não
+tocado — confirmado rodando o mesmo lint na main.
+
+| # | Achado | Correção | Arquivo |
+|---|---|---|---|
+| 1 | SQL por f-string | SET montado a partir de tupla literal de colunas | `user_repo.py` |
+| 2 | Nomes sem limite | `min_length`/`max_length` em controller; validador único para projeto | `dtos/controllers.py`, `dtos/project.py` |
+| 3 | Comandos sem limites | `controller_id > 0`; rejeita NaN/inf; `ti`/`td` ≥ 0 | `dtos/commands.py` |
+| 4 | ARW mais largo que out_limits → windup | banda ARW é limitada a `[lo, hi]` no `compute()` | `pid_engine.py` |
+| 5 | Multiplicador 16.0 fixo | `PIDEngine(reset_recovery_gain=…)`, default documentado | `pid_engine.py` |
+| 6 | `cn()` e resync-buffer sem teste | 2 arquivos de teste novos | `utils.test.ts`, `resyncBuffer.test.tsx` |
+
+## A-1 — ARW não pode mais desligar o anti-windup (segurança de controle)
+
+**Bug.** O portão de anti-windup testa `cv >= arw_hi`, mas o CV é grampeado
+pelos limites de **saída**. Com `arw_hi` configurado acima de `out_hi_lim`
+(ex.: ARW 150 com saída 0–100), a condição nunca é verdadeira: o integral
+acumula indefinidamente enquanto a saída está saturada — windup clássico.
+
+**Correção.** Duas linhas em `compute()`: `arw_lo = max(arw_lo, lo)` e
+`arw_hi = min(arw_hi, hi)`. Vale para qualquer projeto já gravado, sem
+migração e sem rejeitar configurações existentes. O caso útil — banda ARW
+**mais estreita** que a saída, que para de integrar antes da saturação —
+continua exatamente como configurado.
+
+### E2E-FIX-01 — malha com ARW mal configurado não enrola o integral
+
+1. Criar malha com `out_hi_lim=100`, `arw_hi_lim=150`, `AUTO`, Ti curto.
+2. Forçar saturação: SP bem acima do alcance da PV (ex.: SP 95 num processo
+   que satura em 80), deixar rodar 2×TSS até CO travar em 100.
+3. Baixar o SP para dentro do alcance (ex.: 40).
+4. Cronometrar quanto tempo o CO leva para sair de 100.
+
+**Condição de parada:** o CO começa a cair em ≤ 1×TSS após o passo 3. Antes da
+correção o integral acumulado durante o passo 2 mantém o CO grampeado em 100
+por muito mais tempo (proporcional ao tempo saturado), com overshoot na volta.
+
+**Cobertura automatizada:** `tests/core/unit/test_pid_engine_arw_bounds.py`
+(9 testes). Verificado que **falham sem a correção**: removendo só as duas
+linhas do clamp, 3 testes quebram mostrando o integral acumulando ±1.0 por
+scan enquanto saturado.
+
+## A-2 — ganho de recuperação configurável por malha
+
+`16.0` virou `DEFAULT_RESET_RECOVERY_GAIN`, documentado, e
+`PIDEngine(reset_recovery_gain=…)`. Como o `LoopManager` cria um `PIDEngine`
+por controlador, dá para ajustar por malha sem migração de schema.
+
+### E2E-FIX-02 — recuperação da saturação
+
+1. Saturar a malha (passo 2 do E2E-FIX-01) e registrar o tempo de saída da
+   saturação com o default.
+2. Repetir com um engine construído com `reset_recovery_gain=2.0`.
+
+**Condição de parada:** a saída da saturação é visivelmente mais lenta com
+ganho 2 do que com 16, e nenhuma das duas apresenta oscilação sustentada.
+**Cobertura:** 4 testes no mesmo arquivo (default aplicado, constante = 16,
+override, e ganho 1 desliga a aceleração).
+
+## A-3 — nome de projeto: uma regra só
+
+O charset era validado apenas em `ProjectService._safe_project_path`; o DTO
+aceitava qualquer string. Ao adicionar a validação no DTO, **o próprio teste
+pegou uma divergência real**: `.` e `..` passam no charset (o ponto é um
+caractere legal) e só eram barrados por uma checagem separada no serviço.
+
+A regra completa virou `validate_project_name()` no pacote de domínio, chamada
+**pelos dois lados**. O serviço deixou de ter cópia própria.
+
+### E2E-FIX-03 — nome inseguro rejeitado na borda
+
+1. `POST /project/new` com `{"name": "../../etc/evil"}` → **422** (antes 400).
+2. Idem com `"."`, `".."`, `"a/b"`, `"   "`, 129 caracteres → **422**.
+3. `POST /project/new` com `"planta 1_v2.0-final"` → **200**.
+4. Confirmar que nenhum arquivo foi criado fora de `SPID_PROJECTS_DIR`.
+
+**Condição de parada:** todos os nomes hostis rejeitados e o legítimo aceito.
+Os testes existentes já aceitavam `(400, 422)`, então a mudança de código de
+status não quebra contrato. **Cobertura:** `tests/domain/test_dtos_validation.py`
+inclui um teste de equivalência que roda o `_safe_project_path` real e exige
+que DTO e serviço rejeitem exatamente o mesmo conjunto.
+
+## A-4 — comandos: id positivo e valor finito
+
+`controller_id` agora exige `> 0`. Para `value` **não** foi imposta faixa
+numérica: setpoint é grandeza de engenharia e depende da malha (1500 °C e
+−0.9 bar são legítimos) — a faixa continua sendo checada no `LoopManager`
+contra os limites daquela malha. O que foi barrado é o que nunca é válido em
+unidade nenhuma: **NaN e ±inf**, que envenenam o integral da forma velocidade
+e passam ileso por qualquer comparação de limite.
+
+### E2E-FIX-04 — comando com valor não-finito é recusado
+
+1. `POST /commands/setpoint` `{"controller_id": 1, "value": NaN}` → **422**.
+2. Idem `Infinity` → **422**.
+3. `{"controller_id": 0, "value": 50}` → **422**.
+4. `{"controller_id": 1, "value": 1500}` numa malha com `sp_hi_lim=2000` → **200**.
+5. Após o passo 1, a PV/CO da malha continuam normais (nada foi escrito).
+
+**Condição de parada:** 422 nos três primeiros, 200 no quarto, malha intacta.
+**Cobertura:** `tests/domain/test_dtos_validation.py` (67 testes).
+
+## A-5 — SET clause a partir de whitelist literal
+
+`UserRepository.update` continua montando o SET dinamicamente (são 3 campos
+opcionais), mas os nomes de coluna saem de uma tupla literal e nada mais, de
+modo que nenhum texto vindo do chamador pode alcançar o SQL nem se a assinatura
+crescer. Os valores seguem parametrizados.
+
+### E2E-FIX-05 — alterar perfil/senha/estado de um usuário
+
+1. Login como admin, `PUT /users/{id}` mudando só o perfil → 200, senha intacta.
+2. `PUT` mudando só a senha → login antigo falha, novo funciona.
+3. `PUT` desativando → login do usuário passa a falhar (401/403).
+4. Reativar → login volta a funcionar.
+
+**Condição de parada:** cada campo muda isoladamente sem afetar os outros nem
+outras linhas. **Cobertura:** `tests/core/integration/test_user_repo_update.py`
+(10 testes), incluindo um que captura a instrução emitida e exige exatamente
+`UPDATE Usuarios SET perfil = ?, senha_hash = ?, ativo = ? WHERE id = ?`, e
+outro que grava `'; DROP TABLE Usuarios; --` como senha e confirma que a tabela
+sobrevive.
+
+## A-6 — testes de frontend
+
+- `src/lib/utils.test.ts` (9 testes) — `cn()`, com 75 call sites e nenhum teste:
+  condicionais descartados e conflito de utilitário Tailwind resolvido pelo
+  último. Uma regressão aqui não quebra nada ruidosamente, só desestiliza a UI.
+- `src/realtime/resyncBuffer.test.tsx` (3 testes) — o buffer de resync do
+  `RealtimeProvider`. Antes de escrever, foi verificado o que já era coberto:
+  watchdog (`liveness.test.tsx`), backoff, `auth-failed`, `4401` e `resyncing`
+  já tinham teste; **`RESYNC_BUFFER_MAX` não tinha nenhum** em todo o
+  repositório. Cobre as três políticas: status retido durante o resync,
+  coalescência (rajada de 50 vira 1) e o teto lossless de 256 alarmes com
+  descarte do 257º.
+
+### E2E-FIX-06 — reconexão com tráfego durante o resync
+
+1. Abrir o dashboard com uma malha em AUTO e telemetria fluindo.
+2. Derrubar o backend por ~10 s e subir de novo (força gap de sequência).
+3. Durante a rejanela, disparar vários alarmes e deixar a PV variando.
+
+**Condição de parada:** ao voltar, a trend **não** replica uma rajada de
+valores antigos (só o mais recente), a lista de alarmes contém todos os
+disparados durante a queda, e o banner sai de "resincronizando" para "ao vivo".

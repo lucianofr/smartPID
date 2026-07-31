@@ -3,13 +3,16 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiosqlite
 
-from smart_pid_domain.dtos.project import ProjectListItem, ProjectResponse
+from smart_pid_domain.dtos.project import (
+    ProjectListItem,
+    ProjectResponse,
+    validate_project_name,
+)
 
 if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
@@ -18,12 +21,11 @@ if TYPE_CHECKING:
     from smart_pid_core.application.workers.db_worker import DBWorker
     from smart_pid_core.application.workers.io_worker import IOWorker
 
-# Project names are restricted to a safe, portable character set. This blocks
-# path traversal (``..``, ``/``, ``\``), absolute paths, NUL bytes and other
-# non-portable characters before the name is ever used to build a filesystem
-# path. Length is capped to keep names well within filesystem limits.
-_MAX_PROJECT_NAME_LEN = 128
-_PROJECT_NAME_RE = re.compile(rf"^[A-Za-z0-9._\- ]{{1,{_MAX_PROJECT_NAME_LEN}}}$")
+# ``validate_project_name`` (domain) is the single definition of what a legal
+# project name is; it is applied at the API boundary by the request DTOs and
+# again here, which is the authoritative choke point for every filesystem
+# access derived from a caller-supplied name. Keeping one function means the
+# boundary can never drift laxer than the path builder behind it.
 
 # Every SQLite database starts with this; a cheap first gate on an upload that
 # claims to be a .spid archive.
@@ -72,10 +74,7 @@ class ProjectService:
         directory. This is the single choke point for all filesystem access
         derived from caller-supplied project names.
         """
-        if not isinstance(name, str) or not _PROJECT_NAME_RE.fullmatch(name):
-            raise ValueError(f"Invalid project name: {name!r}")
-        if name in {".", ".."} or name.strip() == "":
-            raise ValueError(f"Invalid project name: {name!r}")
+        validate_project_name(name)
         base = self._projects_dir.resolve()
         dest = (base / f"{name}.spid").resolve()
         if dest.parent != base:

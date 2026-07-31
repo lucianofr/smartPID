@@ -132,22 +132,21 @@ class UserRepository:
         active: bool | None = None,
     ) -> User | None:
         """Update user fields. Returns updated user or None if not found."""
-        updates: list[str] = []
-        params: list[str | int] = []
-        if role is not None:
-            updates.append("perfil = ?")
-            params.append(role)
-        if password_hash is not None:
-            updates.append("senha_hash = ?")
-            params.append(password_hash)
-        if active is not None:
-            updates.append("ativo = ?")
-            params.append(1 if active else 0)
-        if not updates:
+        # Column names come from this literal tuple and nowhere else, so the
+        # assembled SET clause cannot contain caller-derived text even if the
+        # signature grows. Values stay parameterized.
+        changes: tuple[tuple[str, str | int | None], ...] = (
+            ("perfil", role),
+            ("senha_hash", password_hash),
+            ("ativo", None if active is None else int(active)),
+        )
+        set_clauses = [f"{column} = ?" for column, value in changes if value is not None]
+        params: list[str | int] = [value for _, value in changes if value is not None]
+        if not set_clauses:
             return await self.get_by_id(user_id)
         params.append(user_id)
         await self.db.execute(
-            f"UPDATE Usuarios SET {', '.join(updates)} WHERE id = ?",
+            f"UPDATE Usuarios SET {', '.join(set_clauses)} WHERE id = ?",  # noqa: S608
             params,
         )
         await self.db.commit()

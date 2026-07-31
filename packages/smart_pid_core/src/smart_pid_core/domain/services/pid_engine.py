@@ -46,8 +46,29 @@ class PIDResult:
     new_state: PIDState
 
 
+#: Multiplier applied to the integral term while it is unwinding the loop out
+#: of output saturation. Recovering at the normal 1x rate leaves the output
+#: pinned at the limit long after the error reverses, so the term is
+#: accelerated while — and only while — it drives CV back inside the ARW band.
+#: 16 is the value this engine has always shipped; it is aggressive for fast
+#: processes and can be lowered per loop via ``PIDEngine(reset_recovery_gain=)``
+#: (LoopManager builds one engine per controller), so tuning it never means
+#: editing this module.
+DEFAULT_RESET_RECOVERY_GAIN = 16.0
+
+
 class PIDEngine:
-    """Stateless PID engine. All state is passed in and returned explicitly."""
+    """Stateless PID engine. All state is passed in and returned explicitly.
+
+    "Stateless" is about the *loop* state — CV, previous error, filter memory —
+    which is passed in and returned on every ``compute``. Tuning constants that
+    describe the engine itself live on the instance.
+    """
+
+    def __init__(
+        self, reset_recovery_gain: float = DEFAULT_RESET_RECOVERY_GAIN,
+    ) -> None:
+        self._reset_recovery_gain = reset_recovery_gain
 
     def compute(
         self,
@@ -73,6 +94,15 @@ class PIDEngine:
         """Execute one PID scan. Returns new CV, BKCAL_OUT, and updated state."""
         lo, hi = out_limits
         arw_lo, arw_hi = arw_limits if arw_limits is not None else (lo, hi)
+        # An ARW threshold outside the output range can never be crossed: CV is
+        # clamped to the output limits, so an arw_hi above hi (or arw_lo below
+        # lo) silently disables the local anti-windup gate below and lets the
+        # integral accumulate without bound while the output sits saturated.
+        # Clamping keeps the gate reachable for any stored configuration, and
+        # leaves the useful case — an ARW band NARROWER than the output range,
+        # which stops integrating before saturation — exactly as configured.
+        arw_lo = max(arw_lo, lo)
+        arw_hi = min(arw_hi, hi)
 
         pv_val = pv.value
         sp_val = sp.value
@@ -126,13 +156,13 @@ class PIDEngine:
                 ):
                     i_term = 0.0
 
-                # 16x faster reset recovery: if previously saturated and integral
+                # Faster reset recovery: if previously saturated and integral
                 # now drives output away from saturation, accelerate recovery.
                 if state.is_saturated and i_term != 0.0:
                     reducing_hi = state.cv >= arw_hi and i_term < 0
                     reducing_lo = state.cv <= arw_lo and i_term > 0
                     if reducing_hi or reducing_lo:
-                        i_term *= 16.0
+                        i_term *= self._reset_recovery_gain
 
         # --- Derivative term (acts on PV, not error) ---
         d_term = 0.0
