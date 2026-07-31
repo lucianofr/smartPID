@@ -29,7 +29,7 @@ test('operator controls are present for both roles; Apply tuning is admin-only',
   await expect(fp.getByRole('button', { name: 'MAN' })).toBeVisible();
   await expect(fp.getByLabel('Setpoint')).toBeVisible();
   await expect(fp.getByRole('button', { name: 'Set setpoint' })).toBeVisible();
-  await expect(fp.getByRole('slider', { name: 'Manual CO' })).toBeVisible();
+  await expect(fp.getByRole('button', { name: 'Set output' })).toBeVisible();
   await expect(fp.getByRole('button', { name: 'Apply tuning' })).toHaveCount(0);
 });
 

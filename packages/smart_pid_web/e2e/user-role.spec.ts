@@ -10,9 +10,9 @@ test('user operates the loop: setpoint, mode and manual output stay available', 
 
   await expect(page.getByRole('spinbutton', { name: 'Setpoint' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Set setpoint' })).toBeVisible();
-  await expect(page.getByRole('combobox', { name: 'Mode' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'AUTO' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'MAN' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Set output' })).toBeVisible();
-  await expect(faceplate(page, 'FIC-101').getByRole('slider', { name: 'Manual CO' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ACK ALL' })).toBeVisible();
 });
 
@@ -35,7 +35,7 @@ test('the configuration dialog is read-only for a user', async ({ page }) => {
 
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Nome')).toBeDisabled();
+  await expect(dialog.getByRole('textbox', { name: 'Nome' })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Salvar' })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Excluir' })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Cancelar' })).toBeVisible();
@@ -111,7 +111,10 @@ test('user writes setpoint, mode and manual output to the API', async ({ page })
     .poll(() => commands)
     .toContain('/api/commands/output {"controller_id":1,"value":12}');
 
-  await page.getByRole('combobox', { name: 'Mode' }).selectOption('AUTO');
+  await faceplate(page, 'FIC-101')
+    .getByRole('group', { name: 'Modo do controlador' })
+    .getByRole('button', { name: 'AUTO', exact: true })
+    .click();
   await expect
     .poll(() => commands)
     .toContain('/api/commands/mode {"controller_id":1,"mode":"AUTO"}');

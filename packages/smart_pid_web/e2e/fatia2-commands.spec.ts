@@ -200,7 +200,10 @@ test('fatia 2 commands: setpoint, mode, guarded apply-tuning, AI actions', async
   await expect.poll(() => calls.setpoint).toBe(1);
 
   // --- Mode: switch to MAN -> POST /commands/mode fires; live frame flips the badge.
-  await page.getByRole('combobox', { name: 'Mode' }).selectOption('MAN');
+  await page
+    .getByRole('group', { name: 'Modo do controlador' })
+    .getByRole('button', { name: 'MAN', exact: true })
+    .click();
   await expect.poll(() => calls.mode).toBe(1);
   await page.evaluate(() => {
     // Installed by the WebSocket stub above; the compiler cannot see that.

@@ -100,7 +100,8 @@ describe('Faceplate', () => {
     expect(screen.getByRole('button', { name: 'MAN' })).toBeVisible();
     expect(screen.getByLabelText('Setpoint')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Set setpoint' })).toBeVisible();
-    expect(screen.getByRole('slider', { name: 'Manual CO' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Saída')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set output' })).toBeVisible();
   });
 
   it('omits Apply tuning for the user role and shows it for admin', async () => {

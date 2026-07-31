@@ -5,7 +5,6 @@ import { queryKeys } from '@/api/queryKeys';
 import type { ControllerMode } from '@/api/types';
 import { AnalogBar } from '@/components/AnalogBar';
 import { Button } from '@/components/Button';
-import { Slider } from '@/components/Slider';
 import { toast } from '@/components/Toast';
 import { AiPanel } from '@/features/loop-config/AiPanel';
 import { CardControls } from '@/features/loop-config/CardControls';
@@ -110,17 +109,16 @@ export function Faceplate({
 
   const data = status.last?.data ?? null;
   const mode = data?.mode ?? '—';
-  const isManual = mode === 'MAN';
 
-  // The manual slider tracks the live CO until the operator grabs it, and goes
-  // back to tracking whenever the loop leaves MAN.
+  // The manual output field tracks the live CO until the operator edits it,
+  // and goes back to tracking whenever the loop leaves MAN.
   const [coTouched, setCoTouched] = useState(false);
   useEffect(() => {
     if (!coTouched && data !== null) setCoDraft(data.co.value);
   }, [coTouched, data]);
   useEffect(() => {
-    if (!isManual) setCoTouched(false);
-  }, [isManual]);
+    if (mode !== 'MAN') setCoTouched(false);
+  }, [mode]);
 
   const invalidate = (): void => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.controllers });
@@ -216,26 +214,12 @@ export function Faceplate({
           spRange={spRange}
           controls={['setpoint']}
         />
-        {/* Numeric twin of the slider: same draft, one `Set output` write. */}
         <CardControls
           controllerId={controllerId}
           mode={mode}
           controls={['output']}
           outputValue={coDraft}
           onOutputValueChange={(v) => {
-            setCoTouched(true);
-            setCoDraft(v);
-          }}
-        />
-        <Slider
-          thumbLabel="Manual CO"
-          data-testid="manual-co-slider"
-          min={CO_SCALE.euMin}
-          max={CO_SCALE.euMax}
-          step={0.5}
-          value={[coDraft]}
-          disabled={!isManual}
-          onValueChange={([v]) => {
             setCoTouched(true);
             setCoDraft(v);
           }}

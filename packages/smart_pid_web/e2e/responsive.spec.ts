@@ -235,10 +235,10 @@ test.describe('responsive dashboard (§6.9)', () => {
     await assertMinTarget(page.getByRole('button', { name: 'Configurações' }), TARGET_MIN);
     await assertMinTarget(page.getByRole('button', { name: 'Sair' }), TARGET_MIN);
     await assertMinTarget(page.getByRole('button', { name: 'ACK ALL' }), TARGET_MIN);
-    await assertMinTarget(loopCard(page, 'FIC-101').getByRole('button', { name: 'Abrir FIC-101' }), TARGET_MIN);
+    await assertMinTarget(loopCard(page, 'FIC-101').getByRole('button', { name: 'FIC-101', exact: true }), TARGET_MIN);
 
     const fp = faceplate(page, 'FIC-101');
     await assertMinTarget(fp.getByRole('button', { name: 'AUTO' }), TARGET_MIN);
-    await assertMinTarget(fp.getByRole('slider', { name: 'Manual CO' }), TARGET_MIN);
+    await assertMinTarget(fp.getByRole('button', { name: 'Set output' }), TARGET_MIN);
   });
 });

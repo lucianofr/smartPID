@@ -22,7 +22,7 @@ test.describe('target size (>=44x44)', () => {
 
   test('card, trend and alarm controls clear the floor', async ({ page }) => {
     const card = loopCard(page, 'FIC-101');
-    await assertMinTarget(card.getByRole('button', { name: 'Abrir FIC-101' }), SPEC_MIN);
+    await assertMinTarget(card.getByRole('button', { name: 'FIC-101', exact: true }), SPEC_MIN);
     await assertMinTarget(card.getByRole('button', { name: 'Configurar FIC-101' }), SPEC_MIN);
     await assertMinTarget(page.getByRole('button', { name: 'Exportar CSV' }), SPEC_MIN);
     await assertMinTarget(page.getByRole('combobox', { name: 'Unidade da janela' }), SPEC_MIN);
@@ -36,21 +36,5 @@ test.describe('target size (>=44x44)', () => {
     await assertMinTarget(fp.getByRole('button', { name: 'Set setpoint' }), SPEC_MIN);
     await assertMinTarget(fp.getByRole('button', { name: 'Set output' }), SPEC_MIN);
     await assertMinTarget(fp.getByRole('button', { name: 'Apply tuning' }), SPEC_MIN);
-    // The slider ROW is the 44px target at >=1024; the phase-2 thumb is a
-    // deliberate compact 16px pointer handle there (it grows to 44 below 1024,
-    // asserted in the touch describe below).
-    await assertMinTarget(page.getByTestId('manual-co-slider'), SPEC_MIN);
-  });
-});
-
-// Below the 1024 breakpoint the full floor applies to the thumb itself — the
-// touch case the compact desktop handle is exempted from.
-test.describe('target size (>=44x44) — touch below 1024', () => {
-  test('the CO slider thumb grows to the touch floor', async ({ page }) => {
-    await gotoDashboard(page, { loops: [MAN_LOOP], width: 768, height: 1100 });
-    await assertMinTarget(
-      faceplate(page, 'FIC-101').getByRole('slider', { name: 'Manual CO' }),
-      SPEC_MIN,
-    );
   });
 });
