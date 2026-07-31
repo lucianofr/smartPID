@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { BrainCircuit, Check } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/api/queryKeys';
@@ -126,6 +126,7 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
   const [applyError, setApplyError] = useState<string | undefined>(undefined);
   const [applying, setApplying] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
+  const autoApplyId = useId();
 
   // Per-loop operator choice: auto-apply each pending tuning suggestion, or
   // wait for the manual Apply tuning confirm. Persisted so it survives a reload.
@@ -319,14 +320,19 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
 
         {canTune ? (
           <>
-            <label className="flex items-center justify-between gap-2 text-2xs font-bold uppercase tracking-caps text-text-soft">
-              <span>Auto-aplicar sintonia</span>
+            <div className="flex items-center justify-between gap-2">
+              <label
+                htmlFor={autoApplyId}
+                className="text-2xs font-bold uppercase tracking-caps text-text-soft"
+              >
+                Auto-aplicar sintonia
+              </label>
               <Switch
+                id={autoApplyId}
                 checked={autoApply}
                 onCheckedChange={toggleAutoApply}
-                aria-label="Aplicar sugestões de sintonia automaticamente"
               />
-            </label>
+            </div>
             <Button
               className={cn(
                 'w-full gap-1.5 text-base font-bold',

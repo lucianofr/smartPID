@@ -209,7 +209,7 @@ describe('AiPanel', () => {
     renderAi({ recommendation: PENDING });
 
     fireEvent.click(
-      await screen.findByRole('switch', { name: /automaticamente/i }),
+      await screen.findByRole('switch', { name: 'Auto-aplicar sintonia' }),
     );
 
     await waitFor(() => expect(postedPaths()).toContain('/api/commands/apply-tuning/5'));
@@ -249,4 +249,27 @@ describe('AiPanel', () => {
     expect(log).toHaveTextContent('estabilizou');
   });
 
+  it('names the auto-apply switch with its visible label', async () => {
+    renderAi({ recommendation: PENDING });
+    // The label is what an operator reads and what a voice-control user says,
+    // so it has to BE the accessible name (WCAG 2.5.3), not sit beside a
+    // separately-worded aria-label.
+    const toggle = await screen.findByRole('switch', { name: 'Auto-aplicar sintonia' });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('toggles auto-apply by clicking the label, not just the switch', async () => {
+    renderAi({ recommendation: PENDING });
+    const label = await screen.findByText('Auto-aplicar sintonia');
+
+    fireEvent.click(label);
+
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: 'Auto-aplicar sintonia' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      ),
+    );
+    expect(localStorage.getItem('smartpid:autoTune:5')).toBe('1');
+  });
 });
