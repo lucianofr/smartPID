@@ -26,14 +26,14 @@ export interface TrendPanelProps {
 
 export type TrendWindowUnit = 'segundo' | 'minuto' | 'hora';
 
-const UNIT_SECONDS: Record<TrendWindowUnit, number> = { segundo: 1, minuto: 60, hora: 3600 };
-const UNIT_LABEL: Record<TrendWindowUnit, string> = {
+export const UNIT_SECONDS: Record<TrendWindowUnit, number> = { segundo: 1, minuto: 60, hora: 3600 };
+export const UNIT_LABEL: Record<TrendWindowUnit, string> = {
   segundo: 'segundos',
   minuto: 'minutos',
   hora: 'horas',
 };
 /** Ruler abbreviations — the well label is mono and has ~10 px of band to live in. */
-const UNIT_SHORT: Record<TrendWindowUnit, string> = { segundo: 's', minuto: 'min', hora: 'h' };
+export const UNIT_SHORT: Record<TrendWindowUnit, string> = { segundo: 's', minuto: 'min', hora: 'h' };
 
 export function windowSeconds(count: number, unit: TrendWindowUnit): number {
   return Math.max(1, count) * UNIT_SECONDS[unit];
@@ -334,7 +334,7 @@ function LegendItem({
  * pair fits the toolbar's one line without shrinking what a screen reader
  * announces.
  */
-function ScaleRange({
+export function ScaleRange({
   variable,
   minId,
   maxId,
