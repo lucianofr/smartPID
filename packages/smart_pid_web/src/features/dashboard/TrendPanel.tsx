@@ -283,8 +283,16 @@ export function TrendPanel({ controllerId, scale }: TrendPanelProps) {
         <Trend
           data={data}
           ariaLabel={`Tendência ${tag}`}
-          pvAxis={autoScale ? { unit: scale.unit } : { min: pvMin, max: pvMax, unit: scale.unit }}
-          coAxis={autoScale ? { unit: CO_SCALE.unit } : { min: coMin, max: coMax, unit: CO_SCALE.unit }}
+          pvAxis={
+            autoScale
+              ? { unit: scale.unit, name: 'PV / SP' }
+              : { min: pvMin, max: pvMax, unit: scale.unit, name: 'PV / SP' }
+          }
+          coAxis={
+            autoScale
+              ? { unit: CO_SCALE.unit, name: 'CO' }
+              : { min: coMin, max: coMax, unit: CO_SCALE.unit, name: 'CO' }
+          }
           penTip={penTip}
           aiTicks={aiTicks}
           glow={glow}
