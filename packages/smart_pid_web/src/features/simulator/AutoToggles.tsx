@@ -30,7 +30,7 @@ export function AutoToggles({
   const distId = useId();
 
   return (
-    <fieldset className="flex flex-col gap-2 border-t border-rule pt-3">
+    <fieldset className="flex flex-col gap-1.5 border-t border-rule pt-1.5">
       <legend className="text-2xs font-medium uppercase tracking-wider text-text-soft">
         Automation
       </legend>

@@ -40,7 +40,7 @@ export function TwinOutputModeControl({
   const auto = mode === 'AUTO';
 
   return (
-    <fieldset className="flex flex-col gap-3 border-t border-rule pt-3">
+    <fieldset className="flex flex-col gap-1.5 border-t border-rule pt-1.5">
       <legend className="text-2xs font-medium uppercase tracking-wider text-text-soft">
         Twin output / mode
       </legend>
@@ -64,11 +64,11 @@ export function TwinOutputModeControl({
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex min-w-24 flex-1 flex-col gap-1">
-          <label htmlFor={spId} className="text-2xs text-text-soft">
-            Setpoint SP
-          </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor={spId} className="shrink-0 text-2xs text-text-soft">
+          Setpoint SP
+        </label>
+        <div className="min-w-20 max-w-28 flex-1">
           <Input
             id={spId}
             type="number"
@@ -83,11 +83,11 @@ export function TwinOutputModeControl({
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex min-w-24 flex-1 flex-col gap-1">
-          <label htmlFor={coId} className="text-2xs text-text-soft">
-            Output CO
-          </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor={coId} className="shrink-0 text-2xs text-text-soft">
+          Output CO
+        </label>
+        <div className="min-w-20 max-w-28 flex-1">
           <Input
             id={coId}
             type="number"

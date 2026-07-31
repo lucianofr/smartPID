@@ -136,7 +136,7 @@ export function SimulatorControlPanel({ controllerId }: SimulatorControlPanelPro
       : null;
 
   return (
-    <section aria-label="Simulator controls" className="flex flex-col gap-4">
+    <section aria-label="Simulator controls" className="flex flex-col gap-1">
       {configRegion}
       {twin === null ? null : (
         <TwinOutputModeControl

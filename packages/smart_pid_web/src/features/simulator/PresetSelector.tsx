@@ -22,22 +22,27 @@ export const NATIVE_SELECT_CLASS = cn(
 export function PresetSelector({ value, onChange }: PresetSelectorProps) {
   const id = useId();
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-2xs font-medium uppercase tracking-wider text-text-soft">
+    <div className="flex items-center gap-2">
+      <label
+        htmlFor={id}
+        className="shrink-0 text-2xs font-medium uppercase tracking-wider text-text-soft"
+      >
         Process preset
       </label>
-      <select
-        id={id}
-        className={NATIVE_SELECT_CLASS}
-        value={value}
-        onChange={(e) => onChange(e.target.value as ProcessPresetName)}
-      >
-        {PRESET_NAMES.map((preset) => (
-          <option key={preset} value={preset}>
-            {preset}
-          </option>
-        ))}
-      </select>
+      <div className="min-w-0 flex-1">
+        <select
+          id={id}
+          className={NATIVE_SELECT_CLASS}
+          value={value}
+          onChange={(e) => onChange(e.target.value as ProcessPresetName)}
+        >
+          {PRESET_NAMES.map((preset) => (
+            <option key={preset} value={preset}>
+              {preset}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }

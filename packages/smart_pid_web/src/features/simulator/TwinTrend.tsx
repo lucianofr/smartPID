@@ -29,7 +29,7 @@ export interface TwinTrendProps {
   controllerId: number;
 }
 
-const PLOT_HEIGHT = 320;
+const PLOT_HEIGHT = 195;
 
 /** Twin PV/SP/CO are all percentages, so both scale pairs default to 0–100 %. */
 const TWIN_SCALE_MIN = 0;
@@ -90,7 +90,7 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
       aria-label="Twin response trend"
       className="flex min-w-0 flex-col rounded-card border border-rule bg-surface"
     >
-      <header className="flex flex-wrap items-end gap-x-6 gap-y-2 border-b border-rule px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-rule px-3 py-2">
         <div className="flex items-center gap-1.5">
           <span aria-hidden="true" className="mb-0.5 inline-block h-0.5 w-2.5 shrink-0 bg-trace-pv" />
           <Readout label="PV" value={point?.pv} unit="%" size="sm" />
@@ -106,7 +106,7 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
           <span aria-hidden="true" className="mb-0.5 inline-block h-0.5 w-2.5 shrink-0 bg-trace-co" />
           <Readout label="CO" value={point?.co} unit="%" size="sm" />
         </div>
-        <div className="ml-auto flex flex-col gap-0.5">
+        <div className="flex items-center gap-1.5">
           <span className="text-2xs font-medium uppercase tracking-wider text-text-soft">
             Última amostra
           </span>
@@ -114,10 +114,8 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
             {point === null ? '—' : formatTimestamp(point.x)}
           </span>
         </div>
-      </header>
 
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-rule px-3 py-2">
-        <div className="flex items-center gap-1.5">
+        <div className="ml-auto flex items-center gap-1.5">
           <label htmlFor={windowId} className={CONTROL_LABEL}>
             Janela de tempo
           </label>
@@ -151,7 +149,7 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
         </div>
 
         {autoScale ? null : (
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex w-full flex-wrap items-center gap-1.5">
             <ScaleRange
               variable="PV"
               minId={pvMinId}

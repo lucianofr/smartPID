@@ -38,7 +38,7 @@ export function PIDSettings({
   const [tdDraft, setTdDraft] = useState(td);
 
   return (
-    <fieldset className="flex flex-col gap-2 border-t border-rule pt-3">
+    <fieldset className="flex flex-col gap-1.5 border-t border-rule pt-1.5">
       <legend className="text-2xs font-medium uppercase tracking-wider text-text-soft">
         Internal PID
       </legend>
@@ -49,9 +49,9 @@ export function PIDSettings({
         <Switch id={enabledId} checked={enabled} onCheckedChange={onToggleEnabled} />
       </div>
 
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex min-w-16 flex-1 flex-col gap-1">
-          <label htmlFor={kpId} className="text-2xs text-text-soft">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-20 flex-1 items-center gap-1">
+          <label htmlFor={kpId} className="shrink-0 text-2xs text-text-soft">
             Kp
           </label>
           <Input
@@ -64,13 +64,11 @@ export function PIDSettings({
             onChange={(e) => setKpDraft(Number(e.target.value))}
           />
         </div>
-        <div className="flex min-w-16 flex-1 flex-col gap-1">
-          <div className="flex items-baseline gap-1">
-            <label htmlFor={tiId} className="text-2xs text-text-soft">
-              Ti
-            </label>
-            <span className="text-2xs text-text-disabled">s</span>
-          </div>
+        <div className="flex min-w-20 flex-1 items-center gap-1">
+          <label htmlFor={tiId} className="shrink-0 text-2xs text-text-soft">
+            Ti
+          </label>
+          <span className="shrink-0 text-2xs text-text-disabled">s</span>
           <Input
             id={tiId}
             type="number"
@@ -81,13 +79,11 @@ export function PIDSettings({
             onChange={(e) => setTiDraft(Number(e.target.value))}
           />
         </div>
-        <div className="flex min-w-16 flex-1 flex-col gap-1">
-          <div className="flex items-baseline gap-1">
-            <label htmlFor={tdId} className="text-2xs text-text-soft">
-              Td
-            </label>
-            <span className="text-2xs text-text-disabled">s</span>
-          </div>
+        <div className="flex min-w-20 flex-1 items-center gap-1">
+          <label htmlFor={tdId} className="shrink-0 text-2xs text-text-soft">
+            Td
+          </label>
+          <span className="shrink-0 text-2xs text-text-disabled">s</span>
           <Input
             id={tdId}
             type="number"
@@ -100,6 +96,7 @@ export function PIDSettings({
         </div>
         <Button
           size="sm"
+          className="shrink-0"
           onClick={() => onApplyParams({ kp: kpDraft, ti: tiDraft, td: tdDraft })}
         >
           Apply PID parameters

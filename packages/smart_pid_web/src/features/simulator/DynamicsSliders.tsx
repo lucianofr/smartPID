@@ -28,14 +28,14 @@ const FIELDS: readonly {
 
 export function DynamicsSliders({ value, onCommit }: DynamicsSlidersProps) {
   return (
-    <div className="flex flex-col gap-2">
+    <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 @min-[26rem]:grid-cols-2">
       {FIELDS.map(({ key, label, min, max, step, unit }) => {
         // `tau2` is null for a first-order model; the slider shows it as 0 and
         // only writes a number once the operator actually moves THAT slider.
         const current = value[key] ?? 0;
         return (
-          <div key={key} className="flex items-center gap-3">
-            <span className="w-24 shrink-0 text-2xs font-medium uppercase tracking-wider text-text-soft">
+          <div key={key} className="flex items-center gap-2">
+            <span className="w-20 shrink-0 text-2xs font-medium uppercase tracking-wider text-text-soft">
               {label}
             </span>
             <Slider

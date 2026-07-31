@@ -36,37 +36,41 @@ export function DisturbanceControls({
   const [amplitude, setAmplitude] = useState(DEFAULT_AMPLITUDE);
 
   return (
-    <fieldset className="flex flex-col gap-2 border-t border-rule pt-3">
+    <fieldset className="flex flex-col gap-1.5 border-t border-rule pt-1.5">
       <legend className="text-2xs font-medium uppercase tracking-wider text-text-soft">
         Disturbance
       </legend>
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex min-w-28 flex-1 flex-col gap-1">
-          <label htmlFor={typeId} className="text-2xs text-text-soft">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="flex min-w-40 flex-1 items-center gap-1.5">
+          <label htmlFor={typeId} className="shrink-0 text-2xs text-text-soft">
             Disturbance type
           </label>
-          <select
-            id={typeId}
-            className={NATIVE_SELECT_CLASS}
-            value={type}
-            disabled={autoDisturbanceEnabled}
-            onChange={(e) => setType(e.target.value as DisturbanceType)}
-          >
-            <option value="step">step</option>
-            <option value="noise">noise</option>
-          </select>
+          <div className="min-w-0 flex-1">
+            <select
+              id={typeId}
+              className={NATIVE_SELECT_CLASS}
+              value={type}
+              disabled={autoDisturbanceEnabled}
+              onChange={(e) => setType(e.target.value as DisturbanceType)}
+            >
+              <option value="step">step</option>
+              <option value="noise">noise</option>
+            </select>
+          </div>
         </div>
-        <div className="flex min-w-24 flex-1 flex-col gap-1">
-          <label htmlFor={amplitudeId} className="text-2xs text-text-soft">
+        <div className="flex min-w-32 flex-1 items-center gap-1.5">
+          <label htmlFor={amplitudeId} className="shrink-0 text-2xs text-text-soft">
             Amplitude
           </label>
-          <Input
-            id={amplitudeId}
-            type="number"
-            value={amplitude}
-            disabled={autoDisturbanceEnabled}
-            onChange={(e) => setAmplitude(Number(e.target.value))}
-          />
+          <div className="min-w-0 flex-1">
+            <Input
+              id={amplitudeId}
+              type="number"
+              value={amplitude}
+              disabled={autoDisturbanceEnabled}
+              onChange={(e) => setAmplitude(Number(e.target.value))}
+            />
+          </div>
         </div>
       </div>
       {autoDisturbanceEnabled ? (
