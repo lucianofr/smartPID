@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { Clock } from 'lucide-react';
 import { Readout } from '@/components/Readout';
 import { Input } from '@/components/Field';
 import {
@@ -23,6 +24,7 @@ import { formatNumber, formatTimestamp } from '@/lib/format';
 import type { StatusData } from '@/lib/envelope';
 import { useRealtime } from '@/realtime/useRealtime';
 import { useGlowTrace } from '@/theme/useGlowTrace';
+import { cn } from '@/lib/utils';
 import { toTwinPoint, TWIN_WINDOW_SECONDS } from './twinTrend';
 
 export interface TwinTrendProps {
@@ -46,7 +48,7 @@ const TWIN_SCALE_MIN = 0;
 const TWIN_SCALE_MAX = 100;
 
 const CONTROL_LABEL = 'shrink-0 text-2xs uppercase tracking-caps text-text-soft';
-const NUMBER_INPUT = 'numeric w-14 px-2 text-sm';
+const NUMBER_INPUT = 'numeric w-12 px-2 text-sm';
 
 /**
  * Live twin response.
@@ -117,7 +119,7 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
       aria-label="Twin response trend"
       className="flex min-w-0 flex-col rounded-card border border-rule bg-surface max-lg:shrink-0 lg:min-h-0 lg:flex-1"
     >
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-rule px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-rule px-2.5 py-2">
         <div className="flex items-center gap-1.5">
           <span aria-hidden="true" className="mb-0.5 inline-block h-0.5 w-2.5 shrink-0 bg-trace-pv" />
           <Readout label="PV" value={point?.pv} unit="%" size="sm" />
@@ -133,10 +135,9 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
           <span aria-hidden="true" className="mb-0.5 inline-block h-0.5 w-2.5 shrink-0 bg-trace-co" />
           <Readout label="CO" value={point?.co} unit="%" size="sm" />
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-2xs font-medium uppercase tracking-wider text-text-soft">
-            Última amostra
-          </span>
+        <div className="flex items-center gap-1.5" title="Última amostra">
+          <Clock aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-text-soft" />
+          <span className="sr-only">Última amostra</span>
           <span className="numeric text-sm text-text">
             {point === null ? '—' : formatTimestamp(point.x)}
           </span>
@@ -155,7 +156,7 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
             onChange={(e) => setCount(Number(e.target.value))}
           />
           <Select value={unit} onValueChange={(v) => setUnit(v as TrendWindowUnit)}>
-            <SelectTrigger id={unitId} aria-label="Unidade da janela" className="w-28">
+            <SelectTrigger id={unitId} aria-label="Unidade da janela" className="w-24">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -168,15 +169,15 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
           </Select>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          <label htmlFor={autoId} className={CONTROL_LABEL}>
+        <div className="flex items-center gap-1.5" title="Autoescala">
+          <label htmlFor={autoId} className={cn(CONTROL_LABEL, 'sr-only')}>
             Autoescala
           </label>
           <Switch id={autoId} checked={autoScale} onCheckedChange={setAutoScale} />
         </div>
 
         {autoScale ? null : (
-          <div className="flex w-full flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <ScaleRange
               variable="PV"
               minId={pvMinId}
