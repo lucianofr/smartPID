@@ -12,3 +12,4 @@ playwright-report/
 !eslint.config.js
 
 testsprite_tests/
+testsprite_tests/tmp/config.json
