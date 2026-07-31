@@ -39,8 +39,8 @@ export function SimulatorPage() {
           hint="Cadastre um controlador ou inicie o simulador."
         />
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 items-start gap-3 overflow-auto p-1 lg:grid-cols-[minmax(20rem,1fr)_2fr]">
-          <div className="@container flex min-w-0 flex-col gap-3">
+        <div className="grid min-h-0 flex-1 grid-cols-1 items-start gap-3 overflow-auto p-1 lg:grid-cols-[minmax(20rem,1fr)_2fr] lg:grid-rows-1 lg:items-stretch lg:overflow-hidden">
+          <div className="@container flex min-w-0 flex-col gap-3 lg:min-h-0 lg:overflow-y-auto">
             {ids.length > 1 ? (
               <div className="flex flex-col gap-1">
                 <label
@@ -65,9 +65,11 @@ export function SimulatorPage() {
             ) : null}
             <SimulatorControlPanel controllerId={controllerId} />
           </div>
-          <div className="flex min-w-0 flex-col gap-2">
+          <div className="flex min-w-0 flex-col gap-2 lg:min-h-0 lg:overflow-y-auto">
             <TwinTrend key={controllerId} controllerId={controllerId} />
-            <ClosedLoopDiagram controller={controller} />
+            <div className="shrink-0">
+              <ClosedLoopDiagram controller={controller} />
+            </div>
           </div>
         </div>
       )}

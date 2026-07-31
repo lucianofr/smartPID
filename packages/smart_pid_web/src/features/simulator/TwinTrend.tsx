@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from '@/components/Select';
 import { Switch } from '@/components/Switch';
-import { Trend } from '@/components/Trend';
+import { Trend, TREND_WELL_INSET_PX } from '@/components/Trend';
 import {
   ScaleRange,
   UNIT_LABEL,
@@ -29,7 +29,17 @@ export interface TwinTrendProps {
   controllerId: number;
 }
 
-const PLOT_HEIGHT = 210;
+/**
+ * Paint guard for the canvas, mirroring TrendPanel's own floor: uPlot's
+ * x-axis eats ~30px and the plot area needs ~40px more to stay legible —
+ * that is a property of uPlot itself, not this card's chrome.
+ */
+const MIN_PLOT_HEIGHT = 72;
+
+/** This card's own `p-3` around the plot well (12px top + 12px bottom), on
+ * top of `Trend`'s own `TREND_WELL_INSET_PX` — both come off the measured
+ * container before sizing the canvas. */
+const PLOT_WRAP_PADDING_PX = 24;
 
 /** Twin PV/SP/CO are all percentages, so both scale pairs default to 0–100 %. */
 const TWIN_SCALE_MIN = 0;
@@ -53,7 +63,7 @@ const NUMBER_INPUT = 'numeric w-14 px-2 text-sm';
 export function TwinTrend({ controllerId }: TwinTrendProps) {
   const glow = useGlowTrace();
   const plotRef = useRef<HTMLDivElement>(null);
-  const [pxWidth, setPxWidth] = useState(800);
+  const [plotBox, setPlotBox] = useState({ width: 800, height: 210 });
 
   const windowId = useId();
   const unitId = useId();
@@ -71,24 +81,41 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
   const [coMin, setCoMin] = useState(TWIN_SCALE_MIN);
   const [coMax, setCoMax] = useState(TWIN_SCALE_MAX);
 
+  /**
+   * The plot grows to fill whatever vertical space `SimulatorPage` grants
+   * this card at >=1024 (the grid stretches both columns to its own bounded
+   * height there), so the well never outgrows the grid's own box and forces
+   * a scrollbar. Below that the section keeps its natural height and the
+   * page scrolls — same convergence as TrendPanel's identical observer.
+   */
   useEffect(() => {
     const el = plotRef.current;
     if (el === null) return;
     const ro = new ResizeObserver(() => {
-      if (el.clientWidth > 0) setPxWidth(el.clientWidth);
+      const width = el.clientWidth;
+      const height = Math.max(
+        MIN_PLOT_HEIGHT,
+        el.clientHeight - PLOT_WRAP_PADDING_PX - TREND_WELL_INSET_PX,
+      );
+      if (width <= 0) return;
+      setPlotBox((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
-  const { data, penTip, aiTicks } = useTrendWindow(controllerId, windowSeconds(count, unit), pxWidth);
+  const { data, penTip, aiTicks } = useTrendWindow(
+    controllerId,
+    windowSeconds(count, unit),
+    plotBox.width,
+  );
   const frame = useRealtime<StatusData>(controllerId, 'status').last?.data;
   const point = frame === undefined ? null : toTwinPoint(frame);
 
   return (
     <section
       aria-label="Twin response trend"
-      className="flex min-w-0 flex-col rounded-card border border-rule bg-surface"
+      className="flex min-w-0 flex-col rounded-card border border-rule bg-surface max-lg:shrink-0 lg:min-h-0 lg:flex-1"
     >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-rule px-3 py-2">
         <div className="flex items-center gap-1.5">
@@ -172,7 +199,7 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
         )}
       </div>
 
-      <div ref={plotRef} className="min-w-0 p-3">
+      <div ref={plotRef} className="min-h-0 min-w-0 flex-1 p-3">
         <Trend
           data={data}
           ariaLabel={`Resposta do gêmeo digital — malha ${controllerId}`}
@@ -185,7 +212,7 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
           penTip={penTip}
           aiTicks={aiTicks}
           glow={glow}
-          height={PLOT_HEIGHT}
+          height={plotBox.height}
           labels={{
             yTop: autoScale ? undefined : `${formatNumber(pvMax, 1)} %`,
             yBottom: autoScale ? undefined : `${formatNumber(pvMin, 1)} %`,
