@@ -184,6 +184,15 @@ class PIDWorker:
         with self._lock:
             self._last_co = FFSignal.good(value)
 
+    def update_controller(self, controller: Controller) -> None:
+        """Swap the live config so a persisted edit takes effect on the next
+        scan without a restart. The run loop reads ``self._controller.*`` every
+        scan (execution_mode, limits, PID structure, control/IO options), so a
+        reference swap is all it takes. ``scan_rate_s`` is cached at thread
+        start and still needs a loop restart to change the cadence."""
+        with self._lock:
+            self._controller = controller
+
     def _resolve_trk_in_d(self, value: bool, is_bad: bool) -> None:
         """Apply TRACK_OPT rules to resolve TRK_IN_D discrete input."""
         track_opt = self._controller.track_opt

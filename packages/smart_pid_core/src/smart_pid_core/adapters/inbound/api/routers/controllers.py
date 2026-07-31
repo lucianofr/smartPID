@@ -482,6 +482,15 @@ async def update_controller(
     if "tag_bindings" in updates:
         _reregister_opcua(request, controller)
 
+    # Propagate the persisted edit to the running loop so the PIDWorker stops
+    # using the controller it was started with. Without this an execution_mode
+    # change never reaches the live worker: SP/CO ownership (and whether the IO
+    # worker writes CO) stays on the old mode until daemon restart.
+    if updates:
+        loop_mgr = getattr(request.app.state, "loop_manager", None)
+        if loop_mgr is not None:
+            loop_mgr.update_controller(controller)
+
     # Hot-reload AI Worker when ai_config, process_speed, tss_s, or
     # scan_rate_s changes. The fuzzy stats window is derived from
     # tss_s / scan_rate_s, so the engine must be rebuilt when either moves.

@@ -65,3 +65,31 @@ class TestLoopManager:
             manager.stop_loop(999)  # Should not raise
         finally:
             bus.stop()
+
+    def test_update_controller_propagates_execution_mode_to_worker(self) -> None:
+        from dataclasses import replace
+
+        from smart_pid_domain.enums import ExecutionMode
+
+        bus = EventBus(url_prefix=f"inproc://test_loop_manager_{uuid.uuid4().hex[:8]}")
+        bus.start()
+        try:
+            manager = LoopManager(bus=bus)
+            controller = Controller(
+                id=1, name="FIC-101", scan_rate_s=0.1,
+                execution_mode=ExecutionMode.DDC,
+            )
+            manager.start_loop(controller)
+            ctx = manager.get_context(1)
+            assert ctx is not None and ctx.pid_worker is not None
+            assert ctx.pid_worker._controller.execution_mode is ExecutionMode.DDC
+
+            updated = replace(controller, execution_mode=ExecutionMode.SUPERVISORY)
+            manager.update_controller(updated)
+
+            # The live worker must see the new mode, not the one it started with.
+            assert manager.get_controller(1).execution_mode is ExecutionMode.SUPERVISORY
+            assert ctx.pid_worker._controller.execution_mode is ExecutionMode.SUPERVISORY
+            manager.stop_all()
+        finally:
+            bus.stop()

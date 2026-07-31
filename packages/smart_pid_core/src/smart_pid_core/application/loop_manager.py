@@ -138,6 +138,18 @@ class LoopManager:
             raise ControllerNotFoundError(controller_id)
         return ctx.controller
 
+    def update_controller(self, controller: Controller) -> None:
+        """Propagate a persisted config edit to the running loop so live
+        workers stop using the controller they were started with. Without this
+        an execution_mode change (SUPERVISORY<->DDC) never reaches the running
+        PIDWorker: SP/CO ownership stays on the old mode until daemon restart."""
+        ctx = self._loops.get(controller.id)
+        if ctx is None:
+            return
+        ctx.controller = controller
+        if ctx.pid_worker is not None:
+            ctx.pid_worker.update_controller(controller)
+
     def set_setpoint(self, controller_id: int, value: float) -> None:
         """Set SP value. Validates against sp_limits."""
         if self._execution_mode == "monitor":
