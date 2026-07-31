@@ -242,6 +242,18 @@ async function mockSimulator(page: Page, sim: SimState): Promise<void> {
   });
   await page.route('**/api/simulator/1/co', ok);
   await page.route('**/api/simulator/1/pid/mode', ok);
+  await page.route('**/api/simulator/1/pid/enable', (route) => {
+    const body = route.request().postDataJSON() as { enabled: boolean };
+    sim.c.pid_enabled = body.enabled;
+    return ok(route);
+  });
+  await page.route('**/api/simulator/1/pid/params', (route) => {
+    const body = route.request().postDataJSON() as { kp: number; ti: number; td: number };
+    sim.c.pid_kp = body.kp;
+    sim.c.pid_ti = body.ti;
+    sim.c.pid_td = body.td;
+    return ok(route);
+  });
   await page.route('**/api/simulator/1/auto-sp', ok);
   await page.route('**/api/simulator/1/auto-disturbance', ok);
 }
@@ -297,6 +309,24 @@ test.describe('Simulator page', () => {
 
     // DELETE sets step_active:false -> refetch -> Remove disabled.
     await expect(remove).toBeDisabled();
+  });
+
+  test('enabling the internal PID unlocks Kp/Ti/Td, and Apply converges to the new value', async ({
+    page,
+  }) => {
+    const kpField = page.getByRole('spinbutton', { name: /^kp$/i });
+    await expect(kpField).toBeDisabled();
+
+    await page.getByRole('switch', { name: /enable pid/i }).click();
+
+    // /pid/enable POST sets sim.c.pid_enabled -> refetch -> fields unlock.
+    await expect(kpField).toBeEnabled();
+
+    await kpField.fill('3.5');
+    await page.getByRole('button', { name: /apply pid parameters/i }).click();
+
+    // /pid/params POST sets sim.c.pid_kp -> refetch -> the field converges to the new value.
+    await expect(kpField).toHaveValue('3.5');
   });
 });
 

@@ -109,4 +109,11 @@ describe('SimulatorPage', () => {
     expect(screen.getByRole('region', { name: 'Twin response trend' })).toBeInTheDocument();
     expect(statusSpy).not.toHaveBeenCalled();
   });
+
+  it('renders the closed-loop diagram alongside the controls', async () => {
+    renderPage();
+    expect(
+      screen.getByRole('img', { name: 'Diagrama da malha de controle' }),
+    ).toBeInTheDocument();
+  });
 });

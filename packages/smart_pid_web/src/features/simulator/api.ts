@@ -7,6 +7,8 @@ import type {
   ControllerSimStatus,
   SimulatorDisturbanceRequest,
   SimulatorParametersRequest,
+  SimulatorPIDEnableRequest,
+  SimulatorPIDParamsRequest,
   SimulatorPresetRequest,
   TwinMode,
 } from './types';
@@ -30,6 +32,16 @@ export const simulatorApi = {
   preset: (body: SimulatorPresetRequest) => api.post<CommandResponse>('/simulator/preset', body),
   parameters: (body: SimulatorParametersRequest) =>
     api.put<CommandResponse>('/simulator/parameters', body),
+  enablePid: (controllerId: number, enabled: boolean) =>
+    api.post<CommandResponse>(`/simulator/${controllerId}/pid/enable`, {
+      controller_id: controllerId,
+      enabled,
+    } satisfies SimulatorPIDEnableRequest),
+  setPidParams: (controllerId: number, body: Omit<SimulatorPIDParamsRequest, 'controller_id'>) =>
+    api.post<CommandResponse>(`/simulator/${controllerId}/pid/params`, {
+      controller_id: controllerId,
+      ...body,
+    } satisfies SimulatorPIDParamsRequest),
 
   injectDisturbance: (body: SimulatorDisturbanceRequest) =>
     api.post<CommandResponse>('/simulator/disturbance', body),

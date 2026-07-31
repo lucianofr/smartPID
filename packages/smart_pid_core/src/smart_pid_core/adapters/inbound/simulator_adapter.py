@@ -202,7 +202,7 @@ class SimulatorAdapter:
             ctrl.pid_enabled = enabled
             if enabled:
                 ctrl.pid_state = self._pid_engine.bumpless_transfer(
-                    ctrl.pid_state, current_pv=0.0, current_co=ctrl.last_co,
+                    ctrl.pid_state, current_pv=ctrl.live_pv, current_co=ctrl.last_co,
                     params=ctrl.pid_params,
                 )
 

@@ -20,6 +20,7 @@ const CONFIG_CONTROLS = [
   'Stop',
   'Inject disturbance',
   'Remove',
+  'Apply PID parameters',
 ] as const;
 
 function controller(overrides: Partial<ControllerSimStatus> = {}): ControllerSimStatus {
@@ -83,6 +84,8 @@ beforeEach(() => {
   vi.spyOn(simulatorApi, 'setSp').mockResolvedValue({ ok: true });
   vi.spyOn(simulatorApi, 'setMode').mockResolvedValue({ ok: true });
   vi.spyOn(simulatorApi, 'setAutoSp').mockResolvedValue(controller());
+  vi.spyOn(simulatorApi, 'enablePid').mockResolvedValue({ ok: true });
+  vi.spyOn(simulatorApi, 'setPidParams').mockResolvedValue({ ok: true });
 });
 
 afterEach(() => {
@@ -99,6 +102,7 @@ describe('SimulatorControlPanel — permission split', () => {
     expect(screen.getByRole('combobox', { name: 'Process preset' })).toBeInTheDocument();
     expect(screen.getByRole('slider', { name: 'Gain' })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Auto-SP' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Enable PID' })).toBeInTheDocument();
   });
 
   it('shows a user the designed restricted state instead of the configuration region', async () => {
@@ -109,6 +113,7 @@ describe('SimulatorControlPanel — permission split', () => {
     }
     expect(screen.queryByRole('combobox', { name: 'Process preset' })).toBeNull();
     expect(screen.queryByRole('switch', { name: 'Auto-SP' })).toBeNull();
+    expect(screen.queryByRole('switch', { name: 'Enable PID' })).toBeNull();
     expect(statusSpy).not.toHaveBeenCalled();
   });
 
@@ -166,6 +171,16 @@ describe('SimulatorControlPanel — server-owned state', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Remove' })).toBeEnabled());
   });
 
+  it('closes manual injection while Auto-disturbance owns the disturbance', async () => {
+    renderPanel({
+      status: snapshot({ auto_disturbance: { enabled: true, max_amplitude_pct: 20 } }),
+    });
+    expect(await screen.findByRole('button', { name: 'Inject disturbance' })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Disturbance type' })).toBeDisabled();
+    expect(screen.getByRole('spinbutton', { name: 'Amplitude' })).toBeDisabled();
+    expect(screen.getByText(/Auto-disturbance está ativo/)).toBeVisible();
+  });
+
   it('treats a noise disturbance as active too', async () => {
     renderPanel({ status: snapshot({ noise_active: true }) });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Remove' })).toBeEnabled());
@@ -208,6 +223,79 @@ describe('SimulatorControlPanel — server-owned state', () => {
         sp_min_pct: 10,
         sp_max_pct: 90,
       }),
+    );
+  });
+
+  it('toggling Enable PID calls simulatorApi.enablePid', async () => {
+    renderPanel();
+    fireEvent.click(await screen.findByRole('switch', { name: 'Enable PID' }));
+    await waitFor(() => expect(simulatorApi.enablePid).toHaveBeenCalledWith(1, true));
+  });
+
+  it('seeds Kp/Ti/Td from the server and applies edited values', async () => {
+    renderPanel({
+      status: snapshot({ pid_enabled: true, pid_kp: 2.5, pid_ti: 8, pid_td: 1.2 }),
+    });
+    expect(await screen.findByRole('spinbutton', { name: 'Kp' })).toHaveValue(2.5);
+    expect(screen.getByRole('spinbutton', { name: 'Ti' })).toHaveValue(8);
+    expect(screen.getByRole('spinbutton', { name: 'Td' })).toHaveValue(1.2);
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Kp' }), { target: { value: '3' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Ti' }), { target: { value: '12' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Td' }), { target: { value: '0.5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply PID parameters' }));
+
+    await waitFor(() =>
+      expect(simulatorApi.setPidParams).toHaveBeenCalledWith(1, { kp: 3, ti: 12, td: 0.5 }),
+    );
+  });
+
+  it('resets the Kp/Ti/Td drafts instead of applying the previous loop\'s values (key={controllerId})', async () => {
+    sessionStorage.setItem('smart-pid-token', 'jwt');
+    vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: 'admin', role: 'admin' });
+    vi.spyOn(endpoints, 'simulatorStatus').mockResolvedValue({
+      enabled: true,
+      running: true,
+      controllers: {
+        1: controller({ pid_enabled: true, pid_kp: 1, pid_ti: 10, pid_td: 0 }),
+        2: controller({ pid_enabled: true, pid_kp: 7, pid_ti: 20, pid_td: 3 }),
+      },
+    });
+    const realtime = createFakeRealtime();
+    const queryClient = createQueryClient();
+    const { rerender } = render(
+      <TestProviders queryClient={queryClient} realtime={realtime.value}>
+        <SimulatorControlPanel controllerId={1} />
+      </TestProviders>,
+    );
+
+    expect(await screen.findByRole('spinbutton', { name: 'Kp' })).toHaveValue(1);
+    // Edit the draft without clicking Apply — a stale draft must not leak onto the next loop.
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Kp' }), { target: { value: '99' } });
+    expect(screen.getByRole('spinbutton', { name: 'Kp' })).toHaveValue(99);
+
+    rerender(
+      <TestProviders queryClient={queryClient} realtime={realtime.value}>
+        <SimulatorControlPanel controllerId={2} />
+      </TestProviders>,
+    );
+
+    await waitFor(() => expect(screen.getByRole('spinbutton', { name: 'Kp' })).toHaveValue(7));
+    expect(screen.getByRole('spinbutton', { name: 'Ti' })).toHaveValue(20);
+    expect(screen.getByRole('spinbutton', { name: 'Td' })).toHaveValue(3);
+  });
+
+  it('keeps Kp/Ti/Td and Apply editable while the PID is off — staging values before arming it', async () => {
+    renderPanel({ status: snapshot({ pid_enabled: false, pid_kp: 1, pid_ti: 10, pid_td: 0 }) });
+    expect(await screen.findByRole('spinbutton', { name: 'Kp' })).toBeEnabled();
+    expect(screen.getByRole('spinbutton', { name: 'Ti' })).toBeEnabled();
+    expect(screen.getByRole('spinbutton', { name: 'Td' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Apply PID parameters' })).toBeEnabled();
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Kp' }), { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply PID parameters' }));
+    await waitFor(() =>
+      expect(simulatorApi.setPidParams).toHaveBeenCalledWith(1, { kp: 4, ti: 10, td: 0 }),
     );
   });
 

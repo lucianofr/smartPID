@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { EmptyState } from '@/components/MissingState';
 import { useControllers } from '@/features/dashboard/useControllers';
+import { ClosedLoopDiagram } from '@/features/simulator/ClosedLoopDiagram';
 import { SimulationModeBanner } from '@/features/simulator/SimulationModeBanner';
 import { SimulatorControlPanel } from '@/features/simulator/SimulatorControlPanel';
 import { TwinTrend } from '@/features/simulator/TwinTrend';
@@ -27,6 +28,7 @@ export function SimulatorPage() {
     (a, b) => a - b,
   );
   const controllerId = ids.find((id) => id === selectedId) ?? ids[0];
+  const controller = data?.controllers[String(controllerId)];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -63,7 +65,10 @@ export function SimulatorPage() {
             ) : null}
             <SimulatorControlPanel controllerId={controllerId} />
           </div>
-          <TwinTrend key={controllerId} controllerId={controllerId} />
+          <div className="flex min-w-0 flex-col gap-4">
+            <TwinTrend key={controllerId} controllerId={controllerId} />
+            <ClosedLoopDiagram controller={controller} />
+          </div>
         </div>
       )}
     </div>

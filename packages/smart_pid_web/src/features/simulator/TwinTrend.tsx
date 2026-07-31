@@ -50,9 +50,21 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
       className="flex min-w-0 flex-col rounded-card border border-rule bg-surface"
     >
       <header className="flex flex-wrap items-end gap-x-6 gap-y-2 border-b border-rule px-3 py-2">
-        <Readout label="PV" value={point?.pv} unit="%" size="sm" />
-        <Readout label="SP" value={point?.sp} unit="%" size="sm" />
-        <Readout label="CO" value={point?.co} unit="%" size="sm" />
+        <div className="flex items-center gap-1.5">
+          <span aria-hidden="true" className="mb-0.5 inline-block h-0.5 w-2.5 shrink-0 bg-trace-pv" />
+          <Readout label="PV" value={point?.pv} unit="%" size="sm" />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className="mb-0.5 inline-block h-0 w-2.5 shrink-0 border-t-2 border-dashed border-trace-sp"
+          />
+          <Readout label="SP" value={point?.sp} unit="%" size="sm" />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span aria-hidden="true" className="mb-0.5 inline-block h-0.5 w-2.5 shrink-0 bg-trace-co" />
+          <Readout label="CO" value={point?.co} unit="%" size="sm" />
+        </div>
         <div className="ml-auto flex flex-col gap-0.5">
           <span className="text-2xs font-medium uppercase tracking-wider text-text-soft">
             Última amostra
@@ -66,8 +78,8 @@ export function TwinTrend({ controllerId }: TwinTrendProps) {
         <Trend
           data={data}
           ariaLabel={`Resposta do gêmeo digital — malha ${controllerId}`}
-          pvAxis={{ unit: '%' }}
-          coAxis={{ unit: '%' }}
+          pvAxis={{ unit: '%', name: 'PV / SP' }}
+          coAxis={{ unit: '%', name: 'CO' }}
           penTip={penTip}
           aiTicks={aiTicks}
           glow={glow}

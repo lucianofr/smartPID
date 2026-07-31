@@ -14,6 +14,8 @@ export type SimulatorParametersRequest = components['schemas']['SimulatorParamet
 export type SimulatorDisturbanceRequest = components['schemas']['SimulatorDisturbanceRequest'];
 export type SimulatorPIDModeRequest = components['schemas']['SimulatorPIDModeRequest'];
 export type SimulatorPIDSPRequest = components['schemas']['SimulatorPIDSPRequest'];
+export type SimulatorPIDEnableRequest = components['schemas']['SimulatorPIDEnableRequest'];
+export type SimulatorPIDParamsRequest = components['schemas']['SimulatorPIDParamsRequest'];
 export type AutoSPRequest = components['schemas']['AutoSPRequest'];
 export type AutoDisturbanceRequest = components['schemas']['AutoDisturbanceRequest'];
 

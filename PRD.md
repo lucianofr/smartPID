@@ -262,10 +262,20 @@ Requirement IDs are grouped by domain and are stable identifiers for cross-refer
   independent of automatic disturbance injection.
 - **SIM-6.** The simulator exposes its own internal test PID (enable/params/setpoint/mode/CO) so an
   engineer can validate the simulated process dynamics in isolation before wiring the platform's own
-  control loop to it.
+  control loop to it. The web client's `/simulator` page surfaces the full control surface: an
+  "Internal PID" group (enable toggle, Kp/Ti/Td fields with an Apply action) sits between the
+  process-model parameters and the disturbance controls, gated the same way as the rest of the
+  model-reshaping controls (`simulator.configure`, admin-only); twin setpoint/mode/CO stay reachable
+  to a plain operator through the existing twin output/mode controls (`loop.operate`).
 - **SIM-7.** Simulator-originated configuration changes (an external OPC-UA client writing Kp/Ti/Td/
   mode/setpoint directly to the simulator's exposed nodes) are tracked as dirty and periodically
   persisted, so AI-tuned values applied through the simulator path become durable across restarts.
+- **SIM-8.** The `/simulator` page renders an illustrative SVG block diagram of the closed loop being
+  simulated (SP → summing junction → PID → CO → process → PV, with the feedback path and a
+  disturbance-injection point clearly closing the loop visually). When the viewer can read the twin
+  snapshot, the diagram is annotated live with the selected loop's current Kp/Ti/Td, MAN/AUTO state,
+  process model (gain/τ1/τ2/dead time) and whether a disturbance is currently active; it degrades to
+  the generic, unannotated topology for a restricted operator session.
 
 ### 5.5 Alarming (`ALM`)
 

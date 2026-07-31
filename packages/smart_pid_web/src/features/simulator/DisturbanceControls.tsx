@@ -7,6 +7,11 @@ import type { DisturbanceType } from './types';
 export interface DisturbanceControlsProps {
   /** A step OR noise disturbance is currently loaded on the model. */
   active: boolean;
+  /** Auto-disturbance re-injects a random amplitude on its own cycle — while
+   * it owns the disturbance, a manual injection would be overridden within
+   * seconds without any indication, so the path is closed rather than left
+   * to silently lose the race (same reasoning as CO staying closed in AUTO). */
+  autoDisturbanceEnabled: boolean;
   onInject: (type: DisturbanceType, amplitude: number) => void;
   onRemove: () => void;
 }
@@ -19,7 +24,12 @@ const DEFAULT_AMPLITUDE = 10;
  * `step_active || noise_active`, never by local optimism — a Remove that looks
  * armed while the model is clean is how an operator concludes the twin is stuck.
  */
-export function DisturbanceControls({ active, onInject, onRemove }: DisturbanceControlsProps) {
+export function DisturbanceControls({
+  active,
+  autoDisturbanceEnabled,
+  onInject,
+  onRemove,
+}: DisturbanceControlsProps) {
   const typeId = useId();
   const amplitudeId = useId();
   const [type, setType] = useState<DisturbanceType>('step');
@@ -39,6 +49,7 @@ export function DisturbanceControls({ active, onInject, onRemove }: DisturbanceC
             id={typeId}
             className={NATIVE_SELECT_CLASS}
             value={type}
+            disabled={autoDisturbanceEnabled}
             onChange={(e) => setType(e.target.value as DisturbanceType)}
           >
             <option value="step">step</option>
@@ -53,12 +64,19 @@ export function DisturbanceControls({ active, onInject, onRemove }: DisturbanceC
             id={amplitudeId}
             type="number"
             value={amplitude}
+            disabled={autoDisturbanceEnabled}
             onChange={(e) => setAmplitude(Number(e.target.value))}
           />
         </div>
       </div>
+      {autoDisturbanceEnabled ? (
+        <p className="text-2xs text-text-soft">
+          Auto-disturbance está ativo e reinjeta uma amplitude aleatória periodicamente — desative-o
+          em Automation para injetar manualmente.
+        </p>
+      ) : null}
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => onInject(type, amplitude)}>
+        <Button size="sm" disabled={autoDisturbanceEnabled} onClick={() => onInject(type, amplitude)}>
           Inject disturbance
         </Button>
         <Button size="sm" variant="ghost" disabled={!active} onClick={onRemove}>

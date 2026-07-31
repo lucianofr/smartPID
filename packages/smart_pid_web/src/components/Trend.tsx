@@ -16,6 +16,14 @@ export interface TrendAxisConfig {
   min?: number;
   max?: number;
   unit?: string;
+  /** What the axis measures, e.g. "PV / SP" or "CO" — rendered alongside `unit`. */
+  name?: string;
+}
+
+/** Combines `name` + `unit` into one uPlot axis label, e.g. "PV / SP (%)". */
+function axisLabel(cfg: TrendAxisConfig | undefined): string | undefined {
+  if (cfg?.name && cfg?.unit) return `${cfg.name} (${cfg.unit})`;
+  return cfg?.name ?? cfg?.unit;
 }
 
 export interface TrendPenTip {
@@ -217,7 +225,7 @@ export function Trend({
           ticks: { stroke: theme.gridStroke, width: 1 },
         },
         {
-          label: pvAxis?.unit,
+          label: axisLabel(pvAxis),
           stroke: theme.axesStroke,
           font: theme.axisFont,
           grid: { stroke: theme.gridStroke, width: 1 },
@@ -226,7 +234,7 @@ export function Trend({
         {
           side: 1,
           scale: 'co',
-          label: coAxis?.unit ?? '%',
+          label: axisLabel(coAxis) ?? '%',
           stroke: theme.axesStroke,
           font: theme.axisFont,
           grid: { show: false },

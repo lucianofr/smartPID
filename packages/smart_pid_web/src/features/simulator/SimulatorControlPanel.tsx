@@ -6,6 +6,7 @@ import { useRealtime } from '@/realtime/useRealtime';
 import { AutoToggles } from './AutoToggles';
 import { DisturbanceControls } from './DisturbanceControls';
 import { DynamicsSliders } from './DynamicsSliders';
+import { PIDSettings } from './PIDSettings';
 import { PresetSelector } from './PresetSelector';
 import { StartStopControl } from './StartStopControl';
 import { TwinOutputModeControl } from './TwinOutputModeControl';
@@ -89,8 +90,18 @@ export function SimulatorControlPanel({ controllerId }: SimulatorControlPanelPro
               }}
               onCommit={debouncedCommitParams}
             />
+            <PIDSettings
+              key={controllerId}
+              enabled={controller.pid_enabled}
+              kp={controller.pid_kp}
+              ti={controller.pid_ti}
+              td={controller.pid_td}
+              onToggleEnabled={(enabled) => mutations.pidEnable.mutate(enabled)}
+              onApplyParams={(p) => mutations.pidParams.mutate(p)}
+            />
             <DisturbanceControls
               active={controller.step_active || controller.noise_active}
+              autoDisturbanceEnabled={controller.auto_disturbance?.enabled ?? false}
               onInject={(type, amplitude) => mutations.inject.mutate({ type, amplitude })}
               onRemove={() => mutations.clear.mutate()}
             />
@@ -135,7 +146,18 @@ export function SimulatorControlPanel({ controllerId }: SimulatorControlPanelPro
           mode={twin.mode}
           onSetSp={(sp) => mutations.sp.mutate(sp)}
           onSetCo={(co) => mutations.co.mutate(co)}
-          onSetMode={(mode) => mutations.mode.mutate(mode)}
+          onSetMode={(mode) => {
+            mutations.mode.mutate(mode);
+            // AUTO is meaningless without the internal PID armed — CO sits
+            // frozen with zero feedback otherwise (confirmed live: mode=AUTO
+            // alone never moves CO despite a real SP/PV error). `/pid/enable`
+            // is admin-only, so only couple it when this session already
+            // reaches the config region — an operator's AUTO click still
+            // just sets mode, same as before.
+            if (mode === 'AUTO' && canConfigure && controller?.pid_enabled !== true) {
+              mutations.pidEnable.mutate(true);
+            }
+          }}
         />
       )}
     </section>

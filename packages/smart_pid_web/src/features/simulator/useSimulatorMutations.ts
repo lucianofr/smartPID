@@ -9,6 +9,7 @@ import type {
   DisturbanceType,
   Dynamics,
   ProcessPresetName,
+  SimulatorPIDParamsRequest,
   TwinMode,
 } from './types';
 
@@ -22,6 +23,12 @@ export interface SimulatorMutations {
   stop: UseMutationResult<CommandResponse, Error, void>;
   preset: UseMutationResult<CommandResponse, Error, ProcessPresetName>;
   parameters: UseMutationResult<CommandResponse, Error, Dynamics>;
+  pidEnable: UseMutationResult<CommandResponse, Error, boolean>;
+  pidParams: UseMutationResult<
+    CommandResponse,
+    Error,
+    Omit<SimulatorPIDParamsRequest, 'controller_id'>
+  >;
   inject: UseMutationResult<CommandResponse, Error, DisturbanceInput>;
   clear: UseMutationResult<CommandResponse, Error, void>;
   sp: UseMutationResult<CommandResponse, Error, number>;
@@ -61,6 +68,15 @@ export function useSimulatorMutations(controllerId: number): SimulatorMutations 
           tau2: d.tau2,
           dead_time: d.dead_time,
         }),
+      onSuccess,
+    }),
+    pidEnable: useMutation({
+      mutationFn: (enabled: boolean) => simulatorApi.enablePid(controllerId, enabled),
+      onSuccess,
+    }),
+    pidParams: useMutation({
+      mutationFn: (p: Omit<SimulatorPIDParamsRequest, 'controller_id'>) =>
+        simulatorApi.setPidParams(controllerId, p),
       onSuccess,
     }),
     inject: useMutation({

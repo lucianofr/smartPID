@@ -76,6 +76,24 @@ describe('simulatorApi wire contract', () => {
     });
   });
 
+  it('POSTs the PID enable flag', async () => {
+    await simulatorApi.enablePid(1, true);
+    expect(call()).toMatchObject({
+      url: '/api/simulator/1/pid/enable',
+      method: 'POST',
+      body: { controller_id: 1, enabled: true },
+    });
+  });
+
+  it('POSTs the PID params', async () => {
+    await simulatorApi.setPidParams(1, { kp: 2.5, ti: 8, td: 1.2 });
+    expect(call()).toMatchObject({
+      url: '/api/simulator/1/pid/params',
+      method: 'POST',
+      body: { controller_id: 1, kp: 2.5, ti: 8, td: 1.2 },
+    });
+  });
+
   it('injects with POST /disturbance and clears with DELETE /disturbance/{id}', async () => {
     await simulatorApi.injectDisturbance({ controller_id: 1, type: 'step', amplitude: 20 });
     expect(call()).toMatchObject({
