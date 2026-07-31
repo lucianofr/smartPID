@@ -126,6 +126,13 @@ class PIDWorker:
         # until a telemetry frame carries one; self._mode is SmartPID's own
         # mode and is not the same fact.
         self._dcs_mode: str | None = None
+        # Live PID tuning read from the monitored controller (SUPERVISORY): the
+        # DCS/simulator owns kp/ti/td, so STATUS must report what io_worker read
+        # back over OPC-UA, not this controller's stored config. None until a
+        # telemetry frame carries params; falls back to config below.
+        self._last_kp: float | None = None
+        self._last_ti: float | None = None
+        self._last_td: float | None = None
         self._has_telemetry = False
         self._last_telem_time: float = 0.0
         self._lock = threading.Lock()
@@ -453,6 +460,16 @@ class PIDWorker:
 
                 if self._has_telemetry:
                     params = self._controller.pid_params
+                    # SUPERVISORY: the DCS/simulator owns the PID, so report the
+                    # tuning read back over OPC-UA (falling back to config until
+                    # the first params frame). DDC: SmartPID owns tuning, report
+                    # its config.
+                    supervisory = (
+                        self._controller.execution_mode is ExecutionMode.SUPERVISORY
+                    )
+                    kp_out = self._last_kp if supervisory and self._last_kp is not None else params.gain
+                    ti_out = self._last_ti if supervisory and self._last_ti is not None else params.reset
+                    td_out = self._last_td if supervisory and self._last_td is not None else params.rate
                     telem_data = {
                         "controller_id": self.controller_id,
                         "pv": _serialize_ff_signal(self._last_pv),
@@ -479,9 +496,9 @@ class PIDWorker:
                             )
                             else self._mode.value
                         ),
-                        "kp": params.gain,
-                        "ti": params.reset,
-                        "td": params.rate,
+                        "kp": kp_out,
+                        "ti": ti_out,
+                        "td": td_out,
                         "integral_val": self._state.cv,
                         "timestamp": datetime.now(tz=UTC).isoformat(),
                     }
@@ -567,6 +584,15 @@ class PIDWorker:
                 # which case the publisher falls back to self._mode.
                 if "mode" in data:
                     self._dcs_mode = str(data["mode"])
+                # PID tuning read back from the DCS/simulator over OPC-UA
+                # (io_worker merges these into telemetry). Kept so SUPERVISORY
+                # STATUS reports the loop's real live tuning, not stored config.
+                if data.get("kp") is not None:
+                    self._last_kp = float(data["kp"])
+                if data.get("ti") is not None:
+                    self._last_ti = float(data["ti"])
+                if data.get("td") is not None:
+                    self._last_td = float(data["td"])
                 self._has_telemetry = True
                 self._last_telem_time = time.monotonic()
             except (KeyError, ValueError, msgpack.UnpackException):

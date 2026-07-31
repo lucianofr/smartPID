@@ -228,3 +228,55 @@ class TestSupervisoryModeReporting:
         finally:
             worker.stop()
             bus.stop()
+
+
+class TestSupervisoryParamReadThrough:
+    """STATUS tuning must be the monitored PID's live tuning, not stored config.
+
+    io_worker reads Kp/Ti/Td back from the DCS/simulator over OPC-UA and merges
+    them into telemetry; SUPERVISORY STATUS must surface those so the faceplate
+    shows what the external PID is actually running."""
+
+    def test_status_reports_telemetry_params_in_supervisory(self) -> None:
+        bus = _make_bus()
+        worker, _ = _make_worker(bus, ExecutionMode.SUPERVISORY)
+        try:
+            worker.start()
+            pub = bus.create_publisher()
+            sub = bus.create_subscriber(b"STATUS.1")
+            time.sleep(0.05)
+
+            # Config is Kp 1.0 / Ti 10.0; the DCS is running different tuning.
+            _send(pub, co=50.0, kp=2.0, ti=25.0, td=1.0)
+            time.sleep(0.2)
+
+            status = _last_status(sub)
+            assert status is not None
+            assert status["kp"] == 2.0
+            assert status["ti"] == 25.0
+            assert status["td"] == 1.0
+        finally:
+            worker.stop()
+            bus.stop()
+
+    def test_ddc_reports_config_params_not_telemetry(self) -> None:
+        """In DDC SmartPID owns the tuning, so telemetry params must not leak in."""
+        bus = _make_bus()
+        worker, _ = _make_worker(bus, ExecutionMode.DDC)
+        try:
+            worker.start()
+            pub = bus.create_publisher()
+            sub = bus.create_subscriber(b"STATUS.1")
+            time.sleep(0.05)
+
+            _send(pub, co=50.0, kp=2.0, ti=25.0, td=1.0)
+            time.sleep(0.2)
+
+            status = _last_status(sub)
+            assert status is not None
+            assert status["kp"] == 1.0
+            assert status["ti"] == 10.0
+            assert status["td"] == 0.0
+        finally:
+            worker.stop()
+            bus.stop()

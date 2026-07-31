@@ -491,6 +491,21 @@ async def update_controller(
         if loop_mgr is not None:
             loop_mgr.update_controller(controller)
 
+    # Push tuning to the DCS/simulator when a SUPERVISORY loop's PID params are
+    # edited: SmartPID does not run that PID, so the change is only real once it
+    # reaches the external controller over OPC-UA. io_worker reads it back into
+    # telemetry, closing the loop so the faceplate reflects the applied value.
+    if "pid_params" in updates and controller.execution_mode is ExecutionMode.SUPERVISORY:
+        opcua = getattr(request.app.state, "opcua_adapter", None)
+        if opcua is not None and getattr(opcua, "is_connected", False):
+            p = controller.pid_params
+            try:
+                opcua.write_pid_params(controller.id, p.gain, p.reset, p.rate)
+            except Exception:
+                logger.exception(
+                    "supervisory_param_write_failed controller_id=%d", controller.id,
+                )
+
     # Hot-reload AI Worker when ai_config, process_speed, tss_s, or
     # scan_rate_s changes. The fuzzy stats window is derived from
     # tss_s / scan_rate_s, so the engine must be rebuilt when either moves.

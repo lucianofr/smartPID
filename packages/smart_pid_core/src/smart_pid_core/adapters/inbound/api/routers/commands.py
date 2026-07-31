@@ -42,12 +42,33 @@ from smart_pid_domain.dtos.commands import (
     SetpointCommand,
     TuningCommand,
 )
-from smart_pid_domain.enums import AuditAction, ControllerMode, TuningRecStatus
+from smart_pid_domain.enums import AuditAction, ControllerMode, ExecutionMode, TuningRecStatus
 from smart_pid_domain.events import TuningApplied
+from smart_pid_domain.exceptions import ControllerNotFoundError
 
 router = APIRouter()
 
 _MONITOR_DETAIL = "Not available in monitor mode. PID is controlled by external DCS."
+
+
+def _dcs_owns_loop(
+    lm: LoopManager, controller_id: int, execution_mode: str, opcua: object | None,
+) -> bool:
+    """True when the loop's PID runs outside SmartPID, so SP/mode commands must
+    be written to the DCS over OPC-UA instead of the internal PIDWorker. The
+    whole daemon is external in monitor mode; in execute mode a SUPERVISORY
+    controller is external only when an OPC-UA link exists to carry the write
+    (the simulator or a real DCS). With no OPC adapter there is nothing external
+    to command, so SmartPID handles it locally."""
+    if execution_mode == "monitor":
+        return True
+    if opcua is None:
+        return False
+    try:
+        ctrl = lm.get_controller(controller_id)
+    except ControllerNotFoundError:
+        return False
+    return ctrl.execution_mode is ExecutionMode.SUPERVISORY
 
 
 @router.post("/setpoint", response_model=CommandResponse)
@@ -60,8 +81,8 @@ async def set_setpoint(
     sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
     execution_mode: Annotated[str, Depends(get_execution_mode)],
 ) -> CommandResponse:
-    if execution_mode == "monitor":
-        opcua = getattr(request.app.state, "opcua_adapter", None)
+    opcua = getattr(request.app.state, "opcua_adapter", None)
+    if _dcs_owns_loop(lm, body.controller_id, execution_mode, opcua):
         if opcua is None or not opcua.is_connected:
             raise HTTPException(status_code=409, detail=_MONITOR_DETAIL)
         opcua.write_parameter(body.controller_id, "sp", body.value)
@@ -93,8 +114,8 @@ async def set_mode(
     sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
     execution_mode: Annotated[str, Depends(get_execution_mode)],
 ) -> CommandResponse:
-    if execution_mode == "monitor":
-        opcua = getattr(request.app.state, "opcua_adapter", None)
+    opcua = getattr(request.app.state, "opcua_adapter", None)
+    if _dcs_owns_loop(lm, body.controller_id, execution_mode, opcua):
         if opcua is None or not opcua.is_connected:
             raise HTTPException(status_code=409, detail=_MONITOR_DETAIL)
         success = opcua.write_target_mode(body.controller_id, ControllerMode(body.mode))

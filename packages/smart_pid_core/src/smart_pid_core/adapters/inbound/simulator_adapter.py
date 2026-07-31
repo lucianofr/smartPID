@@ -52,6 +52,7 @@ class _ControllerSim:
     pid_state: PIDState = field(default_factory=PIDState)
     pid_mode: int = 0  # 0=MAN, 1=AUTO
     pid_structure: int = 0  # 0=ISA, 1=PARALLEL, 2=SERIES
+    pid_elapsed_s: float = 0.0  # accumulates the tick dt between PID scans
     # PV scale (used for auto-excitation span calculation)
     pv_min: float = 0.0
     pv_max: float = 100.0
@@ -59,10 +60,12 @@ class _ControllerSim:
     auto_sp_enabled: bool = False
     auto_sp_min_pct: float = 30.0
     auto_sp_max_pct: float = 70.0
+    auto_sp_period_s: float = 30.0
     auto_sp_elapsed_s: float = 0.0
     # Auto disturbance injection
     auto_dist_enabled: bool = False
     auto_dist_max_pct: float = 10.0
+    auto_dist_period_s: float = 30.0
     auto_dist_elapsed_s: float = 0.0
     # Live computed values (updated each tick)
     live_pv: float = 0.0
@@ -77,6 +80,12 @@ class _ControllerSim:
 # the /simulator/{id}/pid/mode route both use this encoding; the OPC-UA adapter
 # needs it to decode Mode back into a ControllerMode.
 SIMULATOR_MODE_INT_MAP: dict[str, int] = {"MAN": 0, "AUTO": 1}
+
+# The twin's internal PID runs on a fixed 1 s scan, decoupled from the faster
+# simulation tick: the process model still integrates every tick for a smooth
+# PV, but the controller only samples/acts once per second (zero-order hold on
+# CO between scans), mirroring a real 1 s PID scan rate.
+PID_SCAN_INTERVAL_S: float = 1.0
 
 # OPC-UA parameters whose mutation changes persistent PID configuration.
 # CO and SP are excluded: they are transient runtime values written every
@@ -217,6 +226,10 @@ class SimulatorAdapter:
             ctrl.pid_params.gain = kp
             ctrl.pid_params.reset = ti
             ctrl.pid_params.rate = td
+            # Persistable change made directly (not via an external OPC write, so
+            # _on_opcua_write never ran): mark dirty so the flusher mirrors it to
+            # the controller config the same way it does OPC-driven tuning.
+            self._dirty_cids.add(controller_id)
         self._sync_pid_config_to_opcua(controller_id)
 
     def _sync_pid_config_to_opcua(self, controller_id: int) -> None:
@@ -361,6 +374,7 @@ class SimulatorAdapter:
             ctrl.auto_sp_enabled = req.enabled
             ctrl.auto_sp_min_pct = req.sp_min_pct
             ctrl.auto_sp_max_pct = req.sp_max_pct
+            ctrl.auto_sp_period_s = req.period_s
             if not req.enabled:
                 ctrl.auto_sp_elapsed_s = 0.0
 
@@ -372,6 +386,7 @@ class SimulatorAdapter:
             ctrl = self._controllers[controller_id]
             ctrl.auto_dist_enabled = req.enabled
             ctrl.auto_dist_max_pct = req.max_amplitude_pct
+            ctrl.auto_dist_period_s = req.period_s
             if not req.enabled:
                 ctrl.auto_dist_elapsed_s = 0.0
 
@@ -401,8 +416,10 @@ class SimulatorAdapter:
             ctrl.auto_sp_enabled = cfg.get("auto_sp_enabled", False)
             ctrl.auto_sp_min_pct = cfg.get("auto_sp_min_pct", 30.0)
             ctrl.auto_sp_max_pct = cfg.get("auto_sp_max_pct", 70.0)
+            ctrl.auto_sp_period_s = cfg.get("auto_sp_period_s", 30.0)
             ctrl.auto_dist_enabled = cfg.get("auto_dist_enabled", False)
             ctrl.auto_dist_max_pct = cfg.get("auto_dist_max_pct", 10.0)
+            ctrl.auto_dist_period_s = cfg.get("auto_dist_period_s", 30.0)
         self._sync_pid_config_to_opcua(cid)
 
     def _build_status(self, ctrl: _ControllerSim) -> ControllerSimStatus:
@@ -427,10 +444,12 @@ class SimulatorAdapter:
                 enabled=ctrl.auto_sp_enabled,
                 sp_min_pct=ctrl.auto_sp_min_pct,
                 sp_max_pct=ctrl.auto_sp_max_pct,
+                period_s=ctrl.auto_sp_period_s,
             ),
             auto_disturbance=AutoDisturbanceRequest(
                 enabled=ctrl.auto_dist_enabled,
                 max_amplitude_pct=ctrl.auto_dist_max_pct,
+                period_s=ctrl.auto_dist_period_s,
             ),
             pv=ctrl.live_pv,
             sp=ctrl.sp,
@@ -460,8 +479,10 @@ class SimulatorAdapter:
                 "auto_sp_enabled": ctrl.auto_sp_enabled,
                 "auto_sp_min_pct": ctrl.auto_sp_min_pct,
                 "auto_sp_max_pct": ctrl.auto_sp_max_pct,
+                "auto_sp_period_s": ctrl.auto_sp_period_s,
                 "auto_dist_enabled": ctrl.auto_dist_enabled,
                 "auto_dist_max_pct": ctrl.auto_dist_max_pct,
+                "auto_dist_period_s": ctrl.auto_dist_period_s,
                 "pid_sp": ctrl.sp,
             }
 
@@ -489,13 +510,12 @@ class SimulatorAdapter:
     def _tick(self, dt: float) -> None:
         with self._lock:
             for ctrl in self._controllers.values():
-                # --- Auto-excitation ---
-                period_s = max(10.0 * ctrl.tau1, 1.0)
+                # --- Auto-excitation --- (periods are per-controller, operator-set)
                 span = ctrl.pv_max - ctrl.pv_min
 
                 if ctrl.auto_sp_enabled:
                     ctrl.auto_sp_elapsed_s += dt
-                    if ctrl.auto_sp_elapsed_s >= period_s:
+                    if ctrl.auto_sp_elapsed_s >= ctrl.auto_sp_period_s:
                         ctrl.auto_sp_elapsed_s = 0.0
                         if span > 0:
                             lo = ctrl.pv_min + ctrl.auto_sp_min_pct / 100.0 * span
@@ -504,7 +524,7 @@ class SimulatorAdapter:
 
                 if ctrl.auto_dist_enabled:
                     ctrl.auto_dist_elapsed_s += dt
-                    if ctrl.auto_dist_elapsed_s >= period_s:
+                    if ctrl.auto_dist_elapsed_s >= ctrl.auto_dist_period_s:
                         ctrl.auto_dist_elapsed_s = 0.0
                         if span > 0:
                             max_amp = ctrl.auto_dist_max_pct / 100.0 * span
@@ -530,21 +550,30 @@ class SimulatorAdapter:
                 ctrl.live_process_output = process_output
                 ctrl.live_disturbance_output = disturbance
 
-                # Internal PID: compute CO when enabled and AUTO
+                # Internal PID: sample/act on a fixed PID_SCAN_INTERVAL_S scan
+                # while the process integrates every tick. CO holds between
+                # scans (zero-order hold), same as a real 1 s controller.
                 error = ctrl.sp - pv
                 ctrl.live_error = error
                 if ctrl.pid_enabled and ctrl.pid_mode == 1:
-                    result = self._pid_engine.compute(
-                        params=ctrl.pid_params,
-                        state=ctrl.pid_state,
-                        pv=FFSignal.good(pv),
-                        sp=FFSignal.good(ctrl.sp),
-                        bkcal_in=FFSignal.good(ctrl.pid_state.cv),
-                        dt=dt,
-                        out_limits=(0.0, 100.0),
-                    )
-                    ctrl.pid_state = result.new_state
-                    ctrl.last_co = result.cv
+                    ctrl.pid_elapsed_s += dt
+                    # 1e-6 absorbs float summation drift (0.1*10 == 0.999…) so an
+                    # exact 1 s cadence fires on tick 10, not tick 11.
+                    if ctrl.pid_elapsed_s >= PID_SCAN_INTERVAL_S - 1e-6:
+                        ctrl.pid_elapsed_s -= PID_SCAN_INTERVAL_S
+                        result = self._pid_engine.compute(
+                            params=ctrl.pid_params,
+                            state=ctrl.pid_state,
+                            pv=FFSignal.good(pv),
+                            sp=FFSignal.good(ctrl.sp),
+                            bkcal_in=FFSignal.good(ctrl.pid_state.cv),
+                            dt=PID_SCAN_INTERVAL_S,
+                            out_limits=(0.0, 100.0),
+                        )
+                        ctrl.pid_state = result.new_state
+                        ctrl.last_co = result.cv
+                else:
+                    ctrl.pid_elapsed_s = 0.0
 
                 # Echo only state values computed by the simulator. PID config
                 # (kp/ti/td/pid_structure/pid_enabled) is owned by external

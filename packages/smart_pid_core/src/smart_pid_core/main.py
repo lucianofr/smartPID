@@ -27,7 +27,7 @@ from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.application.telemetry_publisher import TelemetryPublisher
 from smart_pid_core.application.tuning_store import TuningRecommendationStore
 from smart_pid_core.config import CoreSettings
-from smart_pid_domain.enums import UserRole
+from smart_pid_domain.enums import ExecutionMode, UserRole
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -221,8 +221,38 @@ async def _sim_persist_flusher(
         for cid in adapter.consume_dirty_cids():
             try:
                 await persist_sim_config(adapter, repo, cid)
+                await _mirror_sim_pid_params(adapter, repo, cid)
             except Exception:
                 _log.exception("sim_persist_flush_failed", controller_id=cid)
+
+
+async def _mirror_sim_pid_params(
+    adapter,  # noqa: ANN001
+    repo: SQLiteRepository,
+    controller_id: int,
+) -> None:
+    """Mirror a SUPERVISORY controller's live simulator PID tuning into its
+    stored config, so the loop-config view matches the PID the simulator is
+    actually running. SmartPID does not own a SUPERVISORY loop's tuning — the
+    simulator/DCS does — so its config must follow, not lead. DDC loops own
+    their tuning and are left untouched."""
+    from dataclasses import replace
+
+    try:
+        controller = await repo.get(controller_id)
+    except KeyError:
+        return
+    if controller.execution_mode is not ExecutionMode.SUPERVISORY:
+        return
+    st = adapter.get_pid_status(controller_id)
+    p = controller.pid_params
+    if (p.gain, p.reset, p.rate) == (st["kp"], st["ti"], st["td"]):
+        return
+    updated = replace(
+        controller,
+        pid_params=replace(p, gain=st["kp"], reset=st["ti"], rate=st["td"]),
+    )
+    await repo.save(updated)
 
 
 #: Rows removed per retention statement. Measured on a 1.5 M-row / 142 MB
