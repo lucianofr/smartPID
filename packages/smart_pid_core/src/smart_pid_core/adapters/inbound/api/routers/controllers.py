@@ -185,6 +185,7 @@ def _to_response(c: Controller) -> ControllerResponse:
             node_id_td=c.tag_bindings.node_id_td,
             node_id_mode_target=c.tag_bindings.node_id_mode_target,
             node_id_mode_actual=c.tag_bindings.node_id_mode_actual,
+            node_id_enabled=c.tag_bindings.node_id_enabled,
             mode_int_map=c.tag_bindings.mode_int_map,
         ),
         control_opts=ControlOptsDTO(
@@ -221,6 +222,7 @@ def _to_response(c: Controller) -> ControllerResponse:
         optimization_enabled=c.optimization_enabled,
         tuning_write_mode=str(c.tuning_write_mode),
         max_tuning_change_pct=c.max_tuning_change_pct,
+        stability_band_pct=c.stability_band_pct,
         mode_normal=str(c.mode_normal),
         permitted_modes=sorted(str(m) for m in c.permitted_modes),
         sp_hi_lim=c.sp_hi_lim,
@@ -282,6 +284,7 @@ def _body_to_controller(body: ControllerCreate) -> Controller:
             node_id_td=body.tag_bindings.node_id_td,
             node_id_mode_target=body.tag_bindings.node_id_mode_target,
             node_id_mode_actual=body.tag_bindings.node_id_mode_actual,
+            node_id_enabled=body.tag_bindings.node_id_enabled,
             mode_int_map=body.tag_bindings.mode_int_map,
         ),
         control_opts=ControlOpts(
@@ -317,6 +320,7 @@ def _body_to_controller(body: ControllerCreate) -> Controller:
         ),
         tuning_write_mode=TuningWriteMode(body.tuning_write_mode),
         max_tuning_change_pct=body.max_tuning_change_pct,
+        stability_band_pct=body.stability_band_pct,
         mode_normal=ControllerMode(body.mode_normal),
         permitted_modes={ControllerMode(m) for m in body.permitted_modes},
         sp_hi_lim=body.sp_hi_lim,
@@ -355,6 +359,7 @@ _NESTED_BUILDERS: dict[str, tuple[type, callable]] = {
         node_id_ti=dto.node_id_ti, node_id_td=dto.node_id_td,
         node_id_mode_target=dto.node_id_mode_target,
         node_id_mode_actual=dto.node_id_mode_actual,
+        node_id_enabled=dto.node_id_enabled,
         mode_int_map=dto.mode_int_map,
     )),
     "control_opts": (ControlOptsDTO, lambda dto: ControlOpts(
@@ -564,6 +569,7 @@ def _reregister_opcua(request: Request, controller: Controller) -> None:
         node_id_td=tb.node_id_td,
         node_id_mode_target=tb.node_id_mode_target,
         node_id_mode_actual=tb.node_id_mode_actual,
+        node_id_enabled=tb.node_id_enabled,
         mode_int_map=tb.mode_int_map,
     )
 

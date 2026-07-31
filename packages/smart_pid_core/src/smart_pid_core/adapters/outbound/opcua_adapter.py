@@ -223,9 +223,17 @@ class OPCUAAdapter:
         node_id_td: str = "",
         node_id_mode_target: str = "",
         node_id_mode_actual: str = "",
+        node_id_enabled: str = "",
         mode_int_map: dict[str, int] | None = None,
     ) -> None:
-        """Register a controller's OPC-UA node mappings."""
+        """Register a controller's OPC-UA node mappings.
+
+        ``node_id_enabled`` points at the PLC boolean that reports whether the
+        process this PID drives is actually running — conventionally exposed as
+        ``PID_[MALHA]_ENABLED`` (e.g. a ``Process_Running`` tag on a
+        ControlLogix, or a ``DB.Process_Running`` bit on an S7). Leave it empty
+        when the PLC publishes no such tag; the optimizer then runs ungated.
+        """
         int_map = mode_int_map or {}
         inv_map = {v: k for k, v in int_map.items()}
         with self._lock:
@@ -241,6 +249,7 @@ class OPCUAAdapter:
                 "td": node_id_td,
                 "mode_target": node_id_mode_target,
                 "mode_actual": node_id_mode_actual,
+                "enabled": node_id_enabled,
                 "mode_int_map": int_map,
                 "mode_int_map_inv": inv_map,
             }
@@ -615,6 +624,40 @@ class OPCUAAdapter:
             logger.warning("unmapped_mode_integer value=%d node=%s", int_val, mode_id)
             return None
         return ControllerMode(mode_str)
+
+    def read_pid_enabled(self, controller_id: int) -> bool | None:
+        """Read the PLC's "process using this PID is running" flag.
+
+        The node is the ``node_id_enabled`` binding — conventionally the PLC
+        tag ``PID_[MALHA]_ENABLED`` (e.g. ``Process_Running``). It carries a
+        boolean, or an integer where 1 = running and 0 = stopped.
+
+        Returns None — meaning "unknown", never a fabricated ``True`` — when
+        no node is mapped, the adapter is offline, or the read fails. Callers
+        must treat None as "no opinion" and leave the optimizer ungated:
+        an unmapped tag is the absence of a permissive, not a prohibition.
+        """
+        with self._lock:
+            tags = self._controllers.get(controller_id, {})
+            enabled_id = tags.get("enabled", "")
+            client = self._client
+
+        if not enabled_id or not self.is_connected or client is None:
+            return None
+
+        future = asyncio.run_coroutine_threadsafe(
+            self._async_read_pid_enabled(client, enabled_id),
+            self._loop,
+        )
+        return future.result(timeout=self._timeout_s)
+
+    async def _async_read_pid_enabled(self, client, node_id: str) -> bool | None:
+        """Async read of the process-running node, coerced to bool."""
+        node = client.get_node(node_id)
+        value = await node.read_value()
+        if value is None:
+            return None
+        return bool(value)
 
     def write_target_mode(self, controller_id: int, mode: ControllerMode) -> bool:
         """Write target mode to DCS as integer via mode_int_map.

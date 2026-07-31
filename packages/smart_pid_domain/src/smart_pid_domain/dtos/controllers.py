@@ -52,6 +52,7 @@ class TagBindingsDTO(BaseModel):
     node_id_td: str = ""
     node_id_mode_target: str = ""
     node_id_mode_actual: str = ""
+    node_id_enabled: str = ""
     mode_int_map: dict[str, int] = {}
 
     @model_validator(mode="after")
@@ -116,6 +117,7 @@ class ControllerCreate(BaseModel):
     # Tuning write policy
     tuning_write_mode: str = "approval_required"
     max_tuning_change_pct: float = 10.0
+    stability_band_pct: float | None = None
 
     # Mode config
     mode_normal: str = "AUTO"
@@ -173,6 +175,7 @@ class ControllerUpdate(BaseModel):
 
     tuning_write_mode: str | None = None
     max_tuning_change_pct: float | None = None
+    stability_band_pct: float | None = None
 
     mode_normal: str | None = None
     permitted_modes: list[str] | None = None
@@ -230,6 +233,7 @@ class ControllerResponse(BaseModel):
 
     tuning_write_mode: str = "approval_required"
     max_tuning_change_pct: float = 10.0
+    stability_band_pct: float | None = None
 
     mode_normal: str = "AUTO"
     permitted_modes: list[str] = ["MAN", "AUTO"]

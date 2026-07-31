@@ -1383,11 +1383,21 @@ export interface components {
              * @default 10
              */
             max_amplitude_pct: number;
+            /**
+             * Period S
+             * @default 30
+             */
+            period_s: number;
         };
         /** AutoSPRequest */
         AutoSPRequest: {
             /** Enabled */
             enabled: boolean;
+            /**
+             * Period S
+             * @default 30
+             */
+            period_s: number;
             /**
              * Sp Max Pct
              * @default 70
@@ -1682,12 +1692,15 @@ export interface components {
              * @default 0
              */
             sp_rate_up: number;
+            /** Stability Band Pct */
+            stability_band_pct?: number | null;
             /**
              * @default {
              *       "mode_int_map": {},
              *       "node_id_bkcal_in": "",
              *       "node_id_bkcal_out": "",
              *       "node_id_co": "",
+             *       "node_id_enabled": "",
              *       "node_id_integral": "",
              *       "node_id_kp": "",
              *       "node_id_mode_actual": "",
@@ -1924,12 +1937,15 @@ export interface components {
              * @default 0
              */
             sp_rate_up: number;
+            /** Stability Band Pct */
+            stability_band_pct?: number | null;
             /**
              * @default {
              *       "mode_int_map": {},
              *       "node_id_bkcal_in": "",
              *       "node_id_bkcal_out": "",
              *       "node_id_co": "",
+             *       "node_id_enabled": "",
              *       "node_id_integral": "",
              *       "node_id_kp": "",
              *       "node_id_mode_actual": "",
@@ -2101,6 +2117,8 @@ export interface components {
             sp_rate_dn?: number | null;
             /** Sp Rate Up */
             sp_rate_up?: number | null;
+            /** Stability Band Pct */
+            stability_band_pct?: number | null;
             tag_bindings?: components["schemas"]["TagBindingsDTO"] | null;
             /** Tss S */
             tss_s?: number | null;
@@ -2615,6 +2633,11 @@ export interface components {
              * @default
              */
             node_id_co: string;
+            /**
+             * Node Id Enabled
+             * @default
+             */
+            node_id_enabled: string;
             /**
              * Node Id Integral
              * @default

@@ -392,6 +392,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         execution_mode=settings.execution_mode,
         model_dir=model_dir,
         tuning_store=tuning_store,
+        stability_band_pct=settings.stability_band_pct,
     )
     logger.info("event_bus_started")
 
@@ -480,6 +481,7 @@ async def run_daemon(settings: CoreSettings) -> None:
                         node_id_td=tb.node_id_td,
                         node_id_mode_target=tb.node_id_mode_target,
                         node_id_mode_actual=tb.node_id_mode_actual,
+                        node_id_enabled=tb.node_id_enabled,
                         mode_int_map=tb.mode_int_map,
                     )
         opcua_adapter.start()

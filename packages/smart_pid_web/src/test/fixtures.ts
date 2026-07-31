@@ -76,6 +76,7 @@ const BASE_CONTROLLER: ControllerResponse = {
     node_id_bkcal_in: '',
     node_id_bkcal_out: '',
     node_id_co: '',
+    node_id_enabled: '',
     node_id_integral: '',
     node_id_kp: '',
     node_id_mode_actual: '',

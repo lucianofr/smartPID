@@ -53,6 +53,11 @@ _AUTO_MODES = frozenset({
     ControllerMode.RCAS,
 })
 
+# Fallback steady-state band, in % of SP, when neither the loop nor the daemon
+# configures one. While |PV - SP| stays inside it the loop is at rest, and
+# moving Ki/Ti there buys nothing while arming an overshoot on the next step.
+_DEFAULT_STABILITY_BAND_PCT = 2.0
+
 # --- Steady-state observation gates for process-gain identification -------
 # "At rest" means PV and CO have both stopped moving — NOT that PV sits on SP.
 # A loop holding a steady offset (P-dominant, or integral held off by a
@@ -96,7 +101,12 @@ class AIWorker:
         initial_ki: float | None = None,
         model_dir: Path | None = None,
         tuning_store: TuningRecommendationStore | None = None,
+        stability_band_pct: float = _DEFAULT_STABILITY_BAND_PCT,
     ) -> None:
+        """``stability_band_pct`` is the daemon-wide steady-state band, in % of
+        SP. The loop's own ``Controller.stability_band_pct`` overrides it when
+        set; ``None`` there means "inherit this global".
+        """
         self._bus = bus
         self._controller = controller
         self._ai_config = controller.ai_config
@@ -122,6 +132,16 @@ class AIWorker:
         # per-loop flag and toggled at runtime via CMD.AI start/stop.
         self._enabled = controller.optimization_enabled
         self._paused = False
+        # PLC "process using this PID is running" flag, refreshed from every
+        # TELEMETRY frame. None = no PID_[MALHA]_ENABLED tag mapped, which is
+        # "unknown", not "stopped", and never blocks the optimizer.
+        self._pid_enabled: bool | None = None
+        # Steady-state guardrail: the loop's own band wins, else the global.
+        self._stability_band_pct = (
+            controller.stability_band_pct
+            if controller.stability_band_pct is not None
+            else stability_band_pct
+        )
         self._cycles_since_save = 0  # RL state is persisted every N cycles, not every one
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -379,6 +399,47 @@ class AIWorker:
                 self.controller_id, reason, len(self._ss_points),
             )
 
+    def _optimization_skip_reason(self) -> str | None:
+        """Why this cycle must not move the integral term, or None to proceed.
+
+        Two total-skip guards, in order:
+
+        ``'enabled'``
+            The PLC's ``PID_[MALHA]_ENABLED`` tag reads 0 — the process this
+            loop drives is stopped, so the PV it reports is not a response to
+            anything the controller did. ``None`` from the adapter means the
+            tag is unmapped, i.e. unknown, and never gates.
+        ``'stability_band'``
+            ``|PV - SP|`` is inside the loop's stability band. At steady state
+            the error carries no information about the tuning, and changing
+            Ki/Ti there only arms an overshoot on the next setpoint step.
+
+        Neither guard touches Kp or Kd: the whole cycle is skipped or none of
+        it is.
+        """
+        if self._pid_enabled is False:
+            return "enabled"
+        band = abs(self._last_sp) * self._stability_band_pct / 100.0
+        if abs(self._last_pv - self._last_sp) < band:
+            return "stability_band"
+        return None
+
+    def _log_optimization_skip(self, reason: str) -> None:
+        """Record every skipped optimization, one JSON object per line.
+
+        Not edge-triggered: "the optimizer left this loop alone" is the fact
+        being audited, and it must be countable per cycle, not per transition.
+        At one line per AI period (3 x TSS) that is not a volume problem.
+        """
+        logger.info(
+            "optimizer_skip %s",
+            json.dumps({
+                "malha": self.controller_id,
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "reason": reason,
+            }),
+        )
+
     def _maybe_recommend_retune(self, pub) -> None:  # noqa: ANN001
         """Synthesise a full PID retune and park it in the store, if warranted.
 
@@ -564,7 +625,18 @@ class AIWorker:
 
                 # Full PID retune proposal (Kp + Ti + Td). Confirm-gated —
                 # this only fills the recommendation store, it never writes.
+                # Deliberately ahead of the safe-tuning guardrail below: the
+                # FOPDT identification it feeds on only sees anything WHILE the
+                # loop sits settled, and it cannot move a parameter on its own.
                 self._maybe_recommend_retune(pub)
+
+                # Safe-tuning guardrail on the online integral adjustment: PLC
+                # reports the process stopped, or the loop is at steady state.
+                # Total skip — no Ki/Ti move, and Kp/Kd untouched either way.
+                skip_reason = self._optimization_skip_reason()
+                if skip_reason is not None:
+                    self._log_optimization_skip(skip_reason)
+                    continue
 
                 # Sync ki_current from OPC-UA only when the DCS value changed
                 # externally (manual tuning or DCS clamping).  Re-reading the
@@ -794,6 +866,13 @@ class AIWorker:
                 self._last_sp = sp_raw["value"] if isinstance(sp_raw, dict) else float(sp_raw)
                 self._last_co = co_raw["value"] if isinstance(co_raw, dict) else float(co_raw)
                 self._last_integral = float(data.get("integral_val", 0.0))
+                # PLC process-running flag, refreshed every frame so a runtime
+                # 0 -> 1 resumes tuning on the very next AI cycle. Absent key
+                # (a publisher that does not read the tag) leaves it unknown.
+                raw_enabled = data.get("pid_enabled")
+                self._pid_enabled = (
+                    None if raw_enabled is None else bool(raw_enabled)
+                )
                 # PLC-sourced mode. Only trust it as a fallback: it is
                 # UNKNOWN whenever mode_int_map is unset, and for a DDC loop
                 # SmartPID owns the mode anyway. _drain_status() overrides

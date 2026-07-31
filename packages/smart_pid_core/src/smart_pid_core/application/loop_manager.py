@@ -44,6 +44,7 @@ class LoopManager:
         execution_mode: str = "execute",
         model_dir: Path | None = None,
         tuning_store: TuningRecommendationStore | None = None,
+        stability_band_pct: float = 2.0,
     ) -> None:
         self._bus = bus
         self._execution_mode = execution_mode
@@ -51,6 +52,9 @@ class LoopManager:
         # Shared with the API layer via ``app.state.tuning_store``: the AI
         # workers produce into it, the command routes read and apply from it.
         self._tuning_store = tuning_store
+        # Daemon-wide steady-state band (% of SP). A loop with its own
+        # ``stability_band_pct`` overrides it; the rest inherit this.
+        self._stability_band_pct = stability_band_pct
         self._loops: dict[int, LoopContext] = {}
 
     def start_loop(
@@ -66,6 +70,7 @@ class LoopManager:
         ai_worker = AIWorker(
             bus=self._bus, controller=controller, initial_ki=initial_ki,
             model_dir=self._model_dir, tuning_store=self._tuning_store,
+            stability_band_pct=self._stability_band_pct,
         )
 
         if self._execution_mode == "monitor":
@@ -221,6 +226,7 @@ class LoopManager:
         ctx.ai_worker = AIWorker(
             bus=self._bus, controller=controller, initial_ki=current_ki,
             model_dir=self._model_dir, tuning_store=self._tuning_store,
+            stability_band_pct=self._stability_band_pct,
         )
         ctx.ai_worker.start()
         logger.info(

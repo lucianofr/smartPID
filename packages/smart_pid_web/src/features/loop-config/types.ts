@@ -38,7 +38,14 @@ export type PidStructure = 'ISA' | 'PARALLEL' | 'SERIES';
 export const PID_STRUCTURES: readonly PidStructure[] = ['ISA', 'PARALLEL', 'SERIES'];
 
 export type IntegralType = 'GAIN_KI' | 'TIME_TI';
-export const INTEGRAL_TYPES: readonly IntegralType[] = ['GAIN_KI', 'TIME_TI'];
+/**
+ * How the loop parametrises the integral term. The label is what the operator
+ * picks; the value is the `IntegralType` StrEnum member the backend accepts.
+ */
+export const INTEGRAL_TYPE_OPTIONS: readonly { value: IntegralType; label: string }[] = [
+  { value: 'TIME_TI', label: 'Tempo Integral (1/Ti)' },
+  { value: 'GAIN_KI', label: 'Ganho Integral (Ki)' },
+];
 
 /** `shed_opt` — the mode the loop falls back to when the IO link sheds. */
 export const SHED_OPTIONS: readonly ControllerMode[] = ['MAN', 'AUTO', 'IMAN', 'LO'];

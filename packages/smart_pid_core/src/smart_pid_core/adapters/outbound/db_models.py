@@ -64,6 +64,7 @@ class Controladores(SpidBase):
     node_id_td: Mapped[str]
     node_id_mode_target: Mapped[str]
     node_id_mode_actual: Mapped[str]
+    node_id_enabled: Mapped[str]
     mode_int_map: Mapped[str]
     # SP limits
     sp_hi_lim: Mapped[float]
@@ -119,6 +120,7 @@ class Controladores(SpidBase):
     ai_limit_min: Mapped[float]
     ai_limit_max: Mapped[float]
     optimization_enabled: Mapped[int]
+    stability_band_pct: Mapped[float | None]
     # Timestamps (TEXT, SQLite-side datetime('now') defaults)
     criado_em: Mapped[str]
     atualizado_em: Mapped[str]

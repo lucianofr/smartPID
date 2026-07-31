@@ -253,6 +253,54 @@ class TestFullFieldCreateAndGet:
         assert data["pv_ftime"] == 0.5
 
 
+class TestSafeTuningFields:
+    """`node_id_enabled` and `stability_band_pct` survive create -> GET -> PUT -> GET."""
+
+    @pytest.mark.asyncio
+    async def test_defaults_are_unmapped_tag_and_inherited_band(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        resp = await client.post(
+            "/controllers", json={"name": "TIC-500"}, headers=admin_headers
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["tag_bindings"]["node_id_enabled"] == ""
+        # None = inherit the daemon-wide band, not "no guardrail".
+        assert data["stability_band_pct"] is None
+
+    @pytest.mark.asyncio
+    async def test_round_trip_through_put_and_get(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        cid = (
+            await client.post(
+                "/controllers", json={"name": "TIC-501"}, headers=admin_headers
+            )
+        ).json()["id"]
+
+        put = await client.put(
+            f"/controllers/{cid}",
+            json={
+                "integral_type": "GAIN_KI",
+                "stability_band_pct": 0.5,
+                "tag_bindings": {
+                    "node_id_pv": "ns=2;s=TIC501.PV",
+                    "node_id_enabled": "ns=2;s=Process_Running",
+                },
+            },
+            headers=admin_headers,
+        )
+        assert put.status_code == 200
+
+        data = (
+            await client.get(f"/controllers/{cid}", headers=admin_headers)
+        ).json()
+        assert data["integral_type"] == "GAIN_KI"
+        assert data["stability_band_pct"] == 0.5
+        assert data["tag_bindings"]["node_id_enabled"] == "ns=2;s=Process_Running"
+
+
 class TestFullFieldUpdate:
     @pytest.mark.asyncio
     async def test_update_nested_fields(

@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS Controladores (
     node_id_td          TEXT    NOT NULL DEFAULT '',
     node_id_mode_target TEXT    NOT NULL DEFAULT '',
     node_id_mode_actual TEXT    NOT NULL DEFAULT '',
+    node_id_enabled     TEXT    NOT NULL DEFAULT '',
     mode_int_map        TEXT    NOT NULL DEFAULT '{}',
     -- SP limits
     sp_hi_lim           REAL    NOT NULL DEFAULT 100.0,
@@ -129,6 +130,7 @@ CREATE TABLE IF NOT EXISTS Controladores (
     ai_limit_max        REAL    NOT NULL DEFAULT 100.0,
     -- ENABLE_OPTIMIZER: master enable for the online tuning optimizer
     optimization_enabled INTEGER NOT NULL DEFAULT 1,
+    stability_band_pct  REAL,
     -- Timestamps
     criado_em           TEXT    NOT NULL DEFAULT (datetime('now')),
     atualizado_em       TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -275,6 +277,9 @@ _CONTROLADORES_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     # the legacy ms value); this entry only covers a file that has neither.
     ("scan_rate_s", "REAL NOT NULL DEFAULT 1.0"),
     ("tss_s", "REAL NOT NULL DEFAULT 60.0"),
+    # PLC process-running gate and the per-loop optimizer stability band
+    ("node_id_enabled", "TEXT NOT NULL DEFAULT ''"),
+    ("stability_band_pct", "REAL"),
 )
 
 # Configuracao_Simulador shipped in three generations: 6 columns, then +pid_*
@@ -498,6 +503,7 @@ class SQLiteRepository:
             "node_id_td": c.tag_bindings.node_id_td,
             "node_id_mode_target": c.tag_bindings.node_id_mode_target,
             "node_id_mode_actual": c.tag_bindings.node_id_mode_actual,
+            "node_id_enabled": c.tag_bindings.node_id_enabled,
             "mode_int_map": json.dumps(c.tag_bindings.mode_int_map),
             "sp_hi_lim": c.sp_hi_lim,
             "sp_lo_lim": c.sp_lo_lim,
@@ -574,6 +580,7 @@ class SQLiteRepository:
             "rl_learning_rate": c.ai_config.rl_learning_rate,
             "rl_train_interval": c.ai_config.rl_train_interval,
             "optimization_enabled": int(c.optimization_enabled),
+            "stability_band_pct": c.stability_band_pct,
         }
 
     def _row_to_controller(self, row: Mapping) -> Controller:
@@ -623,6 +630,7 @@ class SQLiteRepository:
                 node_id_td=row["node_id_td"],
                 node_id_mode_target=row["node_id_mode_target"],
                 node_id_mode_actual=row["node_id_mode_actual"],
+                node_id_enabled=row["node_id_enabled"],
                 mode_int_map=json.loads(row["mode_int_map"]),
             ),
             sp_hi_lim=row["sp_hi_lim"],
@@ -694,6 +702,7 @@ class SQLiteRepository:
                 rl_train_interval=row["rl_train_interval"],
             ),
             optimization_enabled=bool(row["optimization_enabled"]),
+            stability_band_pct=row["stability_band_pct"],
         )
 
     # ------------------------------------------------------------------

@@ -65,8 +65,13 @@ describe('LoopConfigDialog — execution mode gating', () => {
       'Filters & IO',
       'Shed & Safety',
       'PID Structure',
-      'Integral Type',
     ]);
+  });
+
+  it('keeps Integral Type visible in SUPERVISORY — the optimizer needs it there', async () => {
+    renderDialog({ execution_mode: 'SUPERVISORY' });
+    await screen.findByLabelText('Modo de execução');
+    expect(screen.getByRole('region', { name: 'Integral Type' })).toBeVisible();
   });
 
   it('hides every DCS-owned section while the loop is SUPERVISORY', async () => {
@@ -120,6 +125,86 @@ describe('LoopConfigDialog — writes', () => {
     expect(await screen.findByText('Reset (Ti) deve ser maior que 0')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('LoopConfigDialog — integral type (radio)', () => {
+  it('renders both alternatives as radios, defaulting to the loop value', async () => {
+    renderDialog({ execution_mode: 'SUPERVISORY', integral_type: 'TIME_TI' });
+    const time = await screen.findByRole('radio', { name: 'Tempo Integral (1/Ti)' });
+    const gain = screen.getByRole('radio', { name: 'Ganho Integral (Ki)' });
+    expect(time).toBeChecked();
+    expect(gain).not.toBeChecked();
+  });
+
+  it('PUTs the picked type even for a SUPERVISORY loop', async () => {
+    const { onClose } = renderDialog({
+      execution_mode: 'SUPERVISORY',
+      integral_type: 'TIME_TI',
+    });
+    fireEvent.click(await screen.findByRole('radio', { name: 'Ganho Integral (Ki)' }));
+    expect(screen.getByRole('radio', { name: 'Ganho Integral (Ki)' })).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string) as Record<string, unknown>;
+    expect(body.integral_type).toBe('GAIN_KI');
+  });
+
+  it('comes back checked on the saved value when the dialog is reopened', async () => {
+    // What the server now returns for this loop after the PUT above.
+    renderDialog({ execution_mode: 'SUPERVISORY', integral_type: 'GAIN_KI' });
+    expect(await screen.findByRole('radio', { name: 'Ganho Integral (Ki)' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Tempo Integral (1/Ti)' })).not.toBeChecked();
+  });
+});
+
+describe('LoopConfigDialog — optimizer stability band', () => {
+  it('shows a blank box for a loop that inherits the global band', async () => {
+    renderDialog({ stability_band_pct: null });
+    expect(await screen.findByLabelText('Banda de estabilidade (% do SP)')).toHaveValue(null);
+  });
+
+  it('round-trips a per-loop override', async () => {
+    const { onClose } = renderDialog({ stability_band_pct: 0.5 });
+    const field = await screen.findByLabelText('Banda de estabilidade (% do SP)');
+    expect(field).toHaveValue(0.5);
+
+    fireEvent.change(field, { target: { value: '5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string) as Record<string, unknown>;
+    expect(body.stability_band_pct).toBe(5);
+  });
+
+  it('sends null when the box is cleared — that is "inherit the global"', async () => {
+    const { onClose } = renderDialog({ stability_band_pct: 0.5 });
+    fireEvent.change(await screen.findByLabelText('Banda de estabilidade (% do SP)'), {
+      target: { value: '' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string) as Record<string, unknown>;
+    expect(body.stability_band_pct).toBeNull();
+  });
+});
+
+describe('LoopConfigDialog — PID em uso binding', () => {
+  it('offers the PLC process-running tag alongside the other bindings', async () => {
+    renderDialog({ execution_mode: 'SUPERVISORY' });
+    const field = await screen.findByLabelText('NodeID PID em uso');
+    fireEvent.change(field, { target: { value: 'ns=2;s=Process_Running' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string) as Record<string, unknown>;
+    expect(body.tag_bindings).toMatchObject({ node_id_enabled: 'ns=2;s=Process_Running' });
   });
 });
 

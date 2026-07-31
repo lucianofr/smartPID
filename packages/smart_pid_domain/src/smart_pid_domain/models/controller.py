@@ -68,7 +68,14 @@ class AIConfig:
 
 @dataclass
 class TagBindings:
-    """OPC-UA NodeID mappings for a controller."""
+    """OPC-UA NodeID mappings for a controller.
+
+    ``node_id_enabled`` points at a PLC boolean/integer that reads 1 while the
+    process driven by this PID is running and 0 while it is stopped.  The
+    conventional PLC tag name is ``PID_[MALHA]_ENABLED`` (for example
+    ``Process_Running`` on a ControlLogix).  An empty string means the tag is
+    not mapped.
+    """
 
     node_id_pv: str = ""
     node_id_sp: str = ""
@@ -81,6 +88,7 @@ class TagBindings:
     node_id_td: str = ""
     node_id_mode_target: str = ""
     node_id_mode_actual: str = ""
+    node_id_enabled: str = ""
     mode_int_map: dict[str, int] = field(default_factory=dict)
 
 
@@ -157,6 +165,12 @@ class Controller:
     # tuning optimizer on this loop. When False, SmartPID keeps monitoring and
     # publishing telemetry/stats but does NOT compute or write tuning back.
     optimization_enabled: bool = True
+    # Per-loop override of the optimizer stability band, expressed as a
+    # percentage of SP. None inherits the daemon-wide default
+    # (``CoreSettings.stability_band_pct``, 2.0 %). While |PV - SP| stays
+    # inside this band the loop is in steady state and the optimizer must not
+    # move the integral term.
+    stability_band_pct: float | None = None
     tuning_write_mode: TuningWriteMode = TuningWriteMode.APPROVAL_REQUIRED
     max_tuning_change_pct: float = 10.0
     track_opt: TrackOpt = TrackOpt.ALWAYS_USE_VALUE

@@ -113,6 +113,10 @@ class IOWorker:
                     try:
                         frame = self._opcua.read_telemetry(cid)
                         mode = self._opcua.read_actual_mode(cid)
+                        # Read every cycle, ahead of the optimizer: the PLC can
+                        # stop the process between two scans, and a stale
+                        # "running" would let the AI tune a dead loop.
+                        pid_enabled = self._opcua.read_pid_enabled(cid)
                         topic = f"TELEMETRY.{cid}".encode()
                         payload = msgpack.packb({
                             "controller_id": frame.controller_id,
@@ -141,6 +145,9 @@ class IOWorker:
                                 "sub_status": frame.bkcal_in.status.sub_status.value,
                             },
                             "mode": mode.value if mode else "UNKNOWN",
+                            # None = no PID_[MALHA]_ENABLED tag mapped, i.e.
+                            # "unknown", which never gates the optimizer.
+                            "pid_enabled": pid_enabled,
                             "integral_val": frame.integral_val,
                             "timestamp": frame.timestamp.isoformat(),
                             **self._cached_params.get(cid, {}),

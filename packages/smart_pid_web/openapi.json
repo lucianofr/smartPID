@@ -330,6 +330,12 @@
             "minimum": 0.0,
             "title": "Max Amplitude Pct",
             "type": "number"
+          },
+          "period_s": {
+            "default": 30.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Period S",
+            "type": "number"
           }
         },
         "required": [
@@ -343,6 +349,12 @@
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
+          },
+          "period_s": {
+            "default": 30.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Period S",
+            "type": "number"
           },
           "sp_max_pct": {
             "default": 70.0,
@@ -705,6 +717,17 @@
             "title": "Sp Rate Up",
             "type": "number"
           },
+          "stability_band_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stability Band Pct"
+          },
           "tag_bindings": {
             "$ref": "#/components/schemas/TagBindingsDTO",
             "default": {
@@ -712,6 +735,7 @@
               "node_id_bkcal_in": "",
               "node_id_bkcal_out": "",
               "node_id_co": "",
+              "node_id_enabled": "",
               "node_id_integral": "",
               "node_id_kp": "",
               "node_id_mode_actual": "",
@@ -978,6 +1002,17 @@
             "title": "Sp Rate Up",
             "type": "number"
           },
+          "stability_band_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stability Band Pct"
+          },
           "tag_bindings": {
             "$ref": "#/components/schemas/TagBindingsDTO",
             "default": {
@@ -985,6 +1020,7 @@
               "node_id_bkcal_in": "",
               "node_id_bkcal_out": "",
               "node_id_co": "",
+              "node_id_enabled": "",
               "node_id_integral": "",
               "node_id_kp": "",
               "node_id_mode_actual": "",
@@ -1503,6 +1539,17 @@
               }
             ],
             "title": "Sp Rate Up"
+          },
+          "stability_band_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stability Band Pct"
           },
           "tag_bindings": {
             "anyOf": [
@@ -2521,6 +2568,11 @@
           "node_id_co": {
             "default": "",
             "title": "Node Id Co",
+            "type": "string"
+          },
+          "node_id_enabled": {
+            "default": "",
+            "title": "Node Id Enabled",
             "type": "string"
           },
           "node_id_integral": {

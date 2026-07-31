@@ -80,3 +80,8 @@ class CoreSettings(BaseSettings):
 
     # Execution
     execution_mode: str = "monitor"
+
+    # Optimizer steady-state guardrail. Daemon-wide default, in percent of SP:
+    # while |PV - SP| stays inside it the optimizer skips the loop instead of
+    # moving Ki/Ti. A loop with its own Controller.stability_band_pct wins.
+    stability_band_pct: float = 2.0

@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
 import {
   CONTROLLER_MODES,
   EXECUTION_MODES,
-  INTEGRAL_TYPES,
+  INTEGRAL_TYPE_OPTIONS,
   PID_STRUCTURES,
   SHED_OPTIONS,
   type AiEngine,
@@ -59,7 +59,6 @@ export const DDC_SECTIONS = [
   'Filters & IO',
   'Shed & Safety',
   'PID Structure',
-  'Integral Type',
 ] as const;
 
 export interface LoopConfigDialogProps {
@@ -154,6 +153,42 @@ function SelectField({ label, value, options, disabled, tooltip, onChange }: Sel
         ))}
       </select>
     </Field>
+  );
+}
+
+interface RadioGroupFieldProps {
+  legend: string;
+  value: string;
+  options: readonly { value: string; label: string }[];
+  disabled: boolean;
+  onChange(value: string): void;
+}
+
+/**
+ * Two-or-three-way exclusive choice rendered as real radios rather than a
+ * `<select>`: every alternative stays on screen, which is what an operator
+ * needs when the wrong pick silently inverts the sign of a tuning write.
+ */
+function RadioGroupField({ legend, value, options, disabled, onChange }: RadioGroupFieldProps) {
+  const name = useId();
+  return (
+    <fieldset className="col-span-2 flex flex-col gap-2">
+      <legend className="text-xs font-medium text-text-soft">{legend}</legend>
+      {options.map((option) => (
+        <label key={option.value} className="flex items-center gap-2 text-sm text-text">
+          <input
+            type="radio"
+            name={name}
+            value={option.value}
+            checked={value === option.value}
+            disabled={disabled}
+            className="size-4 accent-accent disabled:cursor-not-allowed"
+            onChange={() => onChange(option.value)}
+          />
+          {option.label}
+        </label>
+      ))}
+    </fieldset>
   );
 }
 
@@ -254,11 +289,14 @@ type Draft = {
     | 'node_id_ti'
     | 'node_id_mode_actual'
     | 'node_id_mode_target'
+    | 'node_id_enabled'
   >;
   /** Raw per-field text so a blank box means "not mapped", never the digit 0. */
   modeIntMap: Record<ControllerMode, string>;
   pid_structure: string;
   integral_type: string;
+  /** Blank = inherit the daemon-wide band; a number = this loop's override. */
+  stability_band_pct: string;
   shed_opt: string;
   shed_time_s: number;
   max_tuning_change_pct: number;
@@ -310,10 +348,15 @@ function toDraft(c: ControllerResponse): Draft {
       node_id_ti: tags?.node_id_ti ?? '',
       node_id_mode_actual: tags?.node_id_mode_actual ?? '',
       node_id_mode_target: tags?.node_id_mode_target ?? '',
+      node_id_enabled: tags?.node_id_enabled ?? '',
     },
     modeIntMap,
     pid_structure: c.pid_structure ?? 'ISA',
     integral_type: c.integral_type ?? 'TIME_TI',
+    stability_band_pct:
+      c.stability_band_pct === null || c.stability_band_pct === undefined
+        ? ''
+        : String(c.stability_band_pct),
     shed_opt: c.shed_opt ?? 'MAN',
     shed_time_s: c.shed_time_s ?? 10,
     max_tuning_change_pct: c.max_tuning_change_pct ?? 10,
@@ -341,6 +384,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
   const canManage = useCan('controllers.manage');
   const update = useUpdateControllerMutation();
   const remove = useDeleteControllerMutation();
+  const stabilityBandId = useId();
 
   const [draft, setDraft] = useState<Draft>(() => toDraft(controller));
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -394,6 +438,19 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
     return result;
   };
 
+  /**
+   * Blank box = "inherit the daemon-wide band", sent as null. The backend
+   * PUT ignores nulls, so a loop that already carries an override keeps it
+   * until a number replaces it — clearing one is a backend concern, not a
+   * silent client-side reset.
+   */
+  const stabilityBandPayload = (): number | null => {
+    const raw = draft.stability_band_pct.trim();
+    if (raw === '') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+
   const save = (): void => {
     update.mutate(
       {
@@ -409,6 +466,12 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
             mode_int_map: modeIntMapPayload(),
           },
           process_speed: draft.process_speed,
+          // Not DDC-gated: `integral_type` decides the SIGN of every integral
+          // adjustment the optimizer computes, and it rides the ACTION.AI
+          // write-back that only happens for a SUPERVISORY loop. Hiding it
+          // there would strand the field exactly where it matters most.
+          integral_type: draft.integral_type,
+          stability_band_pct: stabilityBandPayload(),
           ai_config: {
             engine: draft.ai.engine,
             objective: draft.ai.objective,
@@ -420,7 +483,6 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
             ? {
                 pid_params: draft.pid,
                 pid_structure: draft.pid_structure,
-                integral_type: draft.integral_type,
                 pv_scale: draft.pv_scale,
                 shed_opt: draft.shed_opt,
                 shed_time_s: draft.shed_time_s,
@@ -707,22 +769,23 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
                 onChange={(v) => setDraft((p) => ({ ...p, pid_structure: v }))}
               />
             </Section>
-
-            <Section label="Integral Type">
-              <SelectField
-                label="Tipo integral"
-                tooltip="Como o termo integral é parametrizado: ganho (Ki) ou tempo (Ti)."
-                value={draft.integral_type}
-                options={INTEGRAL_TYPES}
-                disabled={readOnly}
-                onChange={(v) => setDraft((p) => ({ ...p, integral_type: v }))}
-              />
-            </Section>
           </>
         ) : null}
 
         {/* Not DDC-gated: these fields are what SETS the optimizer state, and
-            the optimizer runs for a SUPERVISORY loop too. */}
+            the optimizer runs for a SUPERVISORY loop too. `integral_type` in
+            particular decides the sign of every integral adjustment and rides
+            the ACTION.AI write-back that only a SUPERVISORY loop performs. */}
+        <Section label="Integral Type">
+          <RadioGroupField
+            legend="Tipo integral"
+            value={draft.integral_type}
+            options={INTEGRAL_TYPE_OPTIONS}
+            disabled={readOnly}
+            onChange={(v) => setDraft((p) => ({ ...p, integral_type: v }))}
+          />
+        </Section>
+
         <Section label="AI Optimization">
           <AiConfigSection
             value={{ ...draft.ai, speed: draft.process_speed }}
@@ -739,6 +802,27 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               })
             }
           />
+        </Section>
+
+        <Section label="Optimizer Guardrail">
+          <Field
+            label="Banda de estabilidade (% do SP)"
+            htmlFor={stabilityBandId}
+            tooltip="Enquanto |PV - SP| ficar dentro desta faixa a malha é considerada em regime e o otimizador não altera Ki/Ti. Em branco, usa o padrão global do daemon (2%)."
+          >
+            <Input
+              id={stabilityBandId}
+              type="number"
+              inputMode="decimal"
+              step={0.1}
+              min={0}
+              className="numeric"
+              placeholder="global"
+              value={draft.stability_band_pct}
+              disabled={readOnly}
+              onChange={(e) => setDraft((p) => ({ ...p, stability_band_pct: e.target.value }))}
+            />
+          </Field>
         </Section>
 
         {update.error !== null ? (

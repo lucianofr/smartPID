@@ -56,6 +56,12 @@ export const NODE_ID_FIELDS = [
     tooltip:
       'Endereço OPC-UA para onde o modo COMANDADO é escrito no CLP/DCS. Usado quando o operador troca o modo pela interface.',
   },
+  {
+    key: 'node_id_enabled',
+    label: 'NodeID PID em uso',
+    tooltip:
+      'Endereço OPC-UA do booleano do CLP que indica se o processo desta malha está em operação (1) ou parado (0) — tipicamente a tag PID_[MALHA]_ENABLED, por exemplo Process_Running. Em branco, o otimizador roda sem esse bloqueio.',
+  },
 ] as const satisfies readonly { key: keyof TagBindingsDto; label: string; tooltip: string }[];
 
 export type NodeIdKey = (typeof NODE_ID_FIELDS)[number]['key'];
