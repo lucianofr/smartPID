@@ -7,7 +7,8 @@
 ## Stack e padroes
 - Python 3.13, uv workspace (hatchling), monorepo
 - ZeroMQ (msgpack), aiosqlite (WAL mode)
-- FastAPI + httpx (REST para HMI->Backend, NAO e web frontend)
+- FastAPI + uvicorn (REST Backend -> Web frontend, OpenAPI-first)
+- Web frontend: React 18 + Vite 5 + TypeScript, TanStack Query, Radix UI, Tailwind v4, uPlot (charts); Vitest + Playwright
 - pydantic v2 + pydantic-settings (prefixo SPID_)
 - PyJWT + bcrypt (auth, Phase 6)
 - Ruff (lint, line-length=100), mypy strict, pytest + pytest-asyncio
@@ -21,16 +22,26 @@
 - mypy: `uv run mypy packages/`
 - run backend: `uv run python -m smart_pid_core`
 
+### Web frontend (`packages/smart_pid_web`, rodar de dentro do pacote)
+- dev: `npm run dev` (Vite, porta 5173; override via `SPID_WEB_PORT`. Proxy segue a porta do daemon, nao hardcoda 8000)
+- build: `npm run build` (tsc -b && vite build)
+- test: `npm run test` (Vitest) / e2e: `npm run test:e2e` (Playwright)
+- typecheck: `npm run typecheck` | lint: `npm run lint` (eslint)
+- gerar tipos da API: `npm run gen:api` (dump OpenAPI do backend -> openapi-typescript)
+- checar contrato API: `npm run gen:api:check` (falha se openapi.json/tipos estao dessincronizados)
+
 Nota: em ambientes Flatpak (VS Code) o binario uv pode estar em:
 `/home/luciano/.var/app/com.visualstudio.code/bin/uv`
 
 ## Arquitetura
 
-Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI desktop).
+Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + Web frontend).
 
 ### Monorepo (3 pacotes)
 - `packages/smart_pid_domain/` — Modelos, enums, eventos, excecoes (ZERO dependencias de infra)
 - `packages/smart_pid_core/` — Backend daemon (PID engine, workers, event bus, SQLite, API)
+- `packages/smart_pid_web/` — Frontend web React/Vite (UI atual). GOTCHA: excluido do uv workspace (pyproject.toml `exclude`), gerenciado via npm, NAO entra em `uv sync`.
+- (`smart_pid_hmi` PySide6 desktop foi REMOVIDO em 2026-07-30 — substituido pelo web.)
 
 ### Estrutura do Backend (`smart_pid_core`)
 - `domain/services/` — PID engine (velocity form), mode manager (8 modos)
@@ -48,10 +59,10 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 
 ### Comunicacao
 - ZeroMQ inproc:// — Bus interno entre threads do Backend (XPUB/XSUB proxy, msgpack)
-- ZeroMQ tcp://5555 — PUB/SUB Backend->HMI (telemetria em tempo real)
-- FastAPI REST — HMI->Backend (comandos, historico, CRUD, project upload/download)
+- ZeroMQ tcp://5555 — PUB/SUB Backend->Web (telemetria em tempo real)
+- FastAPI REST — Web->Backend (comandos, historico, CRUD, project upload/download)
 - Project management via REST: list, new, open (by name), import (multipart upload), download (FileResponse), delete
-- Welcome Dialog mostrado pos-login (precisa de auth para listar projetos do backend)
+- Welcome flow pos-login no web (precisa de auth para listar projetos do backend)
 - Topicos: TELEMETRY.{id}, ACTION.CTRL.{id}, ACTION.AI.{id}, STATUS.{id}
 
 ### PID Engine
@@ -116,7 +127,7 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + HMI d
 ## Fases de implementacao (seguindo V2 Spec)
 1. **Phase 1 — Foundation + Domain + PID** ✅ (merged to main)
 2. **Phase 2 — REST API + Auth + Telemetry Publisher** ✅ (merged to main)
-3. **Phase 3a — PySide6 HMI Desktop** ✅ (merged to main, 73 tests)
+3. **Phase 3 — Frontend** ✅ (PySide6 HMI descontinuado 2026-07-30; UI atual e o web React/Vite em `packages/smart_pid_web`)
 4. Phase 3b — OPC-UA I/O Worker (reads/writes reais)
 5. Phase 4 — Simulator (digital twin): backend (SimulatorAdapter + asyncua.Server) + UI basica no HMI (preset selector, param sliders, disturbance injection). SVG overlay e "Export Dynamics to Loop" deferidos para Phase 7.
 6. Phase 5 — AI (Fuzzy + RL) + Statistics

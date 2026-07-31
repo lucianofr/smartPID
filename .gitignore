@@ -43,3 +43,5 @@ packages/smart_pid_web/dist/
 /.tokensave/
 /exports/
 /testsprite_tests/
+/graphify-out/
+/.serena/
