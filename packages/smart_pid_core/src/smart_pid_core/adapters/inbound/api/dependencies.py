@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import EventBus
     from smart_pid_core.application.loop_manager import LoopManager
     from smart_pid_core.application.workers.alarm_worker import AlarmWorker
+    from smart_pid_core.application.workers.io_worker import IOWorker
     from smart_pid_core.application.workers.stats_worker import StatsWorker
     from smart_pid_core.application.workers.system_event_worker import (
         SystemEventWorker,
@@ -169,7 +170,19 @@ def get_opcua_adapter_optional(request: Request) -> OPCUAAdapter | None:
 
 
 def get_stats_workers(request: Request) -> dict[int, StatsWorker]:
-    return getattr(request.app.state, "stats_workers", {})
+    """Stats workers by controller id, live workers taking precedence.
+
+    ``app.state.stats_workers`` is captured once in ``run_daemon``, so on its
+    own a controller created — or a project opened — after boot 404s on
+    ``/controllers/{id}/stats`` until restart. The loop manager knows the
+    current set, so it wins; the snapshot still backs ids it does not own,
+    which is also how tests inject a stats worker without a running loop.
+    """
+    snapshot: dict[int, StatsWorker] = getattr(request.app.state, "stats_workers", {})
+    loop_mgr = getattr(request.app.state, "loop_manager", None)
+    if loop_mgr is None:
+        return snapshot
+    return {**snapshot, **loop_mgr.get_stats_workers()}
 
 
 def get_ai_workers(request: Request) -> dict[int, object]:
@@ -228,6 +241,14 @@ def get_system_event_worker(request: Request) -> SystemEventWorker | None:
     (unit tests, monitor-only). Callers should treat it as best-effort.
     """
     return getattr(request.app.state, "system_event_worker", None)
+
+
+def get_io_worker(request: Request) -> IOWorker | None:
+    """Return the IOWorker used to keep the telemetry scan list in sync
+    with controller create/delete (see ProjectService for the project
+    open/import path). ``None`` in test fixtures that don't wire one up.
+    """
+    return getattr(request.app.state, "io_worker", None)
 
 
 # ----- Audit helper --------------------------------------------------------

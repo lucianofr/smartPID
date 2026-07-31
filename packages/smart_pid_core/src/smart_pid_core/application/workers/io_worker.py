@@ -1,6 +1,7 @@
 """I/O Worker — reads telemetry from OPC-UA adapter and publishes to event bus."""
 from __future__ import annotations
 
+import contextlib
 import logging
 import threading
 import time
@@ -13,7 +14,11 @@ from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
 
 if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
-    from smart_pid_core.application.event_bus import EventBus
+    from smart_pid_core.application.event_bus import (
+        BusPublisher,
+        BusSubscriber,
+        EventBus,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +60,16 @@ class IOWorker:
         if controller_id not in self._controller_ids:
             self._controller_ids.append(controller_id)
 
+    def remove_controller(self, controller_id: int) -> None:
+        """Stop scanning a controller that no longer exists.
+
+        Mirror of ``add_controller``/``SimulatorAdapter.unregister_controller``:
+        without it a deleted controller's id lingers forever and ``_run``
+        keeps issuing OPC-UA reads for a row that is gone.
+        """
+        if controller_id in self._controller_ids:
+            self._controller_ids.remove(controller_id)
+
     def start(self) -> None:
         """Start the I/O worker thread."""
         if self._thread is not None and self._thread.is_alive():
@@ -95,6 +110,24 @@ class IOWorker:
         # Wait briefly for bus subscriptions to propagate
         time.sleep(0.05)
 
+        try:
+            self._loop(pub, action_sub, ai_sub)
+        finally:
+            # ZMQ sockets must be closed by the thread that created them,
+            # otherwise EventBus.stop()'s ctx.destroy() blocks in
+            # zmq_ctx_term() closing them cross-thread (see PIDWorker._run).
+            for sock in (pub, action_sub, ai_sub):
+                if sock is not None:
+                    with contextlib.suppress(Exception):
+                        sock.close()
+
+    def _loop(
+        self,
+        pub: BusPublisher,
+        action_sub: BusSubscriber | None,
+        ai_sub: BusSubscriber,
+    ) -> None:
+        """Scan the DCS until stopped. Socket lifetime is _run's job."""
         while not self._stop_event.is_set():
             tick_start = time.monotonic()
             is_connected = self._opcua.is_connected
@@ -109,7 +142,7 @@ class IOWorker:
             self._was_connected = is_connected
 
             if is_connected:
-                for cid in self._controller_ids:
+                for cid in list(self._controller_ids):
                     try:
                         frame = self._opcua.read_telemetry(cid)
                         mode = self._opcua.read_actual_mode(cid)

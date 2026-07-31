@@ -1,7 +1,9 @@
 """PID Worker — high-priority daemon thread executing PID at the controller's scan rate."""
 from __future__ import annotations
 
+import contextlib
 import dataclasses
+import logging
 import threading
 import time
 from datetime import UTC, datetime
@@ -24,10 +26,17 @@ from smart_pid_domain.models.controller import StatusOpts
 from smart_pid_domain.models.signal import FFSignal, FFSignalStatus
 
 if TYPE_CHECKING:
-    from smart_pid_core.application.event_bus import EventBus
+    from smart_pid_core.application.event_bus import (
+        BusPublisher,
+        BusSubscriber,
+        EventBus,
+    )
     from smart_pid_core.domain.services.pid_engine import PIDEngine
     from smart_pid_core.domain.services.pid_mode_manager import ModeManager
     from smart_pid_domain.models.controller import Controller
+
+
+logger = logging.getLogger(__name__)
 
 
 def _evaluate_pv_quality(signal: FFSignal, opts: StatusOpts) -> FFSignal:
@@ -232,6 +241,27 @@ class PIDWorker:
         scan_s = self._controller.scan_rate_s
         time.sleep(0.02)
 
+        try:
+            self._loop(telem_sub, ai_sub, reconnect_sub, pub, scan_s)
+        finally:
+            # ZMQ sockets are not thread-safe and must be closed by the thread
+            # that created them. Without this the context still holds four live
+            # sockets per loop at shutdown, and EventBus.stop()'s ctx.destroy()
+            # blocks in zmq_ctx_term() (or races into a segfault) closing them
+            # cross-thread. Same reason StatsWorker/AIWorker close theirs.
+            for sock in (telem_sub, ai_sub, reconnect_sub, pub):
+                with contextlib.suppress(Exception):
+                    sock.close()
+
+    def _loop(
+        self,
+        telem_sub: BusSubscriber,
+        ai_sub: BusSubscriber,
+        reconnect_sub: BusSubscriber,
+        pub: BusPublisher,
+        scan_s: float,
+    ) -> None:
+        """Run the control loop until stopped. Socket lifetime is _run's job."""
         while not self._stop_event.is_set():
             try:
                 tick_start = time.monotonic()
@@ -467,9 +497,15 @@ class PIDWorker:
                     supervisory = (
                         self._controller.execution_mode is ExecutionMode.SUPERVISORY
                     )
-                    kp_out = self._last_kp if supervisory and self._last_kp is not None else params.gain
-                    ti_out = self._last_ti if supervisory and self._last_ti is not None else params.reset
-                    td_out = self._last_td if supervisory and self._last_td is not None else params.rate
+                    kp_out = (
+                        self._last_kp if supervisory and self._last_kp is not None else params.gain
+                    )
+                    ti_out = (
+                        self._last_ti if supervisory and self._last_ti is not None else params.reset
+                    )
+                    td_out = (
+                        self._last_td if supervisory and self._last_td is not None else params.rate
+                    )
                     telem_data = {
                         "controller_id": self.controller_id,
                         "pv": _serialize_ff_signal(self._last_pv),
@@ -513,6 +549,21 @@ class PIDWorker:
                     self._stop_event.wait(timeout=sleep_time)
             except zmq.ZMQError:
                 break
+            except Exception:
+                # Never let a transient error kill the worker thread silently —
+                # log and keep looping so PID output keeps getting computed.
+                # (matches ai_worker.py/db_worker.py/io_worker.py's _run loops;
+                # this one was the sole outlier with no broad-exception guard,
+                # so a NaN PV / bad config / corrupt frame died the control
+                # thread with no alarm while the daemon kept reporting healthy.)
+                logger.exception(
+                    "pid_worker_iteration_error controller_id=%d",
+                    self.controller_id,
+                )
+                # The normal per-tick sleep lives at the end of the try block,
+                # so a fault raised before it would spin this thread flat-out
+                # at 100% CPU. Pace the retry at the scan rate instead.
+                self._stop_event.wait(timeout=scan_s)
 
     def _drain_telemetry(self, sub) -> None:  # noqa: ANN001
         while True:

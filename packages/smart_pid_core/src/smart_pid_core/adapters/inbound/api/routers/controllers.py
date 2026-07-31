@@ -11,14 +11,19 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
     get_alarm_repo,
     get_alarm_worker,
     get_audit_repo,
+    get_io_worker,
+    get_loop_manager,
     get_repo,
     require_admin,
     require_user,
 )
+from smart_pid_core.adapters.inbound.simulator_adapter import SIMULATOR_MODE_INT_MAP
 from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository  # noqa: TC001
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+from smart_pid_core.application.loop_manager import LoopManager  # noqa: TC001
 from smart_pid_core.application.workers.alarm_worker import AlarmWorker  # noqa: TC001
+from smart_pid_core.application.workers.io_worker import IOWorker  # noqa: TC001
 from smart_pid_domain.dtos.alarms import (
     AlarmConfigResponse,
     AlarmConfigUpdate,
@@ -414,12 +419,24 @@ async def create_controller(
     user: Annotated[UserClaims, Depends(require_admin)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+    lm: Annotated[LoopManager, Depends(get_loop_manager)],
+    io_worker: Annotated[IOWorker | None, Depends(get_io_worker)],
 ) -> ControllerResponse:
     controller = _body_to_controller(body)
     saved = await repo.save(controller)
     # The simulator only learned about controllers at startup / project open,
     # so without this the new loop is a ghost to /simulator/* until restart.
     _sync_simulator_registration(request, saved, saved.id)
+    # Must follow the simulator sync: in simulator mode that call is what
+    # mints the OPC-UA nodes this registration points the client adapter at.
+    _sync_opcua_registration(request, saved)
+    # Same "startup / project open only" gap as the simulator: without
+    # this, a controller created here has no PIDWorker/AIWorker/StatsWorker
+    # (commands 404 with ControllerNotFoundError) and, even once started,
+    # never receives TELEMETRY.{id} (IOWorker's scan list was frozen at boot).
+    lm.start_loop(saved)
+    if io_worker is not None:
+        io_worker.add_controller(saved.id)
     await audit_repo.record(
         user.user_id, user.username, AuditAction.CREATE_CONTROLLER,
         f"controller:{saved.id}", f'{{"name": "{saved.name}"}}',
@@ -548,6 +565,54 @@ async def update_controller(
     return _to_response(controller)
 
 
+def _sync_opcua_registration(request: Request, controller: Controller) -> None:
+    """Point the OPC-UA client adapter at a controller created at runtime.
+
+    ``run_daemon`` does this for every controller it finds at boot and is
+    otherwise the only place it happens, so a controller created through
+    ``POST /controllers`` had a running loop whose every telemetry read and
+    every command raised ``KeyError("Controller N not registered")`` from the
+    adapter until the daemon was restarted.
+
+    Which node ids to use mirrors ``run_daemon``: in simulator mode the twin
+    owns the address space and has just minted nodes for this controller
+    (``tag_bindings`` is empty for simulator loops), while against a real DCS
+    the configured ``tag_bindings`` are authoritative.
+
+    Failures are logged, never raised: the controller row is already
+    committed, so an adapter hiccup must not report a create that succeeded
+    as a 5xx.
+    """
+    adapter = getattr(request.app.state, "opcua_adapter", None)
+    if adapter is None:
+        return
+    sim = getattr(request.app.state, "simulator_adapter", None)
+    try:
+        if sim is not None:
+            nodes = sim.opcua_node_ids(controller.id)
+            if not nodes:
+                return
+            mode_node = nodes.get("mode", "")
+            adapter.register_controller(
+                controller_id=controller.id,
+                node_id_pv=nodes.get("pv", ""),
+                node_id_sp=nodes.get("sp", ""),
+                node_id_co=nodes.get("co", ""),
+                node_id_kp=nodes.get("kp", ""),
+                node_id_ti=nodes.get("ti", ""),
+                node_id_td=nodes.get("td", ""),
+                node_id_mode_target=mode_node,
+                node_id_mode_actual=mode_node,
+                mode_int_map=dict(SIMULATOR_MODE_INT_MAP),
+            )
+        else:
+            _reregister_opcua(request, controller)
+    except Exception:
+        logger.exception(
+            "opcua_registration_sync_failed controller_id=%d", controller.id,
+        )
+
+
 def _reregister_opcua(request: Request, controller: Controller) -> None:
     """Re-register controller tag mappings with the OPC-UA adapter (if active)."""
     adapter = getattr(request.app.state, "opcua_adapter", None)
@@ -581,6 +646,8 @@ async def delete_controller(
     user: Annotated[UserClaims, Depends(require_admin)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+    lm: Annotated[LoopManager, Depends(get_loop_manager)],
+    io_worker: Annotated[IOWorker | None, Depends(get_io_worker)],
 ) -> Response:
     try:
         await repo.delete(controller_id)
@@ -589,6 +656,12 @@ async def delete_controller(
     # Mirror of create: a simulator entry for a deleted loop would keep being
     # integrated and keep answering /simulator/* for a controller that is gone.
     _sync_simulator_registration(request, None, controller_id)
+    # Mirror of create: an orphaned PIDWorker/AIWorker/StatsWorker would keep
+    # running for a controller no longer in the DB, and IOWorker would keep
+    # issuing OPC-UA reads for it.
+    lm.stop_loop(controller_id)
+    if io_worker is not None:
+        io_worker.remove_controller(controller_id)
     await audit_repo.record(
         user.user_id, user.username, AuditAction.DELETE_CONTROLLER,
         f"controller:{controller_id}", None,

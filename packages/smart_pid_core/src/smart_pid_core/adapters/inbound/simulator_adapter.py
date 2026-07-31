@@ -131,6 +131,16 @@ class SimulatorAdapter:
     def opcua_endpoint(self) -> str:
         return self._opcua_server.endpoint
 
+    def opcua_node_ids(self, controller_id: int) -> dict[str, str]:
+        """Return ``{param: node_id}`` for *controller_id* in the twin's
+        address space, or ``{}`` when it was never registered here.
+
+        In simulator mode the twin — not the project database — owns the node
+        ids, so callers wiring the OPC-UA *client* adapter to a controller
+        must source them from here rather than from ``tag_bindings``.
+        """
+        return self._opcua_server.controller_node_ids.get(controller_id, {})
+
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return

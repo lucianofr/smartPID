@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from smart_pid_core.application.daemon_state import DaemonState
     from smart_pid_core.application.loop_manager import LoopManager
     from smart_pid_core.application.workers.db_worker import DBWorker
+    from smart_pid_core.application.workers.io_worker import IOWorker
 
 # Project names are restricted to a safe, portable character set. This blocks
 # path traversal (``..``, ``/``, ``\``), absolute paths, NUL bytes and other
@@ -47,6 +48,7 @@ class ProjectService:
         daemon_state: DaemonState | None = None,
         opcua_adapter: object | None = None,
         db_worker: DBWorker | None = None,
+        io_worker: IOWorker | None = None,
     ) -> None:
         self._repo = repo
         self._loop_manager = loop_manager
@@ -55,6 +57,7 @@ class ProjectService:
         self._daemon_state = daemon_state
         self._opcua_adapter = opcua_adapter
         self._db_worker = db_worker
+        self._io_worker = io_worker
 
     @property
     def projects_dir(self) -> Path:
@@ -268,10 +271,18 @@ class ProjectService:
                 self._simulator_adapter.load_sim_config(cfg)
 
     async def _start_control_loops(self) -> None:
-        """Start PID/Monitor loops for all controllers in the active project."""
+        """Start PID/Monitor loops for all controllers in the active project.
+
+        Also registers each controller with the I/O worker's scan list —
+        without this, a project opened after daemon boot gets live
+        PIDWorker/AIWorker threads that never receive TELEMETRY.{cid}
+        because IOWorker only knew about the boot-time controller set.
+        """
         controllers = await self._repo.list_all()
         for ctrl in controllers:
             self._loop_manager.start_loop(ctrl)
+            if self._io_worker is not None:
+                self._io_worker.add_controller(ctrl.id)
 
     def _stop_simulator(self) -> None:
         """Stop the simulator adapter if present."""

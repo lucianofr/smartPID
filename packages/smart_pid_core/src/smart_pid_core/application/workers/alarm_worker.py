@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import threading
 import time
@@ -14,7 +15,11 @@ from smart_pid_domain.enums import AlarmType
 from smart_pid_domain.models.alarm_config import AlarmConfig
 
 if TYPE_CHECKING:
-    from smart_pid_core.application.event_bus import EventBus
+    from smart_pid_core.application.event_bus import (
+        BusPublisher,
+        BusSubscriber,
+        EventBus,
+    )
     from smart_pid_domain.models.alarm_config import AlarmTransition
 
 logger = logging.getLogger(__name__)
@@ -132,6 +137,18 @@ class AlarmWorker:
         pub = self._bus.create_publisher()
         time.sleep(0.02)  # Let subscriptions propagate
 
+        try:
+            self._loop(sub, pub)
+        finally:
+            # ZMQ sockets must be closed by the thread that created them,
+            # otherwise EventBus.stop()'s ctx.destroy() blocks in
+            # zmq_ctx_term() closing them cross-thread (see PIDWorker._run).
+            for sock in (sub, pub):
+                with contextlib.suppress(Exception):
+                    sock.close()
+
+    def _loop(self, sub: BusSubscriber, pub: BusPublisher) -> None:
+        """Evaluate alarms until stopped. Socket lifetime is _run's job."""
         while not self._stop_event.is_set():
             msg = sub.recv(timeout_ms=100)
             if msg is None:

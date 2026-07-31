@@ -1,6 +1,7 @@
 """Stats Worker — computes loop performance metrics at scan rate."""
 from __future__ import annotations
 
+import contextlib
 import logging
 import threading
 import time
@@ -12,7 +13,11 @@ import zmq
 from smart_pid_core.domain.services.stats_calculator import StatsCalculator
 
 if TYPE_CHECKING:
-    from smart_pid_core.application.event_bus import EventBus
+    from smart_pid_core.application.event_bus import (
+        BusPublisher,
+        BusSubscriber,
+        EventBus,
+    )
     from smart_pid_domain.models.controller import Controller
 
 logger = logging.getLogger(__name__)
@@ -118,6 +123,23 @@ class StatsWorker:
         scan_s = self._controller.scan_rate_s
         time.sleep(0.02)
 
+        try:
+            self._loop(telem_sub, action_sub, pub, scan_s)
+        finally:
+            # Close in the creating thread: see PIDWorker._run for why
+            # leaving these to ctx.destroy() hangs EventBus.stop().
+            for sock in (telem_sub, action_sub, pub):
+                with contextlib.suppress(Exception):
+                    sock.close()
+
+    def _loop(
+        self,
+        telem_sub: BusSubscriber,
+        action_sub: BusSubscriber,
+        pub: BusPublisher,
+        scan_s: float,
+    ) -> None:
+        """Run the stats loop until stopped. Socket lifetime is _run's job."""
         while not self._stop_event.is_set():
             try:
                 tick_start = time.monotonic()

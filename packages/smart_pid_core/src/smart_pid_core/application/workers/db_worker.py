@@ -106,6 +106,12 @@ class DBWorker:
             # _safe_flush is non-raising, so dispose() always runs.
             await self._safe_flush()
             await engine.dispose()
+            # ZMQ sockets must be closed by the thread that created them,
+            # otherwise EventBus.stop()'s ctx.destroy() blocks in
+            # zmq_ctx_term() closing them cross-thread (see PIDWorker._run).
+            for sock in (telem_sub, ai_sub):
+                with contextlib.suppress(Exception):
+                    sock.close()
 
     def _process_message(self, msg: tuple[bytes, bytes]) -> None:
         _topic, payload = msg

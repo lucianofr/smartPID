@@ -17,6 +17,7 @@ Two distinct tuning paths live here and must not be conflated:
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import math
@@ -39,7 +40,11 @@ from smart_pid_domain.events import TuningRecommended
 from smart_pid_domain.models.tuning import TuningRecommendation
 
 if TYPE_CHECKING:
-    from smart_pid_core.application.event_bus import EventBus
+    from smart_pid_core.application.event_bus import (
+        BusPublisher,
+        BusSubscriber,
+        EventBus,
+    )
     from smart_pid_core.application.tuning_store import TuningRecommendationStore
     from smart_pid_core.domain.services.tuning_recommender import TuningProposal
     from smart_pid_domain.models.controller import Controller
@@ -579,6 +584,25 @@ class AIWorker:
 
         next_run = time.monotonic() + self._ai_period_s
 
+        try:
+            self._loop(telem_sub, cmd_sub, stats_sub, status_sub, pub, next_run)
+        finally:
+            # Close in the creating thread: see PIDWorker._run for why
+            # leaving these to ctx.destroy() hangs EventBus.stop().
+            for sock in (telem_sub, cmd_sub, stats_sub, status_sub, pub):
+                with contextlib.suppress(Exception):
+                    sock.close()
+
+    def _loop(
+        self,
+        telem_sub: BusSubscriber,
+        cmd_sub: BusSubscriber,
+        stats_sub: BusSubscriber,
+        status_sub: BusSubscriber,
+        pub: BusPublisher,
+        next_run: float,
+    ) -> None:
+        """Run the tuning loop until stopped. Socket lifetime is _run's job."""
         while not self._stop_event.is_set():
             try:
                 # Drain commands (start/stop)

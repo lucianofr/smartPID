@@ -601,6 +601,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         daemon_state=daemon_state,
         opcua_adapter=opcua_adapter,
         db_worker=db_worker,
+        io_worker=io_worker,
     )
 
     # Phase 2: FastAPI
@@ -629,6 +630,10 @@ async def run_daemon(settings: CoreSettings) -> None:
     # Expose SystemEventWorker so routes can broadcast user-action events
     # (displayed live in the HMI alarm panel alongside backend events).
     app.state.system_event_worker = system_event_worker
+    # Expose IOWorker so controller create/delete can keep its telemetry
+    # scan list in sync without a daemon restart (see ProjectService's
+    # _start_control_loops for the project-open/import path).
+    app.state.io_worker = io_worker
 
     # Phase 2: Telemetry Publisher
     telemetry_pub = TelemetryPublisher(bus=bus, publish_port=settings.zmq_publish_port)
@@ -714,6 +719,15 @@ def main() -> None:
         sys.exit(1)
 
     log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    # stdlib `logging` has no handler until configured: every plain
+    # `logging.getLogger(__name__)` call (io_worker.py, loop_manager.py,
+    # pid_worker.py, etc. — anything not using structlog directly) was
+    # silently dropped below WARNING. structlog.configure() alone does not
+    # fix this; it only configures structlog's own pipeline.
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
     structlog.configure(
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
     )
