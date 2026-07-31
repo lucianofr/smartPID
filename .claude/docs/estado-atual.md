@@ -1,124 +1,92 @@
-# Estado atual — 2026-07-31
+# Estado atual — `chore/improve-deep-audit`
 
-## Onde estamos
+Sessão `/improve deep` — 2026-07-31.
+Worktree: `.worktrees/improve-deep-audit` · Branch: `chore/improve-deep-audit` · Commit: `2d46ea1`, rebaseado sobre a main atual `54118e8`.
 
-Checkout: raiz do repo (não é worktree dedicada)
-Branch: **`fix/loops-faceplate-setpoint-write`**
-Commit: `9f1f2d1` — `docs(tests): validate Loops faceplate setpoint write via live E2E run`
-**Ainda NÃO mergeado na main. Aguardando aprovação explícita do usuário.**
-
-## Tarefa
-
-"corrija a escrita de um setpoint via faceplate principal na pagina LOOPS.
-Use teste E2E para validar." Condição de parada: escrever 70 na caixa de
-diálogo do faceplate + clicar "Set setpoint" → SP vai para 70, o
-controlador persegue o novo alvo, e a PV chega a 70 dentro de 5 minutos.
+> Este arquivo fica **na worktree**, não no repositório principal, de propósito:
+> há outra sessão trabalhando em paralelo na main (daemon PID 2450091, alterações
+> não commitadas em `dtos/simulator.py`, `CLAUDE.md`, web etc.). Nada fora desta
+> worktree foi tocado.
 
 ## O que foi concluído
 
-**Root cause encontrado (não era bug de código):** `FIC-101`
-(`controller_id=1`, projeto ativo `autotest_project_created_by_agent_2026-07-30_1`)
-estava persistido com `execution_mode=SUPERVISORY` (default do model —
-`packages/smart_pid_domain/.../models/controller.py:141`). Em SUPERVISORY,
-`PIDWorker._drain_telemetry` (pid_worker.py:505-509) relê `sp` de TODO frame
-de telemetria — correto e testado para uma malha genuinamente supervisionada
-por um DCS externo. Mas a fonte de telemetria da `FIC-101` é o Simulador
-interno (`ns=2;i=6`), e nada escreve SP nele quando o operador chama
-`POST /commands/setpoint` (isso só vai para OPC-UA se o `execution_mode`
-**do daemon** — configuração global, `SPID_EXECUTION_MODE`, diferente do
-campo por-controlador — for `monitor`, o que não é o caso aqui). Resultado:
-o comando retorna `200 OK` e aplica o SP momentaneamente, e o próximo ciclo
-de scan (1s) reverte silenciosamente pro valor antigo do registro OPC-UA do
-simulador. Zero erro exposto ao operador. Confirmado com
-`tests/core/integration/test_pid_worker_supervisory_readthrough.py`
-(`test_ddc_keeps_seed_only_ownership`) que o mesmo mecanismo em modo `DDC`
-NÃO reverte — `set_output`/`set_sp` valem e ficam.
+Auditoria profunda (tokensave como fonte primária — índice reconstruído para
+`55b46f2`, 585 arquivos; graphify como fallback; 3 subagentes read-only em
+paralelo para segurança, frontend e domínio backend), seguida de 6 correções
+verificadas. **12 arquivos, +373/−29.**
 
-`FIC-101` é operada como DDC de fato (AUTO, Kp/Ti/Td ao vivo, otimizador
-FUZZY ativo computando CO) — só estava com o campo de config errado.
+1. **Controlador criado em runtime fica operante** — `POST /controllers` agora
+   inicia o loop (`LoopManager`), entra na lista de scan do `IOWorker` e é
+   registrado no adaptador OPC-UA; `DELETE` faz o espelho.
+   `IOWorker.add_controller` existia com zero chamadores; `remove_controller`
+   foi adicionado. Novo acessor público `SimulatorAdapter.opcua_node_ids()`.
+2. **Abrir/importar projeto registra no `IOWorker`** — `ProjectService` recebe
+   `io_worker`; `main.py` injeta e expõe em `app.state.io_worker`.
+3. **`PIDWorker._run` não morre em silêncio** — `except Exception` +
+   `logger.exception` (padrão já usado por ai/db/io workers; o PID era o único
+   outlier) + backoff de um `scan_s` para não virar spin de CPU a 100 %.
+4. **`logging` da stdlib configurado** em `main()` — antes, todo log de módulo
+   que usa `logging.getLogger` era descartado (1 → 8 linhas medidas).
+5. **Ciclo de vida de sockets ZMQ** — cada worker fecha os próprios sockets num
+   `finally`; o proxy do `EventBus` passa a criar/bind/servir/fechar tudo dentro
+   da própria thread, com `Poller` + `stop_event` e `join` antes de destruir o
+   contexto.
+6. **`get_stats_workers` lê workers vivos** (mesclando com o snapshot de boot).
 
-**Gap secundário encontrado (não corrigido — fora de escopo):** editar
-`execution_mode` via `PUT /controllers/{id}` NÃO propaga para um
-`PIDWorker` já rodando (ele guarda seu próprio snapshot de `Controller` de
-quando `start_loop()` rodou, nunca reatribuído — só `ai_config` /
-`process_speed` / `tss_s` / `scan_rate_s` fazem hot-reload, e só do AI
-worker). É preciso reiniciar o daemon (ou reabrir o projeto, mas
-`start_loop` é no-op se o id já está rodando) pra um edit de config pegar
-efeito. Não há rota HTTP pra reiniciar uma malha isolada hoje.
+## Decisões tomadas
 
-**Fix aplicado:**
-1. `PUT /api/controllers/1 {"execution_mode": "DDC"}`.
-2. `hub restart smart-pid-core-backend` pra aplicar (o daemon já estava
-   rodando persistente, 10h+ de uptime, de uma sessão anterior).
-3. Validado ao vivo via `xd://browser` (CDP real, backend real, sem mock —
-   segue o contrato de `TEST_E2E.md`, não o suite Playwright mockado em
-   `packages/smart_pid_web/e2e/`): escreveu SP=70 no faceplate principal da
-   página Loops, cliquei "Set setpoint". SP ficou em 70 em 49 polls ao
-   longo de 245s (nunca reverteu). PV convergiu de 79.9 pra oscilar
-   apertado (±3) em torno de 70 bem dentro do budget de 5 min, com o FUZZY
-   amortecendo o overshoot inicial (`Ti: 10.00 → 12.75`).
-
-**Nenhum código-fonte foi alterado** — o caminho de escrita (`Faceplate.tsx`
-→ `CardControls.tsx` → `useSetpointMutation` → `POST /commands/setpoint` →
-`LoopManager.set_setpoint` → `PIDWorker.set_sp`) já estava correto; só a
-config da malha estava errada. O único diff no branch é documentação +
-evidência.
-
-## Decisões tomadas (e por quê)
-
-1. **Não gatear `LoopManager.set_setpoint/set_mode/set_output` contra
-   malhas SUPERVISORY.** Cheguei a considerar rejeitar o comando (como já
-   se faz pro `execution_mode` do daemon = "monitor"), mas
-   `tests/core/unit/test_loop_manager_commands.py` cria o fixture
-   `Controller` SEM `execution_mode` (default SUPERVISORY) e espera
-   `set_setpoint`/`set_mode`/`set_output` funcionarem sem exceção — um
-   guard quebraria esse suite inteiro. O comportamento "aceita mas não
-   persiste" pra SUPERVISORY é intencional e testado; a única correção
-   válida era a config da malha.
-2. **Não mudei o default do model (`SUPERVISORY`) nem o default do diálogo
-   "Nova malha".** É uma postura de segurança deliberada (não assumir
-   autoridade de controle por padrão) — mudar isso é decisão de produto,
-   fora do escopo de "corrigir a escrita de setpoint".
-3. **Runbook novo em vez de spec Playwright.** `TEST_E2E.md` já estabelece
-   que validação contra backend real usa Chrome/CDP (`xd://browser`), não
-   Playwright — o suite `packages/smart_pid_web/e2e/*.spec.ts` é 100%
-   mockado por design (comentários no topo de cada spec confirmam). Criei
-   `TEST_E2E_loops_faceplate_setpoint.md` seguindo o mesmo formato
-   (Steps/Expected/Evidence/Result) em vez de inventar uma segunda
-   convenção de teste.
-4. **Branch dedicada criada** (`fix/loops-faceplate-setpoint-write`), a
-   partir de `main`, conforme regra do CLAUDE.md. Havia mudanças
-   não-commitadas de OUTRA tarefa (fix do simulador / inject disturbance,
-   sessão anterior) já na árvore de trabalho — não toquei nelas, só
-   fiz stage dos 5 arquivos novos desta tarefa.
+- **Escopo mantido coeso** num único tema (ciclo de vida de controlador em
+  runtime + ciclo de vida de recursos dos workers). Achados de DTO/validação,
+  SQL por f-string e limites de anti-windup foram **documentados, não
+  implementados** — estão na tabela final de `IMPROVE-TESTS-E2E.md`.
+- **`get_stats_workers` mescla** em vez de substituir: a primeira versão
+  substituía e quebrou `test_api_stats.py` (o teste injeta um worker sem loop).
+- **Não se afirma trava de shutdown em produção**: o travamento foi reproduzido
+  e corrigido no harness de pytest (6/8 → 0/10); no daemon não reproduziu.
+- Correção do `EventBus` justificada mesmo assim: é UB documentado do ZMQ e o
+  defeito foi medido.
 
 ## Verificação
 
-| Gate | Resultado |
-|---|---|
-| Escrita de SP=70 via faceplate principal (Loops) | PASS — SP fica em 70, sem reversão, em 49 amostras / 245s |
-| Controlador persegue o novo alvo | PASS — CO muda de direção em <1s; PV se move em direção a 70 |
-| PV chega a 70 dentro de 5 min | PASS — convergiu (oscilação ±3) por volta de t≈220-245s |
-| Testes unit/integration existentes | NÃO rodei a suite completa (nenhum código-fonte mudou nesta tarefa — só docs/evidência) |
+- Suíte completa sobre a main atual (`54118e8`): **1538 passed, 1 failed**.
+  A única falha (`test_opcua_start_stop`) é ambiental — porta 4849 ocupada pelo
+  daemon do usuário — e foi comprovada **idêntica no commit base**, com um
+  checkout de `54118e8` sem nenhuma alteração minha. **Zero regressões.**
+  (Antes do rebase, sobre `55b46f2`: 1503 passed, conjunto de 14 falhas
+  byte-idêntico ao baseline; as 13 de `AutoSPRequest.period_s` foram corrigidas
+  pela sessão paralela em `d57ac1a`.)
+- Estabilidade: `test_api_controllers.py` 10/10, 6/6 e novamente 6/6 após o
+  rebase, sem travar (antes da correção do bus: 6 de 8 travavam com
+  `Fatal Python error`).
+- `ruff`: limpo nos 12 arquivos alterados; repositório 36 → 33 erros.
+- Smoke test em daemon vivo (portas 18010/18011/18049, `/tmp`), baseline vs
+  patched com o mesmo script:
+  `active_controllers` 0 → 1 · `/stats` 404 → 200 · `/commands/setpoint`
+  404 → 200 · logs stdlib 1 → 8 · shutdown limpo nos dois lados.
+- `graphify update .` executado (8172 nós, 18070 arestas).
 
-## Pendências conhecidas
+## Arquivos modificados
 
-1. Gap de hot-reload de config (`execution_mode` e outros campos não
-   propagam pra um `PIDWorker` já rodando) — real, mas fora do escopo desta
-   tarefa. Não há rota pra reiniciar uma malha isolada sem reiniciar o
-   daemon inteiro.
-2. Havia uma escrita de SP=80 "misteriosa" observada durante a investigação
-   (antes da minha escrita de 70), provavelmente de uma sessão/browser
-   concorrente no mesmo backend compartilhado — não é um driver contínuo
-   (confirmei 15s parado sem nenhuma mudança), tratei como ruído do
-   ambiente compartilhado, não interferiu na validação final.
-3. As 15 modificações não-commitadas de OUTRA tarefa (simulador / inject
-   disturbance) continuam intocadas na árvore de trabalho.
+```
+packages/smart_pid_core/src/smart_pid_core/
+  adapters/inbound/api/dependencies.py
+  adapters/inbound/api/routers/controllers.py
+  adapters/inbound/simulator_adapter.py
+  application/event_bus.py
+  application/project_service.py
+  application/workers/{ai,alarm,db,io,pid,stats}_worker.py
+  main.py
+IMPROVE-TESTS-E2E.md          (novo — 8 testes E2E, um por alteração)
+```
 
-## Próximos passos sugeridos
+## Próximos passos
 
-1. Usuário revisa `TEST_E2E_loops_faceplate_setpoint.md` e as 4 evidências
-   em `test-evidence/LOOPS-SP-*.png`.
-2. Aprovar, então merge de `fix/loops-faceplate-setpoint-write` pra `main`.
-3. Se algum dia for necessário editar config de malha ao vivo sem restart
-   completo do daemon, endereçar o gap de hot-reload como tarefa própria.
+1. Revisar o diff e decidir o merge (**não foi feito merge nem push** — a regra
+   de branching exige aprovação explícita).
+2. Executar ao vivo os dois E2E ainda não rodados: **E2E-IMP-03** (abrir projeto
+   e confirmar `sample_count` crescendo) e **E2E-IMP-04** (injetar `NaN` e
+   confirmar que a malha se recupera sem spin de CPU).
+3. Avaliar os achados não implementados (tabela final de `IMPROVE-TESTS-E2E.md`),
+   com destaque para `arw_limits` mais largo que `out_limits` (windup) —
+   segurança de controle.
+4. Dívida registrada: `OPCUAAdapter` não tem `unregister_controller`.
