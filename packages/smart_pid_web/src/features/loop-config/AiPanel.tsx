@@ -5,6 +5,7 @@ import { queryKeys } from '@/api/queryKeys';
 import { useCan } from '@/auth/useCan';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
+import { Switch } from '@/components/Switch';
 import { toast } from '@/components/Toast';
 import type { AiStatus } from '@/api/types';
 import type { AiData } from '@/lib/envelope';
@@ -126,6 +127,32 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
   const [applying, setApplying] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
 
+  // Per-loop operator choice: auto-apply each pending tuning suggestion, or
+  // wait for the manual Apply tuning confirm. Persisted so it survives a reload.
+  const autoApplyKey = `smartpid:autoTune:${controllerId}`;
+  const [autoApply, setAutoApply] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(autoApplyKey) === '1';
+    } catch {
+      return false;
+    }
+  });
+  // Guards the auto-apply effect against re-firing on the same suggestion before
+  // the invalidation clears it — dedup by the recommendation's timestamp.
+  const lastAutoAppliedRef = useRef<number | null>(null);
+
+  const toggleAutoApply = useCallback(
+    (next: boolean) => {
+      setAutoApply(next);
+      try {
+        localStorage.setItem(autoApplyKey, next ? '1' : '0');
+      } catch {
+        /* storage unavailable — the in-memory toggle still governs this session */
+      }
+    },
+    [autoApplyKey],
+  );
+
   const { subscribe } = ai;
   useEffect(
     () =>
@@ -144,22 +171,50 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
   const rec = recommendation.data;
   const pendingRecommendation = rec !== undefined && rec.status === 'pending';
 
+  const runApply = useCallback(
+    (auto: boolean) => {
+      setApplying(true);
+      setApplyError(undefined);
+      return applyTuning(controllerId)
+        .then(() => {
+          setConfirmOpen(false);
+          toast({
+            title: auto ? 'Sintonia aplicada automaticamente' : 'Sintonia aplicada',
+            description: `Malha ${tag}`,
+          });
+          void queryClient.invalidateQueries({ queryKey: tuningRecommendationKey(controllerId) });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.aiStatus(controllerId) });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.controllers });
+        })
+        .catch((error: unknown) => {
+          setApplyError(error instanceof Error ? error.message : 'Falha ao escrever a sintonia');
+          if (auto) {
+            toast({
+              title: 'Falha na sintonia automática',
+              description: `Malha ${tag}`,
+              tone: 'crit',
+            });
+          }
+        })
+        .finally(() => setApplying(false));
+    },
+    [controllerId, queryClient, tag],
+  );
+
   const confirmApply = useCallback(() => {
-    setApplying(true);
-    setApplyError(undefined);
-    applyTuning(controllerId)
-      .then(() => {
-        setConfirmOpen(false);
-        toast({ title: 'Sintonia aplicada', description: `Malha ${tag}` });
-        void queryClient.invalidateQueries({ queryKey: tuningRecommendationKey(controllerId) });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.aiStatus(controllerId) });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.controllers });
-      })
-      .catch((error: unknown) => {
-        setApplyError(error instanceof Error ? error.message : 'Falha ao escrever a sintonia');
-      })
-      .finally(() => setApplying(false));
-  }, [controllerId, queryClient, tag]);
+    void runApply(false);
+  }, [runApply]);
+
+  // Auto-apply: when the switch is on, write each fresh pending suggestion
+  // straight through — no confirm dialog. The ref dedups by timestamp so the
+  // effect fires once per suggestion, not on every render before the refetch.
+  useEffect(() => {
+    if (!autoApply || !canTune || applying) return;
+    if (!pendingRecommendation || rec === undefined) return;
+    if (lastAutoAppliedRef.current === rec.timestamp) return;
+    lastAutoAppliedRef.current = rec.timestamp;
+    void runApply(true);
+  }, [autoApply, canTune, applying, pendingRecommendation, rec, runApply]);
 
   if (!visible) return null;
 
@@ -263,22 +318,32 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
         <p className="text-sm leading-snug text-text-soft">{body}</p>
 
         {canTune ? (
-          <Button
-            className={cn(
-              'w-full gap-1.5 text-base font-bold',
-              proposing
-                ? 'border-transparent bg-brand-accent text-on-brand-accent hover:bg-brand-accent-hover'
-                : 'border-rule-strong bg-transparent text-text-soft',
-            )}
-            disabled={!pendingRecommendation}
-            onClick={() => {
-              setApplyError(undefined);
-              setConfirmOpen(true);
-            }}
-          >
-            <Check aria-hidden="true" className="h-[13px] w-[13px] shrink-0" strokeWidth={3} />
-            Apply tuning
-          </Button>
+          <>
+            <label className="flex items-center justify-between gap-2 text-2xs font-bold uppercase tracking-caps text-text-soft">
+              <span>Auto-aplicar sintonia</span>
+              <Switch
+                checked={autoApply}
+                onCheckedChange={toggleAutoApply}
+                aria-label="Aplicar sugestões de sintonia automaticamente"
+              />
+            </label>
+            <Button
+              className={cn(
+                'w-full gap-1.5 text-base font-bold',
+                proposing && !autoApply
+                  ? 'border-transparent bg-brand-accent text-on-brand-accent hover:bg-brand-accent-hover'
+                  : 'border-rule-strong bg-transparent text-text-soft',
+              )}
+              disabled={!pendingRecommendation || autoApply}
+              onClick={() => {
+                setApplyError(undefined);
+                setConfirmOpen(true);
+              }}
+            >
+              <Check aria-hidden="true" className="h-[13px] w-[13px] shrink-0" strokeWidth={3} />
+              Apply tuning
+            </Button>
+          </>
         ) : null}
 
         {/* Always mounted, never faked: the rows are LOG.AI events off the bus,

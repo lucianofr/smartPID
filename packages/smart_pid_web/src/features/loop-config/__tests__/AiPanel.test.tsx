@@ -99,6 +99,7 @@ const postedPaths = (): string[] =>
 
 beforeEach(() => {
   sessionStorage.clear();
+  localStorage.clear();
   fetchMock.mockReset();
   fetchMock.mockResolvedValue(
     new Response(JSON.stringify({ ok: true }), {
@@ -202,6 +203,19 @@ describe('AiPanel', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm Write' }));
     await waitFor(() => expect(postedPaths()).toContain('/api/commands/apply-tuning/5'));
+  });
+
+  it('auto-applies a pending suggestion without the confirm dialog when the switch is on', async () => {
+    renderAi({ recommendation: PENDING });
+
+    fireEvent.click(
+      await screen.findByRole('switch', { name: /automaticamente/i }),
+    );
+
+    await waitFor(() => expect(postedPaths()).toContain('/api/commands/apply-tuning/5'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // Manual write is off while auto is on — one channel, not two.
+    expect(screen.getByRole('button', { name: 'Apply tuning' })).toBeDisabled();
   });
 
   it('keeps the dialog open and shows why when the write is rejected', async () => {
