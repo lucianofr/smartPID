@@ -16,6 +16,9 @@ build/
 
 # Project files (user data, not committed)
 *.spid
+# ...and the WAL sidecars SQLite recreates every time the daemon runs.
+*.spid-wal
+*.spid-shm
 
 # Superpowers brainstorm sessions
 .superpowers/
