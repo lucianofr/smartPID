@@ -26,6 +26,27 @@ describe('AnalogBar', () => {
     expect(screen.getByTestId('analog-bar-fill').style.background).toBe('var(--alarm-crit)');
   });
 
+  it('normal fill matches the trend line color for the same variable', () => {
+    const { rerender } = render(<AnalogBar label="PV" value={100} scale={scale} />);
+    expect(screen.getByTestId('analog-bar-fill').style.background).toBe('var(--trace-pv)');
+
+    rerender(<AnalogBar label="SP" value={100} scale={scale} />);
+    expect(screen.getByTestId('analog-bar-fill').style.background).toBe('var(--trace-sp)');
+
+    rerender(<AnalogBar label="CO" value={100} scale={scale} />);
+    expect(screen.getByTestId('analog-bar-fill').style.background).toBe('var(--trace-co)');
+  });
+
+  it('faceplate sizing no longer singles out PV — same bar and figure size as SP/CO', () => {
+    render(<AnalogBar label="PV" value={100} scale={scale} size="faceplate" />);
+    const meter = screen.getByRole('meter', { name: 'PV' });
+    expect(meter.className).toContain('h-2.5');
+    expect(meter.className).not.toContain('h-3.5');
+    const figure = screen.getByText('100.0');
+    expect(figure.className).toContain('text-lg');
+    expect(figure.className).not.toContain('text-3xl');
+  });
+
   it('renders the SP marker when spValue is given', () => {
     render(<AnalogBar label="PV" value={100} scale={scale} spValue={150} />);
     expect(screen.getByTestId('analog-bar-sp').style.left).toMatch(/^75(\.\d+)?%$/);

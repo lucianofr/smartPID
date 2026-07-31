@@ -73,7 +73,7 @@ describe('DashboardPage', () => {
   it('shows the first loop in the trend and faceplate, and follows the selection', () => {
     renderDashboard();
     expect(screen.getByRole('complementary', { name: 'Faceplate FIC-101' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Abrir TIC-202' }));
+    fireEvent.click(screen.getByRole('button', { name: 'TIC-202' }));
     expect(screen.getByRole('complementary', { name: 'Faceplate TIC-202' })).toBeVisible();
     expect(screen.getByRole('img', { name: 'Tendência TIC-202' })).toBeInTheDocument();
   });

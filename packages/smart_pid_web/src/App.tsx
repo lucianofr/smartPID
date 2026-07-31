@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { RouteGuard } from '@/auth/RouteGuard';
 import { LoadingState } from '@/components/MissingState';
 import { Toaster, toast } from '@/components/Toast';
+import { TooltipProvider } from '@/components/Tooltip';
 import { LoginPage } from '@/pages/LoginPage';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { createResyncRunner } from '@/realtime/resync';
@@ -62,7 +63,8 @@ export function App() {
   }, []);
 
   return (
-    <ThemeProvider>
+    <TooltipProvider delayDuration={300}>
+      <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider onPermissionDenied={onPermissionDenied}>
           <BrowserRouter>
@@ -96,5 +98,6 @@ export function App() {
         </AuthProvider>
       </QueryClientProvider>
     </ThemeProvider>
+    </TooltipProvider>
   );
 }

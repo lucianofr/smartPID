@@ -61,6 +61,7 @@ function downloadCsv(filename: string, csv: string): void {
 
 const NUMBER_INPUT = 'numeric w-14 px-2 text-sm';
 const CONTROL_LABEL = 'shrink-0 text-2xs uppercase tracking-caps text-text-soft';
+const SCALE_INPUT = 'numeric w-12 px-1.5 text-xs';
 
 /**
  * Paint guard for the canvas — NOT a design minimum, and the distinction is the
@@ -221,11 +222,25 @@ export function TrendPanel({ controllerId, scale }: TrendPanelProps) {
           </div>
 
           {autoScale ? null : (
-            <div className="flex flex-wrap items-center gap-2">
-              <ScaleInput id={pvMinId} label="PV mínimo" value={pvMin} onChange={setPvMin} />
-              <ScaleInput id={pvMaxId} label="PV máximo" value={pvMax} onChange={setPvMax} />
-              <ScaleInput id={coMinId} label="CO mínimo" value={coMin} onChange={setCoMin} />
-              <ScaleInput id={coMaxId} label="CO máximo" value={coMax} onChange={setCoMax} />
+            <div className="flex flex-wrap items-center gap-1.5">
+              <ScaleRange
+                variable="PV"
+                minId={pvMinId}
+                maxId={pvMaxId}
+                min={pvMin}
+                max={pvMax}
+                onMinChange={setPvMin}
+                onMaxChange={setPvMax}
+              />
+              <ScaleRange
+                variable="CO"
+                minId={coMinId}
+                maxId={coMaxId}
+                min={coMin}
+                max={coMax}
+                onMinChange={setCoMin}
+                onMaxChange={setCoMax}
+              />
             </div>
           )}
 
@@ -312,28 +327,53 @@ function LegendItem({
   );
 }
 
-function ScaleInput({
-  id,
-  label,
-  value,
-  onChange,
+/**
+ * Min/max pair for one variable, under a single shared "PV"/"CO" glyph
+ * instead of two full "PV mínimo"/"PV máximo" labels — the accessible names
+ * stay exactly those strings (via `aria-label`, not visible text), so the
+ * pair fits the toolbar's one line without shrinking what a screen reader
+ * announces.
+ */
+function ScaleRange({
+  variable,
+  minId,
+  maxId,
+  min,
+  max,
+  onMinChange,
+  onMaxChange,
 }: {
-  id: string;
-  label: string;
-  value: number;
-  onChange: (n: number) => void;
+  variable: string;
+  minId: string;
+  maxId: string;
+  min: number;
+  max: number;
+  onMinChange: (n: number) => void;
+  onMaxChange: (n: number) => void;
 }) {
   return (
     <span className="flex items-center gap-1">
-      <label htmlFor={id} className={CONTROL_LABEL}>
-        {label}
-      </label>
+      <span aria-hidden="true" className={CONTROL_LABEL}>
+        {variable}
+      </span>
       <Input
-        id={id}
+        id={minId}
         type="number"
-        className={cn(NUMBER_INPUT)}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label={`${variable} mínimo`}
+        className={cn(SCALE_INPUT)}
+        value={min}
+        onChange={(e) => onMinChange(Number(e.target.value))}
+      />
+      <span aria-hidden="true" className="text-text-soft">
+        –
+      </span>
+      <Input
+        id={maxId}
+        type="number"
+        aria-label={`${variable} máximo`}
+        className={cn(SCALE_INPUT)}
+        value={max}
+        onChange={(e) => onMaxChange(Number(e.target.value))}
       />
     </span>
   );

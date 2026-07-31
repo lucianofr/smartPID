@@ -21,13 +21,42 @@ import { TagBrowser } from '@/features/connection/TagBrowser';
  * The picker is the discovery path, not a replacement for typing.
  */
 
-/** The four bindings the dialog owns, and the one place label ↔ key is decided. */
+/** The bindings the dialog owns, and the one place label/tooltip ↔ key is decided. */
 export const NODE_ID_FIELDS = [
-  { key: 'node_id_pv', label: 'NodeID PV' },
-  { key: 'node_id_sp', label: 'NodeID SP' },
-  { key: 'node_id_co', label: 'NodeID CO' },
-  { key: 'node_id_ti', label: 'NodeID Ti' },
-] as const satisfies readonly { key: keyof TagBindingsDto; label: string }[];
+  {
+    key: 'node_id_pv',
+    label: 'NodeID PV',
+    tooltip: 'Endereço OPC-UA de onde a Variável de Processo (PV) é lida.',
+  },
+  {
+    key: 'node_id_sp',
+    label: 'NodeID SP',
+    tooltip: 'Endereço OPC-UA de onde o Setpoint (SP) é lido ou escrito.',
+  },
+  {
+    key: 'node_id_co',
+    label: 'NodeID CO',
+    tooltip: 'Endereço OPC-UA de onde a Saída de Controle (CO) é lida ou escrita.',
+  },
+  {
+    key: 'node_id_ti',
+    label: 'NodeID Ti',
+    tooltip:
+      'Endereço OPC-UA usado para leitura/escrita do parâmetro de tempo integral (Ti), quando aplicável.',
+  },
+  {
+    key: 'node_id_mode_actual',
+    label: 'NodeID Modo (leitura)',
+    tooltip:
+      'Endereço OPC-UA de onde o modo REAL do bloco PID é lido no CLP/DCS. Usado para saber em que modo a malha está operando de fato.',
+  },
+  {
+    key: 'node_id_mode_target',
+    label: 'NodeID Modo (escrita)',
+    tooltip:
+      'Endereço OPC-UA para onde o modo COMANDADO é escrito no CLP/DCS. Usado quando o operador troca o modo pela interface.',
+  },
+] as const satisfies readonly { key: keyof TagBindingsDto; label: string; tooltip: string }[];
 
 export type NodeIdKey = (typeof NODE_ID_FIELDS)[number]['key'];
 
@@ -43,12 +72,20 @@ export interface NodeIdFieldProps {
   onChange(value: string): void;
   /** Omitted when the session cannot write — the picker is a write affordance. */
   onBrowse?: () => void;
+  tooltip?: string;
 }
 
-export function NodeIdField({ label, value, disabled, onChange, onBrowse }: NodeIdFieldProps) {
+export function NodeIdField({
+  label,
+  value,
+  disabled,
+  onChange,
+  onBrowse,
+  tooltip,
+}: NodeIdFieldProps) {
   const id = useId();
   return (
-    <Field label={label} htmlFor={id}>
+    <Field label={label} htmlFor={id} tooltip={tooltip}>
       <div className="flex items-center gap-2">
         <Input
           id={id}

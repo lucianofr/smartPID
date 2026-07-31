@@ -1,5 +1,7 @@
 import * as React from 'react';
+import { Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipTrigger } from './Tooltip';
 
 export interface FieldProps {
   label: string;
@@ -7,6 +9,8 @@ export interface FieldProps {
   description?: string;
   error?: string;
   required?: boolean;
+  /** Description shown in a hover/focus tooltip behind an "i" icon next to the label. */
+  tooltip?: string;
   children: React.ReactNode;
   className?: string;
 }
@@ -15,19 +19,53 @@ export interface FieldProps {
  * Labeled form-control wrapper. ID convention: description `${htmlFor}-desc`,
  * error `${htmlFor}-err` — callers wire aria-describedby to those ids.
  * The `*` is aria-hidden so accessible names stay verbatim (E2E binds to them).
+ *
+ * The tooltip trigger is a SIBLING of `<label>`, never a child of it: this
+ * codebase's own accname computation folds aria-hidden descendant text back
+ * into the label's accessible name (see Field.test.tsx), so anything placed
+ * inside `<label>` would leak into `getByLabelText(label)` everywhere.
  */
-export function Field({ label, htmlFor, description, error, required = false, children, className }: FieldProps) {
+export function Field({
+  label,
+  htmlFor,
+  description,
+  error,
+  required = false,
+  tooltip,
+  children,
+  className,
+}: FieldProps) {
   return (
     <div className={cn('flex flex-col gap-1', className)}>
-      <label htmlFor={htmlFor} className="text-sm font-medium text-text">
-        {label}
-        {required ? (
-          <span aria-hidden="true" className="text-alarm-crit">
-            {' '}
-            *
-          </span>
+      <div className="flex items-center gap-1">
+        <label htmlFor={htmlFor} className="text-sm font-medium text-text">
+          {label}
+          {required ? (
+            <span aria-hidden="true" className="text-alarm-crit">
+              {' '}
+              *
+            </span>
+          ) : null}
+        </label>
+        {tooltip !== undefined ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={`Mais informações sobre ${label}`}
+                className={cn(
+                  'inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
+                  'text-text-soft outline-none hover:text-text',
+                  'focus-visible:ring-2 focus-visible:ring-focus-ring',
+                )}
+              >
+                <Info className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{tooltip}</TooltipContent>
+          </Tooltip>
         ) : null}
-      </label>
+      </div>
       {children}
       {description ? (
         <p id={`${htmlFor}-desc`} className="text-xs text-text-soft">

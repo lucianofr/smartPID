@@ -8,8 +8,8 @@ import { KpiBand } from '@/features/dashboard/KpiBand';
 import { activeAiStrategy, LoopCard } from '@/features/dashboard/LoopCard';
 import { TrendPanel } from '@/features/dashboard/TrendPanel';
 import { pvScale, useControllers } from '@/features/dashboard/useControllers';
+import { useLoopAlarmSeverity } from '@/features/dashboard/useAlarmCounts';
 import { useLoopStatuses } from '@/features/dashboard/useLoopStatuses';
-import { CardControls } from '@/features/loop-config/CardControls';
 import { LoopConfigDialog, NewLoopDialog } from '@/features/loop-config/LoopConfigDialog';
 import { SimulationModeBanner } from '@/features/simulator/SimulationModeBanner';
 import { useTwinRunning } from '@/features/simulator/useSimulatorStatus';
@@ -43,6 +43,7 @@ const UNAVAILABLE = '—';
 export function DashboardPage() {
   const controllers = useControllers();
   const statuses = useLoopStatuses();
+  const alarmSeverity = useLoopAlarmSeverity();
   const canManage = useCan('controllers.manage');
   const { stale } = useConnectionStatus();
   const twinRunning = useTwinRunning();
@@ -141,7 +142,6 @@ export function DashboardPage() {
             <ul className="flex flex-nowrap gap-3.5 overflow-x-auto p-3.5">
               {controllers.data.map((controller) => {
                 const status = statuses.get(controller.id) ?? null;
-                const selectedHere = controller.id === selected.id;
                 return (
                   // The selection treatment lives on the card (border + lifted
                   // shadow), not on this wrapper: an outline drawn out here sat
@@ -151,30 +151,10 @@ export function DashboardPage() {
                       controller={controller}
                       status={status}
                       onOpenConfig={setConfigId}
+                      onSelect={setSelectedId}
                       stale={stale}
-                      selected={selectedHere}
-                      controlsSlot={
-                        <div className="flex flex-col gap-2">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            aria-label={`Abrir ${controller.name}`}
-                            aria-pressed={selectedHere}
-                            onClick={() => setSelectedId(controller.id)}
-                          >
-                            Abrir
-                          </Button>
-                          {/* Only the open loop carries the mode switch: the strip
-                              must not offer the same command on every card. */}
-                          {selectedHere ? (
-                            <CardControls
-                              controllerId={controller.id}
-                              mode={status?.mode ?? controller.mode}
-                              controls={['mode']}
-                            />
-                          ) : null}
-                        </div>
-                      }
+                      selected={controller.id === selected.id}
+                      alarmSeverity={alarmSeverity.get(controller.id) ?? null}
                     />
                   </li>
                 );

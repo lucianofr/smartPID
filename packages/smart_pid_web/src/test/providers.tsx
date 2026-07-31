@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
+import { TooltipProvider } from '@/components/Tooltip';
 import { AuthProvider } from '@/auth/AuthContext';
 import { RealtimeContext, type RealtimeContextValue } from '@/realtime/RealtimeProvider';
 import { createFrameCache } from '@/realtime/frameCache';
@@ -86,6 +87,7 @@ export function TestProviders({
   const client = queryClient ?? createQueryClient();
   const rt = realtime ?? createFakeRealtime().value;
   return (
+    <TooltipProvider>
     <ThemeProvider>
       <QueryClientProvider client={client}>
         <AuthProvider>
@@ -95,5 +97,6 @@ export function TestProviders({
         </AuthProvider>
       </QueryClientProvider>
     </ThemeProvider>
+    </TooltipProvider>
   );
 }

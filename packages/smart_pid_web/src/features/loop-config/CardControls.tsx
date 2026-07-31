@@ -48,7 +48,7 @@ const SELECT_CLASS = cn(
  * The mock draws a 30px field; `min-h-11` (44px) from `Input` stands, because
  * these are real operator inputs under the §8.3 target-size floor.
  */
-const ENTRY_LABEL = 'shrink-0 text-sm text-text-soft';
+const ENTRY_LABEL = 'w-20 shrink-0 text-sm text-text-soft';
 const ENTRY_INPUT = cn(
   'numeric min-w-0 max-w-[110px] flex-1 px-2 py-1 text-right text-base',
 );

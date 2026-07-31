@@ -12,7 +12,7 @@ import {
 } from '@/lib/alarmMachine';
 import type { AlarmEventData } from '@/lib/envelope';
 import { useRealtime } from '@/realtime/useRealtime';
-import { ALARM_SEVERITIES, toSeverity } from '@/features/alarms/severity';
+import { ALARM_SEVERITIES, priorityRank, toSeverity } from '@/features/alarms/severity';
 import type { AlarmSeverity } from '@/features/alarms/types';
 
 /**
@@ -35,6 +35,7 @@ export interface AlarmCounts {
 }
 
 interface AlarmPoint {
+  controllerId: number;
   severity: AlarmSeverity;
   state: AlarmPointState;
 }
@@ -47,6 +48,7 @@ function fromRows(rows: readonly AlarmRow[]): ReadonlyMap<string, AlarmPoint> {
   const map = new Map<string, AlarmPoint>();
   for (const row of rows) {
     map.set(pointKey(row.controller_id, row.alarm_type), {
+      controllerId: row.controller_id,
       severity: toSeverity(row.priority),
       state: fromActiveRow(row),
     });
@@ -63,15 +65,22 @@ function emptyBuckets(): Record<AlarmSeverity, AlarmBucket> {
   };
 }
 
+interface AlarmPointsResult {
+  points: ReadonlyMap<string, AlarmPoint>;
+  lastEvent: AlarmEventData | null;
+}
+
 /**
- * Four-bucket alarm summary for the §6.9 footer.
+ * Shared point machine behind both `useAlarmCounts` (the §6.9 footer) and
+ * `useLoopAlarmSeverity` (the §6.9 card border): one REST snapshot, one
+ * EVENT.ALARM subscription, one (controller, type) → point map.
  *
  * REST is truth: every `/alarms/active` snapshot (initial load, ACK ALL
  * invalidation, §7 resync) replaces the point map. EVENT.ALARM frames then
  * advance it through the phase-3 machine, so a cleared-but-unacknowledged point
  * keeps demanding acknowledgement instead of silently vanishing.
  */
-export function useAlarmCounts(): AlarmCounts {
+function useAlarmPoints(): AlarmPointsResult {
   const { data: rows } = useQuery({
     queryKey: queryKeys.alarmsActive,
     queryFn: () => endpoints.activeAlarms(),
@@ -94,6 +103,7 @@ export function useAlarmCounts(): AlarmCounts {
           const current = prev.get(key)?.state ?? 'NORMAL';
           const next = new Map(prev);
           next.set(key, {
+            controllerId: event.controller_id,
             severity: toSeverity(event.priority),
             state: transition(current, { kind: event.transition }),
           });
@@ -102,6 +112,13 @@ export function useAlarmCounts(): AlarmCounts {
       }),
     [subscribe],
   );
+
+  return { points, lastEvent };
+}
+
+/** Four-bucket alarm summary for the §6.9 footer. */
+export function useAlarmCounts(): AlarmCounts {
+  const { points, lastEvent } = useAlarmPoints();
 
   return useMemo(() => {
     const buckets = emptyBuckets();
@@ -116,4 +133,28 @@ export function useAlarmCounts(): AlarmCounts {
     }
     return { buckets, totalUnacked, lastEvent };
   }, [points, lastEvent]);
+}
+
+/**
+ * Highest-priority ACTIVE alarm per loop (§6.9 card border): the card border
+ * shows the process alarm's own severity, distinct from the fieldbus-quality
+ * signal the card's corner dot already owns. "Active" follows the phase-3
+ * machine, not just "unacknowledged" — an acknowledged alarm whose condition
+ * has not cleared must still color the border, because the process is still
+ * out of limits even once someone has seen it.
+ */
+export function useLoopAlarmSeverity(): ReadonlyMap<number, AlarmSeverity> {
+  const { points } = useAlarmPoints();
+
+  return useMemo(() => {
+    const map = new Map<number, AlarmSeverity>();
+    for (const point of points.values()) {
+      if (!isActive(point.state)) continue;
+      const current = map.get(point.controllerId);
+      if (current === undefined || priorityRank(point.severity) < priorityRank(current)) {
+        map.set(point.controllerId, point.severity);
+      }
+    }
+    return map;
+  }, [points]);
 }

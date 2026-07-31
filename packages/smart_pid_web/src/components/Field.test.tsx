@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { Field, Input } from './Field';
+import { TooltipProvider } from './Tooltip';
 
 describe('Field + Input', () => {
   it('associates the label with the control', () => {
@@ -44,5 +45,22 @@ describe('Field + Input', () => {
     // visual marker; aria-hidden is on the wrapping span but its text still
     // contributes to the label's accessible name in browsers).
     expect(screen.getByLabelText(/^Endpoint\b/)).toBeInTheDocument();
+  });
+
+  it('shows a tooltip without polluting the field label accessible name', async () => {
+    render(
+      <TooltipProvider delayDuration={0}>
+        <Field label="Nome" htmlFor="name" tooltip="Nome de identificação da malha.">
+          <Input id="name" />
+        </Field>
+      </TooltipProvider>,
+    );
+    // The tooltip trigger is a sibling of <label>, never nested inside it —
+    // the field's own accessible name must stay exactly "Nome".
+    expect(screen.getByLabelText('Nome')).toBeInTheDocument();
+
+    const trigger = screen.getByRole('button', { name: 'Mais informações sobre Nome' });
+    fireEvent.focus(trigger);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Nome de identificação da malha.');
   });
 });

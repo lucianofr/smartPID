@@ -1,9 +1,9 @@
-import type { ReactNode } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import { AnalogBar, type AnalogBarAlarm } from '@/components/AnalogBar';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import type { ControllerResponse } from '@/api/types';
+import type { AlarmSeverity } from '@/features/alarms/types';
 import type { FFSignal, StatusData } from '@/lib/envelope';
 import { cn } from '@/lib/utils';
 import { CO_SCALE, pvScale } from './useControllers';
@@ -12,12 +12,14 @@ export interface LoopCardProps {
   controller: ControllerResponse;
   status: StatusData | null;
   onOpenConfig(id: number): void;
-  /** Phase 5 mounts `CardControls` here. */
-  controlsSlot?: ReactNode;
+  /** Card click target — this loop becomes the one the trend and faceplate show. */
+  onSelect(id: number): void;
   /** The realtime bus went quiet — mark every reading as not current (E2E-047). */
   stale?: boolean;
   /** This loop drives the trend and the faceplate: lift it out of the strip. */
   selected?: boolean;
+  /** Highest-priority ACTIVE process alarm for this loop, or null when none is active. */
+  alarmSeverity?: AlarmSeverity | null;
 }
 
 /**
@@ -46,11 +48,19 @@ export function activeAiStrategy(controller: ControllerResponse): string | null 
   return engine === 'NONE' ? null : engine;
 }
 
-const BORDER_BY_ALARM: Record<AnalogBarAlarm, string> = {
-  normal: 'border-rule',
-  warn: 'border-alarm-warn',
-  crit: 'border-alarm-crit',
+/**
+ * Card border paint, by the loop's own highest-priority ACTIVE alarm — not
+ * the fieldbus-quality signal `DOT_BY_ALARM` below still owns. No active
+ * alarm reads as no border at all: the same color as the card itself, so an
+ * unlit card never competes for attention with one that needs it.
+ */
+const BORDER_BY_SEVERITY: Record<AlarmSeverity, string> = {
+  CRITICAL: 'border-alarm-crit',
+  WARNING: 'border-alarm-warn',
+  ADVISORY: 'border-alarm-adv',
+  LOG: 'border-alarm-log',
 };
+const BORDER_NO_ALARM = 'border-surface';
 
 const DOT_BY_ALARM: Record<AnalogBarAlarm, string> = {
   normal: '',
@@ -93,17 +103,19 @@ const CHIP = 'border-transparent px-2 py-0.5 text-xs font-bold tracking-wide';
  * strip is a single horizontal scroller and wrapping would push the trend below
  * the fold. No sparkline: the trend panel is the only chart on this page.
  *
- * Border precedence is deliberate: a bad fieldbus signal outranks selection.
- * The operator can always see which card is open (shadow + the pressed `Abrir`
- * button), but a card whose numbers cannot be trusted must say so first.
+ * The whole card is the click target for selection (the elevated shadow is
+ * the only tell — the border is reserved for the loop's own alarm state, see
+ * `BORDER_BY_SEVERITY`); the "Configurar" button stops its click from also
+ * reselecting the card.
  */
 export function LoopCard({
   controller,
   status,
   onOpenConfig,
-  controlsSlot,
+  onSelect,
   stale = false,
   selected = false,
+  alarmSeverity = null,
 }: LoopCardProps) {
   const scale = pvScale(controller);
   const decimals = 1;
@@ -116,14 +128,28 @@ export function LoopCard({
   const strategy = activeAiStrategy(controller);
 
   const border =
-    alarm !== 'normal' ? BORDER_BY_ALARM[alarm] : selected ? 'border-accent' : 'border-rule';
+    alarmSeverity !== null && alarmSeverity !== undefined
+      ? BORDER_BY_SEVERITY[alarmSeverity]
+      : BORDER_NO_ALARM;
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={controller.name}
+      aria-current={selected ? 'true' : undefined}
+      onClick={() => onSelect(controller.id)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(controller.id);
+        }
+      }}
       className={cn(
         'relative flex w-[206px] shrink-0 cursor-pointer flex-col gap-2.5 overflow-hidden',
         'rounded-card border-2 bg-surface p-3.5',
         'transition-transform hover:-translate-y-0.5',
+        'outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
         border,
       )}
       style={{ boxShadow: selected ? 'var(--shadow-lifted)' : 'var(--shadow-card)' }}
@@ -205,15 +231,14 @@ export function LoopCard({
           size="sm"
           className="ml-auto shrink-0"
           aria-label={`Configurar ${controller.name}`}
-          onClick={() => onOpenConfig(controller.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenConfig(controller.id);
+          }}
         >
           <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>
-
-      {/* Pushed to the floor so every card in the row lines its actions up, even
-          though only the selected one carries the mode switch. */}
-      {controlsSlot !== undefined ? <div className="mt-auto">{controlsSlot}</div> : null}
     </div>
   );
 }

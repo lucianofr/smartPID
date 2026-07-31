@@ -24,7 +24,9 @@ export interface AnalogBarProps {
 /**
  * Fill color per alarm level — token var() references selected at runtime
  * (one of the two sanctioned dynamic inline styles; the other is the width %).
- * Normal fill is gray (--bar-fill): green never means "ok" (§6.4).
+ * `normal` is only the fallback for an unrecognized label; every real PV/SP/CO
+ * reading resolves its normal fill through `TRACE_FILL` instead (§6.4 — the
+ * bar echoes the trend line's own color rather than a flat "ok" green).
  */
 const ALARM_FILL: Record<AnalogBarAlarm, string> = {
   normal: 'var(--bar-fill)',
@@ -36,12 +38,15 @@ const ALARM_FILL: Record<AnalogBarAlarm, string> = {
 const STALE_FILL = 'var(--text-disabled)';
 
 /**
- * The faceplate reads PV first and everything else second, so PV gets the tall
- * track and the display-scale numeral. The component is handed one signal at a
- * time and never learns which, so the label is the only discriminator available
- * — the same convention the §6.9 faceplate already spells out in its markup.
+ * Normal-fill color per variable, keyed by the same PV/SP/CO label the cards
+ * and faceplate already pass in. Matches the trend chart's own trace tokens
+ * (`uplotTheme.ts`) so a bar and its line always read as the same signal.
  */
-const PRIMARY_LABEL = 'PV';
+const TRACE_FILL: Record<string, string> = {
+  PV: 'var(--trace-pv)',
+  SP: 'var(--trace-sp)',
+  CO: 'var(--trace-co)',
+};
 
 export function AnalogBar({
   label,
@@ -60,7 +65,7 @@ export function AnalogBar({
   const reading = finite ? `${formatNumber(value, decimals)} ${scale.unit}` : 'sem dados';
 
   const faceplate = size === 'faceplate';
-  const primary = faceplate && label === PRIMARY_LABEL;
+  const normalFill = TRACE_FILL[label] ?? ALARM_FILL.normal;
 
   return (
     <div
@@ -86,7 +91,7 @@ export function AnalogBar({
         aria-valuetext={stale && finite ? `${reading} (desatualizado)` : reading}
         className={cn(
           'relative min-w-16 grow overflow-hidden rounded-pill bg-bar-track',
-          faceplate ? (primary ? 'h-3.5' : 'h-2.5') : 'h-1.5',
+          faceplate ? 'h-2.5' : 'h-1.5',
           // Diagonal hatch over the whole track: the classic "this reading is
           // not live" overlay, built from a contract token so the color guard
           // and every theme still hold.
@@ -97,7 +102,7 @@ export function AnalogBar({
         <div
           data-testid="analog-bar-fill"
           className="absolute inset-y-0 left-0 rounded-pill"
-          style={{ width: `${pct}%`, background: stale ? STALE_FILL : ALARM_FILL[alarm] }}
+          style={{ width: `${pct}%`, background: stale ? STALE_FILL : alarm === 'normal' ? normalFill : ALARM_FILL[alarm] }}
         />
         {spPct !== null ? (
           <div
@@ -115,11 +120,7 @@ export function AnalogBar({
           // the rail is a fixed 320 px column that must never scroll, and the
           // default line box around a 30 px numeral spends ~6 px of that budget
           // on nothing. Digits have no descenders, so there is nothing to clip.
-          faceplate
-            ? primary
-              ? 'w-16 text-3xl font-semibold leading-none'
-              : 'w-16 text-lg font-semibold leading-none'
-            : 'w-[34px] text-sm',
+          faceplate ? 'w-16 text-lg font-semibold leading-none' : 'w-[34px] text-sm',
           stale ? 'text-text-disabled' : 'text-text',
         )}
       >

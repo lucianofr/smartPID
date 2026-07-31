@@ -382,3 +382,87 @@ describe('LoopConfigDialog — AI Optimization section', () => {
     });
   });
 });
+
+const ALL_MODES = ['OOS', 'IMAN', 'LO', 'MAN', 'AUTO', 'CAS', 'RCAS', 'ROUT', 'BYPASS'] as const;
+
+describe('LoopConfigDialog — mode tag and numeric mapping (§6.10)', () => {
+  it('offers read and write NodeID fields for the block mode', async () => {
+    renderDialog();
+    expect(await screen.findByLabelText('NodeID Modo (leitura)')).toBeInTheDocument();
+    expect(screen.getByLabelText('NodeID Modo (escrita)')).toBeInTheDocument();
+  });
+
+  it('offers an integer mapping field for every controller mode', async () => {
+    renderDialog();
+    for (const mode of ALL_MODES) {
+      expect(await screen.findByLabelText(mode)).toBeInTheDocument();
+    }
+  });
+
+  it('loads existing mode bindings and mapping into their fields', async () => {
+    renderDialog({
+      tag_bindings: {
+        ...makeController().tag_bindings,
+        node_id_mode_actual: 'ns=2;i=8',
+        node_id_mode_target: 'ns=2;i=9',
+        mode_int_map: { MAN: 0, AUTO: 1 },
+      },
+    });
+    expect(await screen.findByLabelText('NodeID Modo (leitura)')).toHaveValue('ns=2;i=8');
+    expect(screen.getByLabelText('NodeID Modo (escrita)')).toHaveValue('ns=2;i=9');
+    expect(screen.getByLabelText('MAN')).toHaveValue(0);
+    expect(screen.getByLabelText('AUTO')).toHaveValue(1);
+    expect(screen.getByLabelText('CAS')).toHaveValue(null);
+  });
+
+  it('saves typed mode bindings and mapping, omitting blank modes', async () => {
+    const { onClose } = renderDialog();
+    fireEvent.change(await screen.findByLabelText('NodeID Modo (leitura)'), {
+      target: { value: 'ns=2;i=8' },
+    });
+    fireEvent.change(screen.getByLabelText('NodeID Modo (escrita)'), {
+      target: { value: 'ns=2;i=8' },
+    });
+    fireEvent.change(screen.getByLabelText('MAN'), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText('AUTO'), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string) as {
+      tag_bindings: {
+        node_id_mode_actual: string;
+        node_id_mode_target: string;
+        mode_int_map: Record<string, number>;
+      };
+    };
+    expect(body.tag_bindings.node_id_mode_actual).toBe('ns=2;i=8');
+    expect(body.tag_bindings.node_id_mode_target).toBe('ns=2;i=8');
+    expect(body.tag_bindings.mode_int_map).toEqual({ MAN: 0, AUTO: 1 });
+  });
+
+  it('keeps a typed 0 in the map instead of treating it as unset', async () => {
+    const { onClose } = renderDialog();
+    fireEvent.change(await screen.findByLabelText('MAN'), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string) as {
+      tag_bindings: { mode_int_map: Record<string, number> };
+    };
+    expect(body.tag_bindings.mode_int_map).toEqual({ MAN: 0 });
+  });
+
+  it('shows a tooltip describing the field on focus of its info icon', async () => {
+    renderDialog();
+    await screen.findByLabelText('NodeID Modo (leitura)');
+    const trigger = screen.getByRole('button', { name: 'Mais informações sobre AUTO' });
+    fireEvent.focus(trigger);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('AUTO');
+  });
+
+  it('disables the mode NodeID and mapping fields for a read-only user', async () => {
+    renderDialog({}, 'user');
+    expect(await screen.findByLabelText('NodeID Modo (leitura)')).toBeDisabled();
+    expect(screen.getByLabelText('MAN')).toBeDisabled();
+  });
+});

@@ -20,12 +20,14 @@ import type {
 } from '@/api/types';
 import { cn } from '@/lib/utils';
 import {
+  CONTROLLER_MODES,
   EXECUTION_MODES,
   INTEGRAL_TYPES,
   PID_STRUCTURES,
   SHED_OPTIONS,
   type AiEngine,
   type ControlObjective,
+  type ControllerMode,
   type ExecutionMode,
   type LimitsForm,
   type PidParamsForm,
@@ -86,13 +88,14 @@ interface NumberFieldProps {
   value: number;
   disabled: boolean;
   error?: string;
+  tooltip?: string;
   onChange(value: number): void;
 }
 
-function NumberField({ label, value, disabled, error, onChange }: NumberFieldProps) {
+function NumberField({ label, value, disabled, error, tooltip, onChange }: NumberFieldProps) {
   const id = useId();
   return (
-    <Field label={label} htmlFor={id} error={error}>
+    <Field label={label} htmlFor={id} error={error} tooltip={tooltip}>
       <Input
         id={id}
         type="number"
@@ -111,13 +114,14 @@ interface TextFieldProps {
   label: string;
   value: string;
   disabled: boolean;
+  tooltip?: string;
   onChange(value: string): void;
 }
 
-function TextField({ label, value, disabled, onChange }: TextFieldProps) {
+function TextField({ label, value, disabled, tooltip, onChange }: TextFieldProps) {
   const id = useId();
   return (
-    <Field label={label} htmlFor={id}>
+    <Field label={label} htmlFor={id} tooltip={tooltip}>
       <Input id={id} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
     </Field>
   );
@@ -128,13 +132,14 @@ interface SelectFieldProps {
   value: string;
   options: readonly string[];
   disabled: boolean;
+  tooltip?: string;
   onChange(value: string): void;
 }
 
-function SelectField({ label, value, options, disabled, onChange }: SelectFieldProps) {
+function SelectField({ label, value, options, disabled, tooltip, onChange }: SelectFieldProps) {
   const id = useId();
   return (
-    <Field label={label} htmlFor={id}>
+    <Field label={label} htmlFor={id} tooltip={tooltip}>
       <select
         id={id}
         className={SELECT_CLASS}
@@ -148,6 +153,40 @@ function SelectField({ label, value, options, disabled, onChange }: SelectFieldP
           </option>
         ))}
       </select>
+    </Field>
+  );
+}
+
+interface ModeMapFieldProps {
+  mode: ControllerMode;
+  value: string;
+  disabled: boolean;
+  onChange(value: string): void;
+}
+
+/**
+ * One row of the mode/value map: the integer the raw tag carries when the
+ * loop is in `mode`. Blank means "not used by this loop" — 0 is a legitimate
+ * code (e.g. MAN=0), so it cannot double as unset.
+ */
+function ModeMapField({ mode, value, disabled, onChange }: ModeMapFieldProps) {
+  const id = useId();
+  return (
+    <Field
+      label={mode}
+      htmlFor={id}
+      tooltip={`Valor inteiro que a tag de modo assume quando a malha está em ${mode}. Deixe em branco se este modo não é usado nesta malha.`}
+    >
+      <Input
+        id={id}
+        type="number"
+        inputMode="numeric"
+        step={1}
+        className="numeric"
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </Field>
   );
 }
@@ -207,7 +246,17 @@ type Draft = {
   pid: PidParamsForm;
   limits: LimitsForm;
   pv_scale: ScaleConfigDto;
-  bindings: Pick<TagBindingsDto, 'node_id_pv' | 'node_id_sp' | 'node_id_co' | 'node_id_ti'>;
+  bindings: Pick<
+    TagBindingsDto,
+    | 'node_id_pv'
+    | 'node_id_sp'
+    | 'node_id_co'
+    | 'node_id_ti'
+    | 'node_id_mode_actual'
+    | 'node_id_mode_target'
+  >;
+  /** Raw per-field text so a blank box means "not mapped", never the digit 0. */
+  modeIntMap: Record<ControllerMode, string>;
   pid_structure: string;
   integral_type: string;
   shed_opt: string;
@@ -230,6 +279,11 @@ function toDraft(c: ControllerResponse): Draft {
   const pv = c.pv_scale ?? { eu_min: 0, eu_max: 100, unit: '' };
   const tags = c.tag_bindings;
   const ai = c.ai_config as Partial<AiConfigDto> | undefined;
+  const modeIntMap = {} as Record<ControllerMode, string>;
+  for (const mode of CONTROLLER_MODES) {
+    const code = tags?.mode_int_map?.[mode];
+    modeIntMap[mode] = code === undefined ? '' : String(code);
+  }
   return {
     name: c.name,
     description: c.description ?? '',
@@ -254,7 +308,10 @@ function toDraft(c: ControllerResponse): Draft {
       node_id_sp: tags?.node_id_sp ?? '',
       node_id_co: tags?.node_id_co ?? '',
       node_id_ti: tags?.node_id_ti ?? '',
+      node_id_mode_actual: tags?.node_id_mode_actual ?? '',
+      node_id_mode_target: tags?.node_id_mode_target ?? '',
     },
+    modeIntMap,
     pid_structure: c.pid_structure ?? 'ISA',
     integral_type: c.integral_type ?? 'TIME_TI',
     shed_opt: c.shed_opt ?? 'MAN',
@@ -312,6 +369,8 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
     setDraft((p) => ({ ...p, limits: { ...p.limits, [key]: value } }));
   const patchBinding = (key: NodeIdKey, value: string): void =>
     setDraft((p) => ({ ...p, bindings: { ...p.bindings, [key]: value } }));
+  const patchModeMap = (mode: ControllerMode, value: string): void =>
+    setDraft((p) => ({ ...p, modeIntMap: { ...p.modeIntMap, [mode]: value } }));
 
   /**
    * The picker never decides the target — `picking` is the field whose own
@@ -323,6 +382,18 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
     setPicking(null);
   };
 
+  /** Blank fields are omitted, never sent as the digit 0 (see `ModeMapField`). */
+  const modeIntMapPayload = (): Record<string, number> => {
+    const result: Record<string, number> = {};
+    for (const mode of CONTROLLER_MODES) {
+      const raw = draft.modeIntMap[mode].trim();
+      if (raw === '') continue;
+      const n = Number(raw);
+      if (Number.isFinite(n)) result[mode] = n;
+    }
+    return result;
+  };
+
   const save = (): void => {
     update.mutate(
       {
@@ -332,7 +403,11 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
           description: draft.description,
           execution_mode: draft.execution_mode,
           scan_rate_s: draft.scan_rate_s,
-          tag_bindings: { ...controller.tag_bindings, ...draft.bindings },
+          tag_bindings: {
+            ...controller.tag_bindings,
+            ...draft.bindings,
+            mode_int_map: modeIntMapPayload(),
+          },
           process_speed: draft.process_speed,
           ai_config: {
             engine: draft.ai.engine,
@@ -379,18 +454,21 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
         <div className="grid grid-cols-2 gap-2">
           <TextField
             label="Nome"
+            tooltip="Nome de identificação da malha (tag), exibido nos cards e no faceplate."
             value={draft.name}
             disabled={readOnly}
             onChange={(v) => setDraft((p) => ({ ...p, name: v }))}
           />
           <TextField
             label="Descrição"
+            tooltip="Texto livre descrevendo o processo controlado por esta malha."
             value={draft.description}
             disabled={readOnly}
             onChange={(v) => setDraft((p) => ({ ...p, description: v }))}
           />
           <SelectField
             label="Modo de execução"
+            tooltip="SUPERVISORY: o PID roda no CLP/DCS e o SmartPID só monitora. DDC: o PID roda dentro do SmartPID, que escreve a saída diretamente."
             value={draft.execution_mode}
             options={EXECUTION_MODES}
             disabled={readOnly}
@@ -398,14 +476,16 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
           />
           <NumberField
             label="Taxa de varredura (s)"
+            tooltip="Intervalo, em segundos, entre execuções do algoritmo PID quando a malha está em DDC."
             value={draft.scan_rate_s}
             disabled={readOnly}
             onChange={(v) => setDraft((p) => ({ ...p, scan_rate_s: v }))}
           />
-          {NODE_ID_FIELDS.map(({ key, label }) => (
+          {NODE_ID_FIELDS.map(({ key, label, tooltip }) => (
             <NodeIdField
               key={key}
               label={label}
+              tooltip={tooltip}
               value={draft.bindings[key]}
               disabled={readOnly}
               onChange={(v) => patchBinding(key, v)}
@@ -414,11 +494,24 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
           ))}
         </div>
 
+        <Section label="Mapeamento de Modo">
+          {CONTROLLER_MODES.map((mode) => (
+            <ModeMapField
+              key={mode}
+              mode={mode}
+              value={draft.modeIntMap[mode]}
+              disabled={readOnly}
+              onChange={(v) => patchModeMap(mode, v)}
+            />
+          ))}
+        </Section>
+
         {isDdc ? (
           <>
             <Section label="PID Tuning">
               <NumberField
                 label="Ganho (Kp)"
+                tooltip="Ganho proporcional do controlador PID."
                 value={draft.pid.gain}
                 disabled={readOnly}
                 error={pidErrors.gain}
@@ -426,6 +519,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               />
               <NumberField
                 label="Reset (Ti)"
+                tooltip="Tempo integral (reset), em segundos por repetição — quanto menor, mais rápida a ação integral."
                 value={draft.pid.reset}
                 disabled={readOnly}
                 error={pidErrors.reset}
@@ -433,6 +527,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               />
               <NumberField
                 label="Rate (Td)"
+                tooltip="Tempo derivativo — antecipa a tendência do erro. Zero desativa a ação derivativa (controlador PI)."
                 value={draft.pid.rate}
                 disabled={readOnly}
                 error={pidErrors.rate}
@@ -440,6 +535,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               />
               <NumberField
                 label="Filtro derivativo (alpha)"
+                tooltip="Fator de filtro do termo derivativo (0–1), reduz ruído amplificado pela derivada."
                 value={draft.pid.alpha}
                 disabled={readOnly}
                 error={pidErrors.alpha}
@@ -447,6 +543,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               />
               <NumberField
                 label="Banda morta"
+                tooltip="Faixa de erro, em unidades de engenharia, dentro da qual o controlador não atua."
                 value={draft.pid.deadband}
                 disabled={readOnly}
                 error={pidErrors.deadband}
@@ -457,24 +554,28 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
             <Section label="Scaling & Limits">
               <NumberField
                 label="PV mín."
+                tooltip="Limite inferior da escala de engenharia da PV, usado para converter o sinal bruto e desenhar a barra e o gráfico."
                 value={draft.pv_scale.eu_min}
                 disabled={readOnly}
                 onChange={(v) => setDraft((p) => ({ ...p, pv_scale: { ...p.pv_scale, eu_min: v } }))}
               />
               <NumberField
                 label="PV máx."
+                tooltip="Limite superior da escala de engenharia da PV, usado para converter o sinal bruto e desenhar a barra e o gráfico."
                 value={draft.pv_scale.eu_max}
                 disabled={readOnly}
                 onChange={(v) => setDraft((p) => ({ ...p, pv_scale: { ...p.pv_scale, eu_max: v } }))}
               />
               <TextField
                 label="Unidade PV"
+                tooltip="Unidade de engenharia exibida junto ao valor da PV (ex.: °C, bar, m³/h)."
                 value={draft.pv_scale.unit}
                 disabled={readOnly}
                 onChange={(v) => setDraft((p) => ({ ...p, pv_scale: { ...p.pv_scale, unit: v } }))}
               />
               <NumberField
                 label="Saída mín."
+                tooltip="Limite inferior permitido para a saída de controle (CO), em %."
                 value={draft.limits.out_lo_lim}
                 disabled={readOnly}
                 error={limitErrors.out_lo_lim}
@@ -482,6 +583,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               />
               <NumberField
                 label="Saída máx."
+                tooltip="Limite superior permitido para a saída de controle (CO), em %."
                 value={draft.limits.out_hi_lim}
                 disabled={readOnly}
                 error={limitErrors.out_hi_lim}
@@ -489,6 +591,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               />
               <NumberField
                 label="ARW mín."
+                tooltip="Limite inferior de anti-windup do termo integral — impede que o integrador acumule além da faixa útil da saída."
                 value={draft.limits.arw_lo_lim}
                 disabled={readOnly}
                 error={limitErrors.arw_lo_lim}
@@ -496,6 +599,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               />
               <NumberField
                 label="ARW máx."
+                tooltip="Limite superior de anti-windup do termo integral — impede que o integrador acumule além da faixa útil da saída."
                 value={draft.limits.arw_hi_lim}
                 disabled={readOnly}
                 error={limitErrors.arw_hi_lim}
@@ -503,6 +607,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               />
               <NumberField
                 label="SP mín."
+                tooltip="Limite inferior permitido para o setpoint digitado pelo operador."
                 value={draft.limits.sp_lo_lim}
                 disabled={readOnly}
                 error={limitErrors.sp_lo_lim}
@@ -510,6 +615,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               />
               <NumberField
                 label="SP máx."
+                tooltip="Limite superior permitido para o setpoint digitado pelo operador."
                 value={draft.limits.sp_hi_lim}
                 disabled={readOnly}
                 error={limitErrors.sp_hi_lim}
@@ -520,6 +626,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
             <Section label="Filters & IO">
               <NumberField
                 label="Filtro PV (s)"
+                tooltip="Constante de tempo do filtro de primeira ordem aplicado à leitura da PV."
                 value={draft.limits.pv_ftime}
                 disabled={readOnly}
                 error={limitErrors.pv_ftime}
@@ -527,6 +634,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               />
               <NumberField
                 label="Filtro SP (s)"
+                tooltip="Constante de tempo do filtro de primeira ordem aplicado ao setpoint."
                 value={draft.limits.sp_ftime}
                 disabled={readOnly}
                 error={limitErrors.sp_ftime}
@@ -534,6 +642,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               />
               <NumberField
                 label="Rampa SP subida"
+                tooltip="Taxa máxima de variação do setpoint por segundo, ao subir, antes de chegar ao valor digitado."
                 value={draft.limits.sp_rate_up}
                 disabled={readOnly}
                 error={limitErrors.sp_rate_up}
@@ -541,6 +650,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               />
               <NumberField
                 label="Rampa SP descida"
+                tooltip="Taxa máxima de variação do setpoint por segundo, ao descer, antes de chegar ao valor digitado."
                 value={draft.limits.sp_rate_dn}
                 disabled={readOnly}
                 error={limitErrors.sp_rate_dn}
@@ -548,12 +658,14 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               />
               <NumberField
                 label="Corte baixo"
+                tooltip="Valor de PV abaixo do qual o sinal é tratado como corte de baixa escala (low cut)."
                 value={draft.low_cut}
                 disabled={readOnly}
                 onChange={(v) => setDraft((p) => ({ ...p, low_cut: v }))}
               />
               <NumberField
                 label="Ganho FF"
+                tooltip="Ganho aplicado ao sinal de feedforward somado à saída do PID."
                 value={draft.ff_gain}
                 disabled={readOnly}
                 onChange={(v) => setDraft((p) => ({ ...p, ff_gain: v }))}
@@ -563,6 +675,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
             <Section label="Shed & Safety">
               <SelectField
                 label="Modo de shed"
+                tooltip="Modo para o qual a malha muda automaticamente quando o link de I/O é perdido."
                 value={draft.shed_opt}
                 options={SHED_OPTIONS}
                 disabled={readOnly}
@@ -570,12 +683,14 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
               />
               <NumberField
                 label="Tempo de shed (s)"
+                tooltip="Tempo, em segundos, sem comunicação de I/O antes de aplicar o modo de shed."
                 value={draft.shed_time_s}
                 disabled={readOnly}
                 onChange={(v) => setDraft((p) => ({ ...p, shed_time_s: v }))}
               />
               <NumberField
                 label="Mudança máx. de sintonia (%)"
+                tooltip="Variação percentual máxima permitida em um único ajuste de sintonia enviado pela IA."
                 value={draft.max_tuning_change_pct}
                 disabled={readOnly}
                 onChange={(v) => setDraft((p) => ({ ...p, max_tuning_change_pct: v }))}
@@ -585,6 +700,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
             <Section label="PID Structure">
               <SelectField
                 label="Estrutura"
+                tooltip="Forma matemática do algoritmo PID: ISA (interativa), Paralela ou Série."
                 value={draft.pid_structure}
                 options={PID_STRUCTURES}
                 disabled={readOnly}
@@ -595,6 +711,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
             <Section label="Integral Type">
               <SelectField
                 label="Tipo integral"
+                tooltip="Como o termo integral é parametrizado: ganho (Ki) ou tempo (Ti)."
                 value={draft.integral_type}
                 options={INTEGRAL_TYPES}
                 disabled={readOnly}

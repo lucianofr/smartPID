@@ -52,7 +52,11 @@ export function AiConfigSection({ value, errors, disabled, onChange }: AiConfigS
 
   return (
     <>
-      <Field label="Motor" htmlFor={engineId}>
+      <Field
+        label="Motor"
+        htmlFor={engineId}
+        tooltip="Motor de otimização usado para ajustar a sintonia desta malha: NONE (desativado), FUZZY (lógica fuzzy) ou RL (aprendizado por reforço)."
+      >
         <select
           id={engineId}
           className={SELECT_CLASS}
@@ -68,7 +72,11 @@ export function AiConfigSection({ value, errors, disabled, onChange }: AiConfigS
         </select>
       </Field>
 
-      <Field label="Objetivo" htmlFor={objectiveId}>
+      <Field
+        label="Objetivo"
+        htmlFor={objectiveId}
+        tooltip="Objetivo de controle que a IA prioriza ao propor ajustes de sintonia."
+      >
         <select
           id={objectiveId}
           className={SELECT_CLASS}
@@ -84,7 +92,11 @@ export function AiConfigSection({ value, errors, disabled, onChange }: AiConfigS
         </select>
       </Field>
 
-      <Field label="Velocidade do processo" htmlFor={speedId}>
+      <Field
+        label="Velocidade do processo"
+        htmlFor={speedId}
+        tooltip="Classificação da dinâmica do processo, usada pela IA para calibrar a agressividade dos ajustes de sintonia."
+      >
         <select
           id={speedId}
           className={SELECT_CLASS}
@@ -100,7 +112,12 @@ export function AiConfigSection({ value, errors, disabled, onChange }: AiConfigS
         </select>
       </Field>
 
-      <Field label="Tempo morto L" htmlFor={deadTimeId} error={errors.dead_time_l}>
+      <Field
+        label="Tempo morto L"
+        htmlFor={deadTimeId}
+        error={errors.dead_time_l}
+        tooltip="Tempo morto estimado do processo, em segundos — usado pela IA para calcular limites seguros de sintonia."
+      >
         <Input
           id={deadTimeId}
           type="number"
@@ -113,7 +130,12 @@ export function AiConfigSection({ value, errors, disabled, onChange }: AiConfigS
         />
       </Field>
 
-      <Field label="Limite mín." htmlFor={limitMinId} error={errors.limit_min}>
+      <Field
+        label="Limite mín."
+        htmlFor={limitMinId}
+        error={errors.limit_min}
+        tooltip="Limite inferior permitido para os ajustes de sintonia propostos pela IA."
+      >
         <Input
           id={limitMinId}
           type="number"
@@ -126,7 +148,12 @@ export function AiConfigSection({ value, errors, disabled, onChange }: AiConfigS
         />
       </Field>
 
-      <Field label="Limite máx." htmlFor={limitMaxId} error={errors.limit_max}>
+      <Field
+        label="Limite máx."
+        htmlFor={limitMaxId}
+        error={errors.limit_max}
+        tooltip="Limite superior permitido para os ajustes de sintonia propostos pela IA."
+      >
         <Input
           id={limitMaxId}
           type="number"
