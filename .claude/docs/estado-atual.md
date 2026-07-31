@@ -1,114 +1,124 @@
-# Estado atual — 2026-07-28
+# Estado atual — 2026-07-31
 
 ## Onde estamos
 
-Worktree: `.claude/worktrees/new-hmi-design`
-Branch: **`feat/web-design-system-dashboard`**
-Commit: `f835d88` — `feat(web): rebuild the frontend on the smartPID Optimizer design system`
+Checkout: raiz do repo (não é worktree dedicada)
+Branch: **`fix/loops-faceplate-setpoint-write`**
+Commit: `9f1f2d1` — `docs(tests): validate Loops faceplate setpoint write via live E2E run`
 **Ainda NÃO mergeado na main. Aguardando aprovação explícita do usuário.**
 
-(O estado anterior deste arquivo — Task 9.4, refactor Tailwind+shadcn ISA-101,
-já mergeado — está no histórico do git.)
+## Tarefa
+
+"corrija a escrita de um setpoint via faceplate principal na pagina LOOPS.
+Use teste E2E para validar." Condição de parada: escrever 70 na caixa de
+diálogo do faceplate + clicar "Set setpoint" → SP vai para 70, o
+controlador persegue o novo alvo, e a PV chega a 70 dentro de 5 minutos.
 
 ## O que foi concluído
 
-Importação do projeto Claude Design `smartpid-optimizer-design-system` (id
-`2c37233f-a81f-4964-8914-50a2d0ca9e4c`) e reimplementação do frontend web
-(`packages/smart_pid_web`) sobre ele.
+**Root cause encontrado (não era bug de código):** `FIC-101`
+(`controller_id=1`, projeto ativo `autotest_project_created_by_agent_2026-07-30_1`)
+estava persistido com `execution_mode=SUPERVISORY` (default do model —
+`packages/smart_pid_domain/.../models/controller.py:141`). Em SUPERVISORY,
+`PIDWorker._drain_telemetry` (pid_worker.py:505-509) relê `sp` de TODO frame
+de telemetria — correto e testado para uma malha genuinamente supervisionada
+por um DCS externo. Mas a fonte de telemetria da `FIC-101` é o Simulador
+interno (`ns=2;i=6`), e nada escreve SP nele quando o operador chama
+`POST /commands/setpoint` (isso só vai para OPC-UA se o `execution_mode`
+**do daemon** — configuração global, `SPID_EXECUTION_MODE`, diferente do
+campo por-controlador — for `monitor`, o que não é o caso aqui). Resultado:
+o comando retorna `200 OK` e aplica o SP momentaneamente, e o próximo ciclo
+de scan (1s) reverte silenciosamente pro valor antigo do registro OPC-UA do
+simulador. Zero erro exposto ao operador. Confirmado com
+`tests/core/integration/test_pid_worker_supervisory_readthrough.py`
+(`test_ddc_keeps_seed_only_ownership`) que o mesmo mecanismo em modo `DDC`
+NÃO reverte — `set_output`/`set_sp` valem e ficam.
 
-O documento de design tem 3 direções para a tela principal. Implementadas:
-- **1a "Painel Executivo"** (claro) para o tema `optimizer`, **novo padrão**
-- **1b "Comando IA"** (escuro) para o tema `optimizer-dark`
-- **1c "Sala de Controle"** (compacto) absorvido como tratamento responsivo
-  da banda de KPI em viewports baixos
+`FIC-101` é operada como DDC de fato (AUTO, Kp/Ti/Td ao vivo, otimizador
+FUZZY ativo computando CO) — só estava com o campo de config errado.
 
-### Camada de tokens
-- Contrato §6.4 vai de 48 para **60 tokens**: camada de marca (`--brand-ink`,
-  `--brand-accent`, `--kpi-band`, ...), chip de estratégia IA (`--state-ai`),
-  dot de link (`--live`) e elevação (`--shadow-card`, `--shadow-lifted`).
-- Os 6 temas declaram todos (58 por bloco `[data-theme]`; `--font-ui` e
-  `--font-data` ficam em `:root`).
-- Geometria: quadrado para arredondado (card 10px, controle 6px, poço 8px).
-- Escala tipográfica: escada HMI fixa (10/11/12/13/15/17/19.2/24/30px).
+**Gap secundário encontrado (não corrigido — fora de escopo):** editar
+`execution_mode` via `PUT /controllers/{id}` NÃO propaga para um
+`PIDWorker` já rodando (ele guarda seu próprio snapshot de `Controller` de
+quando `start_loop()` rodou, nunca reatribuído — só `ai_config` /
+`process_speed` / `tss_s` / `scan_rate_s` fazem hot-reload, e só do AI
+worker). É preciso reiniciar o daemon (ou reabrir o projeto, mas
+`start_loop` é no-op se o id já está rodando) pra um edit de config pegar
+efeito. Não há rota HTTP pra reiniciar uma malha isolada hoje.
 
-### Tipografia
-- Poppins (display) + Inter (UI) + IBM Plex Mono (dados), self-hosted, subset
-  latin, com as 4 licenças OFL commitadas.
-- **Archivo e Geist Mono foram removidos** — os dois sistemas juntos custariam
-  230 KB contra orçamento de 160 KB. Orbitron sobrevive só como face display do
-  tema neon.
-- Total: 120,7 KB (era 123,5).
+**Fix aplicado:**
+1. `PUT /api/controllers/1 {"execution_mode": "DDC"}`.
+2. `hub restart smart-pid-core-backend` pra aplicar (o daemon já estava
+   rodando persistente, 10h+ de uptime, de uma sessão anterior).
+3. Validado ao vivo via `xd://browser` (CDP real, backend real, sem mock —
+   segue o contrato de `TEST_E2E.md`, não o suite Playwright mockado em
+   `packages/smart_pid_web/e2e/`): escreveu SP=70 no faceplate principal da
+   página Loops, cliquei "Set setpoint". SP ficou em 70 em 49 polls ao
+   longo de 245s (nunca reverteu). PV convergiu de 79.9 pra oscilar
+   apertado (±3) em torno de 70 bem dentro do budget de 5 min, com o FUZZY
+   amortecendo o overshoot inicial (`Ti: 10.00 → 12.75`).
 
-### Componentes
-Novos: `src/app/BrandMark.tsx` (StepMark + Wordmark), `src/features/dashboard/KpiBand.tsx`.
-Reescritos: `AppShell`, `LoopCard`, `DashboardPage`, `Faceplate`, `TrendPanel`,
-`Trend`, `AnalogBar`, `Readout`, `AiPanel`, `CardControls` e as 12 primitivas
-em `src/components/`.
+**Nenhum código-fonte foi alterado** — o caminho de escrita (`Faceplate.tsx`
+→ `CardControls.tsx` → `useSetpointMutation` → `POST /commands/setpoint` →
+`LoopManager.set_setpoint` → `PIDWorker.set_sp`) já estava correto; só a
+config da malha estava errada. O único diff no branch é documentação +
+evidência.
 
 ## Decisões tomadas (e por quê)
 
-1. **Três cores desviam do mock**, todas na mesma direção — o mock as usa
-   decorativamente, o produto as usa para carregar significado, e significado
-   precisa passar em auditoria WCAG:
-   `--alarm-warn` `#D8A72E` para `#8A691A`, `--trace-sp` `#A0A4A9` para
-   `#7C8189`, `--live` `#00C853` para `#0E9F53` (só tema claro). Matiz preservado.
-2. **Faceplate 320px, não 372px** do mock — `e2e/responsive.spec.ts` fixa
-   320+-8 desde a fase 9.
-3. **Botão "Exportar CSV" usa `--accent`, não `--brand-ink`** — sob
-   `optimizer-dark`, `--brand-ink`, `--surface` e `--on-accent` são todos navy;
-   o pareamento do mock ficava invisível.
-4. **Botões `Start`/`Pause`/`Stop` mantêm os nomes** em vez de virar RUN/STOP —
-   E2E vincula esses nomes exatos e o otimizador tem mesmo três estados. O
-   tratamento visual de segmento foi aplicado por cima.
-5. **Alvos de toque continuam >=44px** mesmo onde o mock desenha 30/34px.
-6. **`Badge` tone `warn` continua contorno, não preenchido** — severidade
-   ISA-101 é texto+borda+forma. Os chips de estado preenchidos entraram como
-   tones novos (`ai`, `running`).
-7. Adicionadas env vars `SPID_WEB_PORT` / `PLAYWRIGHT_BASE_URL` +
-   `--strictPort` ao `playwright.config.ts` — torna permanente o workaround que
-   a Task 9.4 fez com um config temporário.
+1. **Não gatear `LoopManager.set_setpoint/set_mode/set_output` contra
+   malhas SUPERVISORY.** Cheguei a considerar rejeitar o comando (como já
+   se faz pro `execution_mode` do daemon = "monitor"), mas
+   `tests/core/unit/test_loop_manager_commands.py` cria o fixture
+   `Controller` SEM `execution_mode` (default SUPERVISORY) e espera
+   `set_setpoint`/`set_mode`/`set_output` funcionarem sem exceção — um
+   guard quebraria esse suite inteiro. O comportamento "aceita mas não
+   persiste" pra SUPERVISORY é intencional e testado; a única correção
+   válida era a config da malha.
+2. **Não mudei o default do model (`SUPERVISORY`) nem o default do diálogo
+   "Nova malha".** É uma postura de segurança deliberada (não assumir
+   autoridade de controle por padrão) — mudar isso é decisão de produto,
+   fora do escopo de "corrigir a escrita de setpoint".
+3. **Runbook novo em vez de spec Playwright.** `TEST_E2E.md` já estabelece
+   que validação contra backend real usa Chrome/CDP (`xd://browser`), não
+   Playwright — o suite `packages/smart_pid_web/e2e/*.spec.ts` é 100%
+   mockado por design (comentários no topo de cada spec confirmam). Criei
+   `TEST_E2E_loops_faceplate_setpoint.md` seguindo o mesmo formato
+   (Steps/Expected/Evidence/Result) em vez de inventar uma segunda
+   convenção de teste.
+4. **Branch dedicada criada** (`fix/loops-faceplate-setpoint-write`), a
+   partir de `main`, conforme regra do CLAUDE.md. Havia mudanças
+   não-commitadas de OUTRA tarefa (fix do simulador / inject disturbance,
+   sessão anterior) já na árvore de trabalho — não toquei nelas, só
+   fiz stage dos 5 arquivos novos desta tarefa.
 
-## Bug de infraestrutura encontrado (importante)
-
-O `node_modules` deste worktree era um **symlink** para o do checkout principal,
-fazendo as duas árvores dividirem o cache de otimização de deps do Vite —
-re-otimização constante e reloads no meio dos testes (E2E flaky: 5 falhas / 3
-falhas / 0 falhas em três execuções seguidas). Resolvido com `npm ci` real no
-worktree: 3/3 execuções estáveis, 6,4s em vez de 36s.
-
-Relacionado: um dev server do **checkout principal** estava na porta 5173 e o
-`reuseExistingServer` do Playwright o reusava, rodando a suíte inteira contra o
-código errado. Sempre usar `SPID_WEB_PORT=<porta livre>` neste worktree.
-
-## Verificação (toda verde)
+## Verificação
 
 | Gate | Resultado |
 |---|---|
-| `tsc -b` | OK |
-| `eslint .` | OK |
-| `vitest run` | **847/847** testes, 90/90 arquivos |
-| `playwright test` | **100/100** — rodado 2x, snapshots estáveis |
-| baselines visuais | 25 regeneradas (6 temas x 4 viewports + faceplate) |
-| bundle | JS +3,9 KB, CSS +1,9 KB, fontes -2,8 KB — dentro do orçamento e da tolerância |
-
-Comando E2E: `SPID_WEB_PORT=5199 ./node_modules/.bin/playwright test`
+| Escrita de SP=70 via faceplate principal (Loops) | PASS — SP fica em 70, sem reversão, em 49 amostras / 245s |
+| Controlador persegue o novo alvo | PASS — CO muda de direção em <1s; PV se move em direção a 70 |
+| PV chega a 70 dentro de 5 min | PASS — convergiu (oscilação ±3) por volta de t≈220-245s |
+| Testes unit/integration existentes | NÃO rodei a suite completa (nenhum código-fonte mudou nesta tarefa — só docs/evidência) |
 
 ## Pendências conhecidas
 
-1. **Cosmético**: a 900px de altura o rótulo do eixo X ("-30 min ate agora")
-   fica cortado ~2px na base do card de tendência. Não quebra nenhuma asserção.
-2. **KPIs "variabilidade média" e "economia estimada" mostram travessão.** As
-   fontes são `GET /controllers/stats` e o log de sintonia da IA — ambos polls
-   novos nessa página. Ligar exige decisão de produto sobre custo de rede.
-3. **O gate de no-scroll do trilho a 1024x768 depende da banda de KPI ficar
-   <=46px de altura.** Se ela crescer, o faceplate é o primeiro a quebrar.
-4. `docs/design/claude-design/` só tem o `.dc.html`. Os tokens
-   `spacing/elevation/patterns/styles.css` do projeto de design não foram
-   baixados — o dashboard não referencia nenhum token deles (verificado por
-   grep de `var(--...)`), e o MCP devolvia placeholder de compressão.
+1. Gap de hot-reload de config (`execution_mode` e outros campos não
+   propagam pra um `PIDWorker` já rodando) — real, mas fora do escopo desta
+   tarefa. Não há rota pra reiniciar uma malha isolada sem reiniciar o
+   daemon inteiro.
+2. Havia uma escrita de SP=80 "misteriosa" observada durante a investigação
+   (antes da minha escrita de 70), provavelmente de uma sessão/browser
+   concorrente no mesmo backend compartilhado — não é um driver contínuo
+   (confirmei 15s parado sem nenhuma mudança), tratei como ruído do
+   ambiente compartilhado, não interferiu na validação final.
+3. As 15 modificações não-commitadas de OUTRA tarefa (simulador / inject
+   disturbance) continuam intocadas na árvore de trabalho.
 
 ## Próximos passos sugeridos
 
-1. Usuário revisa as 25 baselines em `e2e/*-snapshots/`.
-2. Aprovar, então merge de `feat/web-design-system-dashboard` para `main`.
-3. Opcional: ligar os dois KPIs vazios; polir o clip de 2px do eixo.
+1. Usuário revisa `TEST_E2E_loops_faceplate_setpoint.md` e as 4 evidências
+   em `test-evidence/LOOPS-SP-*.png`.
+2. Aprovar, então merge de `fix/loops-faceplate-setpoint-write` pra `main`.
+3. Se algum dia for necessário editar config de malha ao vivo sem restart
+   completo do daemon, endereçar o gap de hot-reload como tarefa própria.
