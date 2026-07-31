@@ -29,7 +29,7 @@ export interface TwinTrendProps {
   controllerId: number;
 }
 
-const PLOT_HEIGHT = 195;
+const PLOT_HEIGHT = 210;
 
 /** Twin PV/SP/CO are all percentages, so both scale pairs default to 0–100 %. */
 const TWIN_SCALE_MIN = 0;
