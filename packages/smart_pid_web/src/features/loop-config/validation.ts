@@ -79,6 +79,46 @@ export function validateLimits(limits: LimitsForm): FieldErrors {
   return errors;
 }
 
+/**
+ * Surge Level only. The band is what keeps the tank inside its safe window,
+ * so an inverted or out-of-range band must never reach the engine — it would
+ * silently fall back to 20-80 and quietly tune against a different band than
+ * the one on screen.
+ */
+function validateSurgeLevel(ai: AiConfigForm): FieldErrors {
+  const errors: FieldErrors = {};
+  const bounds = [
+    ['sl_band_lo_pct', ai.sl_band_lo_pct],
+    ['sl_band_hi_pct', ai.sl_band_hi_pct],
+  ] as const;
+  for (const [key, value] of bounds) {
+    if (value === null || value === undefined) continue;
+    if (!Number.isFinite(value) || value < 0 || value > 100) {
+      errors[key] = 'Deve estar entre 0 e 100';
+    }
+  }
+  const lo = ai.sl_band_lo_pct;
+  const hi = ai.sl_band_hi_pct;
+  if (
+    typeof lo === 'number' &&
+    typeof hi === 'number' &&
+    Number.isFinite(lo) &&
+    Number.isFinite(hi) &&
+    lo >= hi
+  ) {
+    errors.sl_band_lo_pct = 'Limite inferior deve ser menor que o superior';
+  }
+  const small = ai.sl_error_small_pct;
+  if (small !== undefined && (!Number.isFinite(small) || small <= 0)) {
+    errors.sl_error_small_pct = 'Deve ser maior que 0';
+  }
+  const ramp = ai.sl_co_ramp_max_pct_min;
+  if (ramp !== undefined && (!Number.isFinite(ramp) || ramp < 0)) {
+    errors.sl_co_ramp_max_pct_min = 'Deve ser 0 ou maior';
+  }
+  return errors;
+}
+
 /** With the engine off the guardrails are inert — do not block a save on them. */
 export function validateAiConfig(ai: AiConfigForm): FieldErrors {
   if (ai.engine === 'NONE') return {};
@@ -90,6 +130,9 @@ export function validateAiConfig(ai: AiConfigForm): FieldErrors {
   if (!Number.isFinite(ai.limit_max)) errors.limit_max = 'Deve ser um número';
   if (Number.isFinite(ai.limit_min) && Number.isFinite(ai.limit_max) && ai.limit_min >= ai.limit_max) {
     errors.limit_min = 'Limite mínimo deve ser menor que o máximo';
+  }
+  if (ai.objective === 'SURGE_LEVEL') {
+    Object.assign(errors, validateSurgeLevel(ai));
   }
   return errors;
 }

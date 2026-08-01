@@ -83,6 +83,16 @@ export interface AiConfigForm {
   dead_time_l: number;
   limit_min: number;
   limit_max: number;
+  /**
+   * Surge Level band. Only meaningful when `objective` is SURGE_LEVEL, and
+   * optional so callers that only touch the guardrails stay untouched.
+   * `null` on a bound means "let the engine use its 20-80 % default".
+   */
+  objective?: ControlObjective;
+  sl_band_lo_pct?: number | null;
+  sl_band_hi_pct?: number | null;
+  sl_error_small_pct?: number;
+  sl_co_ramp_max_pct_min?: number;
 }
 
 export interface TuningForm {

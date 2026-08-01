@@ -400,8 +400,8 @@ describe('LoopConfigDialog — AI Optimization section', () => {
       'RL',
     ]);
     expect(screen.getByLabelText('Tempo morto L')).toBeInTheDocument();
-    expect(screen.getByLabelText('Limite mín.')).toBeInTheDocument();
-    expect(screen.getByLabelText('Limite máx.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ti mínimo')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ti máximo')).toBeInTheDocument();
     expect(screen.getByLabelText('Velocidade do processo')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'AI Optimization' })).toBeVisible();
   });
@@ -411,6 +411,45 @@ describe('LoopConfigDialog — AI Optimization section', () => {
     await screen.findByLabelText('Motor');
     expect(screen.queryByRole('button', { name: 'Salvar IA' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Salvar' })).toHaveLength(1);
+  });
+
+  it('hides the surge band knobs for the other objectives', async () => {
+    renderDialog();
+    await screen.findByLabelText('Motor');
+    expect(screen.queryByLabelText('Nível mín. (%)')).toBeNull();
+    expect(screen.queryByLabelText('Rampa máx. do CO (%/min)')).toBeNull();
+  });
+
+  it('offers the surge band knobs once SURGE_LEVEL is selected', async () => {
+    renderDialog();
+    fireEvent.change(await screen.findByLabelText('Objetivo'), {
+      target: { value: 'SURGE_LEVEL' },
+    });
+    expect(await screen.findByLabelText('Nível mín. (%)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Nível máx. (%)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Erro pequeno (% da faixa)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Rampa máx. do CO (%/min)')).toBeInTheDocument();
+  });
+
+  it('refuses to save an inverted surge band', async () => {
+    renderDialog();
+    // The guardrails are inert while the engine is off, so turn it on first.
+    fireEvent.change(await screen.findByLabelText('Motor'), {
+      target: { value: 'FUZZY' },
+    });
+    fireEvent.change(screen.getByLabelText('Objetivo'), {
+      target: { value: 'SURGE_LEVEL' },
+    });
+    fireEvent.change(await screen.findByLabelText('Nível mín. (%)'), {
+      target: { value: '80' },
+    });
+    fireEvent.change(screen.getByLabelText('Nível máx. (%)'), {
+      target: { value: '20' },
+    });
+    expect(
+      await screen.findByText('Limite inferior deve ser menor que o superior'),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled();
   });
 
   it('refuses to save an inverted guardrail band', async () => {
@@ -425,9 +464,11 @@ describe('LoopConfigDialog — AI Optimization section', () => {
         rl_fallback_kp: 0.6,
         rl_learning_rate: 0.0003,
         rl_train_interval: 32,
+        sl_co_ramp_max_pct_min: 10,
+        sl_error_small_pct: 5,
       },
     });
-    fireEvent.change(await screen.findByLabelText('Limite mín.'), { target: { value: '500' } });
+    fireEvent.change(await screen.findByLabelText('Ti mínimo'), { target: { value: '500' } });
     expect(await screen.findByText('Limite mínimo deve ser menor que o máximo')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -439,8 +480,31 @@ describe('LoopConfigDialog — AI Optimization section', () => {
     expect(screen.getByLabelText('Objetivo')).toBeDisabled();
     expect(screen.getByLabelText('Velocidade do processo')).toBeDisabled();
     expect(screen.getByLabelText('Tempo morto L')).toBeDisabled();
-    expect(screen.getByLabelText('Limite mín.')).toBeDisabled();
-    expect(screen.getByLabelText('Limite máx.')).toBeDisabled();
+    expect(screen.getByLabelText('Ti mínimo')).toBeDisabled();
+    expect(screen.getByLabelText('Ti máximo')).toBeDisabled();
+  });
+
+  // The same limit_min/limit_max pair clamps Ki for a GAIN_KI loop and Ti for
+  // a TIME_TI one, so the label must follow the radio or the operator clamps
+  // the wrong quantity.
+  it('labels the integral limits after the loop integral type', async () => {
+    renderDialog({ integral_type: 'GAIN_KI' });
+    expect(await screen.findByLabelText('Ki mínimo')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ki máximo')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Ti mínimo')).toBeNull();
+  });
+
+  it('flips the integral limit labels when the integral type radio changes', async () => {
+    renderDialog({ integral_type: 'TIME_TI' });
+    fireEvent.click(await screen.findByRole('radio', { name: 'Ganho Integral (Ki)' }));
+    expect(screen.getByLabelText('Ki mínimo')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Ti máximo')).toBeNull();
+  });
+
+  it('defaults the integral limits to 1 and 10 for a loop with no ai_config', async () => {
+    renderDialog({ ai_config: undefined });
+    expect(await screen.findByLabelText('Ti mínimo')).toHaveValue(1);
+    expect(screen.getByLabelText('Ti máximo')).toHaveValue(10);
   });
 
   it('sends ai_config and process_speed in the single PATCH', async () => {
@@ -464,6 +528,13 @@ describe('LoopConfigDialog — AI Optimization section', () => {
       dead_time_l: 4,
       limit_min: 0.1,
       limit_max: 100,
+      // Surge Level knobs ride along unchanged for every objective: the
+      // dialog sends one whole ai_config, and the engine only reads them
+      // when the objective is SURGE_LEVEL.
+      sl_band_lo_pct: null,
+      sl_band_hi_pct: null,
+      sl_error_small_pct: 5,
+      sl_co_ramp_max_pct_min: 10,
     });
   });
 });

@@ -20,21 +20,24 @@ physical reasoning of the objective:
    oscillation. Focus: survival and recovery, not shape.
 
 3. **Surge Level / Averaging Control** (``FuzzyEngineV2SurgeLevel``) —
-   continuous. Indicators: distance from tank centre, valve TV, margin rate
-   toward limit. Focus: suppress valve motion; only defend against tank
-   overflow/dry-up in emergency.
+   continuous. Indicators: position inside a configurable safe PV band,
+   band-crossing rate, error size, valve TV. Focus: suppress valve motion;
+   defend the band unconditionally when PV leaves it.
 
 All three produce an ``AIDecisionV2`` with ``delta_ti`` applied as
 ``Ti_new = Ti_old × (1 + Δ_Ti)``.
 """
 from __future__ import annotations
 
+import logging
 import math
 from collections import deque
 from dataclasses import dataclass
 from typing import Union
 
 from smart_pid_domain.enums import ControlObjective
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Shared primitives
@@ -899,10 +902,12 @@ class FuzzyEngineV2DisturbanceRejection:
 # Strategy 3 — Surge Level / Averaging Control
 # ===========================================================================
 
-MF_L_MARGIN_SL: MFSet = {
-    "SAFE":     ("trap", (0.0, 0.0, 0.2, 0.35)),
-    "WARNING":  ("tri",  (0.25, 0.35, 0.45)),
-    "CRITICAL": ("trap", (0.4, 0.45, 0.5, 0.5)),
+MF_POS_SL: MFSet = {
+    # ``m`` = |PV − band centre| / band half-width: 0 = dead centre,
+    # 1 = exactly on a band edge, > 1 = outside the safe band.
+    "SAFE": ("trap", (0.0, 0.0, 0.55, 0.75)),
+    "NEAR": ("tri",  (0.65, 0.85, 1.0)),
+    "OUT":  ("trap", (0.95, 1.10, 1e9, 1e9)),
 }
 
 MF_TV_MV_SL: MFSet = {
@@ -911,10 +916,17 @@ MF_TV_MV_SL: MFSet = {
     "HIGH":   ("trap", (0.3, 0.5, 1.0, 1.0)),
 }
 
-MF_DL_DT_SL: MFSet = {
+MF_DPOS_SL: MFSet = {
+    # dm/dt in m-units per minute. Positive = heading for a band wall.
     "ESCAPING": ("trap", (-10.0, -10.0, -0.5, 0.0)),
-    "LOW":      ("tri",  (-1.0, 0.0, 1.0)),
-    "HIGH":     ("trap", (0.5, 2.0, 10.0, 10.0)),
+    "STILL":    ("tri",  (-1.0, 0.0, 1.0)),
+    "TOWARD":   ("trap", (0.5, 2.0, 10.0, 10.0)),
+}
+
+MF_ERR_SL: MFSet = {
+    # |error| in % of span, normalised by the configured "small error" band.
+    "SMALL": ("trap", (0.0, 0.0, 0.8, 1.2)),
+    "LARGE": ("trap", (0.8, 1.5, 1e9, 1e9)),
 }
 
 # Output centres — singleton CoG approximation of spec MFs.
@@ -927,57 +939,118 @@ OUTPUT_CENTERS_SL: dict[str, float] = {
 }
 
 RULES_SL: list[Rule] = [
-    # R1: safe level with valve chattering → relax hard
-    ({"margin": "SAFE", "tv": "HIGH"}, "AM"),
-    # R2: ideal surge operation
-    ({"margin": "SAFE", "tv": "LOW", "dl_dt": "LOW"}, "M"),
-    # R2': safe with moderate valve motion → gentle relax
-    ({"margin": "SAFE", "tv": "MEDIUM"}, "A"),
-    # R3: emergency — tank heading to the limit
-    ({"margin": "CRITICAL", "dl_dt": "HIGH"}, "RD"),
-    # R4: critical but recovering on its own — start relaxing back
-    ({"margin": "CRITICAL", "dl_dt": "ESCAPING"}, "A"),
-    # R4': critical, near-still — hold
-    ({"margin": "CRITICAL", "dl_dt": "LOW"}, "M"),
-    # R5: warning zone, still moving toward limit → boost integral
-    ({"margin": "WARNING", "dl_dt": "HIGH"}, "R"),
-    # R5': warning zone, escaping — relax
-    ({"margin": "WARNING", "dl_dt": "ESCAPING"}, "A"),
-    # R5'': warning zone, stable — maintain
-    ({"margin": "WARNING", "dl_dt": "LOW"}, "M"),
+    # S1: outside the band and not coming back → hardest correction there is.
+    # Leaving the band is forbidden, so this outranks valve smoothness.
+    # Two rules with one conclusion == the OR of their premises under the
+    # max-aggregation core.
+    ({"pos": "OUT", "dpos": "TOWARD"}, "RD"),
+    ({"pos": "OUT", "dpos": "STILL"},  "RD"),
+    # S2: outside but already returning — hold the correction that is
+    # working. Staying on RD here over-tightens and drives PV straight
+    # across the band into the opposite wall.
+    ({"pos": "OUT", "dpos": "ESCAPING"}, "M"),
+    # S3: closing on a wall from inside → boost the integral moderately.
+    ({"pos": "NEAR", "dpos": "TOWARD"}, "R"),
+    # S4: on the edge but stationary → hold.
+    ({"pos": "NEAR", "dpos": "STILL"}, "M"),
+    # S5: heading back to centre → start relaxing.
+    ({"pos": "NEAR", "dpos": "ESCAPING"}, "A"),
+    # S6: safe level, valve chattering → integral gain is too high.
+    ({"pos": "SAFE", "tv": "HIGH"}, "AM"),
+    # S7: safe and on target → push the integral to its minimum action
+    # (Ti → limit_max). This is the averaging-control ideal: still valve.
+    ({"pos": "SAFE", "err": "SMALL", "tv": "LOW"}, "AM"),
+    # S8: same, but the valve is still moving → more reason to smooth.
+    ({"pos": "SAFE", "err": "SMALL", "tv": "MEDIUM"}, "AM"),
+    # S9: safe level, quiet valve, standing offset → averaging control
+    # tolerates offset. Do not tighten to chase it.
+    ({"pos": "SAFE", "err": "LARGE", "tv": "LOW"}, "M"),
+    # S10: safe level, offset, valve working → gentle relaxation.
+    ({"pos": "SAFE", "err": "LARGE", "tv": "MEDIUM"}, "A"),
 ]
 
 
 class FuzzyEngineV2SurgeLevel:
-    """Averaging / surge-level tuner: margin + valve TV + margin rate → Δ_Ti.
+    """Averaging / surge-level tuner: band position, rate, error, valve TV.
 
-    Input is ``pv_frac`` (0–1 of span), NOT error. CO is the manipulated
-    valve output.
+    Priority is static and explicit: safety (S1/S2 plus the CO-ramp gate) >
+    valve smoothness (S6-S8) > error (S9/S10). The safe PV band is
+    configurable as a percentage of span; ``None`` bounds resolve to 20-80 %,
+    so an unconfigured loop and an explicitly 20/80 loop behave identically.
 
-    ``Δ_Ti`` is asymmetric — easy to relax (Ti up), hard to tighten (Ti down),
-    except in the critical+racing-to-limit emergency.
+    The primary input is ``pv_frac`` (0-1 of span), NOT error; ``error_frac``
+    only classifies the offset as small/large for the averaging rules. CO is
+    the manipulated valve output.
     """
 
     _DEFAULT_WINDOW = 20
     _TV_FULL_SCALE_PER_SAMPLE = 0.05   # 5% CO change per sample → TV_norm = 1
+    _DEFAULT_BAND_LO_PCT = 20.0
+    _DEFAULT_BAND_HI_PCT = 80.0
+    _DEFAULT_ERROR_SMALL_PCT = 5.0
+    #: Δ_Ti floor forced when the CO ramp gate trips — relax, never tighten.
+    _CO_RAMP_FLOOR_DELTA_TI = 0.15
 
     def __init__(
-        self, dt_sec: float = 60.0, window_samples: int | None = None,
+        self,
+        dt_sec: float = 60.0,
+        window_samples: int | None = None,
+        band_lo_pct: float | None = None,
+        band_hi_pct: float | None = None,
+        error_small_pct: float = 5.0,
+        co_ramp_max_pct_min: float = 10.0,
     ) -> None:
         self._dt = dt_sec
         n = window_samples if window_samples is not None else self._DEFAULT_WINDOW
         self._window_samples = max(4, int(n))
         self._pvs: deque[float] = deque(maxlen=self._window_samples)
         self._cos: deque[float] = deque(maxlen=self._window_samples)
+        self._errs: deque[float] = deque(maxlen=self._window_samples)
 
-    def update_sample(self, pv_frac: float, co_frac: float) -> None:
+        lo = (
+            self._DEFAULT_BAND_LO_PCT if band_lo_pct is None else float(band_lo_pct)
+        )
+        hi = (
+            self._DEFAULT_BAND_HI_PCT if band_hi_pct is None else float(band_hi_pct)
+        )
+        if lo >= hi:
+            # Only reachable from a corrupt/legacy .spid — the DTO and the UI
+            # both reject an inverted band before it can be persisted.
+            logger.warning(
+                "surge_level_band_invalid lo=%s hi=%s falling_back=%s-%s",
+                lo, hi, self._DEFAULT_BAND_LO_PCT, self._DEFAULT_BAND_HI_PCT,
+            )
+            lo = self._DEFAULT_BAND_LO_PCT
+            hi = self._DEFAULT_BAND_HI_PCT
+        self._band_lo_pct = lo
+        self._band_hi_pct = hi
+        self._band_centre_pct = (lo + hi) / 2.0
+        self._band_half_pct = (hi - lo) / 2.0
+
+        if error_small_pct <= 0.0:
+            logger.warning(
+                "surge_level_error_small_invalid value=%s falling_back=%s",
+                error_small_pct, self._DEFAULT_ERROR_SMALL_PCT,
+            )
+            error_small_pct = self._DEFAULT_ERROR_SMALL_PCT
+        self._error_small_pct = float(error_small_pct)
+        self._co_ramp_max_pct_min = max(0.0, float(co_ramp_max_pct_min))
+
+    def update_sample(
+        self, error_frac: float, pv_frac: float, co_frac: float,
+    ) -> None:
+        self._errs.append(error_frac)
         self._pvs.append(pv_frac)
         self._cos.append(co_frac)
 
-    def _l_margin(self) -> float:
+    def _pos_of(self, pv_frac: float) -> float:
+        """Band-relative position: 0 = centre, 1 = on an edge, > 1 = outside."""
+        return abs(pv_frac * 100.0 - self._band_centre_pct) / self._band_half_pct
+
+    def _pos(self) -> float:
         if not self._pvs:
             return 0.0
-        return abs(self._pvs[-1] - 0.5)
+        return self._pos_of(self._pvs[-1])
 
     def _tv_mv(self) -> float:
         n = len(self._cos)
@@ -987,54 +1060,101 @@ class FuzzyEngineV2SurgeLevel:
         per_sample = tv / (n - 1)
         return min(1.0, per_sample / self._TV_FULL_SCALE_PER_SAMPLE)
 
-    def _dl_dt(self) -> float:
-        """Signed rate toward limit in % per minute.
+    def _dpos(self) -> float:
+        """Signed band-position rate in m-units per minute.
 
-        Positive = |PV − 0.5| growing (tank heading for a wall).
-        Negative = |PV − 0.5| shrinking (tank relaxing toward centre).
+        Positive = PV heading for a band wall (|PV − centre| growing).
+        Negative = PV returning toward the centre.
         """
         n = len(self._pvs)
-        if n < 2:
+        if n < 2 or self._dt <= 0.0:
             return 0.0
-        margin_end = abs(self._pvs[-1] - 0.5)
-        margin_start = abs(self._pvs[0] - 0.5)
-        delta_margin = margin_end - margin_start
-        time_span_sec = (n - 1) * self._dt
-        rate_frac_per_sec = delta_margin / time_span_sec
-        return rate_frac_per_sec * 100.0 * 60.0
+        delta = self._pos_of(self._pvs[-1]) - self._pos_of(self._pvs[0])
+        span_min = (n - 1) * self._dt / 60.0
+        if span_min <= 0.0:
+            return 0.0
+        return delta / span_min
+
+    def _err_norm(self) -> float:
+        """Mean |error| over the window, in units of ``error_small_pct``.
+
+        Windowed rather than instantaneous for the same reason SP_TRACKING is:
+        one noisy sample must not flip an averaging loop between the
+        small-error and large-error rule groups.
+        """
+        if not self._errs:
+            return 0.0
+        mean_abs = sum(abs(e) for e in self._errs) / len(self._errs)
+        return mean_abs * 100.0 / self._error_small_pct
+
+    def _max_co_ramp_pct_min(self) -> float:
+        """Largest single-sample CO slew in the window, in % per minute."""
+        n = len(self._cos)
+        if n < 2 or self._dt <= 0.0:
+            return 0.0
+        peak = max(abs(self._cos[i] - self._cos[i - 1]) for i in range(1, n))
+        return peak * 100.0 * (60.0 / self._dt)
 
     def infer(
-        self, margin: float, tv: float, dl_dt: float,
+        self, pos: float, dpos: float, err: float, tv: float,
     ) -> tuple[float, dict[str, dict[str, float]]]:
         input_mfs = {
-            "margin": _fuzzify(margin, MF_L_MARGIN_SL),
-            "tv":     _fuzzify(tv, MF_TV_MV_SL),
-            "dl_dt":  _fuzzify(dl_dt, MF_DL_DT_SL),
+            "pos":  _fuzzify(pos, MF_POS_SL),
+            "dpos": _fuzzify(dpos, MF_DPOS_SL),
+            "err":  _fuzzify(err, MF_ERR_SL),
+            "tv":   _fuzzify(tv, MF_TV_MV_SL),
         }
         delta, output_strengths = _run_rules(
             input_mfs, RULES_SL, OUTPUT_CENTERS_SL,
         )
-        # Spec allows AM trapezoid to reach +1.5 — keep a wider clamp here.
+        # Spec allows the AM trapezoid to reach +1.5 — keep the wider clamp.
         delta = max(-1.0, min(1.5, delta))
         return delta, {**input_mfs, "output": output_strengths}
 
     def compute_adjustment(
         self, ti_current: float, limit_min: float, limit_max: float,
     ) -> AIDecisionV2:
-        margin = self._l_margin()
+        pos = self._pos()
+        dpos = max(-10.0, min(10.0, self._dpos()))
+        err = self._err_norm()
         tv = self._tv_mv()
-        dl_dt = max(-10.0, min(10.0, self._dl_dt()))
-        delta_ti, mfs = self.infer(margin, tv, dl_dt)
+        delta_ti, mfs = self.infer(pos, dpos, err, tv)
+
+        # Crisp post-inference safety validation, NOT a fuzzy rule: a valve
+        # slewing faster than the configured ramp must never be answered with
+        # a tighter integral, whatever the rule base concluded.
+        co_ramp = self._max_co_ramp_pct_min()
+        ramp_violation = (
+            self._co_ramp_max_pct_min > 0.0
+            and co_ramp > self._co_ramp_max_pct_min
+        )
+        if ramp_violation:
+            delta_ti = max(delta_ti, self._CO_RAMP_FLOOR_DELTA_TI)
+
         new_ti = max(limit_min, min(limit_max, ti_current * (1.0 + delta_ti)))
+        reasoning = (
+            f"FuzzyV2[SL]: POS={pos:.2f} dPOS={dpos:+.2f}/min ERR={err:.2f} "
+            f"TV={tv:.2f} "
+            f"band={self._band_lo_pct:.0f}-{self._band_hi_pct:.0f}% "
+            f"Δ_Ti={delta_ti:+.3f} Ti: {ti_current:.4f} → {new_ti:.4f}"
+        )
+        if ramp_violation:
+            reasoning += (
+                f" [CO-RAMP] {co_ramp:.1f}%/min > "
+                f"{self._co_ramp_max_pct_min:.1f}%/min"
+            )
         return AIDecisionV2(
             delta_ti=delta_ti,
             new_ti=new_ti,
-            inputs={"L_MARGIN": margin, "TV_MV": tv, "DL_DT": dl_dt},
-            reasoning=(
-                f"FuzzyV2[SL]: margin={margin:.2f} TV={tv:.2f} "
-                f"dL/dt={dl_dt:+.2f}%/min Δ_Ti={delta_ti:+.3f} "
-                f"Ti: {ti_current:.4f} → {new_ti:.4f}"
-            ),
+            inputs={
+                "POS": pos,
+                "DPOS": dpos,
+                "ERR": err,
+                "TV": tv,
+                "CO_RAMP": co_ramp,
+                "co_ramp_violation": ramp_violation,
+            },
+            reasoning=reasoning,
             membership_values=mfs,
         )
 
@@ -1067,6 +1187,10 @@ class FuzzyEngineV2Dispatcher:
         e_max_norm_full: float = 0.05,
         dt_sec: float = 1.0,
         window_samples: int | None = None,
+        sl_band_lo_pct: float | None = None,
+        sl_band_hi_pct: float | None = None,
+        sl_error_small_pct: float = 5.0,
+        sl_co_ramp_max_pct_min: float = 10.0,
     ) -> None:
         self._objective = objective
         engine: AnyFuzzyV2Engine
@@ -1081,7 +1205,12 @@ class FuzzyEngineV2Dispatcher:
             )
         elif objective == ControlObjective.SURGE_LEVEL:
             engine = FuzzyEngineV2SurgeLevel(
-                dt_sec=dt_sec, window_samples=window_samples,
+                dt_sec=dt_sec,
+                window_samples=window_samples,
+                band_lo_pct=sl_band_lo_pct,
+                band_hi_pct=sl_band_hi_pct,
+                error_small_pct=sl_error_small_pct,
+                co_ramp_max_pct_min=sl_co_ramp_max_pct_min,
             )
         else:
             raise ValueError(f"Unsupported control objective: {objective}")
@@ -1103,7 +1232,7 @@ class FuzzyEngineV2Dispatcher:
         elif self._objective == ControlObjective.DISTURBANCE_REJECTION:
             self._engine.update_sample(error_frac)
         else:  # SURGE_LEVEL
-            self._engine.update_sample(pv_frac, co_frac)
+            self._engine.update_sample(error_frac, pv_frac, co_frac)
 
     def compute_adjustment(
         self, ti_current: float, limit_min: float, limit_max: float,

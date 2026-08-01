@@ -121,6 +121,10 @@ class Controladores(SpidBase):
     ai_limit_max: Mapped[float]
     optimization_enabled: Mapped[int]
     stability_band_pct: Mapped[float | None]
+    sl_band_lo_pct: Mapped[float | None]
+    sl_band_hi_pct: Mapped[float | None]
+    sl_error_small_pct: Mapped[float]
+    sl_co_ramp_max_pct_min: Mapped[float]
     # Timestamps (TEXT, SQLite-side datetime('now') defaults)
     criado_em: Mapped[str]
     atualizado_em: Mapped[str]

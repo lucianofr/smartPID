@@ -29,6 +29,7 @@ import {
   type ControlObjective,
   type ControllerMode,
   type ExecutionMode,
+  type IntegralType,
   type LimitsForm,
   type PidParamsForm,
   type ProcessSpeed,
@@ -309,6 +310,10 @@ type Draft = {
     dead_time_l: number;
     limit_min: number;
     limit_max: number;
+    sl_band_lo_pct: number | null;
+    sl_band_hi_pct: number | null;
+    sl_error_small_pct: number;
+    sl_co_ramp_max_pct_min: number;
   };
 };
 
@@ -367,8 +372,12 @@ function toDraft(c: ControllerResponse): Draft {
       engine: (ai?.engine as AiEngine | undefined) ?? 'NONE',
       objective: (ai?.objective as ControlObjective | undefined) ?? 'DISTURBANCE_REJECTION',
       dead_time_l: ai?.dead_time_l ?? 1,
-      limit_min: ai?.limit_min ?? 0.1,
-      limit_max: ai?.limit_max ?? 100,
+      limit_min: ai?.limit_min ?? 1,
+      limit_max: ai?.limit_max ?? 10,
+      sl_band_lo_pct: ai?.sl_band_lo_pct ?? null,
+      sl_band_hi_pct: ai?.sl_band_hi_pct ?? null,
+      sl_error_small_pct: ai?.sl_error_small_pct ?? 5,
+      sl_co_ramp_max_pct_min: ai?.sl_co_ramp_max_pct_min ?? 10,
     },
   };
 }
@@ -397,9 +406,14 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
   const limitErrors = isDdc ? validateLimits(draft.limits) : {};
   const aiErrors = validateAiConfig({
     engine: draft.ai.engine,
+    objective: draft.ai.objective,
     dead_time_l: draft.ai.dead_time_l,
     limit_min: draft.ai.limit_min,
     limit_max: draft.ai.limit_max,
+    sl_band_lo_pct: draft.ai.sl_band_lo_pct,
+    sl_band_hi_pct: draft.ai.sl_band_hi_pct,
+    sl_error_small_pct: draft.ai.sl_error_small_pct,
+    sl_co_ramp_max_pct_min: draft.ai.sl_co_ramp_max_pct_min,
   });
   const blocked =
     hasErrors(pidErrors) ||
@@ -478,6 +492,10 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
             dead_time_l: draft.ai.dead_time_l,
             limit_min: draft.ai.limit_min,
             limit_max: draft.ai.limit_max,
+            sl_band_lo_pct: draft.ai.sl_band_lo_pct,
+            sl_band_hi_pct: draft.ai.sl_band_hi_pct,
+            sl_error_small_pct: draft.ai.sl_error_small_pct,
+            sl_co_ramp_max_pct_min: draft.ai.sl_co_ramp_max_pct_min,
           },
           ...(isDdc
             ? {
@@ -788,7 +806,11 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
 
         <Section label="AI Optimization">
           <AiConfigSection
-            value={{ ...draft.ai, speed: draft.process_speed }}
+            value={{
+              ...draft.ai,
+              speed: draft.process_speed,
+              integral_type: draft.integral_type as IntegralType,
+            }}
             errors={aiErrors}
             disabled={readOnly}
             onChange={(patch) =>

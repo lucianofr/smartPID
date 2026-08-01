@@ -35,12 +35,36 @@ class AIConfigDTO(BaseModel):
     engine: str = "NONE"
     objective: str = "DISTURBANCE_REJECTION"
     dead_time_l: float = 1.0
-    limit_min: float = 0.1
-    limit_max: float = 100.0
+    limit_min: float = 1.0
+    limit_max: float = 10.0
     rl_fallback_kp: float = 0.6
     rl_fallback_kd: float = 0.2
     rl_learning_rate: float = 3e-4
     rl_train_interval: int = 32
+    # Surge Level tuning band — see domain AIConfig for semantics.
+    sl_band_lo_pct: float | None = None
+    sl_band_hi_pct: float | None = None
+    sl_error_small_pct: float = 5.0
+    sl_co_ramp_max_pct_min: float = 10.0
+
+    @model_validator(mode="after")
+    def _check_surge_level_params(self) -> AIConfigDTO:
+        for name in ("sl_band_lo_pct", "sl_band_hi_pct"):
+            pct = getattr(self, name)
+            if pct is not None and not 0.0 <= pct <= 100.0:
+                msg = f"{name} must be between 0 and 100 % of span"
+                raise ValueError(msg)
+        lo, hi = self.sl_band_lo_pct, self.sl_band_hi_pct
+        if lo is not None and hi is not None and lo >= hi:
+            msg = "sl_band_lo_pct must be strictly below sl_band_hi_pct"
+            raise ValueError(msg)
+        if self.sl_error_small_pct <= 0.0:
+            msg = "sl_error_small_pct must be greater than 0"
+            raise ValueError(msg)
+        if self.sl_co_ramp_max_pct_min < 0.0:
+            msg = "sl_co_ramp_max_pct_min must not be negative"
+            raise ValueError(msg)
+        return self
 
 
 class TagBindingsDTO(BaseModel):

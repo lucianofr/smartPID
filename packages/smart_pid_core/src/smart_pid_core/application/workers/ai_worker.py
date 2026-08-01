@@ -191,6 +191,10 @@ class AIWorker:
                 objective=self._ai_config.objective,
                 dt_sec=scan_rate_s,
                 window_samples=window_samples,
+                sl_band_lo_pct=self._ai_config.sl_band_lo_pct,
+                sl_band_hi_pct=self._ai_config.sl_band_hi_pct,
+                sl_error_small_pct=self._ai_config.sl_error_small_pct,
+                sl_co_ramp_max_pct_min=self._ai_config.sl_co_ramp_max_pct_min,
             )
         elif self._ai_config.engine == AIEngine.RL:
             from smart_pid_core.domain.services.rl_engine import RLEngine

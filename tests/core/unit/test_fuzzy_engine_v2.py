@@ -1115,117 +1115,214 @@ class TestDisturbanceRejectionRules:
 # ===========================================================================
 
 
-class TestSurgeLevelIndicators:
-    def test_l_margin_at_centre(self):
-        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
-            FuzzyEngineV2SurgeLevel,
-        )
-        engine = FuzzyEngineV2SurgeLevel(dt_sec=60.0)
-        engine.update_sample(pv_frac=0.5, co_frac=0.5)
-        assert engine._l_margin() == pytest.approx(0.0)
+def _sl_engine(**kwargs):
+    from smart_pid_core.domain.services.fuzzy_engine_v2 import (
+        FuzzyEngineV2SurgeLevel,
+    )
+    return FuzzyEngineV2SurgeLevel(**kwargs)
 
-    def test_l_margin_critical(self):
-        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
-            FuzzyEngineV2SurgeLevel,
-        )
-        engine = FuzzyEngineV2SurgeLevel(dt_sec=60.0)
-        engine.update_sample(pv_frac=0.97, co_frac=0.5)
-        assert engine._l_margin() == pytest.approx(0.47)
+
+def _feed(engine, pvs, *, error_frac=0.0, cos=None):
+    """Drive the engine with a PV trajectory (and optional CO trajectory)."""
+    cos = [0.5] * len(pvs) if cos is None else cos
+    for pv, co in zip(pvs, cos, strict=True):
+        engine.update_sample(error_frac=error_frac, pv_frac=pv, co_frac=co)
+
+
+def _ramp(start, end, n=20):
+    return [start + (end - start) * (k / (n - 1)) for k in range(n)]
+
+
+class TestSurgeLevelIndicators:
+    def test_pos_at_band_centre_is_zero(self):
+        engine = _sl_engine(dt_sec=60.0)
+        _feed(engine, [0.5])
+        assert engine._pos() == pytest.approx(0.0)
+
+    def test_pos_on_band_edge_is_one(self):
+        """Default band 20-80 → PV at 80 % sits exactly on the wall."""
+        engine = _sl_engine(dt_sec=60.0)
+        _feed(engine, [0.8])
+        assert engine._pos() == pytest.approx(1.0)
+
+    def test_pos_outside_band_exceeds_one(self):
+        engine = _sl_engine(dt_sec=60.0)
+        _feed(engine, [0.95])
+        assert engine._pos() == pytest.approx(1.5)  # |95-50| / 30
+
+    def test_custom_band_rescales_position(self):
+        """A narrow band makes the same PV far more critical."""
+        engine = _sl_engine(dt_sec=60.0, band_lo_pct=40.0, band_hi_pct=60.0)
+        _feed(engine, [0.7])
+        assert engine._pos() == pytest.approx(2.0)  # |70-50| / 10
 
     def test_tv_with_calm_valve_is_zero(self):
-        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
-            FuzzyEngineV2SurgeLevel,
-        )
-        engine = FuzzyEngineV2SurgeLevel(dt_sec=60.0)
-        for _ in range(20):
-            engine.update_sample(pv_frac=0.5, co_frac=0.5)
+        engine = _sl_engine(dt_sec=60.0)
+        _feed(engine, [0.5] * 20)
         assert engine._tv_mv() == 0.0
 
-    def test_dl_dt_positive_when_heading_toward_upper_limit(self):
-        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
-            FuzzyEngineV2SurgeLevel,
-        )
-        engine = FuzzyEngineV2SurgeLevel(dt_sec=60.0)
-        # PV climbing from 0.6 to 0.9 over 20 samples (20 minutes)
-        for k in range(20):
-            pv = 0.6 + 0.3 * (k / 19)
-            engine.update_sample(pv_frac=pv, co_frac=0.5)
-        # margin went 0.1 → 0.4 over 19 minutes → +0.3/19 ≈ 1.58%/min
-        rate = engine._dl_dt()
-        assert rate > 1.0, f"dL/dt={rate} should be clearly positive"
+    def test_dpos_positive_when_heading_for_a_wall(self):
+        engine = _sl_engine(dt_sec=10.0)
+        _feed(engine, _ramp(0.6, 0.9))
+        # pos 0.333 → 1.333 over 190 s (3.17 min) → ≈ +0.32 m/min
+        assert engine._dpos() > 0.25, f"dPOS={engine._dpos()} must be positive"
 
-    def test_dl_dt_negative_when_returning_to_centre(self):
-        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
-            FuzzyEngineV2SurgeLevel,
-        )
-        engine = FuzzyEngineV2SurgeLevel(dt_sec=60.0)
-        # PV falling from 0.9 back to 0.6
-        for k in range(20):
-            pv = 0.9 - 0.3 * (k / 19)
-            engine.update_sample(pv_frac=pv, co_frac=0.5)
-        rate = engine._dl_dt()
-        assert rate < -1.0, f"dL/dt={rate} should be clearly negative (escaping)"
+    def test_dpos_negative_when_returning_to_centre(self):
+        engine = _sl_engine(dt_sec=10.0)
+        _feed(engine, _ramp(0.9, 0.6))
+        assert engine._dpos() < -0.25, f"dPOS={engine._dpos()} must be negative"
+
+    def test_err_norm_scales_by_configured_threshold(self):
+        """1 % error against a 5 % "small" threshold → 0.2 (deep in SMALL)."""
+        engine = _sl_engine(dt_sec=60.0, error_small_pct=5.0)
+        _feed(engine, [0.5] * 20, error_frac=0.01)
+        assert engine._err_norm() == pytest.approx(0.2)
+
+    def test_err_norm_is_sign_invariant(self):
+        engine = _sl_engine(dt_sec=60.0)
+        _feed(engine, [0.5] * 20, error_frac=-0.10)
+        assert engine._err_norm() == pytest.approx(2.0)
+
+    def test_max_co_ramp_in_pct_per_minute(self):
+        """0.25 % of CO per 1 s sample is a 15 %/min slew."""
+        engine = _sl_engine(dt_sec=1.0)
+        cos = [0.5 + 0.0025 * k for k in range(20)]
+        _feed(engine, [0.5] * 20, cos=cos)
+        assert engine._max_co_ramp_pct_min() == pytest.approx(15.0)
+
+    def test_invalid_band_falls_back_to_defaults_with_warning(self, caplog):
+        """T-C8 — a corrupt/legacy band (lo ≥ hi) must not divide by zero."""
+        import logging
+        with caplog.at_level(logging.WARNING):
+            engine = _sl_engine(band_lo_pct=70.0, band_hi_pct=30.0)
+        assert engine._band_lo_pct == 20.0
+        assert engine._band_hi_pct == 80.0
+        assert "surge_level_band_invalid" in caplog.text
+
+    def test_unset_band_matches_explicit_20_80(self):
+        """C-default — None bounds and an explicit 20/80 band are identical."""
+        default = _sl_engine(dt_sec=60.0)
+        explicit = _sl_engine(dt_sec=60.0, band_lo_pct=20.0, band_hi_pct=80.0)
+        _feed(default, _ramp(0.55, 0.85))
+        _feed(explicit, _ramp(0.55, 0.85))
+        a = default.compute_adjustment(60.0, 1.0, 10000.0)
+        b = explicit.compute_adjustment(60.0, 1.0, 10000.0)
+        assert a.delta_ti == pytest.approx(b.delta_ti)
 
 
 class TestSurgeLevelRules:
-    def test_R1_safe_level_with_chattering_valve_relaxes_hard(self):
-        """Safe level + high valve TV → Δ_Ti strongly positive (AM)."""
-        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
-            FuzzyEngineV2SurgeLevel,
-        )
-        engine = FuzzyEngineV2SurgeLevel(dt_sec=60.0)
-        # PV near 50%, CO jumping 10% each sample
-        for k in range(20):
-            engine.update_sample(pv_frac=0.5, co_frac=0.5 + 0.05 * (-1) ** k)
-        d = engine.compute_adjustment(ti_current=60.0, limit_min=1.0, limit_max=10000.0)
-        assert d.delta_ti > 0.3, f"Δ_Ti={d.delta_ti} should be strongly positive (AM)"
-        assert d.new_ti > 60.0
-
-    def test_R2_ideal_surge_operation_maintains(self):
-        """Safe level + calm valve + slow rate → Δ_Ti ≈ 0."""
-        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
-            FuzzyEngineV2SurgeLevel,
-        )
-        engine = FuzzyEngineV2SurgeLevel(dt_sec=60.0)
-        for _ in range(20):
-            engine.update_sample(pv_frac=0.5, co_frac=0.5)
-        d = engine.compute_adjustment(ti_current=60.0, limit_min=1.0, limit_max=10000.0)
-        assert abs(d.delta_ti) < 0.1, f"Δ_Ti={d.delta_ti} should be near zero"
-
-    def test_R3_critical_racing_to_limit_reduces_drastically(self):
-        """Critical level + racing toward limit → Δ_Ti strongly negative (RD).
-
-        Uses a faster sample rate (10s) so the computed rate hits the HIGH MF.
-        """
-        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
-            FuzzyEngineV2SurgeLevel,
-        )
-        engine = FuzzyEngineV2SurgeLevel(dt_sec=10.0)  # 10 s per sample
-        # 20 samples = 200 s = 3.33 min. Margin grows 0.42→0.49 (7%).
-        # Rate = 7% / 3.33 min ≈ 2.1%/min → HIGH.
-        for k in range(20):
-            pv = 0.92 + 0.07 * (k / 19)
-            engine.update_sample(pv_frac=pv, co_frac=0.5)
-        d = engine.compute_adjustment(ti_current=60.0, limit_min=1.0, limit_max=10000.0)
-        assert d.delta_ti < -0.3, (
-            f"Δ_Ti={d.delta_ti} should be strongly negative (emergency RD)"
-        )
+    def test_S1_outside_band_and_stalled_reduces_drastically(self):
+        """T-C1 — band violation with no recovery → hardest correction."""
+        engine = _sl_engine(dt_sec=60.0, band_lo_pct=40.0, band_hi_pct=60.0)
+        _feed(engine, [0.70] * 20)  # pos = 2.0 → OUT, dPOS = 0 → STILL
+        d = engine.compute_adjustment(60.0, 1.0, 10000.0)
+        assert d.delta_ti <= -0.4, f"Δ_Ti={d.delta_ti} must be RD (inputs={d.inputs})"
         assert d.new_ti < 60.0
 
-    def test_R4_critical_but_escaping_relaxes_gently(self):
-        """Critical level but recovering on its own → Δ_Ti positive (A)."""
-        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
-            FuzzyEngineV2SurgeLevel,
+    def test_S2_outside_but_escaping_holds_instead_of_slamming(self):
+        """S2 — already returning fast: hold, do not stack another RD."""
+        engine = _sl_engine(dt_sec=1.0, band_lo_pct=40.0, band_hi_pct=60.0)
+        _feed(engine, _ramp(0.75, 0.65))  # pos 2.5 → 1.5, both OUT
+        d = engine.compute_adjustment(60.0, 1.0, 10000.0)
+        assert d.delta_ti == pytest.approx(0.0), f"inputs={d.inputs}"
+
+    def test_S2_reentering_band_does_not_trigger_rd(self):
+        """T-C2 — 61 % → 57 % on a 40-60 band: coming home, so never RD."""
+        engine = _sl_engine(dt_sec=1.0, band_lo_pct=40.0, band_hi_pct=60.0)
+        _feed(engine, _ramp(0.61, 0.57))
+        d = engine.compute_adjustment(60.0, 1.0, 10000.0)
+        assert d.delta_ti > -0.1, f"Δ_Ti={d.delta_ti} must not be RD"
+
+    def test_S3_near_wall_and_closing_boosts_integral(self):
+        engine = _sl_engine(dt_sec=1.0, band_lo_pct=40.0, band_hi_pct=60.0)
+        _feed(engine, _ramp(0.55, 0.585))  # pos 0.5 → 0.85 (NEAR), TOWARD
+        d = engine.compute_adjustment(60.0, 1.0, 10000.0)
+        assert -0.4 < d.delta_ti < -0.05, f"Δ_Ti={d.delta_ti} should be R"
+
+    def test_S4_near_wall_but_still_holds(self):
+        engine = _sl_engine(dt_sec=60.0, band_lo_pct=40.0, band_hi_pct=60.0)
+        _feed(engine, [0.585] * 20)  # pos 0.85 → NEAR, dPOS 0 → STILL
+        d = engine.compute_adjustment(60.0, 1.0, 10000.0)
+        assert d.delta_ti == pytest.approx(0.0), f"inputs={d.inputs}"
+
+    def test_S5_near_wall_but_escaping_starts_relaxing(self):
+        engine = _sl_engine(dt_sec=1.0, band_lo_pct=40.0, band_hi_pct=60.0)
+        _feed(engine, _ramp(0.60, 0.585))  # pos 1.0 → 0.85, escaping
+        d = engine.compute_adjustment(60.0, 1.0, 10000.0)
+        assert d.delta_ti > 0.05, f"Δ_Ti={d.delta_ti} should relax (A)"
+
+    def test_S6_safe_level_with_chattering_valve_relaxes_hard(self):
+        """T-C5 — the valve is the thing being protected."""
+        engine = _sl_engine(dt_sec=60.0)
+        cos = [0.5 + 0.05 * (-1) ** k for k in range(20)]
+        _feed(engine, [0.5] * 20, cos=cos)
+        d = engine.compute_adjustment(60.0, 1.0, 10000.0)
+        assert d.delta_ti >= 0.5, f"Δ_Ti={d.delta_ti} should be AM"
+        assert d.new_ti > 60.0
+
+    def test_S7_safe_and_on_target_pushes_integral_to_minimum(self):
+        """T-C3 — inside the band with a small error → maximum smoothness."""
+        engine = _sl_engine(dt_sec=60.0)
+        _feed(engine, [0.5] * 20, error_frac=0.01)  # 1 % < 5 % threshold
+        d = engine.compute_adjustment(60.0, 1.0, 10000.0)
+        assert d.delta_ti >= 0.6, f"Δ_Ti={d.delta_ti} should drive Ti up hard"
+
+    def test_S8_safe_small_error_moving_valve_still_relaxes(self):
+        engine = _sl_engine(dt_sec=60.0)
+        cos = [0.5 + 0.00625 * (-1) ** k for k in range(20)]  # TV ≈ 0.25
+        _feed(engine, [0.5] * 20, error_frac=0.01, cos=cos)
+        d = engine.compute_adjustment(60.0, 1.0, 10000.0)
+        assert d.delta_ti >= 0.6, f"Δ_Ti={d.delta_ti} should be AM"
+
+    def test_S9_safe_with_standing_offset_tolerates_it(self):
+        """T-C4 — averaging control does not chase offset."""
+        engine = _sl_engine(dt_sec=60.0)
+        _feed(engine, [0.5] * 20, error_frac=0.10)  # 10 % ≫ 5 % threshold
+        d = engine.compute_adjustment(60.0, 1.0, 10000.0)
+        assert abs(d.delta_ti) < 0.05, f"Δ_Ti={d.delta_ti} should hold"
+
+    def test_S10_safe_offset_with_working_valve_relaxes_gently(self):
+        engine = _sl_engine(dt_sec=60.0)
+        cos = [0.5 + 0.00625 * (-1) ** k for k in range(20)]  # TV ≈ 0.25
+        _feed(engine, [0.5] * 20, error_frac=0.10, cos=cos)
+        d = engine.compute_adjustment(60.0, 1.0, 10000.0)
+        assert d.delta_ti == pytest.approx(0.30), f"inputs={d.inputs}"
+
+
+class TestSurgeLevelCoRampGate:
+    def _closing_on_wall_with_ramp(self, **kwargs):
+        """Geometry that makes the rule base ask for R (Δ_Ti = −0.25),
+        while CO slews at 15 %/min."""
+        engine = _sl_engine(
+            dt_sec=1.0, band_lo_pct=40.0, band_hi_pct=60.0, **kwargs,
         )
-        engine = FuzzyEngineV2SurgeLevel(dt_sec=60.0)
-        # Level was near limit but coming back to centre: 0.95 → 0.80
-        for k in range(20):
-            pv = 0.95 - 0.15 * (k / 19)
-            engine.update_sample(pv_frac=pv, co_frac=0.5)
-        d = engine.compute_adjustment(ti_current=60.0, limit_min=1.0, limit_max=10000.0)
-        assert d.delta_ti > 0.0, (
-            f"Δ_Ti={d.delta_ti} should be positive (start relaxing)"
-        )
+        cos = [0.5 + 0.0025 * k for k in range(20)]  # 15 %/min
+        _feed(engine, _ramp(0.55, 0.585), cos=cos)
+        return engine
+
+    def test_gate_overrides_a_tightening_rule(self):
+        """T-C6 — safety validation beats inference: never tighten on a
+        valve that is already slewing too fast."""
+        engine = self._closing_on_wall_with_ramp(co_ramp_max_pct_min=10.0)
+        d = engine.compute_adjustment(60.0, 1.0, 10000.0)
+        assert d.delta_ti == pytest.approx(0.15)
+        assert d.inputs["co_ramp_violation"] is True
+        assert d.inputs["CO_RAMP"] == pytest.approx(15.0)
+        assert "[CO-RAMP]" in d.reasoning
+
+    def test_gate_disabled_by_zero_leaves_the_rule_alone(self):
+        """T-C7 — 0 disables the gate entirely."""
+        engine = self._closing_on_wall_with_ramp(co_ramp_max_pct_min=0.0)
+        d = engine.compute_adjustment(60.0, 1.0, 10000.0)
+        assert d.delta_ti < 0.0, f"Δ_Ti={d.delta_ti} — rule must stand"
+        assert d.inputs["co_ramp_violation"] is False
+        assert "[CO-RAMP]" not in d.reasoning
+
+    def test_ramp_below_threshold_does_not_trip_the_gate(self):
+        engine = self._closing_on_wall_with_ramp(co_ramp_max_pct_min=20.0)
+        d = engine.compute_adjustment(60.0, 1.0, 10000.0)
+        assert d.delta_ti < 0.0
+        assert d.inputs["co_ramp_violation"] is False
 
 
 # ===========================================================================
@@ -1275,7 +1372,7 @@ class TestDispatcher:
         assert "IAE" in decision.inputs
 
     def test_dispatcher_routes_surge_level_sample(self):
-        """Surge dispatcher should use PV (not error) from the sample tuple."""
+        """Surge dispatcher should use PV (not error) for positioning."""
         from smart_pid_core.domain.services.fuzzy_engine_v2 import (
             FuzzyEngineV2Dispatcher,
         )
@@ -1283,13 +1380,42 @@ class TestDispatcher:
         d = FuzzyEngineV2Dispatcher(
             ControlObjective.SURGE_LEVEL, dt_sec=10.0,
         )
-        # Tank racing toward upper limit
+        # Tank sitting well outside the default 20-80 band and not returning
         for k in range(20):
             pv = 0.92 + 0.07 * (k / 19)
             d.update_sample(error_frac=0.0, pv_frac=pv, co_frac=0.5)
         decision = d.compute_adjustment(ti_current=60.0, limit_min=1.0, limit_max=10000.0)
         assert decision.delta_ti < -0.3  # emergency RD
-        assert "L_MARGIN" in decision.inputs
+        assert "POS" in decision.inputs
+
+    def test_dispatcher_feeds_error_to_surge_engine(self):
+        """T-C9 — the 3-arg sample must reach the SL engine's ERR input."""
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
+            FuzzyEngineV2Dispatcher,
+        )
+        from smart_pid_domain.enums import ControlObjective
+        d = FuzzyEngineV2Dispatcher(ControlObjective.SURGE_LEVEL, dt_sec=60.0)
+        for _ in range(20):
+            d.update_sample(error_frac=0.10, pv_frac=0.5, co_frac=0.5)
+        decision = d.compute_adjustment(ti_current=60.0, limit_min=1.0, limit_max=10000.0)
+        assert decision.inputs["ERR"] == pytest.approx(2.0)  # 10 % / 5 %
+
+    def test_dispatcher_forwards_surge_band_config(self):
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import (
+            FuzzyEngineV2Dispatcher,
+        )
+        from smart_pid_domain.enums import ControlObjective
+        d = FuzzyEngineV2Dispatcher(
+            ControlObjective.SURGE_LEVEL,
+            sl_band_lo_pct=40.0,
+            sl_band_hi_pct=60.0,
+            sl_error_small_pct=2.0,
+            sl_co_ramp_max_pct_min=0.0,
+        )
+        assert d.engine._band_lo_pct == 40.0
+        assert d.engine._band_hi_pct == 60.0
+        assert d.engine._error_small_pct == 2.0
+        assert d.engine._co_ramp_max_pct_min == 0.0
 
     def test_dispatcher_rejects_unknown_objective(self):
         from smart_pid_core.domain.services.fuzzy_engine_v2 import (

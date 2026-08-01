@@ -16,6 +16,8 @@ const BASE_CONTROLLER: ControllerResponse = {
     rl_fallback_kp: 0.6,
     rl_learning_rate: 0.0003,
     rl_train_interval: 32,
+    sl_co_ramp_max_pct_min: 10,
+    sl_error_small_pct: 5,
   },
   arw_hi_lim: 100,
   arw_lo_lim: 0,

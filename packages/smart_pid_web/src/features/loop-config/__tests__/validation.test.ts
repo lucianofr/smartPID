@@ -131,6 +131,53 @@ describe('validateAiConfig', () => {
       'Tempo morto L não pode ser negativo',
     );
   });
+
+  it('ignores the surge band unless the objective is SURGE_LEVEL', () => {
+    const inverted = { ...ok, sl_band_lo_pct: 80, sl_band_hi_pct: 20 };
+    expect(validateAiConfig({ ...inverted, objective: 'SP_TRACKING' })).toEqual({});
+    expect(
+      validateAiConfig({ ...inverted, objective: 'SURGE_LEVEL' }).sl_band_lo_pct,
+    ).toBe('Limite inferior deve ser menor que o superior');
+  });
+
+  it('accepts an unset surge band — the engine defaults to 20-80', () => {
+    expect(
+      validateAiConfig({
+        ...ok,
+        objective: 'SURGE_LEVEL',
+        sl_band_lo_pct: null,
+        sl_band_hi_pct: null,
+        sl_error_small_pct: 5,
+        sl_co_ramp_max_pct_min: 10,
+      }),
+    ).toEqual({});
+  });
+
+  it('rejects a surge band outside 0-100 % of span', () => {
+    const surge = { ...ok, objective: 'SURGE_LEVEL' as const };
+    expect(validateAiConfig({ ...surge, sl_band_hi_pct: 140 }).sl_band_hi_pct).toBe(
+      'Deve estar entre 0 e 100',
+    );
+    expect(validateAiConfig({ ...surge, sl_band_lo_pct: -5 }).sl_band_lo_pct).toBe(
+      'Deve estar entre 0 e 100',
+    );
+  });
+
+  it('rejects a zero small-error threshold and a negative CO ramp', () => {
+    const surge = { ...ok, objective: 'SURGE_LEVEL' as const };
+    expect(validateAiConfig({ ...surge, sl_error_small_pct: 0 }).sl_error_small_pct).toBe(
+      'Deve ser maior que 0',
+    );
+    expect(
+      validateAiConfig({ ...surge, sl_co_ramp_max_pct_min: -1 }).sl_co_ramp_max_pct_min,
+    ).toBe('Deve ser 0 ou maior');
+  });
+
+  it('accepts 0 as "CO ramp gate disabled"', () => {
+    expect(
+      validateAiConfig({ ...ok, objective: 'SURGE_LEVEL', sl_co_ramp_max_pct_min: 0 }),
+    ).toEqual({});
+  });
 });
 
 describe('hasErrors', () => {

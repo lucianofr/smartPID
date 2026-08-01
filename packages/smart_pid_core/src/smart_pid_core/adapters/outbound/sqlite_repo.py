@@ -126,11 +126,16 @@ CREATE TABLE IF NOT EXISTS Controladores (
     objetivo_controle   TEXT    NOT NULL DEFAULT 'DISTURBANCE_REJECTION',
     process_speed       TEXT    NOT NULL DEFAULT 'MEDIUM',
     tempo_morto_l       REAL    NOT NULL DEFAULT 1.0,
-    ai_limit_min        REAL    NOT NULL DEFAULT 0.1,
-    ai_limit_max        REAL    NOT NULL DEFAULT 100.0,
+    ai_limit_min        REAL    NOT NULL DEFAULT 1.0,
+    ai_limit_max        REAL    NOT NULL DEFAULT 10.0,
     -- ENABLE_OPTIMIZER: master enable for the online tuning optimizer
     optimization_enabled INTEGER NOT NULL DEFAULT 1,
     stability_band_pct  REAL,
+    -- Surge Level safe-band tuning (NULL bounds → engine default 20-80 %)
+    sl_band_lo_pct      REAL,
+    sl_band_hi_pct      REAL,
+    sl_error_small_pct  REAL    NOT NULL DEFAULT 5.0,
+    sl_co_ramp_max_pct_min REAL NOT NULL DEFAULT 10.0,
     -- Timestamps
     criado_em           TEXT    NOT NULL DEFAULT (datetime('now')),
     atualizado_em       TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -280,6 +285,11 @@ _CONTROLADORES_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     # PLC process-running gate and the per-loop optimizer stability band
     ("node_id_enabled", "TEXT NOT NULL DEFAULT ''"),
     ("stability_band_pct", "REAL"),
+    # Surge Level safe-band tuning; NULL bounds mean "engine default 20-80 %".
+    ("sl_band_lo_pct", "REAL"),
+    ("sl_band_hi_pct", "REAL"),
+    ("sl_error_small_pct", "REAL NOT NULL DEFAULT 5.0"),
+    ("sl_co_ramp_max_pct_min", "REAL NOT NULL DEFAULT 10.0"),
 )
 
 # Configuracao_Simulador shipped in three generations: 6 columns, then +pid_*
@@ -581,6 +591,10 @@ class SQLiteRepository:
             "rl_train_interval": c.ai_config.rl_train_interval,
             "optimization_enabled": int(c.optimization_enabled),
             "stability_band_pct": c.stability_band_pct,
+            "sl_band_lo_pct": c.ai_config.sl_band_lo_pct,
+            "sl_band_hi_pct": c.ai_config.sl_band_hi_pct,
+            "sl_error_small_pct": c.ai_config.sl_error_small_pct,
+            "sl_co_ramp_max_pct_min": c.ai_config.sl_co_ramp_max_pct_min,
         }
 
     def _row_to_controller(self, row: Mapping) -> Controller:
@@ -700,6 +714,10 @@ class SQLiteRepository:
                 rl_fallback_kd=row["rl_fallback_kd"],
                 rl_learning_rate=row["rl_learning_rate"],
                 rl_train_interval=row["rl_train_interval"],
+                sl_band_lo_pct=row["sl_band_lo_pct"],
+                sl_band_hi_pct=row["sl_band_hi_pct"],
+                sl_error_small_pct=row["sl_error_small_pct"],
+                sl_co_ramp_max_pct_min=row["sl_co_ramp_max_pct_min"],
             ),
             optimization_enabled=bool(row["optimization_enabled"]),
             stability_band_pct=row["stability_band_pct"],

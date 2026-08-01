@@ -15,12 +15,12 @@
             "type": "string"
           },
           "limit_max": {
-            "default": 100.0,
+            "default": 10.0,
             "title": "Limit Max",
             "type": "number"
           },
           "limit_min": {
-            "default": 0.1,
+            "default": 1.0,
             "title": "Limit Min",
             "type": "number"
           },
@@ -48,6 +48,38 @@
             "default": 32,
             "title": "Rl Train Interval",
             "type": "integer"
+          },
+          "sl_band_hi_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sl Band Hi Pct"
+          },
+          "sl_band_lo_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sl Band Lo Pct"
+          },
+          "sl_co_ramp_max_pct_min": {
+            "default": 10.0,
+            "title": "Sl Co Ramp Max Pct Min",
+            "type": "number"
+          },
+          "sl_error_small_pct": {
+            "default": 5.0,
+            "title": "Sl Error Small Pct",
+            "type": "number"
           }
         },
         "title": "AIConfigDTO",
@@ -526,13 +558,15 @@
             "default": {
               "dead_time_l": 1.0,
               "engine": "NONE",
-              "limit_max": 100.0,
-              "limit_min": 0.1,
+              "limit_max": 10.0,
+              "limit_min": 1.0,
               "objective": "DISTURBANCE_REJECTION",
               "rl_fallback_kd": 0.2,
               "rl_fallback_kp": 0.6,
               "rl_learning_rate": 0.0003,
-              "rl_train_interval": 32
+              "rl_train_interval": 32,
+              "sl_co_ramp_max_pct_min": 10.0,
+              "sl_error_small_pct": 5.0
             }
           },
           "arw_hi_lim": {
@@ -612,6 +646,8 @@
             "type": "string"
           },
           "name": {
+            "maxLength": 128,
+            "minLength": 1,
             "title": "Name",
             "type": "string"
           },
@@ -787,13 +823,15 @@
             "default": {
               "dead_time_l": 1.0,
               "engine": "NONE",
-              "limit_max": 100.0,
-              "limit_min": 0.1,
+              "limit_max": 10.0,
+              "limit_min": 1.0,
               "objective": "DISTURBANCE_REJECTION",
               "rl_fallback_kd": 0.2,
               "rl_fallback_kp": 0.6,
               "rl_learning_rate": 0.0003,
-              "rl_train_interval": 32
+              "rl_train_interval": 32,
+              "sl_co_ramp_max_pct_min": 10.0,
+              "sl_error_small_pct": 5.0
             }
           },
           "arw_hi_lim": {
@@ -1345,6 +1383,8 @@
           "name": {
             "anyOf": [
               {
+                "maxLength": 128,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -1782,6 +1822,7 @@
       "ModeCommand": {
         "properties": {
           "controller_id": {
+            "exclusiveMinimum": 0.0,
             "title": "Controller Id",
             "type": "integer"
           },
@@ -1935,6 +1976,7 @@
         "description": "Enable/disable the online tuning optimizer (ENABLE_OPTIMIZER) for a loop.",
         "properties": {
           "controller_id": {
+            "exclusiveMinimum": 0.0,
             "title": "Controller Id",
             "type": "integer"
           },
@@ -1953,6 +1995,7 @@
       "OutputCommand": {
         "properties": {
           "controller_id": {
+            "exclusiveMinimum": 0.0,
             "title": "Controller Id",
             "type": "integer"
           },
@@ -2141,6 +2184,7 @@
       "SetpointCommand": {
         "properties": {
           "controller_id": {
+            "exclusiveMinimum": 0.0,
             "title": "Controller Id",
             "type": "integer"
           },
@@ -2680,6 +2724,7 @@
         "description": "Direct PID tuning write. Values are clamped server-side to the\ncontroller's ``max_tuning_change_pct`` guardrail before being written.",
         "properties": {
           "controller_id": {
+            "exclusiveMinimum": 0.0,
             "title": "Controller Id",
             "type": "integer"
           },
@@ -2697,6 +2742,7 @@
           "td": {
             "anyOf": [
               {
+                "minimum": 0.0,
                 "type": "number"
               },
               {
@@ -2708,6 +2754,7 @@
           "ti": {
             "anyOf": [
               {
+                "minimum": 0.0,
                 "type": "number"
               },
               {

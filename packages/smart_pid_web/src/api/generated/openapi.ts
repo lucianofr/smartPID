@@ -1223,12 +1223,12 @@ export interface components {
             engine: string;
             /**
              * Limit Max
-             * @default 100
+             * @default 10
              */
             limit_max: number;
             /**
              * Limit Min
-             * @default 0.1
+             * @default 1
              */
             limit_min: number;
             /**
@@ -1256,6 +1256,20 @@ export interface components {
              * @default 32
              */
             rl_train_interval: number;
+            /** Sl Band Hi Pct */
+            sl_band_hi_pct?: number | null;
+            /** Sl Band Lo Pct */
+            sl_band_lo_pct?: number | null;
+            /**
+             * Sl Co Ramp Max Pct Min
+             * @default 10
+             */
+            sl_co_ramp_max_pct_min: number;
+            /**
+             * Sl Error Small Pct
+             * @default 5
+             */
+            sl_error_small_pct: number;
         };
         /**
          * AIEngine
@@ -1505,13 +1519,15 @@ export interface components {
              * @default {
              *       "dead_time_l": 1,
              *       "engine": "NONE",
-             *       "limit_max": 100,
-             *       "limit_min": 0.1,
+             *       "limit_max": 10,
+             *       "limit_min": 1,
              *       "objective": "DISTURBANCE_REJECTION",
              *       "rl_fallback_kd": 0.2,
              *       "rl_fallback_kp": 0.6,
              *       "rl_learning_rate": 0.0003,
-             *       "rl_train_interval": 32
+             *       "rl_train_interval": 32,
+             *       "sl_co_ramp_max_pct_min": 10,
+             *       "sl_error_small_pct": 5
              *     }
              */
             ai_config: components["schemas"]["AIConfigDTO"];
@@ -1738,13 +1754,15 @@ export interface components {
              * @default {
              *       "dead_time_l": 1,
              *       "engine": "NONE",
-             *       "limit_max": 100,
-             *       "limit_min": 0.1,
+             *       "limit_max": 10,
+             *       "limit_min": 1,
              *       "objective": "DISTURBANCE_REJECTION",
              *       "rl_fallback_kd": 0.2,
              *       "rl_fallback_kp": 0.6,
              *       "rl_learning_rate": 0.0003,
-             *       "rl_train_interval": 32
+             *       "rl_train_interval": 32,
+             *       "sl_co_ramp_max_pct_min": 10,
+             *       "sl_error_small_pct": 5
              *     }
              */
             ai_config: components["schemas"]["AIConfigDTO"];

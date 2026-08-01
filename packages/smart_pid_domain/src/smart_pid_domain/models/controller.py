@@ -57,13 +57,21 @@ class AIConfig:
     engine: AIEngine = AIEngine.NONE
     objective: ControlObjective = ControlObjective.DISTURBANCE_REJECTION
     dead_time_l: float = 1.0      # Estimated dead time (seconds)
-    limit_min: float = 0.1        # Ki/Ti minimum clamp
-    limit_max: float = 100.0      # Ki/Ti maximum clamp
+    limit_min: float = 1.0        # Ki/Ti minimum clamp
+    limit_max: float = 10.0       # Ki/Ti maximum clamp
     # RL-specific parameters
     rl_fallback_kp: float = 0.6   # Fallback policy proportional gain
     rl_fallback_kd: float = 0.2   # Fallback policy derivative gain
     rl_learning_rate: float = 3e-4  # sb3 learning rate
     rl_train_interval: int = 32   # Train every N steps
+    # Surge Level (averaging control) parameters — consumed only when
+    # objective == SURGE_LEVEL. ``None`` on either band bound means "use the
+    # 20-80 % default"; the fuzzy engine resolves it, so an unconfigured loop
+    # and an explicitly 20/80-configured loop behave identically.
+    sl_band_lo_pct: float | None = None    # safe PV band low bound (% of span)
+    sl_band_hi_pct: float | None = None    # safe PV band high bound (% of span)
+    sl_error_small_pct: float = 5.0        # "small error" threshold (% of span)
+    sl_co_ramp_max_pct_min: float = 10.0   # max CO ramp (%/min); 0 disables
 
 
 @dataclass

@@ -8,6 +8,7 @@ import {
   type AiEngine,
   type ControlObjective,
   type FieldErrors,
+  type IntegralType,
   type ProcessSpeed,
 } from './types';
 
@@ -24,16 +25,22 @@ export interface AiSectionForm {
   engine: AiEngine;
   objective: ControlObjective;
   speed: ProcessSpeed;
+  integral_type: IntegralType;
   dead_time_l: number;
   limit_min: number;
   limit_max: number;
+  sl_band_lo_pct: number | null;
+  sl_band_hi_pct: number | null;
+  sl_error_small_pct: number;
+  sl_co_ramp_max_pct_min: number;
 }
 
 export interface AiConfigSectionProps {
   value: AiSectionForm;
   errors: FieldErrors;
   disabled: boolean;
-  onChange(patch: Partial<AiSectionForm>): void;
+  /** `integral_type` is display-only here — the dialog owns that radio. */
+  onChange(patch: Partial<Omit<AiSectionForm, 'integral_type'>>): void;
 }
 
 const SELECT_CLASS = cn(
@@ -49,6 +56,16 @@ export function AiConfigSection({ value, errors, disabled, onChange }: AiConfigS
   const deadTimeId = useId();
   const limitMinId = useId();
   const limitMaxId = useId();
+  const bandLoId = useId();
+  const bandHiId = useId();
+  const errorSmallId = useId();
+  const coRampId = useId();
+
+  // One pair of limits clamps whichever integral parameter the loop uses
+  // (ai_worker clamps Ki for GAIN_KI, Ti for TIME_TI), so the label has to
+  // follow `integral_type`: a box labelled Ti holding a Ki bound is how an
+  // operator ends up clamping the wrong quantity.
+  const integralParam = value.integral_type === 'GAIN_KI' ? 'Ki' : 'Ti';
 
   return (
     <>
@@ -131,10 +148,10 @@ export function AiConfigSection({ value, errors, disabled, onChange }: AiConfigS
       </Field>
 
       <Field
-        label="Limite mín."
+        label={`${integralParam} mínimo`}
         htmlFor={limitMinId}
         error={errors.limit_min}
-        tooltip="Limite inferior permitido para os ajustes de sintonia propostos pela IA."
+        tooltip={`Menor ${integralParam} que a IA pode propor para esta malha. Toda sugestão de sintonia é limitada a esta faixa.`}
       >
         <Input
           id={limitMinId}
@@ -149,10 +166,10 @@ export function AiConfigSection({ value, errors, disabled, onChange }: AiConfigS
       </Field>
 
       <Field
-        label="Limite máx."
+        label={`${integralParam} máximo`}
         htmlFor={limitMaxId}
         error={errors.limit_max}
-        tooltip="Limite superior permitido para os ajustes de sintonia propostos pela IA."
+        tooltip={`Maior ${integralParam} que a IA pode propor para esta malha. Toda sugestão de sintonia é limitada a esta faixa.`}
       >
         <Input
           id={limitMaxId}
@@ -165,6 +182,94 @@ export function AiConfigSection({ value, errors, disabled, onChange }: AiConfigS
           onChange={(e) => onChange({ limit_max: Number(e.target.value) })}
         />
       </Field>
+
+      {/* Surge Level is the only objective that reasons about a PV band, so
+          its knobs stay hidden for the other two rather than sitting inert. */}
+      {value.objective === 'SURGE_LEVEL' && (
+        <>
+          <Field
+            label="Nível mín. (%)"
+            htmlFor={bandLoId}
+            error={errors.sl_band_lo_pct}
+            tooltip="Nível mínimo da faixa segura de PV, em % da faixa de medição. Em branco usa o padrão de 20 %."
+          >
+            <Input
+              id={bandLoId}
+              type="number"
+              inputMode="decimal"
+              className="numeric"
+              placeholder="20"
+              value={value.sl_band_lo_pct ?? ''}
+              disabled={disabled}
+              invalid={errors.sl_band_lo_pct !== undefined}
+              onChange={(e) =>
+                onChange({
+                  sl_band_lo_pct: e.target.value === '' ? null : Number(e.target.value),
+                })
+              }
+            />
+          </Field>
+
+          <Field
+            label="Nível máx. (%)"
+            htmlFor={bandHiId}
+            error={errors.sl_band_hi_pct}
+            tooltip="Nível máximo da faixa segura de PV, em % da faixa de medição. Em branco usa o padrão de 80 %."
+          >
+            <Input
+              id={bandHiId}
+              type="number"
+              inputMode="decimal"
+              className="numeric"
+              placeholder="80"
+              value={value.sl_band_hi_pct ?? ''}
+              disabled={disabled}
+              invalid={errors.sl_band_hi_pct !== undefined}
+              onChange={(e) =>
+                onChange({
+                  sl_band_hi_pct: e.target.value === '' ? null : Number(e.target.value),
+                })
+              }
+            />
+          </Field>
+
+          <Field
+            label="Erro pequeno (% da faixa)"
+            htmlFor={errorSmallId}
+            error={errors.sl_error_small_pct}
+            tooltip="Abaixo deste erro, com o nível dentro da faixa, a IA leva a ação integral ao mínimo para manter a válvula parada."
+          >
+            <Input
+              id={errorSmallId}
+              type="number"
+              inputMode="decimal"
+              className="numeric"
+              value={value.sl_error_small_pct}
+              disabled={disabled}
+              invalid={errors.sl_error_small_pct !== undefined}
+              onChange={(e) => onChange({ sl_error_small_pct: Number(e.target.value) })}
+            />
+          </Field>
+
+          <Field
+            label="Rampa máx. do CO (%/min)"
+            htmlFor={coRampId}
+            error={errors.sl_co_ramp_max_pct_min}
+            tooltip="Se a válvula variar mais rápido que isto, a IA nunca reduz o tempo integral neste ciclo. 0 desativa a verificação."
+          >
+            <Input
+              id={coRampId}
+              type="number"
+              inputMode="decimal"
+              className="numeric"
+              value={value.sl_co_ramp_max_pct_min}
+              disabled={disabled}
+              invalid={errors.sl_co_ramp_max_pct_min !== undefined}
+              onChange={(e) => onChange({ sl_co_ramp_max_pct_min: Number(e.target.value) })}
+            />
+          </Field>
+        </>
+      )}
     </>
   );
 }
