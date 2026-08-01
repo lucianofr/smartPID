@@ -3,9 +3,9 @@
 import json
 import logging
 from dataclasses import replace
-from typing import Annotated
+from typing import Annotated, NoReturn
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_alarm_repo,
@@ -414,6 +414,20 @@ _ENUM_FIELDS: dict[str, type] = {
 }
 
 
+def _reject_invalid_enum(exc: ValueError) -> NoReturn:
+    """Turn an enum coercion failure into 422 instead of letting it 500.
+
+    Every enum-valued field on ControllerCreate/ControllerUpdate is typed
+    ``str`` on the wire, so Pydantic accepts any string and the domain enum
+    constructor is the first thing that rejects it. That ValueError used to
+    escape the handler, which made a plain client typo ("SIMULATOR" instead of
+    "SUPERVISORY") an Internal Server Error instead of a validation failure.
+    """
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc),
+    ) from exc
+
+
 @router.get("", response_model=list[ControllerResponse])
 async def list_controllers(
     _user: Annotated[UserClaims, Depends(require_user)],
@@ -433,7 +447,10 @@ async def create_controller(
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
     io_worker: Annotated[IOWorker | None, Depends(get_io_worker)],
 ) -> ControllerResponse:
-    controller = _body_to_controller(body)
+    try:
+        controller = _body_to_controller(body)
+    except ValueError as exc:
+        _reject_invalid_enum(exc)
     saved = await repo.save(controller)
     # The simulator only learned about controllers at startup / project open,
     # so without this the new loop is a ghost to /simulator/* until restart.
@@ -485,19 +502,22 @@ async def update_controller(
     updates: dict = {}
     body_dict = body.model_dump(exclude_unset=True)
 
-    for field_name, value in body_dict.items():
-        if value is None:
-            continue
-        if field_name in _NESTED_BUILDERS:
-            dto = getattr(body, field_name)
-            _, builder = _NESTED_BUILDERS[field_name]
-            updates[field_name] = builder(dto)
-        elif field_name in _ENUM_FIELDS:
-            updates[field_name] = _ENUM_FIELDS[field_name](value)
-        elif field_name == "permitted_modes":
-            updates[field_name] = {ControllerMode(m) for m in value}
-        else:
-            updates[field_name] = value
+    try:
+        for field_name, value in body_dict.items():
+            if value is None:
+                continue
+            if field_name in _NESTED_BUILDERS:
+                dto = getattr(body, field_name)
+                _, builder = _NESTED_BUILDERS[field_name]
+                updates[field_name] = builder(dto)
+            elif field_name in _ENUM_FIELDS:
+                updates[field_name] = _ENUM_FIELDS[field_name](value)
+            elif field_name == "permitted_modes":
+                updates[field_name] = {ControllerMode(m) for m in value}
+            else:
+                updates[field_name] = value
+    except ValueError as exc:
+        _reject_invalid_enum(exc)
 
     # Capture old/new for audit trail
     old_values: dict = {}

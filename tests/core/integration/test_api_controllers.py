@@ -52,6 +52,51 @@ class TestCreateController:
         assert resp.status_code == 403
 
 
+class TestInvalidEnumIsRejected:
+    """Enum-valued fields arrive as plain strings, so the domain enum is the
+    first thing that rejects a bad value. That ValueError used to escape the
+    handler and answer 500; a client typo must be a 422 instead."""
+
+    @pytest.mark.asyncio
+    async def test_create_with_unknown_execution_mode(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        resp = await client.post(
+            "/controllers",
+            json={"name": "TIC-BAD", "execution_mode": "SIMULATOR"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 422
+        assert "ExecutionMode" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_create_with_unknown_process_speed(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        resp = await client.post(
+            "/controllers",
+            json={"name": "TIC-BAD2", "process_speed": "WARP"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_update_with_unknown_execution_mode(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        created = await client.post(
+            "/controllers", json={"name": "TIC-ENUM"}, headers=admin_headers,
+        )
+        controller_id = created.json()["id"]
+        resp = await client.put(
+            f"/controllers/{controller_id}",
+            json={"execution_mode": "SIMULATOR"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 422
+        assert "ExecutionMode" in resp.json()["detail"]
+
+
 class TestGetController:
     @pytest.mark.asyncio
     async def test_get_existing(
