@@ -356,3 +356,112 @@ async def test_import_project_saves_daemon_state(
 
     await service_with_state.import_project("imp_state", src)
     assert daemon_state.active_project == "imp_state"
+
+
+class _FakeTwin:
+    """Simulator stand-in that records start/stop and mints node ids."""
+
+    def __init__(self) -> None:
+        self.running = False
+        self.registered: list[int] = []
+
+    def start(self) -> None:
+        self.running = True
+
+    def stop(self) -> None:
+        self.running = False
+
+    def register_controller(self, cid: int, pv_min: float = 0.0, pv_max: float = 100.0):
+        self.registered.append(cid)
+
+    def load_sim_config(self, cfg: dict) -> None:  # pragma: no cover - unused here
+        pass
+
+    def opcua_node_ids(self, cid: int) -> dict[str, str]:
+        return {k: f"ns=2;s=CTRL_{cid}.{k}" for k in ("pv", "sp", "co", "kp", "ti", "td", "mode")}
+
+
+class _FakeClient:
+    """OPC-UA client stand-in recording registrations and start/stop."""
+
+    endpoint = "opc.tcp://twin:4849"
+    is_connected = True
+
+    def __init__(self) -> None:
+        self.running = False
+        self.bound: list[int] = []
+
+    def start(self) -> None:
+        self.running = True
+
+    def stop(self) -> None:
+        self.running = False
+
+    def register_controller(self, controller_id: int, **_kw) -> None:
+        self.bound.append(controller_id)
+
+
+@pytest.fixture
+def simulator_service(repo, loop_manager, projects_dir):
+    twin, client = _FakeTwin(), _FakeClient()
+    svc = ProjectService(
+        repo=repo,
+        loop_manager=loop_manager,
+        projects_dir=projects_dir,
+        simulator_adapter=twin,
+        opcua_adapter=client,
+    )
+    return svc, twin, client
+
+
+async def _seed_project(projects_dir, name: str, controller_ids: list[int]) -> None:
+    path = projects_dir / f"{name}.spid"
+    prep = SQLiteRepository(path)
+    await prep.initialize()
+    await prep.set_meta("nome", name)
+    from smart_pid_domain.models.controller import Controller
+
+    for cid in controller_ids:
+        saved = await prep.save(Controller(id=0, name=f"TIC-{cid}"))
+        assert saved.id == cid, "seed helper assumes sequential ids"
+    await prep.close()
+
+
+@pytest.mark.asyncio
+async def test_open_project_relinks_twin_and_opcua_client(
+    simulator_service, projects_dir,
+):
+    """RED before the fix: both adapters were stopped and never restarted.
+
+    IOWorker skips its entire scan while the client is offline — silently — so
+    every loop in the freshly opened project produced zero telemetry until the
+    daemon was restarted.
+    """
+    svc, twin, client = simulator_service
+    await _seed_project(projects_dir, "plantB", [1, 2])
+
+    await svc.open_project("plantB")
+
+    assert twin.running, "simulator left stopped after opening a project"
+    assert client.running, "OPC-UA client left stopped after opening a project"
+    assert sorted(client.bound) == [1, 2], "client not bound to the new project's nodes"
+
+
+@pytest.mark.asyncio
+async def test_new_project_keeps_the_twin_running(simulator_service):
+    """A controller created right after /project/new must be simulated."""
+    svc, twin, client = simulator_service
+    await svc.new_project("fresh")
+    assert twin.running
+    assert client.running
+
+
+@pytest.mark.asyncio
+async def test_import_project_relinks_twin_and_opcua_client(
+    simulator_service, projects_dir,
+):
+    svc, twin, client = simulator_service
+    src = await _make_archive(projects_dir.parent / "imported.spid")
+    await svc.import_project("imported", src)
+    assert twin.running
+    assert client.running

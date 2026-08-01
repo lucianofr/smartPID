@@ -188,6 +188,18 @@ class StatsWorker:
                     self._stop_event.wait(timeout=sleep_time)
             except zmq.ZMQError:
                 break
+            except Exception:
+                # A single malformed frame must not take the metrics thread
+                # down: /controllers/{id}/stats would keep serving the last
+                # snapshot forever, so a dead worker looks exactly like a
+                # perfectly steady loop. Same guard, same reason, as
+                # PIDWorker._loop — including the paced retry, without which
+                # a persistent fault spins this thread at 100% CPU.
+                logger.exception(
+                    "stats_worker_iteration_error controller_id=%d",
+                    self.controller_id,
+                )
+                self._stop_event.wait(timeout=scan_s)
 
     def _drain_telemetry(self, sub) -> None:
         while True:

@@ -16,6 +16,7 @@ import time
 from typing import TYPE_CHECKING
 
 import msgpack
+import zmq
 
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import EventBus
@@ -76,19 +77,31 @@ class MonitorWorker:
 
         try:
             while not self._stop_event.is_set():
-                tick_start = time.monotonic()
-                latest = self._drain_latest(sub)
-                if latest is not None:
-                    status_msg = self._enrich(latest)
-                    pub.send(
-                        f"STATUS.{self._cid}".encode(),
-                        msgpack.packb(status_msg),
-                    )
+                try:
+                    tick_start = time.monotonic()
+                    latest = self._drain_latest(sub)
+                    if latest is not None:
+                        status_msg = self._enrich(latest)
+                        pub.send(
+                            f"STATUS.{self._cid}".encode(),
+                            msgpack.packb(status_msg),
+                        )
 
-                elapsed = time.monotonic() - tick_start
-                sleep_time = self._scan_rate_s - elapsed
-                if sleep_time > 0:
-                    self._stop_event.wait(timeout=sleep_time)
+                    elapsed = time.monotonic() - tick_start
+                    sleep_time = self._scan_rate_s - elapsed
+                    if sleep_time > 0:
+                        self._stop_event.wait(timeout=sleep_time)
+                except zmq.ZMQError:
+                    break
+                except Exception:
+                    # Monitor mode has no PIDWorker, so this thread is the only
+                    # producer of STATUS.{id}: losing it to one bad frame
+                    # freezes every faceplate on the loop with nothing logged.
+                    # Same guard, and same paced retry, as PIDWorker._loop.
+                    logger.exception(
+                        "monitor_worker_iteration_error controller_id=%s", self._cid,
+                    )
+                    self._stop_event.wait(timeout=self._scan_rate_s)
         finally:
             sub.close()
             pub.close()

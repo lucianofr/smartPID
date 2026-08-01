@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 
+from smart_pid_core.adapters.inbound.simulator_adapter import bind_opcua_client
 from smart_pid_domain.dtos.project import (
     ProjectListItem,
     ProjectResponse,
@@ -125,6 +126,7 @@ class ProjectService:
         if self._daemon_state:
             self._daemon_state.set_active_project(name)
         self._start_db_worker()
+        await self._resync_simulator_link()
         return ProjectResponse(
             name=name,
             path=dest.name,
@@ -145,6 +147,7 @@ class ProjectService:
         if self._daemon_state:
             self._daemon_state.set_active_project(name)
         self._start_db_worker()
+        await self._resync_simulator_link()
         return await self.get_current()
 
     async def import_project(self, name: str, source: Path) -> ProjectResponse:
@@ -175,6 +178,7 @@ class ProjectService:
         if self._daemon_state:
             self._daemon_state.set_active_project(name)
         self._start_db_worker()
+        await self._resync_simulator_link()
         return await self.get_current()
 
     async def _assert_valid_archive(self, source: Path) -> None:
@@ -290,9 +294,39 @@ class ProjectService:
         ):
             self._simulator_adapter.stop()
 
+    async def _resync_simulator_link(self) -> None:
+        """Bring the twin and its OPC-UA client back up after a project switch.
+
+        Every project entry point stops the simulator (and ``new_project`` the
+        OPC-UA client too) to drop the previous project's state, but nothing
+        started them again: from the first project switch on, the twin stopped
+        integrating and ``IOWorker`` — which skips its whole scan while the
+        adapter is offline, silently — published no TELEMETRY at all. The loops
+        were live and ``/system/status`` healthy, with every stats counter
+        frozen at zero until a daemon restart.
+
+        No-op without a simulator: against a real DCS the endpoint comes from
+        the project (``_load_opcua_endpoint``), not from us.
+        """
+        sim = self._simulator_adapter
+        if sim is None:
+            return
+        if hasattr(sim, "start"):
+            sim.start()
+        if self._opcua_adapter is None or not hasattr(sim, "opcua_node_ids"):
+            return
+        controllers = await self._repo.list_all()
+        bind_opcua_client(self._opcua_adapter, sim, [c.id for c in controllers])
+        self._opcua_adapter.start()
+
     async def _load_opcua_endpoint(self) -> None:
         """Read opcua_endpoint from metadata and auto-connect or stop adapter."""
         if self._opcua_adapter is None:
+            return
+        if self._simulator_adapter is not None:
+            # The twin owns the address space and the endpoint the factory
+            # already pointed the client at; a stale real-DCS endpoint saved in
+            # the project must not steal the client away from it.
             return
         endpoint = await self._repo.get_meta("opcua_endpoint")
         if endpoint:

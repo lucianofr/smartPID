@@ -1,6 +1,7 @@
 """Root test configuration for the Smart PID platform."""
 from __future__ import annotations
 
+import socket
 import uuid
 from functools import cache
 
@@ -26,6 +27,20 @@ from smart_pid_domain.models.controller import PIDParams
 def _cached_hash(password: str) -> str:
     """bcrypt is deliberately slow — hash each fixture password once, not per test."""
     return hash_password(password)
+
+
+def _free_port() -> int:
+    """An OS-assigned free TCP port for the in-test OPC-UA server.
+
+    The simulator port used to come from settings, i.e. from the repo's own
+    ``.env`` (4849) — the port a developer's daemon is already listening on.
+    The suite then failed with "OPCUAServer failed to start within 10s" for a
+    reason that has nothing to do with the code under test, and that red was
+    carried across sessions as "environmental".
+    """
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
 
 
 async def principal_headers(api_deps, username: str, role: str) -> dict[str, str]:
@@ -185,6 +200,7 @@ async def sim_api_deps(tmp_path):
         jwt_secret="test-secret-key-minimum-32-bytes!",
         simulator_enabled=True,
         simulator_interval_ms=50,
+        simulator_port=_free_port(),
     )  # type: ignore[call-arg]
 
     await user_repo.create("admin", _cached_hash("admin"), "admin")

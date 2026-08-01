@@ -17,7 +17,7 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
     require_admin,
     require_user,
 )
-from smart_pid_core.adapters.inbound.simulator_adapter import SIMULATOR_MODE_INT_MAP
+from smart_pid_core.adapters.inbound.simulator_adapter import bind_opcua_client
 from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository  # noqa: TC001
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
@@ -589,22 +589,7 @@ def _sync_opcua_registration(request: Request, controller: Controller) -> None:
     sim = getattr(request.app.state, "simulator_adapter", None)
     try:
         if sim is not None:
-            nodes = sim.opcua_node_ids(controller.id)
-            if not nodes:
-                return
-            mode_node = nodes.get("mode", "")
-            adapter.register_controller(
-                controller_id=controller.id,
-                node_id_pv=nodes.get("pv", ""),
-                node_id_sp=nodes.get("sp", ""),
-                node_id_co=nodes.get("co", ""),
-                node_id_kp=nodes.get("kp", ""),
-                node_id_ti=nodes.get("ti", ""),
-                node_id_td=nodes.get("td", ""),
-                node_id_mode_target=mode_node,
-                node_id_mode_actual=mode_node,
-                mode_int_map=dict(SIMULATOR_MODE_INT_MAP),
-            )
+            bind_opcua_client(adapter, sim, [controller.id])
         else:
             _reregister_opcua(request, controller)
     except Exception:

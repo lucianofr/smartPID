@@ -21,6 +21,8 @@ from smart_pid_domain.models.process_preset import PRESETS
 from smart_pid_domain.models.signal import FFSignal
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from smart_pid_core.config import CoreSettings
     from smart_pid_domain.enums import ProcessPresetName
 
@@ -80,6 +82,45 @@ class _ControllerSim:
 # the /simulator/{id}/pid/mode route both use this encoding; the OPC-UA adapter
 # needs it to decode Mode back into a ControllerMode.
 SIMULATOR_MODE_INT_MAP: dict[str, int] = {"MAN": 0, "AUTO": 1}
+
+
+def bind_opcua_client(
+    opcua_adapter: object,
+    simulator_adapter: SimulatorAdapter,
+    controller_ids: Iterable[int],
+) -> list[int]:
+    """Point the OPC-UA *client* adapter at the twin's nodes for these ids.
+
+    In simulator mode the twin owns the address space, so a controller's
+    ``tag_bindings`` are empty and the client adapter has to be registered
+    against the node ids the simulator minted. That rule was being spelled out
+    at every wiring site (daemon boot, ``POST /controllers``, project switch);
+    keeping it here means the three cannot drift — and a project opened after
+    boot is exactly the case that had been missed.
+
+    Returns the ids that were bound (ones the twin does not know are skipped).
+    """
+    bound: list[int] = []
+    for cid in controller_ids:
+        nodes = simulator_adapter.opcua_node_ids(cid)
+        if not nodes:
+            continue
+        mode_node = nodes.get("mode", "")
+        opcua_adapter.register_controller(  # type: ignore[attr-defined]
+            controller_id=cid,
+            node_id_pv=nodes.get("pv", ""),
+            node_id_sp=nodes.get("sp", ""),
+            node_id_co=nodes.get("co", ""),
+            node_id_kp=nodes.get("kp", ""),
+            node_id_ti=nodes.get("ti", ""),
+            node_id_td=nodes.get("td", ""),
+            node_id_mode_target=mode_node,
+            node_id_mode_actual=mode_node,
+            mode_int_map=dict(SIMULATOR_MODE_INT_MAP),
+        )
+        bound.append(cid)
+    return bound
+
 
 # The twin's internal PID runs on a fixed 1 s scan, decoupled from the faster
 # simulation tick: the process model still integrates every tick for a smooth

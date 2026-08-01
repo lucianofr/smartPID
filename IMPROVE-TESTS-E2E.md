@@ -475,3 +475,122 @@ sobrevive.
 **Condição de parada:** ao voltar, a trend **não** replica uma rajada de
 valores antigos (só o mais recente), a lista de alarmes contém todos os
 disparados durante a queda, e o banner sai de "resincronizando" para "ao vivo".
+
+---
+
+# Parte 3 — execução da suíte E2E (2026-07-31)
+
+Os 14 testes descritos acima foram **executados ao vivo** sobre a main
+`1c976a7`. Harness em `/tmp/spid_e2e/` (`harness.py`, `t1.py`, `t2.py`,
+`t3.py`, `t4.py`, `imp06.sh`); daemons em portas descartáveis (181xx) com
+`HOME` redirecionado para `/tmp/spid_e2e/*/home` — sem isso o `DaemonState`
+de teste reescreveria `~/.smart-pid/daemon_state.json` do usuário. O daemon do
+usuário (8537/5555/4849) não foi tocado em nenhum momento.
+
+## Resultado: 14/14 PASS
+
+| Teste | Evidência medida |
+|---|---|
+| E2E-IMP-01 | `active_controllers=1`, `/stats`=200, `/commands/setpoint`=200, 0 linhas `not registered\|telemetry_skipped` |
+| E2E-IMP-02 | `delete=204`, setpoint depois=404, `io_worker_read_error` 0→0 |
+| E2E-IMP-03 | `open=200`, `active=2`, `sample_count` 6→9 nas duas malhas (3 s de intervalo), 0 erros de IO — **falhou na primeira execução**, ver D2 |
+| E2E-IMP-04 | 50 frames `pv.value=null`: `pid_worker_iteration_error`=50, `stats_worker_iteration_error`=50, CV 20/20/50 e amostras 20/20/50 (as duas threads voltaram sozinhas), CPU 1,2 % na janela de falha — **falhou na primeira execução**, ver D3 |
+| E2E-IMP-05 | 7 linhas `INFO smart_pid_core`, `opcua_adapter_started` presente |
+| E2E-IMP-06 | 10/10 `EXIT=0`, `Fatal Python error`=0 |
+| E2E-IMP-07 | boot1 `CLEAN`/6,4 s/exit 0; `active_controllers=1` no boot 2; boot2 `CLEAN`/5,8 s/exit 0 |
+| E2E-IMP-08 | `/stats`=200 com `sample_count` crescente numa malha criada em runtime |
+| E2E-FIX-01 | ARW 150 com saída 0–100: CO sai do limite em 0 s (≤ 1×TSS=120 s), assenta em 124 s, PV final 60,0 — **idêntico** à configuração correta (ARW 100) e diferente do motor pré-correção (`6d9b552`: 124,5 s) |
+| E2E-FIX-02 | recuperação: ganho 16 → 124,0 s; ganho 2 → 124,5 s; ganho 1 → 124,5 s; nenhum oscila (PV final 60,0) |
+| E2E-FIX-03 | `../../etc/evil`, `.`, `..`, `a/b`, `"   "`, 129 chars → todos **422**; `planta 1_v2.0-final` → 200; nada criado fora de `SPID_PROJECTS_DIR` |
+| E2E-FIX-04 | `NaN`→422, `Infinity`→422, `controller_id:0`→422, SP 1500 com `sp_hi_lim=2000`→200, malha intacta — **falhou na primeira execução**, ver D1 |
+| E2E-FIX-05 | perfil/senha/ativo mudam isoladamente: role→admin (login mantém), senha nova (antiga 401), desativado 401, reativado 200, admin intacto |
+| E2E-FIX-06 | navegador real: banner `null → SEM CONEXÃO → RESSINCRONIZANDO → null(live)`; PV exibida após o resync é a **atual** (0,00) e não a pré-queda (49,56); alarme disparado durante a queda (`HI 63.37 lim 60.00`, 20:34:37) presente na lista após o resync |
+
+## Defeitos encontrados pela execução — todos corrigidos
+
+### D1 — comando com `NaN`/`Infinity` devolvia **500**, não 422
+
+Achado por E2E-FIX-04. O DTO rejeita corretamente (`FiniteFloat`), mas o
+*handler padrão* do FastAPI monta `{"detail": jsonable_encoder(exc.errors())}`
+— e esse payload ecoa o valor recusado. `JSONResponse` renderiza com
+`allow_nan=False`, então a própria resposta 422 explodia com
+`ValueError: Out of range float values are not JSON compliant: nan`, virando
+500. Vale para qualquer campo `allow_inf_nan=False` do sistema.
+
+**Correção:** handler próprio de `RequestValidationError` que substitui floats
+não-finitos pelo seu nome antes de serializar (`error_handlers.py`). Mesma
+forma de resposta, agora renderizável.
+**Teste:** `test_api_commands.py::test_setpoint_non_finite_literal_is_422`
+(NaN/Infinity/-Infinity) — verificado que falha sem a correção.
+
+### D2 — trocar de projeto deixava o simulador e o cliente OPC-UA **parados**
+
+Achado por E2E-IMP-03, que a Parte 1 nunca chegou a rodar ao vivo. Todos os
+caminhos de projeto (`new`/`open`/`import`) param o simulador — e `new` também
+o cliente OPC-UA — e nada os reiniciava. Pior: `_load_opcua_endpoint` **parava**
+o cliente quando o projeto não tinha `opcua_endpoint` gravado, que é
+exatamente o caso do simulador. Como o `IOWorker` pula o scan inteiro em
+silêncio enquanto o adaptador está offline, o resultado era: loops vivos,
+`/system/status` saudável, `active_controllers=2`, e **zero telemetria** até
+reiniciar o daemon. Medido: `sample_count` travado em 0.
+
+**Correção:** `ProjectService._resync_simulator_link()` religa o twin e
+reaponta o cliente OPC-UA para os nós da malha recém-aberta ao final dos três
+caminhos; `_load_opcua_endpoint` passa a não interferir em modo simulador (o
+twin é dono do address space). A regra de binding, que estava duplicada em
+três lugares (boot, `POST /controllers`, projeto) e foi justamente onde o caso
+de projeto se perdeu, virou `simulator_adapter.bind_opcua_client()` — usada
+pelos três.
+**Testes:** `test_project_service.py` — `test_open_project_relinks_twin_and_opcua_client`,
+`test_new_project_keeps_the_twin_running`,
+`test_import_project_relinks_twin_and_opcua_client` — os três falham sem a correção.
+
+### D3 — `StatsWorker` e `MonitorWorker` morriam em silêncio com um frame ruim
+
+Achado por E2E-IMP-04. A Parte 1 corrigiu o `PIDWorker` afirmando que
+`ai_worker`/`db_worker`/`io_worker` já tinham o guard e que o PID era o único
+fora do padrão — mas `stats_worker` e `monitor_worker` nunca foram olhados.
+Ambos só capturavam `zmq.ZMQError`; um `pv.value = null` chega como `TypeError`
+(`None` na aritmética), escapa do laço e encerra a thread. Consequência: o
+`/controllers/{id}/stats` continua servindo o último snapshot para sempre — um
+worker morto é indistinguível de uma malha perfeitamente estável — e, em modo
+monitor, `STATUS.{id}` simplesmente para (o `MonitorWorker` é o único produtor).
+Medido antes da correção: `sample_count` congelado em 20 enquanto o PIDWorker
+registrava 50 erros e seguia rodando.
+
+**Correção:** mesmo guard do `PIDWorker` nos dois (log + `wait(scan_s)` para
+não girar a 100 % de CPU).
+**Testes:** `test_retention_and_worker_survival.py::TestWorkersSurviveACorruptedFrame`
+(2 testes) — ambos falham sem a correção.
+
+### D4 — a "falha ambiental" da porta 4849 era um defeito do fixture
+
+A suíte carregava um vermelho permanente (`test_opcua_start_stop`) sempre que
+um daemon estivesse rodando, porque `sim_api_deps` construía `CoreSettings`
+sem `simulator_port` — e o `.env` do repositório manda 4849, a porta que o
+daemon do desenvolvedor já ocupa. O fixture passa a pedir uma porta livre ao
+SO. Prova: `SPID_SIMULATOR_PORT=18999 pytest test_api_simulator.py` já passava
+13/13 antes da mudança, com o daemon do usuário no ar.
+
+## Notas de execução
+
+- **E2E-IMP-04 roda in-process.** O barramento é `inproc://`, então um frame
+  corrompido só pode ser publicado de dentro do processo. O teste monta os
+  mesmos objetos que `run_daemon` monta (EventBus + LoopManager + workers
+  reais) e usa `lm.set_setpoint`, que é exatamente o que
+  `POST /commands/setpoint` chama. A camada HTTP sobre esses objetos está
+  coberta por IMP-01/03.
+- **E2E-FIX-01/02 usam o motor pré-correção tirado do git** (`6d9b552`) como
+  lado "antes", não um mock — o A/B é a mudança de código real.
+- **E2E-FIX-06 no navegador**, SPA servida por `vite preview` (porta 5199)
+  com proxy para o daemon de teste. A propriedade "não replica a rajada" só é
+  observável no nível de unidade (`resyncBuffer.test.tsx`): a coalescência
+  acontece num único tick de React, então o DOM nunca mostra os frames
+  intermediários. O que o navegador prova é o efeito visível dela — depois do
+  resync a tela mostra o valor **atual**, não o congelado de antes da queda.
+
+## Verificação final
+
+- Backend: `1633 passed, 0 failed` (com o daemon do usuário no ar).
+- Frontend: `897 passed / 94 arquivos`, `tsc -b` limpo.
+- `ruff` limpo em todos os arquivos alterados.

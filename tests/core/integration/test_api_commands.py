@@ -79,6 +79,26 @@ class TestSetpointCommand:
         )
         assert resp.status_code == 401
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+    async def test_setpoint_non_finite_literal_is_422(
+        self, client: AsyncClient, user_headers: dict[str, str], literal: str
+    ) -> None:
+        """A non-finite JSON literal must be refused with a renderable body.
+
+        ``json.loads`` accepts these literals, so the value reaches the DTO and
+        is rejected there — but the 422 echoes it back, and JSONResponse
+        renders with allow_nan=False. Without the sanitising handler the
+        response itself raised and the client saw a 500.
+        """
+        resp = await client.post(
+            "/commands/setpoint",
+            content=f'{{"controller_id": 1, "value": {literal}}}',
+            headers={**user_headers, "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 422
+        assert resp.json()["detail"][0]["type"] == "finite_number"
+
 
 class TestModeCommand:
     @pytest.mark.asyncio

@@ -17,7 +17,7 @@ from smart_pid_core.adapters.factory import AdapterFactory
 from smart_pid_core.adapters.inbound.api.app import create_app
 from smart_pid_core.adapters.inbound.api.auth import hash_password
 from smart_pid_core.adapters.inbound.sim_persistence import persist_sim_config
-from smart_pid_core.adapters.inbound.simulator_adapter import SIMULATOR_MODE_INT_MAP
+from smart_pid_core.adapters.inbound.simulator_adapter import bind_opcua_client
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
@@ -430,38 +430,17 @@ async def run_daemon(settings: CoreSettings) -> None:
     opcua_adapter = adapter_factory.opcua_adapter
     if opcua_adapter is not None:
         if simulator_adapter is not None:
-            # Simulator mode: use the simulator's actual node IDs (auto-assigned)
-            # but keep mode_int_map from database (user-configured mapping)
-            sim_node_ids = simulator_adapter._opcua_server.controller_node_ids
-            # The mode map comes from the simulator, not the database, for the
-            # same reason the node ids do: in simulator mode the twin owns the
-            # address space, so it also owns how its Mode node is encoded. The
-            # DB's tag_bindings describe a real DCS and are empty for every
-            # controller the simulator auto-registered ({} -> read_actual_mode
-            # returns None -> every STATUS frame reported mode "UNKNOWN").
-            # Not persisted back to the project: that would duplicate a
-            # constant the simulator owns, drift if its encoding changed, and
-            # mutate the user's .spid file as a side effect of enabling the
-            # simulator.
-            for ctrl_id, nodes in sim_node_ids.items():
-                mode_map = dict(SIMULATOR_MODE_INT_MAP)
-                mode_node = nodes.get("mode", "")
-                opcua_adapter.register_controller(
-                    controller_id=ctrl_id,
-                    node_id_pv=nodes.get("pv", ""),
-                    node_id_sp=nodes.get("sp", ""),
-                    node_id_co=nodes.get("co", ""),
-                    node_id_kp=nodes.get("kp", ""),
-                    node_id_ti=nodes.get("ti", ""),
-                    node_id_td=nodes.get("td", ""),
-                    node_id_mode_target=mode_node,
-                    node_id_mode_actual=mode_node,
-                    mode_int_map=mode_map,
-                )
-            logger.info(
-                "opcua_adapter_registered_from_simulator",
-                controllers=list(sim_node_ids.keys()),
+            # The twin owns the address space, so both the node ids and the
+            # Mode encoding come from it and not from the project's
+            # tag_bindings (empty for every simulator-registered controller).
+            # Same binding is applied on POST /controllers and on project
+            # open — see bind_opcua_client.
+            bound = bind_opcua_client(
+                opcua_adapter,
+                simulator_adapter,
+                list(simulator_adapter._opcua_server.controller_node_ids),
             )
+            logger.info("opcua_adapter_registered_from_simulator", controllers=bound)
         else:
             # Real OPC-UA: use database tag_bindings
             controllers = await repo.list_all()

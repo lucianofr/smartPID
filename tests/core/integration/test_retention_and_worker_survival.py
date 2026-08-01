@@ -29,7 +29,10 @@ from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.workers.db_worker import DBWorker
+from smart_pid_core.application.workers.monitor_worker import MonitorWorker
+from smart_pid_core.application.workers.stats_worker import StatsWorker
 from smart_pid_core.main import _retention_cleanup
+from smart_pid_domain.models.controller import Controller
 
 
 @pytest.fixture
@@ -207,5 +210,92 @@ class TestDBWorkerSurvivesFlushFailure:
             assert len(rows) >= 1, "worker stopped persisting after a flush failure"
             assert rows[0].pv.value == 22.0
             assert worker.flush_failures >= 1, "the dropped batch must be counted"
+        finally:
+            worker.stop()
+
+
+def _telemetry(cid: int, pv: float | None) -> bytes:
+    """A frame shaped exactly like IOWorker's, with a settable PV value."""
+    def sig(v: float | None) -> dict:
+        return {
+            "value": v, "severity": "GOOD",
+            "limit_bits": "NONE", "sub_status": "NONE",
+        }
+
+    return msgpack.packb({
+        "controller_id": cid,
+        "pv": sig(pv), "sp": sig(50.0), "co": sig(10.0), "bkcal_in": sig(10.0),
+        "mode": "AUTO", "pid_enabled": True, "integral_val": 0.0,
+        "timestamp": datetime.now(tz=UTC).isoformat(),
+    })
+
+
+class TestWorkersSurviveACorruptedFrame:
+    """D3/D4: a frame with ``pv.value = null`` used to kill two worker threads.
+
+    ``PIDWorker`` got its ``except Exception`` guard earlier; ``StatsWorker``
+    and ``MonitorWorker`` were missed. Both raise a ``TypeError`` on a null PV
+    (``None`` reaches arithmetic), which is not ``zmq.ZMQError`` and so escaped
+    the loop and ended the thread — with nothing logged. The metrics endpoint
+    then served a frozen snapshot forever and, in monitor mode, ``STATUS.{id}``
+    stopped entirely: both look exactly like a perfectly steady loop.
+    """
+
+    @pytest.fixture
+    def bus(self):
+        b = EventBus(url_prefix=f"inproc://test_badframe_{uuid.uuid4().hex[:8]}")
+        b.start()
+        yield b
+        b.stop()
+
+    def test_stats_worker_survives_null_pv(self, bus) -> None:
+        ctrl = Controller(id=31, name="TIC-031", scan_rate_s=0.05, tss_s=5.0)
+        worker = StatsWorker(bus=bus, controller=ctrl)
+        worker.start()
+        try:
+            pub = bus.create_publisher()
+            time.sleep(0.1)
+            for _ in range(4):
+                pub.send(b"TELEMETRY.31", _telemetry(31, 20.0))
+                time.sleep(0.05)
+            time.sleep(0.2)
+            healthy = worker.get_current_stats()["sample_count"]
+            assert healthy > 0, "no samples were accumulated before the bad frame"
+
+            pub.send(b"TELEMETRY.31", _telemetry(31, None))
+            time.sleep(0.3)
+            assert worker._thread is not None and worker._thread.is_alive(), (
+                "stats thread died on a corrupted frame"
+            )
+
+            for _ in range(4):
+                pub.send(b"TELEMETRY.31", _telemetry(31, 21.0))
+                time.sleep(0.05)
+            time.sleep(0.3)
+            assert worker.get_current_stats()["sample_count"] > healthy, (
+                "stats stopped advancing after a corrupted frame"
+            )
+        finally:
+            worker.stop()
+
+    def test_monitor_worker_survives_null_pv(self, bus) -> None:
+        worker = MonitorWorker(bus=bus, controller_id=32, scan_rate_s=0.05)
+        worker.start()
+        try:
+            pub = bus.create_publisher()
+            status_sub = bus.create_subscriber(b"STATUS.32")
+            time.sleep(0.1)
+
+            pub.send(b"TELEMETRY.32", _telemetry(32, None))
+            time.sleep(0.3)
+            assert worker.is_alive(), "monitor thread died on a corrupted frame"
+
+            while status_sub.recv(timeout_ms=0) is not None:
+                pass
+            pub.send(b"TELEMETRY.32", _telemetry(32, 21.0))
+            time.sleep(0.3)
+            assert status_sub.recv(timeout_ms=500) is not None, (
+                "STATUS stopped being published after a corrupted frame"
+            )
         finally:
             worker.stop()
