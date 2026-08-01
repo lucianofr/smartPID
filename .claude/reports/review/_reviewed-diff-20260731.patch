@@ -1,0 +1,963 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 5689bec..f3f4a32 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -1,9 +1,5 @@
+ # Projeto: Smart PID Edge Platform
+ 
+-## Agentes
+-- Todos os subagentes (Agent tool) DEVEM usar `model: "opus"` para garantir Claude Opus 4.6
+-- Nao usar haiku ou sonnet para subagentes neste projeto
+-
+ ## Stack e padroes
+ - Python 3.13, uv workspace (hatchling), monorepo
+ - ZeroMQ (msgpack), aiosqlite (WAL mode)
+@@ -30,9 +26,6 @@
+ - gerar tipos da API: `npm run gen:api` (dump OpenAPI do backend -> openapi-typescript)
+ - checar contrato API: `npm run gen:api:check` (falha se openapi.json/tipos estao dessincronizados)
+ 
+-Nota: em ambientes Flatpak (VS Code) o binario uv pode estar em:
+-`/home/luciano/.var/app/com.visualstudio.code/bin/uv`
+-
+ ## Arquitetura
+ 
+ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + Web frontend).
+@@ -41,7 +34,6 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + Web f
+ - `packages/smart_pid_domain/` — Modelos, enums, eventos, excecoes (ZERO dependencias de infra)
+ - `packages/smart_pid_core/` — Backend daemon (PID engine, workers, event bus, SQLite, API)
+ - `packages/smart_pid_web/` — Frontend web React/Vite (UI atual). GOTCHA: excluido do uv workspace (pyproject.toml `exclude`), gerenciado via npm, NAO entra em `uv sync`.
+-- (`smart_pid_hmi` PySide6 desktop foi REMOVIDO em 2026-07-30 — substituido pelo web.)
+ 
+ ### Estrutura do Backend (`smart_pid_core`)
+ - `domain/services/` — PID engine (velocity form), mode manager (8 modos)
+@@ -57,138 +49,10 @@ Hexagonal + Event-Driven, cliente-servidor distribuido (Backend headless + Web f
+ - `events.py` — Frozen dataclasses com UUID (TelemetryReceived, ControlActionComputed, etc.)
+ - `exceptions.py` — Hierarquia: SmartPIDError -> Domain/Infra/Communication/Project/Auth errors
+ 
+-### Comunicacao
+-- ZeroMQ inproc:// — Bus interno entre threads do Backend (XPUB/XSUB proxy, msgpack)
+-- ZeroMQ tcp://5555 — PUB/SUB Backend->Web (telemetria em tempo real)
+-- FastAPI REST — Web->Backend (comandos, historico, CRUD, project upload/download)
+-- Project management via REST: list, new, open (by name), import (multipart upload), download (FileResponse), delete
+-- Welcome flow pos-login no web (precisa de auth para listar projetos do backend)
+-- Topicos: TELEMETRY.{id}, ACTION.CTRL.{id}, ACTION.AI.{id}, STATUS.{id}
+-
+ ### PID Engine
+ - Velocity form: delta_cv = Kp * [(e-e1) + dt/Ti*e - Td*(pv-2pv1+pv2)/dt]
+ - Anti-windup com ARW limits separados + 16x reset recovery
+ - Bumpless transfer, SP ramp, derivative filter, integral deadband
+ - 8 modos: OOS, IMan, LO, Man, Auto, Cas, RCas, ROut
+ 
+-### Fuzzy Engine (Phase 5 — otimizacao de Ki)
+-- Objetivo: ajuste online de Ki via logica fuzzy, sem intervencao manual
+-- Entradas: error (E) e delta_error (ΔE), normalizados para -100%..+100% do span
+-- 7 niveis linguisticos: NB, NM, NS, ZO, PS, PM, PB
+-- Membership functions: triangulares (centro) + trapezoidais (extremos), 50% overlap
+-- Defuzzificacao: Centro de Gravidade (CoG), saida gamma ∈ [-1.0, +1.0]
+-- Atualizacao de Ki: `Ki_new = Ki * (1 + gamma * Sv)`, clamped a ai_limit_min/max
+-- Speed factor (Sv): SLOW=0.30, MEDIUM=0.15, FAST=0.05
+-- Cadencia: `T_cycle = dead_time_L * 3`
+-- 3 matrizes de regras por objetivo de controle:
+-  - **SP Tracking**: resposta rapida a mudancas de setpoint
+-  - **Disturbance Rejection**: agressivo proximo a erro zero, minimiza offset
+-  - **Surge Level**: foco em estabilidade da valvula
+-- Cada loop PID seleciona independentemente: NONE, FUZZY ou RL
+-
+-### RL Engine (Phase 5 — otimizacao de Ki via Reinforcement Learning)
+-- Algoritmo: SAC (Soft Actor-Critic) apenas — suporte a PPO foi removido (caminho de treino invalido, nunca usado em producao)
+-- Framework: stable-baselines3 (extra opcional `ai`, lazy import — so carrega quando habilitado)
+-- Observation space (5 dims): [error, delta_error, CO, integral_val, ti_norm] normalizados — `ti_norm` e a posicao log-escala do Ti/Ki atual dentro de [limit_min, limit_max], necessaria para preservar a propriedade de Markov
+-- Action space: gamma ∈ [-1.0, +1.0] (mesma interface do Fuzzy)
+-- Mesma formula de atualizacao de Ki e guardrails (ai_limit_min/max) do Fuzzy
+-- Reward: preferencialmente calculado a partir da janela de KPIs do StatsWorker (IAE, oscilacao, TV) quando disponivel; cai para o reward pontual (instantaneo) por objetivo quando a janela ainda nao tem amostras suficientes:
+-  - **SP Tracking / Disturbance Rejection**: minimizar IAE/ITAE, penalizar TV (valve chattering)
+-  - **Surge Level**: recompensar estabilidade da valvula, penalizar IAE apenas fora do deadband
+-- Portao de politica: a rede neural so assume o controle de Ti/Ki apos 3 rodadas de treino online bem-sucedidas (ou ao carregar um modelo ja treinado de uma sessao anterior); antes disso, e sempre que o modelo falha ao prever, usa a politica de fallback P+D
+-- Treinamento online continuo durante operacao (SAC off-policy, replay buffer)
+-- Telemetria de decisoes de tuning logada em `Log_Sintonia_IA`
+-
+-### Estatisticas de Performance (Phase 5)
+-- Metricas computadas por loop: IAE, ITAE, ISE, MSE, desvio padrao, Total Variation (TV)
+-- Variabilidade: `2*sigma/RANGE` (relativa ao span) e `2*sigma/SP` (relativa ao setpoint)
+-
+-## Variaveis de ambiente
+-- `SPID_JWT_SECRET` — Obrigatorio (auth)
+-- `SPID_LOG_LEVEL` — Default: INFO
+-- `SPID_OPCUA_ENDPOINT` — Default: opc.tcp://localhost:4840
+-- `SPID_API_PORT` / `SPID_API_HOST` — Default: 8000 / 127.0.0.1 (loopback por padrao, TD-004; exponha com `SPID_API_HOST=0.0.0.0` apenas de forma explicita)
+-- `SPID_ZMQ_PUBLISH_PORT` — Default: 5555
+-- `SPID_SIMULATOR_ENABLED` / `SPID_SIMULATOR_PORT` — Default: false / 4849
+-- `SPID_PROJECTS_DIR` — Default: ~/.smart-pid/projects/ (diretorio de projetos gerenciados pelo backend)
+-
+-## Documentos de referencia
+-- Spec V2: `docs/superpowers/specs/2026-04-02-smart-pid-v2-architecture-design.md`
+-- Plano Phase 1: `docs/superpowers/plans/2026-04-02-phase1-foundation-domain-pid-v2.md`
+-- Plano Phase 2: `docs/superpowers/plans/2026-04-03-phase2-rest-api-auth-telemetry.md`
+-- Plano Phase 3a: `docs/superpowers/plans/2026-04-03-phase3a-hmi-desktop.md`
+-- Review Phase 1: `docs/superpowers/reviews/2026-04-03-phase1-code-review.md`
+-- Requisitos originais: `docs/smartPIDv2.md`
+-- Referencia PID: `docs/bloco_pid.md`
+-- Identidade Visual Dark Room: `docs/identidade_visual_Dark.md`
+-- Identidade Visual ISA-101: `docs/identidade_visual_ISA101.md`
+-- Identidade Visual MD3: `docs/identidade_visual_MD3.md`
+-
+-## Fases de implementacao (seguindo V2 Spec)
+-1. **Phase 1 — Foundation + Domain + PID** ✅ (merged to main)
+-2. **Phase 2 — REST API + Auth + Telemetry Publisher** ✅ (merged to main)
+-3. **Phase 3 — Frontend** ✅ (PySide6 HMI descontinuado 2026-07-30; UI atual e o web React/Vite em `packages/smart_pid_web`)
+-4. Phase 3b — OPC-UA I/O Worker (reads/writes reais)
+-5. Phase 4 — Simulator (digital twin): backend (SimulatorAdapter + asyncua.Server) + UI basica no HMI (preset selector, param sliders, disturbance injection). SVG overlay e "Export Dynamics to Loop" deferidos para Phase 7.
+-6. Phase 5 — AI (Fuzzy + RL) + Statistics
+-7. Phase 6 — Alarms + RBAC fine-grained
+-8. Phase 7 — Executive Dashboard + Multi-Trend + Export + Themes + Simulator SVG overlay
+-
+-Phases 4/5/6 sao paralelizaveis apos Phase 3a.
+-
+-## Convencoes
+-- **Branching obrigatorio — REGRA INVIOLAVEL**: Toda e qualquer modificacao de codigo, correcao de bug, melhoria ou introducao de novo recurso DEVE ser feita em uma **nova branch dedicada** criada especificamente para aquela tarefa. **NUNCA utilize branches ja existentes** de outras tarefas. **NUNCA faca modificacoes diretamente na main.** O fluxo obrigatorio e:
+-  1. Fazer `git checkout main && git pull` para partir da main atualizada
+-  2. Criar branch nova com nome descritivo (ex: `feat/controller-tooltips`, `fix/pid-gain-validation`)
+-  3. **ANTES de qualquer modificacao de arquivo**, executar `git branch --show-current` e VERIFICAR que o output e EXATAMENTE o nome da branch que voce acabou de criar. Se o output for `main`, outra branch de outro agente, ou qualquer branch que voce NAO criou nesta sessao, **PARE IMEDIATAMENTE** e corrija antes de prosseguir. Esta verificacao e obrigatoria e deve ser logada no output.
+-  4. Fazer as modificacoes e commits nessa branch
+-  5. Aguardar aprovacao explicita do usuario
+-  6. So entao executar o merge para main
+-  
+-  **ATENCAO — MISTURA DE BRANCHES ENTRE AGENTES**: Multiplos agentes/subagentes podem estar trabalhando simultaneamente. Cada agente so pode modificar arquivos na branch que ELE PROPRIO criou. Se ao verificar `git branch --show-current` o agente detectar que esta em uma branch que nao criou, deve fazer `git stash` (se houver mudancas), voltar para main, e criar sua propria branch. **Esta regra se aplica a TODOS os agentes e subagentes sem excecao.**
+-- **Specs obrigatorias ao alterar UI**: Toda modificacao na interface (widgets, layout, cards, paginas, temas) DEVE ser acompanhada da atualizacao dos documentos de especificacao em `docs/` que descrevem o componente alterado. Isso inclui: `docs/smartPID.md`, `docs/smartPIDv2.md`, `docs/identidade_visual_*.md`, e as specs em `docs/superpowers/specs/`. Nao commitar codigo de UI sem atualizar as specs correspondentes.
+-- TDD: write failing test -> implement -> green -> commit
+-- Commits convencionais: feat(scope), fix(scope), chore(scope)
+-- Hexagonal: domain NUNCA importa de adapters/application
+-- Protocol classes para ports (sem ABC)
+-- Frozen dataclasses para eventos e telemetria
+-- StrEnum para todos os enumerados
+-- SQLite WAL mode, .spid files, 7-day retention
+-
+-## Compact Instructions
+-Ao compactar, preserve:
+-- Fase atual e quais fases ja foram concluidas
+-- Decisoes de arquitetura (hexagonal, ZMQ dual bus, monorepo 3 pacotes)
+-- Estado das tarefas em progresso (task number, o que falta)
+-- Variaveis de ambiente obrigatorias (SPID_*)
+-- Caminho do uv em Flatpak se relevante
+-- Issues de code review pendentes (se houver)
+-- Branch atual e se esta em worktree
+-
+-## OBRIGATÓRIO: Salvar estado entre tarefas
+-
+-**REGRA INVIOLÁVEL:** Ao concluir QUALQUER tarefa (step de um plano, feature, bugfix, etc.), o Claude DEVE:
+-1. **Salvar o estado atual** em `.claude/docs/estado-atual.md` com: o que foi concluído, decisões tomadas, próximos passos, arquivos modificados
+-2. **PARAR COMPLETAMENTE** e aguardar o usuário dar o próximo comando
+-
+-NÃO prossiga para a próxima tarefa automaticamente. NÃO encadeie tarefas. Cada tarefa é uma unidade isolada: terminou → salvou estado → parou.
+-
+-## Como passar o estado entre sessões (o "onde parou")
+-
+-Antes de dar `/clear`, peça ao Claude para salvar o contexto importante em um arquivo markdown. Crie um diretório `.claude/docs/` no projeto e peça para ele registrar: decisões de arquitetura, o que foi feito, o que falta fazer, e qualquer detalhe crítico da implementação atual. 
+-
+-Fluxo prático:
+-```
+-1. Antes de limpar:
+-   "Salve o estado atual em .claude/docs/estado-atual.md:
+-    - o que foi concluído
+-    - decisões tomadas
+-    - próximos passos
+-    - arquivos modificados"
+-
+-2. /clear
+ 
+-3. Na nova sessão:
+-   "Leia .claude/docs/estado-atual.md e continue de onde paramos."
+-   
+-4. **PARAR e aguardar o usuário iniciar uma nova janela de contexto.** NÃO prossiga para a próxima tarefa automaticamente.
+\ No newline at end of file
+diff --git a/IMPROVE-TESTS-E2E.md b/IMPROVE-TESTS-E2E.md
+index 2de7f42..66ba94d 100644
+--- a/IMPROVE-TESTS-E2E.md
++++ b/IMPROVE-TESTS-E2E.md
+@@ -475,3 +475,122 @@ sobrevive.
+ **Condição de parada:** ao voltar, a trend **não** replica uma rajada de
+ valores antigos (só o mais recente), a lista de alarmes contém todos os
+ disparados durante a queda, e o banner sai de "resincronizando" para "ao vivo".
++
++---
++
++# Parte 3 — execução da suíte E2E (2026-07-31)
++
++Os 14 testes descritos acima foram **executados ao vivo** sobre a main
++`1c976a7`. Harness em `/tmp/spid_e2e/` (`harness.py`, `t1.py`, `t2.py`,
++`t3.py`, `t4.py`, `imp06.sh`); daemons em portas descartáveis (181xx) com
++`HOME` redirecionado para `/tmp/spid_e2e/*/home` — sem isso o `DaemonState`
++de teste reescreveria `~/.smart-pid/daemon_state.json` do usuário. O daemon do
++usuário (8537/5555/4849) não foi tocado em nenhum momento.
++
++## Resultado: 14/14 PASS
++
++| Teste | Evidência medida |
++|---|---|
++| E2E-IMP-01 | `active_controllers=1`, `/stats`=200, `/commands/setpoint`=200, 0 linhas `not registered\|telemetry_skipped` |
++| E2E-IMP-02 | `delete=204`, setpoint depois=404, `io_worker_read_error` 0→0 |
++| E2E-IMP-03 | `open=200`, `active=2`, `sample_count` 6→9 nas duas malhas (3 s de intervalo), 0 erros de IO — **falhou na primeira execução**, ver D2 |
++| E2E-IMP-04 | 50 frames `pv.value=null`: `pid_worker_iteration_error`=50, `stats_worker_iteration_error`=50, CV 20/20/50 e amostras 20/20/50 (as duas threads voltaram sozinhas), CPU 1,2 % na janela de falha — **falhou na primeira execução**, ver D3 |
++| E2E-IMP-05 | 7 linhas `INFO smart_pid_core`, `opcua_adapter_started` presente |
++| E2E-IMP-06 | 10/10 `EXIT=0`, `Fatal Python error`=0 |
++| E2E-IMP-07 | boot1 `CLEAN`/6,4 s/exit 0; `active_controllers=1` no boot 2; boot2 `CLEAN`/5,8 s/exit 0 |
++| E2E-IMP-08 | `/stats`=200 com `sample_count` crescente numa malha criada em runtime |
++| E2E-FIX-01 | ARW 150 com saída 0–100: CO sai do limite em 0 s (≤ 1×TSS=120 s), assenta em 124 s, PV final 60,0 — **idêntico** à configuração correta (ARW 100) e diferente do motor pré-correção (`6d9b552`: 124,5 s) |
++| E2E-FIX-02 | recuperação: ganho 16 → 124,0 s; ganho 2 → 124,5 s; ganho 1 → 124,5 s; nenhum oscila (PV final 60,0) |
++| E2E-FIX-03 | `../../etc/evil`, `.`, `..`, `a/b`, `"   "`, 129 chars → todos **422**; `planta 1_v2.0-final` → 200; nada criado fora de `SPID_PROJECTS_DIR` |
++| E2E-FIX-04 | `NaN`→422, `Infinity`→422, `controller_id:0`→422, SP 1500 com `sp_hi_lim=2000`→200, malha intacta — **falhou na primeira execução**, ver D1 |
++| E2E-FIX-05 | perfil/senha/ativo mudam isoladamente: role→admin (login mantém), senha nova (antiga 401), desativado 401, reativado 200, admin intacto |
++| E2E-FIX-06 | navegador real: banner `null → SEM CONEXÃO → RESSINCRONIZANDO → null(live)`; PV exibida após o resync é a **atual** (0,00) e não a pré-queda (49,56); alarme disparado durante a queda (`HI 63.37 lim 60.00`, 20:34:37) presente na lista após o resync |
++
++## Defeitos encontrados pela execução — todos corrigidos
++
++### D1 — comando com `NaN`/`Infinity` devolvia **500**, não 422
++
++Achado por E2E-FIX-04. O DTO rejeita corretamente (`FiniteFloat`), mas o
++*handler padrão* do FastAPI monta `{"detail": jsonable_encoder(exc.errors())}`
++— e esse payload ecoa o valor recusado. `JSONResponse` renderiza com
++`allow_nan=False`, então a própria resposta 422 explodia com
++`ValueError: Out of range float values are not JSON compliant: nan`, virando
++500. Vale para qualquer campo `allow_inf_nan=False` do sistema.
++
++**Correção:** handler próprio de `RequestValidationError` que substitui floats
++não-finitos pelo seu nome antes de serializar (`error_handlers.py`). Mesma
++forma de resposta, agora renderizável.
++**Teste:** `test_api_commands.py::test_setpoint_non_finite_literal_is_422`
++(NaN/Infinity/-Infinity) — verificado que falha sem a correção.
++
++### D2 — trocar de projeto deixava o simulador e o cliente OPC-UA **parados**
++
++Achado por E2E-IMP-03, que a Parte 1 nunca chegou a rodar ao vivo. Todos os
++caminhos de projeto (`new`/`open`/`import`) param o simulador — e `new` também
++o cliente OPC-UA — e nada os reiniciava. Pior: `_load_opcua_endpoint` **parava**
++o cliente quando o projeto não tinha `opcua_endpoint` gravado, que é
++exatamente o caso do simulador. Como o `IOWorker` pula o scan inteiro em
++silêncio enquanto o adaptador está offline, o resultado era: loops vivos,
++`/system/status` saudável, `active_controllers=2`, e **zero telemetria** até
++reiniciar o daemon. Medido: `sample_count` travado em 0.
++
++**Correção:** `ProjectService._resync_simulator_link()` religa o twin e
++reaponta o cliente OPC-UA para os nós da malha recém-aberta ao final dos três
++caminhos; `_load_opcua_endpoint` passa a não interferir em modo simulador (o
++twin é dono do address space). A regra de binding, que estava duplicada em
++três lugares (boot, `POST /controllers`, projeto) e foi justamente onde o caso
++de projeto se perdeu, virou `simulator_adapter.bind_opcua_client()` — usada
++pelos três.
++**Testes:** `test_project_service.py` — `test_open_project_relinks_twin_and_opcua_client`,
++`test_new_project_keeps_the_twin_running`,
++`test_import_project_relinks_twin_and_opcua_client` — os três falham sem a correção.
++
++### D3 — `StatsWorker` e `MonitorWorker` morriam em silêncio com um frame ruim
++
++Achado por E2E-IMP-04. A Parte 1 corrigiu o `PIDWorker` afirmando que
++`ai_worker`/`db_worker`/`io_worker` já tinham o guard e que o PID era o único
++fora do padrão — mas `stats_worker` e `monitor_worker` nunca foram olhados.
++Ambos só capturavam `zmq.ZMQError`; um `pv.value = null` chega como `TypeError`
++(`None` na aritmética), escapa do laço e encerra a thread. Consequência: o
++`/controllers/{id}/stats` continua servindo o último snapshot para sempre — um
++worker morto é indistinguível de uma malha perfeitamente estável — e, em modo
++monitor, `STATUS.{id}` simplesmente para (o `MonitorWorker` é o único produtor).
++Medido antes da correção: `sample_count` congelado em 20 enquanto o PIDWorker
++registrava 50 erros e seguia rodando.
++
++**Correção:** mesmo guard do `PIDWorker` nos dois (log + `wait(scan_s)` para
++não girar a 100 % de CPU).
++**Testes:** `test_retention_and_worker_survival.py::TestWorkersSurviveACorruptedFrame`
++(2 testes) — ambos falham sem a correção.
++
++### D4 — a "falha ambiental" da porta 4849 era um defeito do fixture
++
++A suíte carregava um vermelho permanente (`test_opcua_start_stop`) sempre que
++um daemon estivesse rodando, porque `sim_api_deps` construía `CoreSettings`
++sem `simulator_port` — e o `.env` do repositório manda 4849, a porta que o
++daemon do desenvolvedor já ocupa. O fixture passa a pedir uma porta livre ao
++SO. Prova: `SPID_SIMULATOR_PORT=18999 pytest test_api_simulator.py` já passava
++13/13 antes da mudança, com o daemon do usuário no ar.
++
++## Notas de execução
++
++- **E2E-IMP-04 roda in-process.** O barramento é `inproc://`, então um frame
++  corrompido só pode ser publicado de dentro do processo. O teste monta os
++  mesmos objetos que `run_daemon` monta (EventBus + LoopManager + workers
++  reais) e usa `lm.set_setpoint`, que é exatamente o que
++  `POST /commands/setpoint` chama. A camada HTTP sobre esses objetos está
++  coberta por IMP-01/03.
++- **E2E-FIX-01/02 usam o motor pré-correção tirado do git** (`6d9b552`) como
++  lado "antes", não um mock — o A/B é a mudança de código real.
++- **E2E-FIX-06 no navegador**, SPA servida por `vite preview` (porta 5199)
++  com proxy para o daemon de teste. A propriedade "não replica a rajada" só é
++  observável no nível de unidade (`resyncBuffer.test.tsx`): a coalescência
++  acontece num único tick de React, então o DOM nunca mostra os frames
++  intermediários. O que o navegador prova é o efeito visível dela — depois do
++  resync a tela mostra o valor **atual**, não o congelado de antes da queda.
++
++## Verificação final
++
++- Backend: `1633 passed, 0 failed` (com o daemon do usuário no ar).
++- Frontend: `897 passed / 94 arquivos`, `tsc -b` limpo.
++- `ruff` limpo em todos os arquivos alterados.
+diff --git a/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/error_handlers.py b/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/error_handlers.py
+index 60fe585..6831a2b 100644
+--- a/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/error_handlers.py
++++ b/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/error_handlers.py
+@@ -1,7 +1,11 @@
+ """Global exception handlers mapping domain exceptions to HTTP status codes."""
+ from __future__ import annotations
+ 
++from math import isfinite
++
+ from fastapi import FastAPI, Request
++from fastapi.encoders import jsonable_encoder
++from fastapi.exceptions import RequestValidationError
+ from fastapi.responses import JSONResponse
+ 
+ from smart_pid_domain.exceptions import (
+@@ -12,9 +16,38 @@ from smart_pid_domain.exceptions import (
+ )
+ 
+ 
++def _json_renderable(value: object) -> object:
++    """Return *value* with every non-finite float replaced by its name.
++
++    A validation error echoes the rejected input back to the client, and
++    ``JSONResponse`` renders with ``allow_nan=False``. So the DTOs that refuse
++    NaN/inf (``FiniteFloat``) produced a correct 422 whose *body* then failed
++    to serialise — ``ValueError: Out of range float values are not JSON
++    compliant`` — turning every non-finite command into a 500. Stringifying
++    the echo keeps the error legible and the response renderable.
++    """
++    if isinstance(value, float):
++        return value if isfinite(value) else str(value)
++    if isinstance(value, dict):
++        return {k: _json_renderable(v) for k, v in value.items()}
++    if isinstance(value, list):
++        return [_json_renderable(v) for v in value]
++    return value
++
++
+ def register_error_handlers(app: FastAPI) -> None:
+     """Register global exception handlers on the FastAPI app."""
+ 
++    @app.exception_handler(RequestValidationError)
++    async def _validation_error(
++        request: Request, exc: RequestValidationError
++    ) -> JSONResponse:
++        # Same shape as FastAPI's default handler, minus the unrenderable floats.
++        return JSONResponse(
++            status_code=422,
++            content={"detail": _json_renderable(jsonable_encoder(exc.errors()))},
++        )
++
+     @app.exception_handler(ControllerNotFoundError)
+     async def _controller_not_found(
+         request: Request, exc: ControllerNotFoundError
+diff --git a/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/routers/controllers.py b/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/routers/controllers.py
+index 7afb01e..57c0447 100644
+--- a/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/routers/controllers.py
++++ b/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/routers/controllers.py
+@@ -17,7 +17,7 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
+     require_admin,
+     require_user,
+ )
+-from smart_pid_core.adapters.inbound.simulator_adapter import SIMULATOR_MODE_INT_MAP
++from smart_pid_core.adapters.inbound.simulator_adapter import bind_opcua_client
+ from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository  # noqa: TC001
+ from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
+ from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+@@ -589,22 +589,7 @@ def _sync_opcua_registration(request: Request, controller: Controller) -> None:
+     sim = getattr(request.app.state, "simulator_adapter", None)
+     try:
+         if sim is not None:
+-            nodes = sim.opcua_node_ids(controller.id)
+-            if not nodes:
+-                return
+-            mode_node = nodes.get("mode", "")
+-            adapter.register_controller(
+-                controller_id=controller.id,
+-                node_id_pv=nodes.get("pv", ""),
+-                node_id_sp=nodes.get("sp", ""),
+-                node_id_co=nodes.get("co", ""),
+-                node_id_kp=nodes.get("kp", ""),
+-                node_id_ti=nodes.get("ti", ""),
+-                node_id_td=nodes.get("td", ""),
+-                node_id_mode_target=mode_node,
+-                node_id_mode_actual=mode_node,
+-                mode_int_map=dict(SIMULATOR_MODE_INT_MAP),
+-            )
++            bind_opcua_client(adapter, sim, [controller.id])
+         else:
+             _reregister_opcua(request, controller)
+     except Exception:
+diff --git a/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/simulator_adapter.py b/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/simulator_adapter.py
+index deabd35..eb322e1 100644
+--- a/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/simulator_adapter.py
++++ b/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/simulator_adapter.py
+@@ -21,6 +21,8 @@ from smart_pid_domain.models.process_preset import PRESETS
+ from smart_pid_domain.models.signal import FFSignal
+ 
+ if TYPE_CHECKING:
++    from collections.abc import Iterable
++
+     from smart_pid_core.config import CoreSettings
+     from smart_pid_domain.enums import ProcessPresetName
+ 
+@@ -81,6 +83,45 @@ class _ControllerSim:
+ # needs it to decode Mode back into a ControllerMode.
+ SIMULATOR_MODE_INT_MAP: dict[str, int] = {"MAN": 0, "AUTO": 1}
+ 
++
++def bind_opcua_client(
++    opcua_adapter: object,
++    simulator_adapter: SimulatorAdapter,
++    controller_ids: Iterable[int],
++) -> list[int]:
++    """Point the OPC-UA *client* adapter at the twin's nodes for these ids.
++
++    In simulator mode the twin owns the address space, so a controller's
++    ``tag_bindings`` are empty and the client adapter has to be registered
++    against the node ids the simulator minted. That rule was being spelled out
++    at every wiring site (daemon boot, ``POST /controllers``, project switch);
++    keeping it here means the three cannot drift — and a project opened after
++    boot is exactly the case that had been missed.
++
++    Returns the ids that were bound (ones the twin does not know are skipped).
++    """
++    bound: list[int] = []
++    for cid in controller_ids:
++        nodes = simulator_adapter.opcua_node_ids(cid)
++        if not nodes:
++            continue
++        mode_node = nodes.get("mode", "")
++        opcua_adapter.register_controller(  # type: ignore[attr-defined]
++            controller_id=cid,
++            node_id_pv=nodes.get("pv", ""),
++            node_id_sp=nodes.get("sp", ""),
++            node_id_co=nodes.get("co", ""),
++            node_id_kp=nodes.get("kp", ""),
++            node_id_ti=nodes.get("ti", ""),
++            node_id_td=nodes.get("td", ""),
++            node_id_mode_target=mode_node,
++            node_id_mode_actual=mode_node,
++            mode_int_map=dict(SIMULATOR_MODE_INT_MAP),
++        )
++        bound.append(cid)
++    return bound
++
++
+ # The twin's internal PID runs on a fixed 1 s scan, decoupled from the faster
+ # simulation tick: the process model still integrates every tick for a smooth
+ # PV, but the controller only samples/acts once per second (zero-order hold on
+diff --git a/packages/smart_pid_core/src/smart_pid_core/application/project_service.py b/packages/smart_pid_core/src/smart_pid_core/application/project_service.py
+index fe812c3..81ab791 100644
+--- a/packages/smart_pid_core/src/smart_pid_core/application/project_service.py
++++ b/packages/smart_pid_core/src/smart_pid_core/application/project_service.py
+@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
+ 
+ import aiosqlite
+ 
++from smart_pid_core.adapters.inbound.simulator_adapter import bind_opcua_client
+ from smart_pid_domain.dtos.project import (
+     ProjectListItem,
+     ProjectResponse,
+@@ -125,6 +126,7 @@ class ProjectService:
+         if self._daemon_state:
+             self._daemon_state.set_active_project(name)
+         self._start_db_worker()
++        await self._resync_simulator_link()
+         return ProjectResponse(
+             name=name,
+             path=dest.name,
+@@ -145,6 +147,7 @@ class ProjectService:
+         if self._daemon_state:
+             self._daemon_state.set_active_project(name)
+         self._start_db_worker()
++        await self._resync_simulator_link()
+         return await self.get_current()
+ 
+     async def import_project(self, name: str, source: Path) -> ProjectResponse:
+@@ -175,6 +178,7 @@ class ProjectService:
+         if self._daemon_state:
+             self._daemon_state.set_active_project(name)
+         self._start_db_worker()
++        await self._resync_simulator_link()
+         return await self.get_current()
+ 
+     async def _assert_valid_archive(self, source: Path) -> None:
+@@ -290,10 +294,40 @@ class ProjectService:
+         ):
+             self._simulator_adapter.stop()
+ 
++    async def _resync_simulator_link(self) -> None:
++        """Bring the twin and its OPC-UA client back up after a project switch.
++
++        Every project entry point stops the simulator (and ``new_project`` the
++        OPC-UA client too) to drop the previous project's state, but nothing
++        started them again: from the first project switch on, the twin stopped
++        integrating and ``IOWorker`` — which skips its whole scan while the
++        adapter is offline, silently — published no TELEMETRY at all. The loops
++        were live and ``/system/status`` healthy, with every stats counter
++        frozen at zero until a daemon restart.
++
++        No-op without a simulator: against a real DCS the endpoint comes from
++        the project (``_load_opcua_endpoint``), not from us.
++        """
++        sim = self._simulator_adapter
++        if sim is None:
++            return
++        if hasattr(sim, "start"):
++            sim.start()
++        if self._opcua_adapter is None or not hasattr(sim, "opcua_node_ids"):
++            return
++        controllers = await self._repo.list_all()
++        bind_opcua_client(self._opcua_adapter, sim, [c.id for c in controllers])
++        self._opcua_adapter.start()
++
+     async def _load_opcua_endpoint(self) -> None:
+         """Read opcua_endpoint from metadata and auto-connect or stop adapter."""
+         if self._opcua_adapter is None:
+             return
++        if self._simulator_adapter is not None:
++            # The twin owns the address space and the endpoint the factory
++            # already pointed the client at; a stale real-DCS endpoint saved in
++            # the project must not steal the client away from it.
++            return
+         endpoint = await self._repo.get_meta("opcua_endpoint")
+         if endpoint:
+             if endpoint != self._opcua_adapter.endpoint or not self._opcua_adapter.is_connected:
+diff --git a/packages/smart_pid_core/src/smart_pid_core/application/workers/monitor_worker.py b/packages/smart_pid_core/src/smart_pid_core/application/workers/monitor_worker.py
+index 5c451d2..4ad762c 100644
+--- a/packages/smart_pid_core/src/smart_pid_core/application/workers/monitor_worker.py
++++ b/packages/smart_pid_core/src/smart_pid_core/application/workers/monitor_worker.py
+@@ -16,6 +16,7 @@ import time
+ from typing import TYPE_CHECKING
+ 
+ import msgpack
++import zmq
+ 
+ if TYPE_CHECKING:
+     from smart_pid_core.application.event_bus import EventBus
+@@ -76,19 +77,31 @@ class MonitorWorker:
+ 
+         try:
+             while not self._stop_event.is_set():
+-                tick_start = time.monotonic()
+-                latest = self._drain_latest(sub)
+-                if latest is not None:
+-                    status_msg = self._enrich(latest)
+-                    pub.send(
+-                        f"STATUS.{self._cid}".encode(),
+-                        msgpack.packb(status_msg),
++                try:
++                    tick_start = time.monotonic()
++                    latest = self._drain_latest(sub)
++                    if latest is not None:
++                        status_msg = self._enrich(latest)
++                        pub.send(
++                            f"STATUS.{self._cid}".encode(),
++                            msgpack.packb(status_msg),
++                        )
++
++                    elapsed = time.monotonic() - tick_start
++                    sleep_time = self._scan_rate_s - elapsed
++                    if sleep_time > 0:
++                        self._stop_event.wait(timeout=sleep_time)
++                except zmq.ZMQError:
++                    break
++                except Exception:
++                    # Monitor mode has no PIDWorker, so this thread is the only
++                    # producer of STATUS.{id}: losing it to one bad frame
++                    # freezes every faceplate on the loop with nothing logged.
++                    # Same guard, and same paced retry, as PIDWorker._loop.
++                    logger.exception(
++                        "monitor_worker_iteration_error controller_id=%s", self._cid,
+                     )
+-
+-                elapsed = time.monotonic() - tick_start
+-                sleep_time = self._scan_rate_s - elapsed
+-                if sleep_time > 0:
+-                    self._stop_event.wait(timeout=sleep_time)
++                    self._stop_event.wait(timeout=self._scan_rate_s)
+         finally:
+             sub.close()
+             pub.close()
+diff --git a/packages/smart_pid_core/src/smart_pid_core/application/workers/stats_worker.py b/packages/smart_pid_core/src/smart_pid_core/application/workers/stats_worker.py
+index d8fa32a..dbacd24 100644
+--- a/packages/smart_pid_core/src/smart_pid_core/application/workers/stats_worker.py
++++ b/packages/smart_pid_core/src/smart_pid_core/application/workers/stats_worker.py
+@@ -188,6 +188,18 @@ class StatsWorker:
+                     self._stop_event.wait(timeout=sleep_time)
+             except zmq.ZMQError:
+                 break
++            except Exception:
++                # A single malformed frame must not take the metrics thread
++                # down: /controllers/{id}/stats would keep serving the last
++                # snapshot forever, so a dead worker looks exactly like a
++                # perfectly steady loop. Same guard, same reason, as
++                # PIDWorker._loop — including the paced retry, without which
++                # a persistent fault spins this thread at 100% CPU.
++                logger.exception(
++                    "stats_worker_iteration_error controller_id=%d",
++                    self.controller_id,
++                )
++                self._stop_event.wait(timeout=scan_s)
+ 
+     def _drain_telemetry(self, sub) -> None:
+         while True:
+diff --git a/packages/smart_pid_core/src/smart_pid_core/main.py b/packages/smart_pid_core/src/smart_pid_core/main.py
+index 17d9c7c..4a7c30f 100644
+--- a/packages/smart_pid_core/src/smart_pid_core/main.py
++++ b/packages/smart_pid_core/src/smart_pid_core/main.py
+@@ -17,7 +17,7 @@ from smart_pid_core.adapters.factory import AdapterFactory
+ from smart_pid_core.adapters.inbound.api.app import create_app
+ from smart_pid_core.adapters.inbound.api.auth import hash_password
+ from smart_pid_core.adapters.inbound.sim_persistence import persist_sim_config
+-from smart_pid_core.adapters.inbound.simulator_adapter import SIMULATOR_MODE_INT_MAP
++from smart_pid_core.adapters.inbound.simulator_adapter import bind_opcua_client
+ from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
+ from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+ from smart_pid_core.adapters.outbound.user_repo import UserRepository
+@@ -430,38 +430,17 @@ async def run_daemon(settings: CoreSettings) -> None:
+     opcua_adapter = adapter_factory.opcua_adapter
+     if opcua_adapter is not None:
+         if simulator_adapter is not None:
+-            # Simulator mode: use the simulator's actual node IDs (auto-assigned)
+-            # but keep mode_int_map from database (user-configured mapping)
+-            sim_node_ids = simulator_adapter._opcua_server.controller_node_ids
+-            # The mode map comes from the simulator, not the database, for the
+-            # same reason the node ids do: in simulator mode the twin owns the
+-            # address space, so it also owns how its Mode node is encoded. The
+-            # DB's tag_bindings describe a real DCS and are empty for every
+-            # controller the simulator auto-registered ({} -> read_actual_mode
+-            # returns None -> every STATUS frame reported mode "UNKNOWN").
+-            # Not persisted back to the project: that would duplicate a
+-            # constant the simulator owns, drift if its encoding changed, and
+-            # mutate the user's .spid file as a side effect of enabling the
+-            # simulator.
+-            for ctrl_id, nodes in sim_node_ids.items():
+-                mode_map = dict(SIMULATOR_MODE_INT_MAP)
+-                mode_node = nodes.get("mode", "")
+-                opcua_adapter.register_controller(
+-                    controller_id=ctrl_id,
+-                    node_id_pv=nodes.get("pv", ""),
+-                    node_id_sp=nodes.get("sp", ""),
+-                    node_id_co=nodes.get("co", ""),
+-                    node_id_kp=nodes.get("kp", ""),
+-                    node_id_ti=nodes.get("ti", ""),
+-                    node_id_td=nodes.get("td", ""),
+-                    node_id_mode_target=mode_node,
+-                    node_id_mode_actual=mode_node,
+-                    mode_int_map=mode_map,
+-                )
+-            logger.info(
+-                "opcua_adapter_registered_from_simulator",
+-                controllers=list(sim_node_ids.keys()),
++            # The twin owns the address space, so both the node ids and the
++            # Mode encoding come from it and not from the project's
++            # tag_bindings (empty for every simulator-registered controller).
++            # Same binding is applied on POST /controllers and on project
++            # open — see bind_opcua_client.
++            bound = bind_opcua_client(
++                opcua_adapter,
++                simulator_adapter,
++                list(simulator_adapter._opcua_server.controller_node_ids),
+             )
++            logger.info("opcua_adapter_registered_from_simulator", controllers=bound)
+         else:
+             # Real OPC-UA: use database tag_bindings
+             controllers = await repo.list_all()
+diff --git a/tests/conftest.py b/tests/conftest.py
+index bf1b962..bccbea3 100644
+--- a/tests/conftest.py
++++ b/tests/conftest.py
+@@ -1,6 +1,7 @@
+ """Root test configuration for the Smart PID platform."""
+ from __future__ import annotations
+ 
++import socket
+ import uuid
+ from functools import cache
+ 
+@@ -28,6 +29,20 @@ def _cached_hash(password: str) -> str:
+     return hash_password(password)
+ 
+ 
++def _free_port() -> int:
++    """An OS-assigned free TCP port for the in-test OPC-UA server.
++
++    The simulator port used to come from settings, i.e. from the repo's own
++    ``.env`` (4849) — the port a developer's daemon is already listening on.
++    The suite then failed with "OPCUAServer failed to start within 10s" for a
++    reason that has nothing to do with the code under test, and that red was
++    carried across sessions as "environmental".
++    """
++    with socket.socket() as s:
++        s.bind(("127.0.0.1", 0))
++        return int(s.getsockname()[1])
++
++
+ async def principal_headers(api_deps, username: str, role: str) -> dict[str, str]:
+     """Create the user row for a principal and mint a matching token.
+ 
+@@ -185,6 +200,7 @@ async def sim_api_deps(tmp_path):
+         jwt_secret="test-secret-key-minimum-32-bytes!",
+         simulator_enabled=True,
+         simulator_interval_ms=50,
++        simulator_port=_free_port(),
+     )  # type: ignore[call-arg]
+ 
+     await user_repo.create("admin", _cached_hash("admin"), "admin")
+diff --git a/tests/core/integration/test_api_commands.py b/tests/core/integration/test_api_commands.py
+index b437fae..40f730d 100644
+--- a/tests/core/integration/test_api_commands.py
++++ b/tests/core/integration/test_api_commands.py
+@@ -79,6 +79,26 @@ class TestSetpointCommand:
+         )
+         assert resp.status_code == 401
+ 
++    @pytest.mark.asyncio
++    @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
++    async def test_setpoint_non_finite_literal_is_422(
++        self, client: AsyncClient, user_headers: dict[str, str], literal: str
++    ) -> None:
++        """A non-finite JSON literal must be refused with a renderable body.
++
++        ``json.loads`` accepts these literals, so the value reaches the DTO and
++        is rejected there — but the 422 echoes it back, and JSONResponse
++        renders with allow_nan=False. Without the sanitising handler the
++        response itself raised and the client saw a 500.
++        """
++        resp = await client.post(
++            "/commands/setpoint",
++            content=f'{{"controller_id": 1, "value": {literal}}}',
++            headers={**user_headers, "Content-Type": "application/json"},
++        )
++        assert resp.status_code == 422
++        assert resp.json()["detail"][0]["type"] == "finite_number"
++
+ 
+ class TestModeCommand:
+     @pytest.mark.asyncio
+diff --git a/tests/core/integration/test_retention_and_worker_survival.py b/tests/core/integration/test_retention_and_worker_survival.py
+index c2c85a0..8ca780d 100644
+--- a/tests/core/integration/test_retention_and_worker_survival.py
++++ b/tests/core/integration/test_retention_and_worker_survival.py
+@@ -29,7 +29,10 @@ from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
+ from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+ from smart_pid_core.application.event_bus import EventBus
+ from smart_pid_core.application.workers.db_worker import DBWorker
++from smart_pid_core.application.workers.monitor_worker import MonitorWorker
++from smart_pid_core.application.workers.stats_worker import StatsWorker
+ from smart_pid_core.main import _retention_cleanup
++from smart_pid_domain.models.controller import Controller
+ 
+ 
+ @pytest.fixture
+@@ -209,3 +212,90 @@ class TestDBWorkerSurvivesFlushFailure:
+             assert worker.flush_failures >= 1, "the dropped batch must be counted"
+         finally:
+             worker.stop()
++
++
++def _telemetry(cid: int, pv: float | None) -> bytes:
++    """A frame shaped exactly like IOWorker's, with a settable PV value."""
++    def sig(v: float | None) -> dict:
++        return {
++            "value": v, "severity": "GOOD",
++            "limit_bits": "NONE", "sub_status": "NONE",
++        }
++
++    return msgpack.packb({
++        "controller_id": cid,
++        "pv": sig(pv), "sp": sig(50.0), "co": sig(10.0), "bkcal_in": sig(10.0),
++        "mode": "AUTO", "pid_enabled": True, "integral_val": 0.0,
++        "timestamp": datetime.now(tz=UTC).isoformat(),
++    })
++
++
++class TestWorkersSurviveACorruptedFrame:
++    """D3/D4: a frame with ``pv.value = null`` used to kill two worker threads.
++
++    ``PIDWorker`` got its ``except Exception`` guard earlier; ``StatsWorker``
++    and ``MonitorWorker`` were missed. Both raise a ``TypeError`` on a null PV
++    (``None`` reaches arithmetic), which is not ``zmq.ZMQError`` and so escaped
++    the loop and ended the thread — with nothing logged. The metrics endpoint
++    then served a frozen snapshot forever and, in monitor mode, ``STATUS.{id}``
++    stopped entirely: both look exactly like a perfectly steady loop.
++    """
++
++    @pytest.fixture
++    def bus(self):
++        b = EventBus(url_prefix=f"inproc://test_badframe_{uuid.uuid4().hex[:8]}")
++        b.start()
++        yield b
++        b.stop()
++
++    def test_stats_worker_survives_null_pv(self, bus) -> None:
++        ctrl = Controller(id=31, name="TIC-031", scan_rate_s=0.05, tss_s=5.0)
++        worker = StatsWorker(bus=bus, controller=ctrl)
++        worker.start()
++        try:
++            pub = bus.create_publisher()
++            time.sleep(0.1)
++            for _ in range(4):
++                pub.send(b"TELEMETRY.31", _telemetry(31, 20.0))
++                time.sleep(0.05)
++            time.sleep(0.2)
++            healthy = worker.get_current_stats()["sample_count"]
++            assert healthy > 0, "no samples were accumulated before the bad frame"
++
++            pub.send(b"TELEMETRY.31", _telemetry(31, None))
++            time.sleep(0.3)
++            assert worker._thread is not None and worker._thread.is_alive(), (
++                "stats thread died on a corrupted frame"
++            )
++
++            for _ in range(4):
++                pub.send(b"TELEMETRY.31", _telemetry(31, 21.0))
++                time.sleep(0.05)
++            time.sleep(0.3)
++            assert worker.get_current_stats()["sample_count"] > healthy, (
++                "stats stopped advancing after a corrupted frame"
++            )
++        finally:
++            worker.stop()
++
++    def test_monitor_worker_survives_null_pv(self, bus) -> None:
++        worker = MonitorWorker(bus=bus, controller_id=32, scan_rate_s=0.05)
++        worker.start()
++        try:
++            pub = bus.create_publisher()
++            status_sub = bus.create_subscriber(b"STATUS.32")
++            time.sleep(0.1)
++
++            pub.send(b"TELEMETRY.32", _telemetry(32, None))
++            time.sleep(0.3)
++            assert worker.is_alive(), "monitor thread died on a corrupted frame"
++
++            while status_sub.recv(timeout_ms=0) is not None:
++                pass
++            pub.send(b"TELEMETRY.32", _telemetry(32, 21.0))
++            time.sleep(0.3)
++            assert status_sub.recv(timeout_ms=500) is not None, (
++                "STATUS stopped being published after a corrupted frame"
++            )
++        finally:
++            worker.stop()
+diff --git a/tests/core/unit/test_project_service.py b/tests/core/unit/test_project_service.py
+index 9971fca..89fa15e 100644
+--- a/tests/core/unit/test_project_service.py
++++ b/tests/core/unit/test_project_service.py
+@@ -356,3 +356,112 @@ async def test_import_project_saves_daemon_state(
+ 
+     await service_with_state.import_project("imp_state", src)
+     assert daemon_state.active_project == "imp_state"
++
++
++class _FakeTwin:
++    """Simulator stand-in that records start/stop and mints node ids."""
++
++    def __init__(self) -> None:
++        self.running = False
++        self.registered: list[int] = []
++
++    def start(self) -> None:
++        self.running = True
++
++    def stop(self) -> None:
++        self.running = False
++
++    def register_controller(self, cid: int, pv_min: float = 0.0, pv_max: float = 100.0):
++        self.registered.append(cid)
++
++    def load_sim_config(self, cfg: dict) -> None:  # pragma: no cover - unused here
++        pass
++
++    def opcua_node_ids(self, cid: int) -> dict[str, str]:
++        return {k: f"ns=2;s=CTRL_{cid}.{k}" for k in ("pv", "sp", "co", "kp", "ti", "td", "mode")}
++
++
++class _FakeClient:
++    """OPC-UA client stand-in recording registrations and start/stop."""
++
++    endpoint = "opc.tcp://twin:4849"
++    is_connected = True
++
++    def __init__(self) -> None:
++        self.running = False
++        self.bound: list[int] = []
++
++    def start(self) -> None:
++        self.running = True
++
++    def stop(self) -> None:
++        self.running = False
++
++    def register_controller(self, controller_id: int, **_kw) -> None:
++        self.bound.append(controller_id)
++
++
++@pytest.fixture
++def simulator_service(repo, loop_manager, projects_dir):
++    twin, client = _FakeTwin(), _FakeClient()
++    svc = ProjectService(
++        repo=repo,
++        loop_manager=loop_manager,
++        projects_dir=projects_dir,
++        simulator_adapter=twin,
++        opcua_adapter=client,
++    )
++    return svc, twin, client
++
++
++async def _seed_project(projects_dir, name: str, controller_ids: list[int]) -> None:
++    path = projects_dir / f"{name}.spid"
++    prep = SQLiteRepository(path)
++    await prep.initialize()
++    await prep.set_meta("nome", name)
++    from smart_pid_domain.models.controller import Controller
++
++    for cid in controller_ids:
++        saved = await prep.save(Controller(id=0, name=f"TIC-{cid}"))
++        assert saved.id == cid, "seed helper assumes sequential ids"
++    await prep.close()
++
++
++@pytest.mark.asyncio
++async def test_open_project_relinks_twin_and_opcua_client(
++    simulator_service, projects_dir,
++):
++    """RED before the fix: both adapters were stopped and never restarted.
++
++    IOWorker skips its entire scan while the client is offline — silently — so
++    every loop in the freshly opened project produced zero telemetry until the
++    daemon was restarted.
++    """
++    svc, twin, client = simulator_service
++    await _seed_project(projects_dir, "plantB", [1, 2])
++
++    await svc.open_project("plantB")
++
++    assert twin.running, "simulator left stopped after opening a project"
++    assert client.running, "OPC-UA client left stopped after opening a project"
++    assert sorted(client.bound) == [1, 2], "client not bound to the new project's nodes"
++
++
++@pytest.mark.asyncio
++async def test_new_project_keeps_the_twin_running(simulator_service):
++    """A controller created right after /project/new must be simulated."""
++    svc, twin, client = simulator_service
++    await svc.new_project("fresh")
++    assert twin.running
++    assert client.running
++
++
++@pytest.mark.asyncio
++async def test_import_project_relinks_twin_and_opcua_client(
++    simulator_service, projects_dir,
++):
++    svc, twin, client = simulator_service
++    src = await _make_archive(projects_dir.parent / "imported.spid")
++    await svc.import_project("imported", src)
++    assert twin.running
++    assert client.running

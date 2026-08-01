@@ -87,3 +87,86 @@ that a single bugfix pass cannot take unilaterally.
     a product call about network cost per operator screen.
   - **Source:** design-system rewrite 2026-07-28
   - **Created:** 2026-07-30
+
+- [ ] **TD-016**: No worker-liveness signal — a stuck worker is indistinguishable
+      from a healthy steady loop
+  - **Impact:** High
+  - **Detail:** The 2026-07-31 diff added catch-all guards so a bad frame can no
+    longer kill `MonitorWorker`/`StatsWorker`. L4's verdict is that this
+    *relocates* the observability gap rather than closing it: a worker that
+    survives but retries forever still serves a frozen
+    `/controllers/{id}/stats` snapshot that looks exactly like a perfectly
+    steady loop. Nothing — `/system/status`, `LoopManager.is_loop_running`,
+    `get_stats_workers`, `AlarmWorker` — reads worker liveness or a
+    consecutive-failure count. Closing it means a heartbeat or failure counter
+    surfaced on the health endpoint; larger than any one bugfix.
+  - **Source:** `.claude/reports/sre/L4-reliability-20260731.md`
+  - **Created:** 2026-07-31
+
+- [ ] **TD-017**: Unbounded paced retry is now the shape in 3 of 5 worker loops
+  - **Impact:** Medium
+  - **Detail:** `monitor_worker.py:96-104` and `stats_worker.py:191-202` were
+    deliberately modelled on `pid_worker.py:552-565`. The comment is accurate —
+    which is the problem: the pattern carries no retry budget, no circuit
+    breaker, and no escalation, so a permanent fault (e.g. `self._last_pv=None`
+    never reset at `stats_worker.py:150-151`) re-raises every tick forever.
+    Fixing two of five loops in isolation entrenches the divergence; do all five
+    together with a shared consecutive-error counter.
+  - **Source:** `.claude/reports/sre/L4-reliability-20260731.md`
+  - **Created:** 2026-07-31
+
+- [ ] **TD-018**: "Simulator owns the OPC-UA endpoint" invariant has no owner
+  - **Impact:** High
+  - **Detail:** `project_service.py:326-331` now abstains from applying a saved
+    endpoint in simulator mode, but three other paths can still break the
+    invariant: `AdapterFactory.__init__` sets it once, and `PUT
+    /opcua/endpoint` (`opcua.py:85-86`) plus `POST /opcua/connect`
+    (`opcua.py:96-99`) call `set_endpoint()` with no simulator guard. Worse,
+    `_resync_simulator_link` restarts the client without re-asserting the
+    endpoint, so after an admin points it at a real DCS every later project
+    switch re-arms the wrong endpoint while binding twin node ids. Needs one
+    enforcing owner at the boundary.
+  - **Source:** `.claude/reports/review/L2-arch-20260731.md`
+  - **Created:** 2026-07-31
+
+- [ ] **TD-019**: `register_controller` names two unrelated contracts
+  - **Impact:** Medium
+  - **Detail:** `SimulatorAdapter.register_controller(id, pv_min, pv_max)`
+    (`simulator_adapter.py:323`) creates simulation state;
+    `OPCUAAdapter.register_controller(id, node_id_*, mode_int_map)`
+    (`opcua_adapter.py:212`) records a tag address map. Same name, unrelated
+    contracts, in the two modules `bind_opcua_client` exists to bridge. Already
+    load-bearing: `project_service.py:262` probes the name with `hasattr`, a
+    check that passes for either adapter. Rename the outbound one to
+    `bind_tags`; three call sites.
+  - **Source:** `.claude/reports/review/L2-arch-20260731.md`
+  - **Created:** 2026-07-31
+
+- [ ] **TD-020**: `application/` imports concrete adapters instead of ports
+  - **Impact:** Medium
+  - **Detail:** Pre-existing and systemic, not introduced by any one change:
+    `application/workers/db_worker.py:16-17` imports
+    `adapters.outbound.db_engine` and `adapters.outbound.historian` at module
+    level, and `ProjectService` types its adapter slots as `object | None`
+    (`project_service.py:50`), forcing `hasattr` probes and `# type: ignore`
+    throughout. `domain/ports/` already holds the right pattern
+    (`TelemetrySource`, `ControlWriter`, `ControllerRepository`). Remediation is
+    a ports-and-injection program across the worker layer — deliberately out of
+    scope for bugfix PRs. Note: protocol-specific contracts such as OPC-UA tag
+    binding must be declared in the adapter layer, NOT in the dependency-free
+    domain package.
+  - **Source:** `.claude/reports/review/L2-arch-20260731.md`
+  - **Created:** 2026-07-31
+
+- [ ] **TD-021**: No request body size or JSON nesting-depth limit
+  - **Impact:** Low
+  - **Detail:** `fastapi.encoders.jsonable_encoder` raises an uncaught
+    `RecursionError` on a ~990-level-deep wrong-typed body (~12 KB payload),
+    turning a would-be 422 into a 500. Pre-existing FastAPI framework
+    behaviour — the stock handler calls the same function — and bounded: the
+    route requires an authenticated admin token, and Starlette's
+    `ServerErrorMiddleware` sends the 500 before re-raising, so it is not a
+    daemon-wide DoS. `app.py` has no body-size or depth middleware. Add a
+    nesting guard, or wrap the handler in `except RecursionError -> generic 422`.
+  - **Source:** `.claude/reports/security/L3-security-20260731.md`
+  - **Created:** 2026-07-31
