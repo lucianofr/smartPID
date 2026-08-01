@@ -75,3 +75,32 @@ test('the optimizer stability band is editable and blank means "inherit global"'
   await band.fill('0.5');
   await expect(band).toHaveValue('0.5');
 });
+
+/**
+ * One `limit_min`/`limit_max` pair clamps whichever integral parameter the
+ * loop uses, so the label has to follow the radio above it — a box labelled Ti
+ * holding a Ki bound is how an operator clamps the wrong quantity.
+ */
+test('the integral limits are labelled after the loop integral type', async ({ page }) => {
+  await gotoDashboard(page);
+  const dialog = await openConfig(page);
+
+  await expect(dialog.getByRole('spinbutton', { name: 'Ti mínimo' })).toBeVisible();
+  await expect(dialog.getByRole('spinbutton', { name: 'Ti máximo' })).toBeVisible();
+
+  await dialog.getByRole('radio', { name: 'Ganho Integral (Ki)' }).check();
+  await expect(dialog.getByRole('spinbutton', { name: 'Ki mínimo' })).toBeVisible();
+  await expect(dialog.getByRole('spinbutton', { name: 'Ki máximo' })).toBeVisible();
+  await expect(dialog.getByRole('spinbutton', { name: 'Ti mínimo' })).toHaveCount(0);
+});
+
+test('the level band appears only for the SURGE_LEVEL objective', async ({ page }) => {
+  await gotoDashboard(page);
+  const dialog = await openConfig(page);
+  const levelMin = dialog.getByRole('spinbutton', { name: 'Nível mín. (%)' });
+
+  await expect(levelMin).toHaveCount(0);
+  await dialog.getByRole('combobox', { name: 'Objetivo' }).selectOption('SURGE_LEVEL');
+  await expect(levelMin).toBeVisible();
+  await expect(dialog.getByRole('spinbutton', { name: 'Nível máx. (%)' })).toBeVisible();
+});
