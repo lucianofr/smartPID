@@ -290,6 +290,21 @@ _CONTROLADORES_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("sl_band_hi_pct", "REAL"),
     ("sl_error_small_pct", "REAL NOT NULL DEFAULT 5.0"),
     ("sl_co_ramp_max_pct_min", "REAL NOT NULL DEFAULT 10.0"),
+    # Mode command/readback tags + the loop's PLC integer<->mode mapping.
+    # Added to _DDL with the mode-tag feature; without these three a
+    # pre-existing .spid makes the save() INSERT raise "table Controladores
+    # has no column named node_id_mode_target" and POST /controllers 500s.
+    ("node_id_mode_target", "TEXT NOT NULL DEFAULT ''"),
+    ("node_id_mode_actual", "TEXT NOT NULL DEFAULT ''"),
+    ("mode_int_map", "TEXT NOT NULL DEFAULT '{}'"),
+)
+
+# Alarm on/off delays shipped after the first Configuracao_Alarmes generation.
+# AlarmRepository names both in its SELECT and its INSERT, so a stale file
+# fails every read AND write of a controller's alarm config.
+_ALARMES_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("delay_on_s", "REAL NOT NULL DEFAULT 0.0"),
+    ("delay_off_s", "REAL NOT NULL DEFAULT 0.0"),
 )
 
 # Configuracao_Simulador shipped in three generations: 6 columns, then +pid_*
@@ -393,6 +408,9 @@ class SQLiteRepository:
         await self._add_missing_columns(driver, "Controladores", _CONTROLADORES_ADDED_COLUMNS)
         await self._add_missing_columns(
             driver, "Configuracao_Simulador", _SIM_ADDED_COLUMNS,
+        )
+        await self._add_missing_columns(
+            driver, "Configuracao_Alarmes", _ALARMES_ADDED_COLUMNS,
         )
 
     async def _migrate_scan_rate(self, driver: aiosqlite.Connection) -> None:
