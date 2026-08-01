@@ -27,9 +27,40 @@ and update your row when done.
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
 | 001  | Make the RL engine safely and effectively optimize the PID integral term (Ti/Ki) | P1 | L | — | **DONE (E2E)** — 14/14 E2E tests PASS, see below |
-| 002  | Fuzzy integral optimizer — revisão das 3 bases de regras + Surge Level v3 (faixa de PV configurável, gate de rampa de CO) | P1 | M | — | TODO |
+| 002  | Fuzzy integral optimizer — revisão das 3 bases de regras + Surge Level v3 (faixa de PV configurável, gate de rampa de CO) | P1 | M | — | **DONE (code)** — full backend suite green, E2E pending, see below |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale — finding fixed independently or approach abandoned)
+
+## Plan 002 — execution record
+
+- **Executed** on branch `feat/fuzzy-surge-level-v3` (from `a39c20f`), in the
+  main working tree rather than a worktree, then merged to `main`. Commits:
+  `7d475fd` (the plan document) and `d7403cd` (the implementation).
+- **Scope delivered**: §8.1 domain + DTO validation, §8.2 additive SQLite
+  migration + row model, §8.3 Strategy 3 rewrite (S1–S10, configurable band,
+  crisp CO-ramp gate) + dispatcher/worker wiring, §8.4 frontend (4 fields
+  rendered only for `SURGE_LEVEL`, validation, regenerated OpenAPI types).
+  SP_TRACKING and DISTURBANCE_REJECTION rule bases: **zero diff**, as planned.
+- **Verification**: `uv run pytest tests/` → **1662 passed, 0 failed**
+  (T-REG in its strongest form — the whole backend suite, not just parity with
+  a known-failing baseline). Frontend `tsc --noEmit` clean and `vitest run` →
+  **905 passed**. `ruff` on the 8 changed backend files → no new diagnostics
+  (4 pre-existing ones in `test_fuzzy_engine_v2.py` at lines 316/551/606/809
+  were confirmed byte-identical at `a39c20f` and left alone).
+- **Tests added**: T-C1–T-C9 plus S1–S10 coverage (19 SL unit tests), T-A4 as
+  3 worker tests pinning `new_ki = ki/(1+Δ_Ti)` on the GAIN_KI path (which had
+  no test on the fuzzy path at all), and 8 frontend tests.
+- **Deviation from the plan text**: §8.2 names the row model class
+  `ControladorRow`; the real class is `Controladores`
+  (`db_models.py:30`). The plan document was left verbatim (it is the
+  approved artifact) — the code uses the real name.
+- **Not done — E2E**: the §6 simulator runs (preset LEVEL, band 40–60) are
+  not executed. Plan 001's record documents that this harness first needs the
+  daemon boot-registration workaround (`io_worker.register_controller` is dead
+  code, so a controller created after boot never receives `TELEMETRY.{cid}`).
+  That blocker is untouched by this plan and gating it here would have meant
+  shipping the code unverified instead; the unit + component layers above cover
+  every rule, the gate, the band fallback and the Ti↔Ki inversion.
 
 ## Plan 001 — execution & review record
 
