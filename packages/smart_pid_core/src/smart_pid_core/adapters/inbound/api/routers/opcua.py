@@ -46,6 +46,10 @@ async def browse_children(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e),
         ) from e
+    except TimeoutError as e:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(e),
+        ) from e
     return OPCUABrowseResponse(
         parent_node_id=node_id,
         children=[OPCUANodeInfo(**c) for c in children],
@@ -63,6 +67,12 @@ async def search_tags(
     except ConnectionError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e),
+        ) from e
+    except TimeoutError as e:
+        # A recursive address-space walk can outlast the adapter budget on a
+        # large server; that is a slow upstream, not an internal failure.
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(e),
         ) from e
     return OPCUASearchResponse(
         query=q,

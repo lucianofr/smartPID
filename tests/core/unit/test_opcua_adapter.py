@@ -1,6 +1,11 @@
 """Unit tests for OPCUAAdapter."""
 from __future__ import annotations
 
+import asyncio
+import threading
+
+import pytest
+
 from smart_pid_core.config import CoreSettings
 from smart_pid_domain.enums import ConnectionState, ControllerMode
 
@@ -42,6 +47,69 @@ class TestOPCUAAdapterBackoff:
         settings = _make_settings()
         adapter = OPCUAAdapter(settings=settings)
         assert adapter._backoff_max_s == 30.0
+
+
+class TestOPCUAAdapterRunBlocking:
+    """A sync caller waiting on the adapter loop must not leave the call
+    running when it gives up: an abandoned address-space walk keeps hammering
+    the server for as long as it likes, on top of whatever the caller retries.
+    """
+
+    @staticmethod
+    def _loop_in_thread():
+        loop = asyncio.new_event_loop()
+        thread = threading.Thread(target=loop.run_forever, daemon=True)
+        thread.start()
+        return loop, thread
+
+    def test_timeout_cancels_the_call_and_names_the_budget(self):
+        from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
+
+        loop, thread = self._loop_in_thread()
+        cancelled = threading.Event()
+
+        async def _never_finishes():
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        adapter = OPCUAAdapter(settings=_make_settings())
+        adapter._loop = loop
+        adapter._timeout_s = 0.05
+        try:
+            with pytest.raises(TimeoutError) as excinfo:
+                adapter._run_blocking(_never_finishes(), "browse of i=85")
+            # The message has to say what stalled and for how long — a bare
+            # TimeoutError told the HTTP layer nothing worth forwarding.
+            assert "browse of i=85" in str(excinfo.value)
+            assert "0.05s" in str(excinfo.value)
+            assert cancelled.wait(timeout=2.0), "stalled call must be cancelled"
+        finally:
+            loop.call_soon_threadsafe(loop.stop)
+            thread.join(timeout=2.0)
+            loop.close()
+
+    def test_result_passes_through_when_it_beats_the_budget(self):
+        from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
+
+        loop, thread = self._loop_in_thread()
+
+        async def _fast():
+            return [{"node_id": "ns=2;i=1"}]
+
+        adapter = OPCUAAdapter(settings=_make_settings())
+        adapter._loop = loop
+        adapter._timeout_s = 5.0
+        try:
+            assert adapter._run_blocking(_fast(), "browse of i=85") == [
+                {"node_id": "ns=2;i=1"},
+            ]
+        finally:
+            loop.call_soon_threadsafe(loop.stop)
+            thread.join(timeout=2.0)
+            loop.close()
 
 
 class TestOPCUAAdapterModeRegistration:

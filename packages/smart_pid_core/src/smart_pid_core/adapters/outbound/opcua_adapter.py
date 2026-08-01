@@ -697,68 +697,95 @@ class OPCUAAdapter:
 
     # ---- TagBrowser ----
 
+    def _run_blocking(self, coro, what: str):
+        """Run *coro* on the adapter loop and wait for it from a sync caller.
+
+        A stalled call is cancelled instead of abandoned: without the cancel
+        the walk keeps hammering the server long after the caller gave up. The
+        bare ``concurrent.futures.TimeoutError`` that used to escape here also
+        reached the HTTP layer as a 500, hiding an ordinary slow-server case
+        behind an Internal Server Error.
+        """
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        try:
+            return future.result(timeout=self._timeout_s)
+        except TimeoutError:
+            future.cancel()
+            raise TimeoutError(
+                f"OPC-UA {what} exceeded {self._timeout_s:g}s",
+            ) from None
+
     def browse_children(self, node_id: str) -> list[dict[str, str]]:
         """List children of an OPC-UA node. Returns list of dicts."""
         if self._client is None or self.state != ConnectionState.ONLINE:
             raise ConnectionError("OPC-UA not connected")
 
-        future = asyncio.run_coroutine_threadsafe(
+        return self._run_blocking(
             self._async_browse_children(self._client, node_id),
-            self._loop,
+            f"browse of {node_id}",
         )
-        return future.result(timeout=self._timeout_s)
 
     def search(self, query: str) -> list[dict[str, str]]:
         """Search OPC-UA address space by DisplayName. Recursive from Objects folder."""
         if self._client is None or self.state != ConnectionState.ONLINE:
             raise ConnectionError("OPC-UA not connected")
 
-        future = asyncio.run_coroutine_threadsafe(
+        return self._run_blocking(
             self._async_search(self._client, query),
-            self._loop,
+            f"search for {query!r}",
         )
-        return future.result(timeout=self._timeout_s)
+
+    @staticmethod
+    def _ref_to_info(ref) -> dict[str, str]:
+        """Flatten a BrowseResult ReferenceDescription into the API shape.
+
+        A ReferenceDescription already carries NodeId, DisplayName and
+        NodeClass, so browsing this way costs one round trip per parent
+        instead of two extra reads per child.
+        """
+        return {
+            "node_id": ref.NodeId.to_string(),
+            "display_name": ref.DisplayName.Text or "",
+            "node_class": ref.NodeClass.name,
+        }
 
     async def _async_browse_children(
         self, client, node_id: str,
     ) -> list[dict[str, str]]:
         """Browse children of a node asynchronously."""
         node = client.get_node(node_id)
-        children = await node.get_children()
-        result = []
-        for child in children:
-            display_name = (await child.read_display_name()).Text
-            node_class = await child.read_node_class()
-            result.append({
-                "node_id": child.nodeid.to_string(),
-                "display_name": display_name,
-                "node_class": node_class.name,
-            })
-        return result
+        return [self._ref_to_info(ref) for ref in await node.get_children_descriptions()]
 
     async def _async_search(self, client, query: str) -> list[dict[str, str]]:
-        """Recursively search address space under Objects for matching DisplayName."""
+        """Recursively search address space under Objects for matching DisplayName.
+
+        Two things keep this inside the adapter timeout budget on a real
+        server: children are read as browse descriptions (one request per
+        parent, not two reads per child), and the ns=0 Server object is
+        skipped — its diagnostics subtree is thousands of nodes deep and can
+        never hold a process tag. Walking it was what made this endpoint time
+        out and answer 500.
+        """
         from asyncua import ua
 
         results: list[dict[str, str]] = []
         query_lower = query.lower()
 
+        def _is_server_diagnostics(node_id) -> bool:
+            return node_id.NamespaceIndex == 0 and node_id.Identifier == ua.ObjectIds.Server
+
         async def _walk(node, depth: int = 0) -> None:
             if depth > 5:  # Limit recursion
                 return
-            children = await node.get_children()
-            for child in children:
-                display_name = (await child.read_display_name()).Text
-                node_class = await child.read_node_class()
-                if query_lower in display_name.lower():
-                    results.append({
-                        "node_id": child.nodeid.to_string(),
-                        "display_name": display_name,
-                        "node_class": node_class.name,
-                    })
+            for ref in await node.get_children_descriptions():
+                if _is_server_diagnostics(ref.NodeId):
+                    continue
+                info = self._ref_to_info(ref)
+                if query_lower in info["display_name"].lower():
+                    results.append(info)
                 # Recurse into folders/objects
-                if node_class in {ua.NodeClass.Object, ua.NodeClass.ObjectType}:
-                    await _walk(child, depth + 1)
+                if ref.NodeClass in {ua.NodeClass.Object, ua.NodeClass.ObjectType}:
+                    await _walk(client.get_node(ref.NodeId), depth + 1)
 
         objects = client.get_node(ua.ObjectIds.ObjectsFolder)
         await _walk(objects)

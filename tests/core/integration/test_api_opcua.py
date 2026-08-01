@@ -105,3 +105,30 @@ class TestOPCUAAPI:
         data = resp.json()
         assert data["query"] == "PV"
         assert len(data["results"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_browse_timeout_answers_gateway_timeout(
+        self, opcua_client, opcua_api_deps,
+    ):
+        """A slow OPC-UA server is an upstream problem, not a bug in us."""
+        client, headers = opcua_client
+        _app, _headers, adapter = opcua_api_deps
+        adapter.browse_children.side_effect = TimeoutError(
+            "OPC-UA browse of i=85 exceeded 5s",
+        )
+        resp = await client.get("/opcua/browse/i=85", headers=headers)
+        assert resp.status_code == 504
+        assert "exceeded" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_search_timeout_answers_gateway_timeout(
+        self, opcua_client, opcua_api_deps,
+    ):
+        """A recursive address-space walk can outlast the adapter budget on a
+        large server; that must not surface as a 500 either."""
+        client, headers = opcua_client
+        _app, _headers, adapter = opcua_api_deps
+        adapter.search.side_effect = TimeoutError("OPC-UA search for 'PV' exceeded 5s")
+        resp = await client.get("/opcua/search", params={"q": "PV"}, headers=headers)
+        assert resp.status_code == 504
+        assert "exceeded" in resp.json()["detail"]
