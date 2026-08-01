@@ -48,3 +48,5 @@ packages/smart_pid_web/dist/
 /testsprite_tests/
 /graphify-out/
 /.serena/
+
+testsprite_tests/tmp/config.json
