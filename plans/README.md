@@ -27,6 +27,7 @@ and update your row when done.
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
 | 001  | Make the RL engine safely and effectively optimize the PID integral term (Ti/Ki) | P1 | L | — | **DONE (E2E)** — 14/14 E2E tests PASS, see below |
+| 002  | Fuzzy integral optimizer — revisão das 3 bases de regras + Surge Level v3 (faixa de PV configurável, gate de rampa de CO) | P1 | M | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale — finding fixed independently or approach abandoned)
 
