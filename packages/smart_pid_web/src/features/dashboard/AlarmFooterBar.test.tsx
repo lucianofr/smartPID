@@ -147,15 +147,53 @@ describe('AlarmFooterBar', () => {
     expect(screen.getByText(/FIC-101/)).toBeVisible();
   });
 
-  it('keeps a cleared-but-unacknowledged alarm visible until it is acked', () => {
+  it('drops a normalized alarm from the bar even while it is unacknowledged', () => {
     const { realtime } = renderFooter();
     act(() => {
       realtime.emit(alarmEvent(1));
       realtime.emit(alarmEvent(2, { transition: 'CLEARED' }));
     });
-    // Cleared, so no longer active — but still unacknowledged.
-    expect(screen.getByTestId('count-warning')).toHaveTextContent('0');
-    expect(screen.getByTestId('unacked-warning')).toHaveTextContent('1');
+    // ALM-5: the condition returned to normal, so the alarm leaves the bar —
+    // acknowledged or not. It stays ackable on the alarms page (CLEARED_UNACK).
+    expect(screen.getByTestId('count-warning')).toHaveTextContent('WARN00');
+    expect(screen.getByTestId('unacked-warning')).toHaveTextContent('0');
+    expect(screen.getByTestId('count-warning')).not.toHaveClass('is-unacked');
+    expect(screen.getByTestId('alarm-count-chip')).toHaveTextContent('0');
+    expect(screen.getByRole('button', { name: 'ACK ALL' })).toBeDisabled();
+  });
+
+  it('lets the NEWEST row define a point that has fired repeatedly', () => {
+    // `/alarms/active` is newest-first and keeps every unacked occurrence, so
+    // one (controller, type) arrives as many rows. Folding them in order let
+    // the oldest win: a live CRITICAL vanished behind a stale normalized row.
+    renderFooter([
+      activeRow({
+        id: 17,
+        alarm_type: 'HI',
+        priority: 'CRITICAL',
+        timestamp: '2026-07-26T00:05:00.000Z',
+        cleared_at: null,
+        status: 'UNACKNOWLEDGED',
+      }),
+      activeRow({
+        id: 16,
+        alarm_type: 'HI',
+        priority: 'CRITICAL',
+        timestamp: '2026-07-26T00:04:00.000Z',
+        cleared_at: '2026-07-26T00:04:30.000Z',
+        status: 'CLEARED_UNACK',
+      }),
+      activeRow({
+        id: 15,
+        alarm_type: 'HI',
+        priority: 'CRITICAL',
+        timestamp: '2026-07-26T00:03:00.000Z',
+        cleared_at: '2026-07-26T00:03:30.000Z',
+        status: 'CLEARED_UNACK',
+      }),
+    ]);
+    expect(screen.getByTestId('count-critical')).toHaveTextContent('CRIT11');
+    expect(screen.getByTestId('count-critical')).toHaveClass('is-unacked');
     expect(screen.getByRole('button', { name: 'ACK ALL' })).toBeEnabled();
   });
 

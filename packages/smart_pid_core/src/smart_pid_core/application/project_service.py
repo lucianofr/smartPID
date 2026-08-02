@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
     from smart_pid_core.application.daemon_state import DaemonState
     from smart_pid_core.application.loop_manager import LoopManager
+    from smart_pid_core.application.workers.alarm_worker import AlarmWorker
     from smart_pid_core.application.workers.db_worker import DBWorker
     from smart_pid_core.application.workers.io_worker import IOWorker
 
@@ -52,6 +53,7 @@ class ProjectService:
         opcua_adapter: object | None = None,
         db_worker: DBWorker | None = None,
         io_worker: IOWorker | None = None,
+        alarm_worker: AlarmWorker | None = None,
     ) -> None:
         self._repo = repo
         self._loop_manager = loop_manager
@@ -61,6 +63,7 @@ class ProjectService:
         self._opcua_adapter = opcua_adapter
         self._db_worker = db_worker
         self._io_worker = io_worker
+        self._alarm_worker = alarm_worker
 
     @property
     def projects_dir(self) -> Path:
@@ -123,6 +126,7 @@ class ProjectService:
         await self._stop_db_worker()
         await self._repo.reopen(dest)
         await self._repo.set_meta("nome", name)
+        await self._reload_alarm_worker()
         if self._daemon_state:
             self._daemon_state.set_active_project(name)
         self._start_db_worker()
@@ -144,6 +148,7 @@ class ProjectService:
         await self._load_simulator_configs()
         await self._start_control_loops()
         await self._load_opcua_endpoint()
+        await self._reload_alarm_worker()
         if self._daemon_state:
             self._daemon_state.set_active_project(name)
         self._start_db_worker()
@@ -175,6 +180,7 @@ class ProjectService:
         await self._load_simulator_configs()
         await self._start_control_loops()
         await self._load_opcua_endpoint()
+        await self._reload_alarm_worker()
         if self._daemon_state:
             self._daemon_state.set_active_project(name)
         self._start_db_worker()
@@ -286,6 +292,28 @@ class ProjectService:
             self._loop_manager.start_loop(ctrl)
             if self._io_worker is not None:
                 self._io_worker.add_controller(ctrl.id)
+
+    async def _reload_alarm_worker(self) -> None:
+        """Re-point the alarm evaluator at the project that is now open.
+
+        Sibling of the IOWorker note above, and the same class of bug: the
+        AlarmWorker caches limits, controller names and PV ranges by controller
+        id, so without this a switch leaves it evaluating the PREVIOUS project's
+        limits against the new project's ids — phantom alarms in a project that
+        configures none, enriched with the wrong (or a missing) tag name.
+        """
+        if self._alarm_worker is None:
+            return
+        from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
+        from smart_pid_core.application.workers.alarm_worker import load_alarm_configs
+
+        configs = await load_alarm_configs(self._repo.session_factory)
+        controllers = await self._repo.list_all()
+        try:
+            active = await AlarmRepository(self._repo.session_factory).get_active()
+        except Exception:
+            active = []
+        self._alarm_worker.reload_project(configs, controllers, active)
 
     def _stop_simulator(self) -> None:
         """Stop the simulator adapter if present."""

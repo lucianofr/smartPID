@@ -25,6 +25,99 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+async def load_alarm_configs(session_factory) -> dict[int, AlarmConfig]:  # noqa: ANN001
+    """Load alarm configurations from Configuracao_Alarmes table."""
+    from sqlalchemy import text
+
+    from smart_pid_domain.enums import AlarmPriority
+    from smart_pid_domain.models.alarm_config import AlarmConfig as _AC
+
+    configs: dict[int, _AC] = {}
+    try:
+        async with session_factory() as session:
+            result = await session.execute(
+                text("SELECT * FROM Configuracao_Alarmes ORDER BY controlador_id")
+            )
+            rows = result.mappings().all()
+    except Exception:
+        logger.debug("alarm_configs_not_loaded", exc_info=True)
+        return configs
+
+    by_controller: dict[int, dict] = {}
+    for row in rows:
+        cid = row["controlador_id"]
+        if cid not in by_controller:
+            by_controller[cid] = {}
+        atype = row["tipo_alarme"]
+        by_controller[cid][atype] = {
+            "enabled": bool(row["habilitado"]),
+            "value": row["limite"],
+            "priority": AlarmPriority(row["prioridade"]),
+            "hysteresis": row["histerese"],
+            "delay_on_s": row["delay_on_s"] if "delay_on_s" in row.keys() else 0.0,  # noqa: SIM118
+            "delay_off_s": row["delay_off_s"] if "delay_off_s" in row.keys() else 0.0,  # noqa: SIM118
+        }
+
+    for cid, alarms in by_controller.items():
+
+        def _get(
+            name: str,
+            default_priority: AlarmPriority = AlarmPriority.WARNING,
+            _alarms: dict = alarms,
+        ) -> tuple[bool, float, AlarmPriority, float, float]:
+            a = _alarms.get(name, {})
+            return (
+                a.get("enabled", False),
+                a.get("value", 0.0),
+                a.get("priority", default_priority),
+                a.get("delay_on_s", 0.0),
+                a.get("delay_off_s", 0.0),
+            )
+
+        hihi_e, hihi_v, hihi_p, hihi_don, hihi_doff = _get("HIHI", AlarmPriority.CRITICAL)
+        hi_e, hi_v, hi_p, hi_don, hi_doff = _get("HI")
+        lo_e, lo_v, lo_p, lo_don, lo_doff = _get("LO")
+        lolo_e, lolo_v, lolo_p, lolo_don, lolo_doff = _get("LOLO", AlarmPriority.CRITICAL)
+        dvhi_e, dvhi_v, dvhi_p, dvhi_don, dvhi_doff = _get("DV_HI", AlarmPriority.ADVISORY)
+        dvlo_e, dvlo_v, dvlo_p, dvlo_don, dvlo_doff = _get("DV_LO", AlarmPriority.ADVISORY)
+        deadband = max((a.get("hysteresis", 0.0) for a in alarms.values()), default=0.0)
+
+        configs[cid] = _AC(
+            hihi_enabled=hihi_e,
+            hihi_value=hihi_v,
+            hihi_priority=hihi_p,
+            hihi_delay_on_s=hihi_don,
+            hihi_delay_off_s=hihi_doff,
+            hi_enabled=hi_e,
+            hi_value=hi_v,
+            hi_priority=hi_p,
+            hi_delay_on_s=hi_don,
+            hi_delay_off_s=hi_doff,
+            lo_enabled=lo_e,
+            lo_value=lo_v,
+            lo_priority=lo_p,
+            lo_delay_on_s=lo_don,
+            lo_delay_off_s=lo_doff,
+            lolo_enabled=lolo_e,
+            lolo_value=lolo_v,
+            lolo_priority=lolo_p,
+            lolo_delay_on_s=lolo_don,
+            lolo_delay_off_s=lolo_doff,
+            dv_hi_enabled=dvhi_e,
+            dv_hi_value=dvhi_v,
+            dv_hi_priority=dvhi_p,
+            dv_hi_delay_on_s=dvhi_don,
+            dv_hi_delay_off_s=dvhi_doff,
+            dv_lo_enabled=dvlo_e,
+            dv_lo_value=dvlo_v,
+            dv_lo_priority=dvlo_p,
+            dv_lo_delay_on_s=dvlo_don,
+            dv_lo_delay_off_s=dvlo_doff,
+            deadband_percent=deadband,
+        )
+    return configs
+
+
 class AlarmWorker:
     """Subscribes to STATUS.* and evaluates alarm limits."""
 
@@ -109,6 +202,33 @@ class AlarmWorker:
         self._controller_meta.pop(controller_id, None)
         self._pv_ranges.pop(controller_id, None)
         self._engine.remove_controller(controller_id)
+
+    def reload_project(
+        self,
+        alarm_configs: dict[int, AlarmConfig],
+        controllers: list[Any],
+        active_alarms: list[dict],
+    ) -> None:
+        """Swap every per-project cache when the daemon opens another project.
+
+        All of this worker's state is keyed by controller id, and those ids are
+        only unique WITHIN a project. Carrying them across a switch makes the
+        engine evaluate the previous project's limits against the new project's
+        controllers -- alarms fire for a project that configures none, and the
+        banner lights up with no matching row. Rebuild instead of merge: a
+        config the new project does not define has to disappear, not linger.
+        """
+        self._engine = AlarmEngine()
+        self._alarm_configs.clear()
+        self._alarm_configs.update(alarm_configs)
+        self._controller_meta.clear()
+        self._pv_ranges.clear()
+        for ctrl in controllers:
+            self.update_controller_meta(ctrl.id, ctrl.name, ctrl.description)
+            self.update_pv_range(ctrl.id, ctrl.pv_scale.eu_min, ctrl.pv_scale.eu_max)
+        # Seed only genuinely-active rows so the engine can still emit CLEARED
+        # for an alarm that was standing when the project was last closed.
+        self.seed_active_alarms([a for a in active_alarms if a.get("cleared_at") is None])
 
     def update_config(self, controller_id: int, config: AlarmConfig) -> None:
         """Update alarm config for a controller (thread-safe via GIL)."""

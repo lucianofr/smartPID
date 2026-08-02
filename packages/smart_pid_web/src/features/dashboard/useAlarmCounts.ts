@@ -45,9 +45,21 @@ const pointKey = (controllerId: number, alarmType: string): string =>
   `${controllerId}:${alarmType}`;
 
 function fromRows(rows: readonly AlarmRow[]): ReadonlyMap<string, AlarmPoint> {
-  const map = new Map<string, AlarmPoint>();
+  // One point can own SEVERAL rows: every occurrence of (controller, type) is
+  // its own row, and each stays in `/alarms/active` until acknowledged. Only
+  // the newest describes the point's state now — folding them in arrival order
+  // let the OLDEST win, so one stale `CLEARED_UNACK` masked a live alarm and
+  // kept the bar lit for a process that had long since returned to normal.
+  const newest = new Map<string, AlarmRow>();
   for (const row of rows) {
-    map.set(pointKey(row.controller_id, row.alarm_type), {
+    const key = pointKey(row.controller_id, row.alarm_type);
+    const seen = newest.get(key);
+    if (seen === undefined || row.timestamp > seen.timestamp) newest.set(key, row);
+  }
+
+  const map = new Map<string, AlarmPoint>();
+  for (const [key, row] of newest) {
+    map.set(key, {
       controllerId: row.controller_id,
       severity: toSeverity(row.priority),
       state: fromActiveRow(row),
@@ -124,8 +136,14 @@ export function useAlarmCounts(): AlarmCounts {
     const buckets = emptyBuckets();
     let totalUnacked = 0;
     for (const point of points.values()) {
+      // ALM-5: an alarm leaves the banner once the process condition returns to
+      // normal — acknowledged or not. A normalized-but-unacked point stays
+      // listed and ackable on the alarms page (CLEARED_UNACK filter); it must
+      // not keep the footer lit, because a quiet process needs a quiet footer.
+      // Same predicate `useLoopAlarmSeverity` already applies to the card border.
+      if (!isActive(point.state)) continue;
       const bucket = buckets[point.severity];
-      if (isActive(point.state)) bucket.active += 1;
+      bucket.active += 1;
       if (isUnacked(point.state)) {
         bucket.unacked += 1;
         totalUnacked += 1;

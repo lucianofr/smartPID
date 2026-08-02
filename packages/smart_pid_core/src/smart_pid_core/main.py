@@ -32,100 +32,7 @@ from smart_pid_domain.enums import ExecutionMode, UserRole
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-    from smart_pid_domain.models.alarm_config import AlarmConfig
-
 logger = structlog.get_logger()
-async def _load_alarm_configs(session_factory) -> dict[int, AlarmConfig]:  # noqa: ANN001
-    """Load alarm configurations from Configuracao_Alarmes table."""
-    from sqlalchemy import text
-
-    from smart_pid_domain.enums import AlarmPriority
-    from smart_pid_domain.models.alarm_config import AlarmConfig as _AC
-
-    configs: dict[int, _AC] = {}
-    try:
-        async with session_factory() as session:
-            result = await session.execute(
-                text("SELECT * FROM Configuracao_Alarmes ORDER BY controlador_id")
-            )
-            rows = result.mappings().all()
-    except Exception:
-        logger.debug("alarm_configs_not_loaded", exc_info=True)
-        return configs
-
-    by_controller: dict[int, dict] = {}
-    for row in rows:
-        cid = row["controlador_id"]
-        if cid not in by_controller:
-            by_controller[cid] = {}
-        atype = row["tipo_alarme"]
-        by_controller[cid][atype] = {
-            "enabled": bool(row["habilitado"]),
-            "value": row["limite"],
-            "priority": AlarmPriority(row["prioridade"]),
-            "hysteresis": row["histerese"],
-            "delay_on_s": row["delay_on_s"] if "delay_on_s" in row.keys() else 0.0,  # noqa: SIM118
-            "delay_off_s": row["delay_off_s"] if "delay_off_s" in row.keys() else 0.0,  # noqa: SIM118
-        }
-
-    for cid, alarms in by_controller.items():
-
-        def _get(
-            name: str,
-            default_priority: AlarmPriority = AlarmPriority.WARNING,
-            _alarms: dict = alarms,
-        ) -> tuple[bool, float, AlarmPriority, float, float]:
-            a = _alarms.get(name, {})
-            return (
-                a.get("enabled", False),
-                a.get("value", 0.0),
-                a.get("priority", default_priority),
-                a.get("delay_on_s", 0.0),
-                a.get("delay_off_s", 0.0),
-            )
-
-        hihi_e, hihi_v, hihi_p, hihi_don, hihi_doff = _get("HIHI", AlarmPriority.CRITICAL)
-        hi_e, hi_v, hi_p, hi_don, hi_doff = _get("HI")
-        lo_e, lo_v, lo_p, lo_don, lo_doff = _get("LO")
-        lolo_e, lolo_v, lolo_p, lolo_don, lolo_doff = _get("LOLO", AlarmPriority.CRITICAL)
-        dvhi_e, dvhi_v, dvhi_p, dvhi_don, dvhi_doff = _get("DV_HI", AlarmPriority.ADVISORY)
-        dvlo_e, dvlo_v, dvlo_p, dvlo_don, dvlo_doff = _get("DV_LO", AlarmPriority.ADVISORY)
-        deadband = max((a.get("hysteresis", 0.0) for a in alarms.values()), default=0.0)
-
-        configs[cid] = _AC(
-            hihi_enabled=hihi_e,
-            hihi_value=hihi_v,
-            hihi_priority=hihi_p,
-            hihi_delay_on_s=hihi_don,
-            hihi_delay_off_s=hihi_doff,
-            hi_enabled=hi_e,
-            hi_value=hi_v,
-            hi_priority=hi_p,
-            hi_delay_on_s=hi_don,
-            hi_delay_off_s=hi_doff,
-            lo_enabled=lo_e,
-            lo_value=lo_v,
-            lo_priority=lo_p,
-            lo_delay_on_s=lo_don,
-            lo_delay_off_s=lo_doff,
-            lolo_enabled=lolo_e,
-            lolo_value=lolo_v,
-            lolo_priority=lolo_p,
-            lolo_delay_on_s=lolo_don,
-            lolo_delay_off_s=lolo_doff,
-            dv_hi_enabled=dvhi_e,
-            dv_hi_value=dvhi_v,
-            dv_hi_priority=dvhi_p,
-            dv_hi_delay_on_s=dvhi_don,
-            dv_hi_delay_off_s=dvhi_doff,
-            dv_lo_enabled=dvlo_e,
-            dv_lo_value=dvlo_v,
-            dv_lo_priority=dvlo_p,
-            dv_lo_delay_on_s=dvlo_don,
-            dv_lo_delay_off_s=dvlo_doff,
-            deadband_percent=deadband,
-        )
-    return configs
 
 
 async def _migrate_users_if_needed(spid_path: Path, users_db_path: Path) -> None:
@@ -483,13 +390,13 @@ async def run_daemon(settings: CoreSettings) -> None:
     # Phase 6: Alarm + Audit infrastructure
     from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
     from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
-    from smart_pid_core.application.workers.alarm_worker import AlarmWorker
+    from smart_pid_core.application.workers.alarm_worker import AlarmWorker, load_alarm_configs
 
     alarm_repo = AlarmRepository(repo.session_factory)
     audit_repo = AuditRepository(repo.session_factory)
 
     # Build alarm configs from Configuracao_Alarmes table
-    alarm_configs = await _load_alarm_configs(repo.session_factory)
+    alarm_configs = await load_alarm_configs(repo.session_factory)
     alarm_worker = AlarmWorker(
         bus=bus, alarm_configs=alarm_configs, alarm_repo=alarm_repo,
         event_loop=asyncio.get_running_loop(),
@@ -581,6 +488,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         opcua_adapter=opcua_adapter,
         db_worker=db_worker,
         io_worker=io_worker,
+        alarm_worker=alarm_worker,
     )
 
     # Phase 2: FastAPI
