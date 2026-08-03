@@ -36,6 +36,8 @@ build/
 
 # Claude local settings (personal, not committed)
 .claude/settings.local.json
+# Session scratch snapshot: rewritten every run and a recurring merge conflict.
+.claude/docs/estado-atual.md
 
 # OS
 .DS_Store
