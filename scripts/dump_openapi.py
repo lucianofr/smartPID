@@ -21,7 +21,7 @@ from typing import Any
 # Pre-import every router so route signatures are loaded.
 from smart_pid_core.adapters.inbound.api.routers import (  # noqa: F401
     ai, alarms, audit, auth, commands, controllers, export, history,
-    opcua, project, simulator, stats, system, system_events, users,
+    opcua, project, simulator, stats, system, system_events, trend, users,
 )
 
 from pydantic import BaseModel

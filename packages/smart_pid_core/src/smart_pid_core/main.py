@@ -294,12 +294,24 @@ async def run_daemon(settings: CoreSettings) -> None:
     # One store shared by the producers (AIWorker, via LoopManager) and the
     # consumers (the /commands tuning routes, via app.state).
     tuning_store = TuningRecommendationStore()
+    # Built here rather than with the rest of the alarm/event plumbing
+    # below: LoopManager hands it to every AIWorker so tuning suggestions
+    # reach the system-event log, and LoopManager is constructed first.
+    from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
+    from smart_pid_core.application.workers.system_event_worker import SystemEventWorker
+
+    system_event_repo = SystemEventRepository(repo.session_factory)
+    system_event_worker = SystemEventWorker(
+        bus=bus, system_event_repo=system_event_repo,
+        event_loop=asyncio.get_running_loop(),
+    )
     loop_manager = LoopManager(
         bus=bus,
         execution_mode=settings.execution_mode,
         model_dir=model_dir,
         tuning_store=tuning_store,
         stability_band_pct=settings.stability_band_pct,
+        system_event_worker=system_event_worker,
     )
     logger.info("event_bus_started")
 
@@ -415,15 +427,8 @@ async def run_daemon(settings: CoreSettings) -> None:
     alarm_worker.start()
     logger.info("alarm_worker_started")
 
-    # System events infrastructure
-    from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
-    from smart_pid_core.application.workers.system_event_worker import SystemEventWorker
-
-    system_event_repo = SystemEventRepository(repo.session_factory)
-    system_event_worker = SystemEventWorker(
-        bus=bus, system_event_repo=system_event_repo,
-        event_loop=asyncio.get_running_loop(),
-    )
+    # System events infrastructure — the worker and repo were built above,
+    # before LoopManager, because every AIWorker needs the worker.
     system_event_worker.emit("BACKEND", "INFO", "Backend started")
     logger.info("system_event_worker_started")
 
@@ -434,11 +439,37 @@ async def run_daemon(settings: CoreSettings) -> None:
     db_worker.start()
     logger.info("db_worker_started")
 
+    # In-memory 1-hour ring behind GET /trend — the chart seed path. Same
+    # TELEMETRY feed as DBWorker (real and simulator loops alike).
+    from smart_pid_core.application.trend_buffer import TrendBuffer
+    from smart_pid_core.application.workers.trend_buffer_worker import TrendBufferWorker
+
+    trend_buffer = TrendBuffer()
+    trend_buffer_worker = TrendBufferWorker(bus=bus, buffer=trend_buffer)
+    trend_buffer_worker.start()
+    logger.info("trend_buffer_worker_started")
+
     # C-INT-2: I/O Worker — read OPC-UA and publish TELEMETRY events to bus
     from smart_pid_core.application.workers.io_worker import IOWorker
 
     all_controllers = await repo.list_all()
     io_controller_ids = [c.id for c in all_controllers]
+
+    # Hydrate the ring with the last hour already in Log_Processo, so a daemon
+    # restart does not blank every trend chart while the ring refills live.
+    # Appends are idempotent against live frames (non-increasing ts is dropped).
+    from smart_pid_core.application.trend_buffer import RETENTION_S
+
+    hydrate_start = datetime.now(tz=UTC) - timedelta(seconds=RETENTION_S)
+    for ctrl in all_controllers:
+        with contextlib.suppress(Exception):
+            frames = await historian.query(ctrl.id, hydrate_start, datetime.now(tz=UTC))
+            for f in frames:
+                trend_buffer.append(
+                    ctrl.id, f.timestamp.timestamp(), f.pv.value, f.sp.value, f.co.value
+                )
+    logger.info("trend_buffer_hydrated", loops=len(all_controllers))
+
     io_worker = IOWorker(
         bus=bus,
         opcua_adapter=adapter_factory.opcua_adapter,
@@ -510,6 +541,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         project_service=project_service,
         event_bus=bus,
         tuning_store=tuning_store,
+        trend_buffer=trend_buffer,
     )
 
     # Set export_worker on app.state so the export router can use it
@@ -580,6 +612,7 @@ async def run_daemon(settings: CoreSettings) -> None:
     await telemetry_pub.stop()
     io_worker.stop()
     db_worker.stop()
+    trend_buffer_worker.stop()
     # Stop OPC-UA client BEFORE simulator (client depends on server)
     if opcua_adapter is not None:
         opcua_adapter.stop()

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TrendPenTip, TrendSeriesData } from '@/components/Trend';
 import { statusTimestampToEpoch, type AiData, type StatusData } from '@/lib/envelope';
+import { loadTrendSeed, mergeSeed } from '@/lib/trendSeed';
 import { createWindowBuffer, type WindowBuffer } from '@/lib/windowBuffer';
 import { useRealtime } from '@/realtime/useRealtime';
 
@@ -25,28 +26,30 @@ function seed(next: WindowBuffer, previous: WindowBuffer | null): void {
   for (let i = 0; i < t.length; i += 1) next.push(t[i], [pv[i], sp[i], co[i]]);
 }
 
+
 /**
- * Sliding PV/SP/CO window for one loop, fed by the phase-3 realtime fan-out.
- * Window resizes re-seed from the retained samples so changing the control does
- * not blank a recorder that has been running for an hour.
+ * Sliding PV/SP/CO window for one loop, fed by the phase-3 realtime fan-out and
+ * SEEDED from the backend 1-hour ring (`GET /trend/{id}`).
+ *
+ * Without the seed a freshly mounted recorder was blank and stayed blank until
+ * it had accumulated the window live — an operator asking for the last hour got
+ * an empty plot for an hour. The seed paints the chosen window immediately and
+ * realtime frames extend it from there.
+ *
+ * Window resizes re-seed from the retained samples first (instant continuity,
+ * no flash) and then reconcile against the ring, so widening the window pulls in
+ * history the previous, narrower buffer had already evicted.
  */
 export function useTrendWindow(
   controllerId: number,
   maxSeconds: number,
   pxWidth: number,
-  /**
-   * Authoritative SP/CO for a source whose STATUS frame doesn't carry them.
-   * The digital twin self-drives via its internal PID, so the platform's
-   * STATUS reports the (frozen) control-loop SP/CO, not the twin's — the Sim
-   * page feeds the twin snapshot here so PV stays live off the WS frame while
-   * SP/CO track the twin. A finite value overrides the frame; null/undefined
-   * keeps the frame's own value (real loops pass nothing).
-   */
-  overrides?: { sp?: number | null; co?: number | null },
 ): TrendWindow {
   const { subscribe: subscribeStatus } = useRealtime<StatusData>(controllerId, 'status');
   const { subscribe: subscribeAi } = useRealtime<AiData>(controllerId, 'ai');
   const bufferRef = useRef<WindowBuffer | null>(null);
+  /** Loop the current buffer belongs to — a resize may reuse it, a loop change may not. */
+  const sameLoopRef = useRef(controllerId);
   const [, setRevision] = useState(0);
   const [aiTicks, setAiTicks] = useState<number[]>([]);
 
@@ -54,31 +57,42 @@ export function useTrendWindow(
     bufferRef.current = createWindowBuffer(SERIES, { maxSeconds, maxPoints: MAX_POINTS });
   }
 
+  // Loop scope or window changed: rebuild the buffer, then refill it from the
+  // backend ring. A loop change starts from nothing (the previous loop's trace
+  // must not bleed in); a resize starts from the retained samples so the plot
+  // never blanks while the fetch is in flight.
   useEffect(() => {
     const next = createWindowBuffer(SERIES, { maxSeconds, maxPoints: MAX_POINTS });
-    seed(next, bufferRef.current);
+    seed(next, sameLoopRef.current === controllerId ? bufferRef.current : null);
+    sameLoopRef.current = controllerId;
     bufferRef.current = next;
-    setRevision((r) => r + 1);
-  }, [maxSeconds]);
-
-  // Loop scope changed: the previous loop's trace must not bleed into this one.
-  useEffect(() => {
-    bufferRef.current?.clear();
     setAiTicks([]);
     setRevision((r) => r + 1);
-  }, [controllerId]);
 
-  const overrideRef = useRef(overrides);
-  overrideRef.current = overrides;
+    let cancelled = false;
+    loadTrendSeed(controllerId, maxSeconds)
+      .then((seeds) => {
+        if (cancelled || seeds.length === 0) return;
+        mergeSeed(next, seeds);
+        setRevision((r) => r + 1);
+      })
+      .catch(() => {
+        // No ring (older backend, network blip): live-only, exactly as before.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [controllerId, maxSeconds]);
 
   useEffect(
     () =>
       subscribeStatus((env) => {
         const t = statusTimestampToEpoch(env.data.timestamp) ?? env.ts;
-        const ov = overrideRef.current;
-        const sp = typeof ov?.sp === 'number' && Number.isFinite(ov.sp) ? ov.sp : env.data.sp.value;
-        const co = typeof ov?.co === 'number' && Number.isFinite(ov.co) ? ov.co : env.data.co.value;
-        const pushed = bufferRef.current?.push(t, [env.data.pv.value, sp, co]);
+        const pushed = bufferRef.current?.push(t, [
+          env.data.pv.value,
+          env.data.sp.value,
+          env.data.co.value,
+        ]);
         if (pushed === true) setRevision((r) => r + 1);
       }),
     [subscribeStatus],

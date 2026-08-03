@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { statusTimestampToEpoch, type StatusData } from '@/lib/envelope';
+import { loadTrendSeed, mergeSeed } from '@/lib/trendSeed';
 import { createWindowBuffer, type WindowBuffer } from '@/lib/windowBuffer';
 import { useRealtime } from '@/realtime/useRealtime';
 import {
@@ -72,6 +73,13 @@ export function useMultiTrendModel(roster: readonly number[] | null): MultiTrend
   const [revision, setRevision] = useState(0);
 
   const buffers = useRef(new Map<number, WindowBuffer>());
+  /** Loops whose ring seed has already been requested — one fetch per occupancy. */
+  const seeded = useRef(new Set<number>());
+  /** Release a loop's buffer AND its seed marker: a re-assignment must re-seed. */
+  const dropBuffer = useCallback((loopId: number) => {
+    buffers.current.delete(loopId);
+    seeded.current.delete(loopId);
+  }, []);
   // The subscription is registered once (the relay identity is stable); slot
   // and pause state are read through refs so a selection change never drops a frame.
   const slotsRef = useRef(slots);
@@ -111,6 +119,42 @@ export function useMultiTrendModel(roster: readonly number[] | null): MultiTrend
   }, [slots]);
 
   /**
+   * Seed a newly occupied slot from the backend 1-hour ring (§6.8).
+   *
+   * Assigning a loop used to start an empty buffer that took a full
+   * `LIVE_WINDOW_SECONDS` to fill, so the cell drew a growing stub instead of
+   * the window it advertises. The ring already holds that window; the live
+   * subscription keeps writing while the fetch is in flight and `mergeSeed`
+   * folds both halves together, deduped by timestamp.
+   */
+  useEffect(() => {
+    for (const { controllerId } of slotsRef.current) {
+      if (controllerId === null || seeded.current.has(controllerId)) continue;
+      seeded.current.add(controllerId);
+      let buffer = buffers.current.get(controllerId);
+      if (buffer === undefined) {
+        buffer = createWindowBuffer(BUFFERED_SIGNALS, {
+          maxSeconds: LIVE_WINDOW_SECONDS,
+          maxPoints: LIVE_MAX_POINTS,
+        });
+        buffers.current.set(controllerId, buffer);
+      }
+      const target = buffer;
+      loadTrendSeed(controllerId, LIVE_WINDOW_SECONDS)
+        .then((seeds) => {
+          // The slot may have been cleared mid-flight; its buffer is gone from
+          // the map and merging into the orphan would paint nothing.
+          if (seeds.length === 0 || buffers.current.get(controllerId) !== target) return;
+          mergeSeed(target, seeds);
+          setRevision((r) => r + 1);
+        })
+        .catch(() => {
+          // No ring reachable: the cell fills live, exactly as before.
+        });
+    }
+  }, [slots]);
+
+  /**
    * One-shot reconciliation against the live roster (§9.2). A restored slot for
    * a loop that no longer exists would render a permanently empty cell, and a
    * slot with no signal left is not a selection. Gated on `roster !== null`: an
@@ -125,19 +169,19 @@ export function useMultiTrendModel(roster: readonly number[] | null): MultiTrend
         if (s.controllerId === null) return s;
         const silent = !s.series.pv && !s.series.sp && !s.series.co;
         if (!roster.includes(s.controllerId) || silent) {
-          buffers.current.delete(s.controllerId);
+          dropBuffer(s.controllerId);
           return freeSlot();
         }
         return s;
       }),
     );
-  }, [roster]);
+  }, [roster, dropBuffer]);
 
   const assign = useCallback((slot: number, controller: { id: number }) => {
     assertSlot(slot);
     setSlots((prev) => {
       const evicted = prev[slot].controllerId;
-      if (evicted !== null && evicted !== controller.id) buffers.current.delete(evicted);
+      if (evicted !== null && evicted !== controller.id) dropBuffer(evicted);
       return prev.map((s, i) => {
         if (i === slot) {
           return { controllerId: controller.id, series: { pv: true, sp: true, co: true } };
@@ -146,16 +190,16 @@ export function useMultiTrendModel(roster: readonly number[] | null): MultiTrend
         return s.controllerId === controller.id ? freeSlot() : s;
       });
     });
-  }, []);
+  }, [dropBuffer]);
 
   const clear = useCallback((slot: number) => {
     assertSlot(slot);
     setSlots((prev) => {
       const held = prev[slot].controllerId;
-      if (held !== null) buffers.current.delete(held);
+      if (held !== null) dropBuffer(held);
       return prev.map((s, i) => (i === slot ? freeSlot() : s));
     });
-  }, []);
+  }, [dropBuffer]);
 
   const toggleSeries = useCallback((slot: number, signal: Signal) => {
     assertSlot(slot);
@@ -164,13 +208,13 @@ export function useMultiTrendModel(roster: readonly number[] | null): MultiTrend
         if (i !== slot || s.controllerId === null) return s;
         const series = { ...s.series, [signal]: !s.series[signal] };
         if (!series.pv && !series.sp && !series.co) {
-          buffers.current.delete(s.controllerId);
+          dropBuffer(s.controllerId);
           return freeSlot();
         }
         return { ...s, series };
       }),
     );
-  }, []);
+  }, [dropBuffer]);
 
   const toggleSignal = useCallback((loopId: number, signal: Signal) => {
     setSlots((prev) => {
@@ -178,7 +222,7 @@ export function useMultiTrendModel(roster: readonly number[] | null): MultiTrend
       if (held >= 0) {
         const series = { ...prev[held].series, [signal]: !prev[held].series[signal] };
         const empty = !series.pv && !series.sp && !series.co;
-        if (empty) buffers.current.delete(loopId);
+        if (empty) dropBuffer(loopId);
         return prev.map((s, i) => (i === held ? (empty ? freeSlot() : { ...s, series }) : s));
       }
       const free = prev.findIndex((s) => s.controllerId === null);
@@ -189,7 +233,7 @@ export function useMultiTrendModel(roster: readonly number[] | null): MultiTrend
           : s,
       );
     });
-  }, []);
+  }, [dropBuffer]);
 
   const isSelected = useCallback(
     (loopId: number, signal: Signal) =>

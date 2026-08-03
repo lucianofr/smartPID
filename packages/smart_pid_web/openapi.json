@@ -1150,11 +1150,6 @@
             "title": "Pid Cv",
             "type": "number"
           },
-          "pid_enabled": {
-            "default": false,
-            "title": "Pid Enabled",
-            "type": "boolean"
-          },
           "pid_kp": {
             "default": 1.0,
             "title": "Pid Kp",
@@ -2227,22 +2222,32 @@
         "title": "SimulatorDisturbanceRequest",
         "type": "object"
       },
-      "SimulatorPIDEnableRequest": {
+      "SimulatorLoopCreateRequest": {
+        "description": "Create a simulator loop that no project controller owns.\n\n``controller_id=None`` asks the simulator to allocate the next free id,\nwhich is what the HMI's \"new simulator loop\" button sends: the operator\nwants another twin, not a specific number.",
         "properties": {
           "controller_id": {
-            "title": "Controller Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Controller Id"
           },
-          "enabled": {
-            "title": "Enabled",
-            "type": "boolean"
+          "pv_max": {
+            "default": 100.0,
+            "title": "Pv Max",
+            "type": "number"
+          },
+          "pv_min": {
+            "default": 0.0,
+            "title": "Pv Min",
+            "type": "number"
           }
         },
-        "required": [
-          "controller_id",
-          "enabled"
-        ],
-        "title": "SimulatorPIDEnableRequest",
+        "title": "SimulatorLoopCreateRequest",
         "type": "object"
       },
       "SimulatorPIDModeRequest": {
@@ -2775,6 +2780,17 @@
           "role": {
             "$ref": "#/components/schemas/UserRole"
           },
+          "theme": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theme"
+          },
           "user_id": {
             "title": "User Id",
             "type": "integer"
@@ -2859,6 +2875,28 @@
         ],
         "title": "UserRole",
         "type": "string"
+      },
+      "UserThemeUpdate": {
+        "description": "The operator's chosen HMI palette.\n\nValidated against the theme ids the frontend actually ships so a typo,\nor a stale client, cannot park an unrenderable value on the account and\nleave the operator staring at an unstyled page after every login.",
+        "properties": {
+          "theme": {
+            "enum": [
+              "optimizer",
+              "optimizer-dark",
+              "recorder",
+              "phosphor",
+              "isa101",
+              "neon"
+            ],
+            "title": "Theme",
+            "type": "string"
+          }
+        },
+        "required": [
+          "theme"
+        ],
+        "title": "UserThemeUpdate",
+        "type": "object"
       },
       "UserUpdate": {
         "properties": {
@@ -3398,7 +3436,7 @@
     },
     "/auth/me": {
       "get": {
-        "description": "Return the authenticated principal's claims.\n\nThe SPA populates its AuthContext from this route after login and\nrefetches it whenever a 403 arrives (spec \u00a711) \u2014 a role changed\nmid-session is discovered here, not by decoding the JWT client-side.",
+        "description": "Return the authenticated principal's claims.\n\nThe SPA populates its AuthContext from this route after login and\nrefetches it whenever a 403 arrives (spec \u00a711) \u2014 a role changed\nmid-session is discovered here, not by decoding the JWT client-side.\n\n``theme`` is read from the user row rather than the token: the palette\nbelongs to the operator, not to the browser profile, and it is what\nmakes the choice survive signing in somewhere else.",
         "operationId": "me_auth_me_get",
         "responses": {
           "200": {
@@ -5049,6 +5087,82 @@
         ]
       }
     },
+    "/simulator/loops": {
+      "post": {
+        "operationId": "create_simulator_loop_simulator_loops_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulatorLoopCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControllerSimStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Simulator Loop",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
+    "/simulator/loops/{controller_id}": {
+      "delete": {
+        "operationId": "delete_simulator_loop_simulator_loops__controller_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Simulator Loop",
+        "tags": [
+          "simulator"
+        ]
+      }
+    },
     "/simulator/opcua/start": {
       "post": {
         "operationId": "start_opcua_server_simulator_opcua_start_post",
@@ -5413,58 +5527,6 @@
         ]
       }
     },
-    "/simulator/{controller_id}/pid/enable": {
-      "post": {
-        "operationId": "enable_pid_simulator__controller_id__pid_enable_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "controller_id",
-            "required": true,
-            "schema": {
-              "title": "Controller Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SimulatorPIDEnableRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommandResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Enable Pid",
-        "tags": [
-          "simulator"
-        ]
-      }
-    },
     "/simulator/{controller_id}/pid/mode": {
       "post": {
         "operationId": "set_pid_mode_simulator__controller_id__pid_mode_post",
@@ -5793,6 +5855,62 @@
         ]
       }
     },
+    "/trend/{controller_id}": {
+      "get": {
+        "operationId": "query_trend_trend__controller_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Window length; capped at the 1 h ring",
+            "in": "query",
+            "name": "seconds",
+            "required": false,
+            "schema": {
+              "default": 3600,
+              "description": "Window length; capped at the 1 h ring",
+              "maximum": 3600,
+              "minimum": 1,
+              "title": "Seconds",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query Trend",
+        "tags": [
+          "trend"
+        ]
+      }
+    },
     "/users": {
       "get": {
         "operationId": "list_users_users_get",
@@ -5852,6 +5970,41 @@
           }
         },
         "summary": "Create User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/users/me/theme": {
+      "put": {
+        "description": "Persist the caller's HMI palette on their own account.\n\nDeliberately NOT admin-gated and deliberately scoped to ``me``: this is\nthe one thing in this router every user owns. The palette used to live\nonly in the browser's localStorage, so signing in from another machine\n-- or after the profile was cleared -- silently reverted the operator to\nthe default theme.",
+        "operationId": "set_my_theme_users_me_theme_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserThemeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set My Theme",
         "tags": [
           "users"
         ]

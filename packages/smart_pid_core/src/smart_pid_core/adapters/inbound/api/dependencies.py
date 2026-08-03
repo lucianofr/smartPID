@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.user_repo import UserRepository
     from smart_pid_core.application.event_bus import EventBus
     from smart_pid_core.application.loop_manager import LoopManager
+    from smart_pid_core.application.trend_buffer import TrendBuffer
     from smart_pid_core.application.workers.alarm_worker import AlarmWorker
     from smart_pid_core.application.workers.io_worker import IOWorker
     from smart_pid_core.application.workers.stats_worker import StatsWorker
@@ -36,6 +37,10 @@ def get_repo(request: Request) -> SQLiteRepository:
 
 def get_historian(request: Request) -> SQLiteHistorian:
     return request.app.state.historian
+
+
+def get_trend_buffer(request: Request) -> TrendBuffer:
+    return request.app.state.trend_buffer
 
 
 def get_user_repo(request: Request) -> UserRepository:

@@ -137,6 +137,10 @@ export interface paths {
          *     The SPA populates its AuthContext from this route after login and
          *     refetches it whenever a 403 arrives (spec §11) — a role changed
          *     mid-session is discovered here, not by decoding the JWT client-side.
+         *
+         *     ``theme`` is read from the user row rather than the token: the palette
+         *     belongs to the operator, not to the browser profile, and it is what
+         *     makes the choice survive signing in somewhere else.
          */
         get: operations["me_auth_me_get"];
         put?: never;
@@ -857,6 +861,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/simulator/loops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Simulator Loop */
+        post: operations["create_simulator_loop_simulator_loops_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/simulator/loops/{controller_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Simulator Loop */
+        delete: operations["delete_simulator_loop_simulator_loops__controller_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/simulator/opcua/start": {
         parameters: {
             query?: never;
@@ -1044,23 +1082,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/simulator/{controller_id}/pid/enable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Enable Pid */
-        post: operations["enable_pid_simulator__controller_id__pid_enable_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/simulator/{controller_id}/pid/mode": {
         parameters: {
             query?: never;
@@ -1166,6 +1187,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/trend/{controller_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Query Trend */
+        get: operations["query_trend_trend__controller_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -1178,6 +1216,32 @@ export interface paths {
         put?: never;
         /** Create User */
         post: operations["create_user_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/theme": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set My Theme
+         * @description Persist the caller's HMI palette on their own account.
+         *
+         *     Deliberately NOT admin-gated and deliberately scoped to ``me``: this is
+         *     the one thing in this router every user owns. The palette used to live
+         *     only in the browser's localStorage, so signing in from another machine
+         *     -- or after the profile was cleared -- silently reverted the operator to
+         *     the default theme.
+         */
+        put: operations["set_my_theme_users_me_theme_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2019,11 +2083,6 @@ export interface components {
              */
             pid_cv: number;
             /**
-             * Pid Enabled
-             * @default false
-             */
-            pid_enabled: boolean;
-            /**
              * Pid Kp
              * @default 1
              */
@@ -2461,12 +2520,27 @@ export interface components {
              */
             type: "step" | "noise";
         };
-        /** SimulatorPIDEnableRequest */
-        SimulatorPIDEnableRequest: {
+        /**
+         * SimulatorLoopCreateRequest
+         * @description Create a simulator loop that no project controller owns.
+         *
+         *     ``controller_id=None`` asks the simulator to allocate the next free id,
+         *     which is what the HMI's "new simulator loop" button sends: the operator
+         *     wants another twin, not a specific number.
+         */
+        SimulatorLoopCreateRequest: {
             /** Controller Id */
-            controller_id: number;
-            /** Enabled */
-            enabled: boolean;
+            controller_id?: number | null;
+            /**
+             * Pv Max
+             * @default 100
+             */
+            pv_max: number;
+            /**
+             * Pv Min
+             * @default 0
+             */
+            pv_min: number;
         };
         /** SimulatorPIDModeRequest */
         SimulatorPIDModeRequest: {
@@ -2743,6 +2817,8 @@ export interface components {
         /** UserClaims */
         UserClaims: {
             role: components["schemas"]["UserRole"];
+            /** Theme */
+            theme?: string | null;
             /** User Id */
             user_id: number;
             /** Username */
@@ -2793,6 +2869,21 @@ export interface components {
          * @enum {string}
          */
         UserRole: "admin" | "user";
+        /**
+         * UserThemeUpdate
+         * @description The operator's chosen HMI palette.
+         *
+         *     Validated against the theme ids the frontend actually ships so a typo,
+         *     or a stale client, cannot park an unrenderable value on the account and
+         *     leave the operator staring at an unstyled page after every login.
+         */
+        UserThemeUpdate: {
+            /**
+             * Theme
+             * @enum {string}
+             */
+            theme: "optimizer" | "optimizer-dark" | "recorder" | "phosphor" | "isa101" | "neon";
+        };
         /** UserUpdate */
         UserUpdate: {
             /** Active */
@@ -4302,6 +4393,68 @@ export interface operations {
             };
         };
     };
+    create_simulator_loop_simulator_loops_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SimulatorLoopCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControllerSimStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_simulator_loop_simulator_loops__controller_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                controller_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     start_opcua_server_simulator_opcua_start_post: {
         parameters: {
             query?: never;
@@ -4593,41 +4746,6 @@ export interface operations {
             };
         };
     };
-    enable_pid_simulator__controller_id__pid_enable_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                controller_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SimulatorPIDEnableRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CommandResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     set_pid_mode_simulator__controller_id__pid_mode_post: {
         parameters: {
             query?: never;
@@ -4822,6 +4940,40 @@ export interface operations {
             };
         };
     };
+    query_trend_trend__controller_id__get: {
+        parameters: {
+            query?: {
+                /** @description Window length; capped at the 1 h ring */
+                seconds?: number;
+            };
+            header?: never;
+            path: {
+                controller_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_users_users_get: {
         parameters: {
             query?: never;
@@ -4863,6 +5015,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UserResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_my_theme_users_me_theme_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserThemeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

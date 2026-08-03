@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Clock } from 'lucide-react';
 import { Readout } from '@/components/Readout';
 import { Input } from '@/components/Field';
@@ -20,6 +20,11 @@ import {
   type TrendWindowUnit,
 } from '@/features/dashboard/TrendPanel';
 import { useTrendWindow } from '@/features/dashboard/useTrendWindow';
+import {
+  readTrendView,
+  writeTrendView,
+  type TrendViewConfig,
+} from '@/features/dashboard/trendViewStore';
 import { formatNumber, formatTimestamp } from '@/lib/format';
 import type { StatusData } from '@/lib/envelope';
 import { useRealtime } from '@/realtime/useRealtime';
@@ -29,15 +34,6 @@ import { toTwinPoint, TWIN_WINDOW_SECONDS } from './twinTrend';
 
 export interface TwinTrendProps {
   controllerId: number;
-  /**
-   * Twin's authoritative SP/CO from `/simulator/status`. The WS STATUS frame
-   * carries the platform control-loop's SP/CO, which freeze when the twin's
-   * internal PID drives the loop itself — so PV rides the live WS frame while
-   * SP/CO come from the twin snapshot. Undefined for a restricted operator
-   * (no snapshot); the WS frame's own SP/CO are used then.
-   */
-  twinSp?: number | null;
-  twinCo?: number | null;
 }
 
 /**
@@ -56,6 +52,17 @@ const PLOT_WRAP_PADDING_PX = 24;
 const TWIN_SCALE_MIN = 0;
 const TWIN_SCALE_MAX = 100;
 
+/** Framing a twin loop opens with before the operator changes anything. */
+const TWIN_DEFAULTS: TrendViewConfig = {
+  count: TWIN_WINDOW_SECONDS / UNIT_SECONDS.minuto,
+  unit: 'minuto',
+  autoScale: true,
+  pvMin: TWIN_SCALE_MIN,
+  pvMax: TWIN_SCALE_MAX,
+  coMin: TWIN_SCALE_MIN,
+  coMax: TWIN_SCALE_MAX,
+};
+
 const CONTROL_LABEL = 'shrink-0 text-2xs uppercase tracking-caps text-text-soft';
 const NUMBER_INPUT = 'numeric w-12 px-2 text-sm';
 
@@ -71,7 +78,7 @@ const NUMBER_INPUT = 'numeric w-12 px-2 text-sm';
  * apart. Time-window and Y-scale controls mirror the dashboard's TrendPanel so
  * an engineer can zoom the same way on both screens.
  */
-export function TwinTrend({ controllerId, twinSp, twinCo }: TwinTrendProps) {
+export function TwinTrend({ controllerId }: TwinTrendProps) {
   const glow = useGlowTrace();
   const plotRef = useRef<HTMLDivElement>(null);
   const [plotBox, setPlotBox] = useState({ width: 800, height: 210 });
@@ -84,13 +91,32 @@ export function TwinTrend({ controllerId, twinSp, twinCo }: TwinTrendProps) {
   const coMinId = useId();
   const coMaxId = useId();
 
-  const [unit, setUnit] = useState<TrendWindowUnit>('minuto');
-  const [count, setCount] = useState(TWIN_WINDOW_SECONDS / UNIT_SECONDS.minuto);
-  const [autoScale, setAutoScale] = useState(true);
-  const [pvMin, setPvMin] = useState(TWIN_SCALE_MIN);
-  const [pvMax, setPvMax] = useState(TWIN_SCALE_MAX);
-  const [coMin, setCoMin] = useState(TWIN_SCALE_MIN);
-  const [coMax, setCoMax] = useState(TWIN_SCALE_MAX);
+  /**
+   * Persisted per twin loop, under its own `twin` scope (§9.1): the simulator
+   * card and the dashboard panel are two different framings of the same loop,
+   * and an engineer zoomed into a step response here does not want that window
+   * applied to the plant trend on the Loops page.
+   *
+   * `loop` lives inside the state for the same reason as in `TrendPanel`: id
+   * and values must move together or the save writes the previous loop's
+   * numbers under the new id.
+   */
+  const [view, setView] = useState(() => ({
+    loop: controllerId,
+    config: readTrendView('twin', controllerId, TWIN_DEFAULTS),
+  }));
+  if (view.loop !== controllerId) {
+    setView({ loop: controllerId, config: readTrendView('twin', controllerId, TWIN_DEFAULTS) });
+  }
+  const { count, unit, autoScale, pvMin, pvMax, coMin, coMax } = view.config;
+  const patch = useCallback(
+    (next: Partial<TrendViewConfig>) =>
+      setView((v) => ({ loop: v.loop, config: { ...v.config, ...next } })),
+    [],
+  );
+  useEffect(() => {
+    writeTrendView('twin', view.loop, view.config);
+  }, [view]);
 
   /**
    * The plot grows to fill whatever vertical space `SimulatorPage` grants
@@ -119,13 +145,9 @@ export function TwinTrend({ controllerId, twinSp, twinCo }: TwinTrendProps) {
     controllerId,
     windowSeconds(count, unit),
     plotBox.width,
-    { sp: twinSp, co: twinCo },
   );
   const frame = useRealtime<StatusData>(controllerId, 'status').last?.data;
   const point = frame === undefined ? null : toTwinPoint(frame);
-  // Twin snapshot is authoritative for SP/CO (see props); PV rides the WS frame.
-  const spValue = typeof twinSp === 'number' ? twinSp : point?.sp;
-  const coValue = typeof twinCo === 'number' ? twinCo : point?.co;
 
   return (
     <section
@@ -142,11 +164,11 @@ export function TwinTrend({ controllerId, twinSp, twinCo }: TwinTrendProps) {
             aria-hidden="true"
             className="mb-0.5 inline-block h-0 w-2.5 shrink-0 border-t-2 border-dashed border-trace-sp"
           />
-          <Readout label="SP" value={spValue} unit="%" size="sm" />
+          <Readout label="SP" value={point?.sp} unit="%" size="sm" />
         </div>
         <div className="flex items-center gap-1.5">
           <span aria-hidden="true" className="mb-0.5 inline-block h-0.5 w-2.5 shrink-0 bg-trace-co" />
-          <Readout label="CO" value={coValue} unit="%" size="sm" />
+          <Readout label="CO" value={point?.co} unit="%" size="sm" />
         </div>
         <div className="flex items-center gap-1.5" title="Última amostra">
           <Clock aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-text-soft" />
@@ -166,9 +188,9 @@ export function TwinTrend({ controllerId, twinSp, twinCo }: TwinTrendProps) {
             min={1}
             className={NUMBER_INPUT}
             value={count}
-            onChange={(e) => setCount(Number(e.target.value))}
+            onChange={(e) => patch({ count: Number(e.target.value) })}
           />
-          <Select value={unit} onValueChange={(v) => setUnit(v as TrendWindowUnit)}>
+          <Select value={unit} onValueChange={(v) => patch({ unit: v as TrendWindowUnit })}>
             <SelectTrigger id={unitId} aria-label="Unidade da janela" className="w-24">
               <SelectValue />
             </SelectTrigger>
@@ -186,7 +208,7 @@ export function TwinTrend({ controllerId, twinSp, twinCo }: TwinTrendProps) {
           <label htmlFor={autoId} className={cn(CONTROL_LABEL, 'sr-only')}>
             Autoescala
           </label>
-          <Switch id={autoId} checked={autoScale} onCheckedChange={setAutoScale} />
+          <Switch id={autoId} checked={autoScale} onCheckedChange={(v) => patch({ autoScale: v })} />
         </div>
 
         {autoScale ? null : (
@@ -197,8 +219,8 @@ export function TwinTrend({ controllerId, twinSp, twinCo }: TwinTrendProps) {
               maxId={pvMaxId}
               min={pvMin}
               max={pvMax}
-              onMinChange={setPvMin}
-              onMaxChange={setPvMax}
+              onMinChange={(v) => patch({ pvMin: v })}
+              onMaxChange={(v) => patch({ pvMax: v })}
             />
             <ScaleRange
               variable="CO"
@@ -206,8 +228,8 @@ export function TwinTrend({ controllerId, twinSp, twinCo }: TwinTrendProps) {
               maxId={coMaxId}
               min={coMin}
               max={coMax}
-              onMinChange={setCoMin}
-              onMaxChange={setCoMax}
+              onMinChange={(v) => patch({ coMin: v })}
+              onMaxChange={(v) => patch({ coMax: v })}
             />
           </div>
         )}

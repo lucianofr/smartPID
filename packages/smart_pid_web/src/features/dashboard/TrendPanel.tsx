@@ -18,6 +18,7 @@ import type { Scale } from '@/lib/scale';
 import { cn } from '@/lib/utils';
 import { CO_SCALE, useControllers } from './useControllers';
 import { useTrendWindow } from './useTrendWindow';
+import { readTrendView, writeTrendView, type TrendViewConfig } from './trendViewStore';
 
 export interface TrendPanelProps {
   controllerId: number;
@@ -37,6 +38,23 @@ export const UNIT_SHORT: Record<TrendWindowUnit, string> = { segundo: 's', minut
 
 export function windowSeconds(count: number, unit: TrendWindowUnit): number {
   return Math.max(1, count) * UNIT_SECONDS[unit];
+}
+
+/**
+ * Framing an unconfigured loop opens with: half an hour of context, autoscale
+ * on, and — the reason this is a function of `scale` — the loop's OWN
+ * engineering range as the pinned PV bounds, not a hardcoded 0-100.
+ */
+export function panelDefaults(scale: Scale): TrendViewConfig {
+  return {
+    count: 30,
+    unit: 'minuto',
+    autoScale: true,
+    pvMin: scale.euMin,
+    pvMax: scale.euMax,
+    coMin: CO_SCALE.euMin,
+    coMax: CO_SCALE.euMax,
+  };
 }
 
 /** Exactly the plotted rows — the export must match what the operator sees. */
@@ -105,13 +123,32 @@ export function TrendPanel({ controllerId, scale }: TrendPanelProps) {
   const coMinId = useId();
   const coMaxId = useId();
 
-  const [count, setCount] = useState(30);
-  const [unit, setUnit] = useState<TrendWindowUnit>('minuto');
-  const [autoScale, setAutoScale] = useState(true);
-  const [pvMin, setPvMin] = useState(scale.euMin);
-  const [pvMax, setPvMax] = useState(scale.euMax);
-  const [coMin, setCoMin] = useState(CO_SCALE.euMin);
-  const [coMax, setCoMax] = useState(CO_SCALE.euMax);
+  /**
+   * View state (window + scale) is persisted per loop (§9.1), so a framing an
+   * engineer set on FIC-101 survives navigation and reload and does not follow
+   * them onto the next loop.
+   *
+   * `loop` travels INSIDE the state on purpose: the loop id and the values it
+   * describes must change in the same commit, otherwise the save effect fires
+   * once with the new id and the previous loop's numbers and overwrites the
+   * stored framing of the loop just opened.
+   */
+  const [view, setView] = useState(() => ({
+    loop: controllerId,
+    config: readTrendView('panel', controllerId, panelDefaults(scale)),
+  }));
+  if (view.loop !== controllerId) {
+    setView({ loop: controllerId, config: readTrendView('panel', controllerId, panelDefaults(scale)) });
+  }
+  const { count, unit, autoScale, pvMin, pvMax, coMin, coMax } = view.config;
+  const patch = useCallback(
+    (next: Partial<TrendViewConfig>) =>
+      setView((v) => ({ loop: v.loop, config: { ...v.config, ...next } })),
+    [],
+  );
+  useEffect(() => {
+    writeTrendView('panel', view.loop, view.config);
+  }, [view]);
 
   /**
    * The plot is sized from its own column rather than pinned: the well is the
@@ -198,9 +235,9 @@ export function TrendPanel({ controllerId, scale }: TrendPanelProps) {
               min={1}
               className={NUMBER_INPUT}
               value={count}
-              onChange={(e) => setCount(Number(e.target.value))}
+              onChange={(e) => patch({ count: Number(e.target.value) })}
             />
-            <Select value={unit} onValueChange={(v) => setUnit(v as TrendWindowUnit)}>
+            <Select value={unit} onValueChange={(v) => patch({ unit: v as TrendWindowUnit })}>
               <SelectTrigger id={unitId} aria-label="Unidade da janela" className="w-28">
                 <SelectValue />
               </SelectTrigger>
@@ -218,7 +255,7 @@ export function TrendPanel({ controllerId, scale }: TrendPanelProps) {
             <label htmlFor={autoId} className={CONTROL_LABEL}>
               Autoescala
             </label>
-            <Switch id={autoId} checked={autoScale} onCheckedChange={setAutoScale} />
+            <Switch id={autoId} checked={autoScale} onCheckedChange={(v) => patch({ autoScale: v })} />
           </div>
 
           {autoScale ? null : (
@@ -229,8 +266,8 @@ export function TrendPanel({ controllerId, scale }: TrendPanelProps) {
                 maxId={pvMaxId}
                 min={pvMin}
                 max={pvMax}
-                onMinChange={setPvMin}
-                onMaxChange={setPvMax}
+                onMinChange={(v) => patch({ pvMin: v })}
+                onMaxChange={(v) => patch({ pvMax: v })}
               />
               <ScaleRange
                 variable="CO"
@@ -238,8 +275,8 @@ export function TrendPanel({ controllerId, scale }: TrendPanelProps) {
                 maxId={coMaxId}
                 min={coMin}
                 max={coMax}
-                onMinChange={setCoMin}
-                onMaxChange={setCoMax}
+                onMinChange={(v) => patch({ coMin: v })}
+                onMaxChange={(v) => patch({ coMax: v })}
               />
             </div>
           )}

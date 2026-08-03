@@ -27,6 +27,7 @@ from smart_pid_core.adapters.inbound.api.routers import (
     stats,
     system,
     system_events,
+    trend,
     users,
 )
 from smart_pid_core.adapters.inbound.api.ws.realtime import (
@@ -34,6 +35,7 @@ from smart_pid_core.adapters.inbound.api.ws.realtime import (
     RealtimeBridge,
     register_realtime_ws,
 )
+from smart_pid_core.application.trend_buffer import TrendBuffer
 from smart_pid_core.application.tuning_store import TuningRecommendationStore
 
 if TYPE_CHECKING:
@@ -99,6 +101,7 @@ def create_app(
     system_event_repo: SystemEventRepository | None = None,
     event_bus: EventBus | None = None,
     tuning_store: TuningRecommendationStore | None = None,
+    trend_buffer: TrendBuffer | None = None,
 ) -> FastAPI:
     """Build and configure the FastAPI application."""
     app = FastAPI(title="Smart PID API", version="2.0.0", lifespan=_lifespan)
@@ -127,6 +130,10 @@ def create_app(
     app.state.tuning_store = (
         tuning_store if tuning_store is not None else TuningRecommendationStore()
     )
+    # Same "always real" default as the tuning store: tests and monitor-only
+    # apps get an empty ring instead of a missing attribute, and /trend simply
+    # returns zero frames until telemetry flows.
+    app.state.trend_buffer = trend_buffer if trend_buffer is not None else TrendBuffer()
 
     # RealtimeWS fan-out: one ConnectionManager + one EventBus->WS bridge.
     # The bridge only exists when there is a bus to drain; its start/stop is
@@ -175,6 +182,7 @@ def create_app(
     app.include_router(controllers.router, prefix="/controllers", tags=["controllers"])
     app.include_router(commands.router, prefix="/commands", tags=["commands"])
     app.include_router(history.router, prefix="/history", tags=["history"])
+    app.include_router(trend.router, prefix="/trend", tags=["trend"])
     app.include_router(simulator.router, prefix="/simulator", tags=["simulator"])
     app.include_router(opcua.router, prefix="/opcua", tags=["opcua"])
     app.include_router(alarms.router, prefix="/alarms", tags=["alarms"])

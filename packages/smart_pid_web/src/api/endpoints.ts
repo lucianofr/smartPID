@@ -25,6 +25,7 @@ import type {
   UserRow,
   UserUpdateBody,
 } from './types';
+import type { ContractThemeId } from '../theme/contract';
 
 export interface AlarmHistoryParams {
   /** ISO-8601 — backend parses with datetime.fromisoformat (alarms.py:46). */
@@ -119,6 +120,16 @@ export const endpoints = {
     return api.get<HistoryResponse>(`/history/${controllerId}${query ? `?${query}` : ''}`);
   },
 
+  /**
+   * The in-memory 1-hour ring behind every trend chart (GET /trend/{id}). Same
+   * `HistoryResponse` shape as `history`, but backed by the live ring instead
+   * of the SQLite historian: a chart seeds its window from here on mount and
+   * then appends realtime frames, so a reload no longer blanks the trace for
+   * up to an hour while the window refills from scratch.
+   */
+  trend: (controllerId: number, seconds = 3600) =>
+    api.get<HistoryResponse>(`/trend/${controllerId}?seconds=${seconds}`),
+
   /** Every loop that has a stats worker — the multitrend loop roster. */
   allStats: () => api.get<StatsResponse[]>('/controllers/stats'),
 
@@ -155,6 +166,12 @@ export const endpoints = {
   // ---- phase 10 · portable `.spid` projects (admin-only) ----
 
   projectList: () => api.get<ProjectListResponse>('/project/list'),
+
+  /**
+   * The active project — the only route under `/project` that is not
+   * admin-only, so the header may name the plant for every session.
+   */
+  projectCurrent: () => api.get<ProjectMeta>('/project/current'),
 
   createProject: (name: string) => api.post<ProjectMeta>('/project/new', { name }),
 
@@ -193,6 +210,12 @@ export const endpoints = {
   /** Soft deactivation — returns the updated row, not 204. */
   deactivateUser: (userId: number) => api.delete<UserRow>(`/users/${userId}`),
 
+  /**
+   * Per-user theme preference (204, no body). Best-effort from the caller's
+   * side: the in-session theme never waits on, nor reverts with, this write.
+   */
+  setUserTheme: (theme: ContractThemeId) => api.put<void>('/users/me/theme', { theme }),
+
   // ---- phase 9 · executive dashboard ----
 
   /** Backend health snapshot. Unauthenticated by design (routers/system.py). */
@@ -204,4 +227,40 @@ export const endpoints = {
     if (params.controllerId !== undefined) q.set('controller_id', String(params.controllerId));
     return api.get<AiTuningLogRow[]>(`/alarms/ai-history?${q.toString()}`);
   },
+
+  // ---- alarm & event history · system event log (Log_System_Events) ----
+
+  /**
+   * Companion of `alarmHistory`: alarms and system/optimizer events live in
+   * two separate tables, so the history panel merges both over one window.
+   */
+  systemEvents: (params: SystemEventParams) => {
+    const q = new URLSearchParams({ start: params.start, end: params.end });
+    if (params.source !== undefined) q.set('source', params.source);
+    if (params.severity !== undefined) q.set('severity', params.severity);
+    if (params.limit !== undefined) q.set('limit', String(params.limit));
+    if (params.offset !== undefined) q.set('offset', String(params.offset));
+    return api.get<SystemEventRow[]>(`/system-events?${q.toString()}`);
+  },
 };
+
+/** One row of `GET /system-events` (routers/system_events.py). */
+export interface SystemEventRow {
+  id: number;
+  timestamp: string;
+  /** Emitter tag, e.g. `AI` for optimizer suggestions. */
+  source: string;
+  /** Free-form wire severity — normalise with `toSeverity` before rendering. */
+  severity: string;
+  message: string;
+}
+
+export interface SystemEventParams {
+  /** ISO-8601 — both bounds are REQUIRED, same as `/alarms/history`. */
+  start: string;
+  end: string;
+  source?: string;
+  severity?: string;
+  limit?: number;
+  offset?: number;
+}
