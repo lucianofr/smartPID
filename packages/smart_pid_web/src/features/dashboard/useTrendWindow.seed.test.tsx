@@ -26,6 +26,27 @@ function ringFrames(...points: [number, number][]): HistoryResponse {
   };
 }
 
+/**
+ * A dense ring at the REAL telemetry rate. `scan_interval_s` /
+ * `simulator_interval_ms` default to 100 ms, so an hour is ~36 000 samples —
+ * not the 3 600 a 1 Hz feed would give.
+ */
+function denseRing(seconds: number, hz = 10): HistoryResponse {
+  const n = seconds * hz;
+  const frames = new Array<HistoryResponse['frames'][number]>(n);
+  for (let i = 0; i < n; i += 1) {
+    frames[i] = {
+      timestamp: new Date((1_000_000 + i / hz) * 1000).toISOString(),
+      pv: 50,
+      sp: 55,
+      co: 42,
+      mode: 'AUTO',
+      status: 'GOOD',
+    };
+  }
+  return { controller_id: 5, count: n, frames };
+}
+
 function setup(controllerId = 5, maxSeconds = 3600, pxWidth = 800) {
   const realtime = createFakeRealtime();
   const wrapper = ({ children }: { children: ReactNode }) => (
@@ -53,6 +74,23 @@ describe('useTrendWindow — backend ring seed', () => {
     expect(result.current.data.sp).toEqual([55, 55, 55]);
     expect(result.current.data.co).toEqual([42, 42, 42]);
     expect(trend).toHaveBeenCalledWith(5, 3600);
+  });
+
+  it('retains the whole requested window at the real telemetry rate', async () => {
+    // The point cap was sized for 1 Hz while the feed is the 100 ms IO scan, so
+    // asking for 30 minutes kept only the newest 8 000 samples — 13.4 min — and
+    // the x axis quietly agreed with the shortened window, so nothing on screen
+    // said the trace had been cut.
+    const seconds = 1800;
+    trend.mockResolvedValue(denseRing(seconds));
+    const { result } = setup(5, seconds);
+
+    await waitFor(() => expect(result.current.sampleCount).toBe(seconds * 10), {
+      timeout: 15_000,
+    });
+    // Pen tip is the undecimated head, so this is the true plotted span.
+    const span = (result.current.penTip?.t ?? 0) - result.current.data.t[0];
+    expect(span).toBeCloseTo(seconds - 0.1, 1);
   });
 
   it('asks the ring only for the window the operator chose', async () => {

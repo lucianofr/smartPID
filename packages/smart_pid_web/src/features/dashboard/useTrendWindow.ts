@@ -5,8 +5,21 @@ import { loadTrendSeed, mergeSeed } from '@/lib/trendSeed';
 import { createWindowBuffer, type WindowBuffer } from '@/lib/windowBuffer';
 import { useRealtime } from '@/realtime/useRealtime';
 
-/** 1 Hz over the longest offered window (1 h) plus headroom for faster loops. */
-const MAX_POINTS = 8000;
+/**
+ * Point cap for the retained window, matched to the backend ring's own
+ * `MAX_SAMPLES_PER_LOOP` so the buffer keeps everything `GET /trend` can serve.
+ *
+ * The feed is the IO scan, NOT 1 Hz: `scan_interval_s` / `simulator_interval_ms`
+ * default to 100 ms, so an hour is ~36 000 samples. The previous 8 000 was sized
+ * for 1 Hz and silently clipped every window past ~13 min — asking for 30 min
+ * painted 13 min of trace, and the x axis agreed with it, so nothing on screen
+ * said the window had been cut.
+ *
+ * Cost of the larger cap, measured on a full 40 000-sample buffer: 0.48 ms per
+ * push (the window trim) and 4.3 ms per `view(1400)`. At a 10 Hz feed that is
+ * ~5 % of one core — the price of a chart whose axis means what it says.
+ */
+const MAX_POINTS = 40_000;
 const SERIES = 3; // pv, sp, co
 
 export interface TrendWindow {
