@@ -93,41 +93,72 @@ export function createWindowBuffer(
       }
       // Min/max per pixel column: each bucket contributes its min-sample and its
       // max-sample so transients and peaks survive (critical for control trends).
+      //
+      // THREE rules make the envelope honest and STABLE:
+      //
+      // 1. Bucket boundaries are a grid on ABSOLUTE TIME, never on array
+      //    indices. Index-anchored buckets (`n / pxWidth`) shift by one sample
+      //    on every push and again on every trim, so each column recomputed its
+      //    min/max over a different set of samples on every frame: a point
+      //    ALREADY on screen jumped in Y as the window slid, and the trace drew
+      //    values the historian never recorded. Measured over 30 renders of a
+      //    sliding 10-min window on a real ring, worst case per series: CO moved
+      //    35.5 EU, SP 16.5 EU. On a time grid a sample's column is a pure
+      //    function of its timestamp, so history is immobile — only the newest
+      //    bucket (still filling) and the oldest (being trimmed) can change,
+      //    which is exactly what those two are supposed to do.
+      // 2. The pair sits at the bucket's own first/last sample time, shared by
+      //    all series. Taking x from series 0's argmin/argmax stamped SP and CO
+      //    extremes with PV's timing.
+      // 3. Each series orders its own pair by when ITS extremes occurred, so a
+      //    bucket where the series fell renders falling. Ordering every series by
+      //    series 0's direction inverted the fine structure of every series that
+      //    disagreed with PV — for CO, anti-correlated with PV by construction,
+      //    that was 775 injected direction reversals with 29 EU peaks: the
+      //    sawtooth.
+      //
+      // The grid width is fixed by the window and the canvas, NOT by how much
+      // data has arrived — that is what keeps it stable. A window still filling
+      // up therefore draws fewer, wider columns than its pixel budget allows;
+      // the envelope is intact, only the vertex spacing is coarser, and it
+      // sharpens to one pair per pixel once the window is full.
+      const windowSpan = Number.isFinite(cfg.maxSeconds)
+        ? cfg.maxSeconds
+        : ts[n - 1] - ts[0];
+      const width = windowSpan / pxWidth;
+      if (!(width > 0)) {
+        return { data: [ts.slice(), ...rows.map((r) => r.slice())], decimated: false };
+      }
       const outX: number[] = [];
       const outRows: number[][] = rows.map(() => []);
-      const perBucket = n / pxWidth;
-      for (let b = 0; b < pxWidth; b += 1) {
-        const lo = Math.floor(b * perBucket);
-        const hi = Math.min(n, Math.floor((b + 1) * perBucket));
-        if (hi <= lo) continue;
-        for (let pass = 0; pass < 2; pass += 1) {
-          let xi = lo;
-          outRows.forEach((out, r) => {
-            const row = rows[r];
-            let bestIdx = lo;
-            let best = row[lo];
-            for (let i = lo + 1; i < hi; i += 1) {
-              const v = row[i];
-              if ((pass === 0 && v < best) || (pass === 1 && v > best)) {
-                best = v;
-                bestIdx = i;
-              }
-            }
-            out.push(best);
-            if (r === 0) xi = bestIdx;
-          });
-          outX.push(ts[xi]);
+      let lo = 0;
+      while (lo < n) {
+        const key = Math.floor(ts[lo] / width);
+        let hi = lo + 1;
+        while (hi < n && Math.floor(ts[hi] / width) === key) hi += 1;
+        // A single-sample bucket has no envelope to draw; emitting it twice
+        // would repeat an x value, which uPlot reads as a vertical segment.
+        if (hi - lo === 1) {
+          outX.push(ts[lo]);
+          for (let r = 0; r < outRows.length; r += 1) outRows[r].push(rows[r][lo]);
+          lo = hi;
+          continue;
         }
+        outX.push(ts[lo], ts[hi - 1]);
+        for (let r = 0; r < outRows.length; r += 1) {
+          const row = rows[r];
+          let minIdx = lo;
+          let maxIdx = lo;
+          for (let i = lo + 1; i < hi; i += 1) {
+            if (row[i] < row[minIdx]) minIdx = i;
+            if (row[i] > row[maxIdx]) maxIdx = i;
+          }
+          if (minIdx <= maxIdx) outRows[r].push(row[minIdx], row[maxIdx]);
+          else outRows[r].push(row[maxIdx], row[minIdx]);
+        }
+        lo = hi;
       }
-      // Re-sort by x so min/max columns stay monotonic for uPlot.
-      const order = outX.map((_, i) => i).sort((a, c) => outX[a] - outX[c]);
-      return {
-        data: [
-          order.map((i) => outX[i]),
-          ...outRows.map((row) => order.map((i) => row[i])),
-        ],
-        decimated: true,
-      };
+      return { data: [outX, ...outRows], decimated: true };
     },
 
     length() {

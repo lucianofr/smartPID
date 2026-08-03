@@ -39,13 +39,34 @@ export function decimateHistory(
   const data = buffer.view(pxWidth).data;
   const first = order[0];
   const last = order[order.length - 1];
-  if (data[0][0] !== t[first]) {
-    data[0].unshift(t[first]);
-    for (let r = 0; r < rows.length; r += 1) data[r + 1].unshift(rows[r][first]);
+  // The pin has to compare the VALUES, not just the timestamp. `view` places
+  // each bucket's pair at the bucket's own first/last sample time, so an edge
+  // column can carry the right x with a bucket extreme on it — true whenever
+  // the edge bucket is non-monotonic. Matching x alone let that through and the
+  // window edge reported a reading the historian never recorded.
+  const carries = (col: number, src: number): boolean =>
+    data[0][col] === t[src] && rows.every((r, i) => data[i + 1][col] === r[src]);
+  const overwrite = (col: number, src: number): void => {
+    data[0][col] = t[src];
+    for (let r = 0; r < rows.length; r += 1) data[r + 1][col] = rows[r][src];
+  };
+
+  if (!carries(0, first)) {
+    // Same x, wrong value: replace it. A different x means the edge sample is
+    // genuinely absent, so prepend rather than displace a real column.
+    if (data[0][0] === t[first]) overwrite(0, first);
+    else {
+      data[0].unshift(t[first]);
+      for (let r = 0; r < rows.length; r += 1) data[r + 1].unshift(rows[r][first]);
+    }
   }
-  if (data[0][data[0].length - 1] !== t[last]) {
-    data[0].push(t[last]);
-    for (let r = 0; r < rows.length; r += 1) data[r + 1].push(rows[r][last]);
+  const tail = data[0].length - 1;
+  if (!carries(tail, last)) {
+    if (data[0][tail] === t[last]) overwrite(tail, last);
+    else {
+      data[0].push(t[last]);
+      for (let r = 0; r < rows.length; r += 1) data[r + 1].push(rows[r][last]);
+    }
   }
   return data;
 }
