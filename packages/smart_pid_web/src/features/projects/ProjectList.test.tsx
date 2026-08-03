@@ -19,7 +19,7 @@ function LocationProbe() {
 }
 
 function mockSession(role: Role) {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   reloadPreferences();
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
 }

@@ -112,7 +112,7 @@ export function AiConfigSection({ value, errors, disabled, onChange }: AiConfigS
       <Field
         label="Velocidade do processo"
         htmlFor={speedId}
-        tooltip="Classificação da dinâmica do processo, usada pela IA para calibrar a agressividade dos ajustes de sintonia."
+        tooltip="Classe de dinâmica do processo — define a agressividade (Sv) dos ajustes da IA. Use a janela de referência da classe como o TSS (tempo até regime permanente) esperado da malha. ULTRA_FAST: ~5 s, Sv 0,50 (motores, conversores) | FAST: ~60 s, Sv 0,30 (vazão, pressão) | MEDIUM: ~20 min, Sv 0,15 (nível, trocadores de calor) | SLOW: ~2 h, Sv 0,08 (fornos, destilação)."
       >
         <select
           id={speedId}

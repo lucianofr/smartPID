@@ -7,7 +7,7 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import type { ApiError } from '@/api/client';
-import { endpoints } from '@/api/endpoints';
+import { endpoints, type SystemEventRow } from '@/api/endpoints';
 import { queryKeys } from '@/api/queryKeys';
 import { toast } from '@/components/Toast';
 import type { AlarmEventData } from '@/lib/envelope';
@@ -191,38 +191,89 @@ export interface AlarmHistoryFilter {
 }
 
 /**
- * `priority` and `type` are NOT history query parameters — `/alarms/history`
- * only takes start/end/controller_id/limit/offset — so they narrow the fetched
- * window client-side instead of silently doing nothing on the wire.
+ * Alarms and system/optimizer events are two separate backend tables
+ * (`Log_Alarmes` / `Log_System_Events`), so a history row is one or the other.
+ * `kind` is the discriminator; an event has no alarm type, value, limit or ack
+ * state and the renderer must never fabricate them.
+ */
+export type HistoryRow =
+  | ({ kind: 'alarm' } & ActiveAlarm)
+  | {
+      kind: 'event';
+      id: number;
+      timestamp: string;
+      source: string;
+      severity: AlarmSeverity;
+      message: string;
+    };
+
+/**
+ * `priority` and `type` are NOT history query parameters — neither
+ * `/alarms/history` nor `/system-events` narrows by them the way the panel
+ * needs — so they narrow the fetched window client-side instead of silently
+ * doing nothing on the wire.
  */
 export function filterHistoryRows(
-  rows: readonly ActiveAlarm[],
+  rows: readonly HistoryRow[],
   filter: Pick<AlarmHistoryFilter, 'priority' | 'type'>,
-): ActiveAlarm[] {
-  return rows.filter(
-    (row) =>
-      (filter.priority === 'ALL' || toSeverity(row.priority) === filter.priority) &&
-      (filter.type === 'ALL' || row.alarm_type === filter.type),
-  );
+): HistoryRow[] {
+  return rows.filter((row) => {
+    const severity = row.kind === 'alarm' ? toSeverity(row.priority) : row.severity;
+    if (filter.priority !== 'ALL' && severity !== filter.priority) return false;
+    // `type` names an alarm limit kind. A system event has none, so a specific
+    // selection excludes events; `ALL` keeps them.
+    if (filter.type !== 'ALL' && (row.kind !== 'alarm' || row.alarm_type !== filter.type)) {
+      return false;
+    }
+    return true;
+  });
 }
 
 export function useAlarmHistory(
   filter: AlarmHistoryFilter,
   enabled = true,
-): UseQueryResult<ActiveAlarm[], ApiError> {
-  return useQuery<ActiveAlarm[], ApiError>({
+): UseQueryResult<HistoryRow[], ApiError> {
+  return useQuery<HistoryRow[], ApiError>({
     queryKey: queryKeys.alarmsHistory({ ...filter }),
     enabled,
     // A filter change must not blank the table back to a loading state —
     // the operator keeps reading the previous window until the new one lands.
     placeholderData: (previous) => previous,
     queryFn: async () => {
-      const rows = await endpoints.alarmHistory({
-        start: filter.start,
-        end: filter.end,
-        limit: filter.limit,
-        ...(filter.controllerId === 'ALL' ? {} : { controllerId: filter.controllerId }),
-      });
+      // A system event carries no controller id, so it can never satisfy a
+      // specific-loop selection — skip the request instead of fetching rows the
+      // filter would drop. `Malha = Todas` fetches both logs.
+      const controllerId = filter.controllerId === 'ALL' ? undefined : filter.controllerId;
+      const [alarms, events] = await Promise.all([
+        endpoints.alarmHistory({
+          start: filter.start,
+          end: filter.end,
+          limit: filter.limit,
+          ...(controllerId === undefined ? {} : { controllerId }),
+        }),
+        controllerId === undefined
+          ? endpoints.systemEvents({
+              start: filter.start,
+              end: filter.end,
+              limit: filter.limit,
+            })
+          : Promise.resolve<SystemEventRow[]>([]),
+      ]);
+
+      const rows: HistoryRow[] = [
+        ...alarms.map((row): HistoryRow => ({ kind: 'alarm', ...row })),
+        ...events.map(
+          (row): HistoryRow => ({
+            kind: 'event',
+            id: row.id,
+            timestamp: row.timestamp,
+            source: row.source,
+            severity: toSeverity(row.severity),
+            message: row.message,
+          }),
+        ),
+      ];
+      rows.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
       return filterHistoryRows(rows, filter);
     },
   });

@@ -98,11 +98,13 @@ class TestPIDWorkerAIIntegration:
             )
             time.sleep(0.1)
 
-            # Send AI action with new Ki
+            # Send AI action with new Ki. `apply` is the loop's auto-apply
+            # gate; without it the suggestion is display-only.
             ai_action = {
                 "controller_id": sample_controller.id,
                 "new_ki": 15.0,
                 "gamma": 0.5,
+                "apply": True,
             }
             pub.send(
                 f"ACTION.AI.{sample_controller.id}".encode(),
@@ -112,6 +114,52 @@ class TestPIDWorkerAIIntegration:
 
             # Verify Ki was updated
             assert sample_controller.pid_params.reset == pytest.approx(15.0)
+        finally:
+            worker.stop()
+            bus.stop()
+
+    def test_ignores_ai_action_when_auto_apply_is_off(self):
+        """A DDC loop must not adopt a suggestion the operator did not authorise.
+
+        This is the reported defect: the faceplate's auto-apply switch was
+        not consulted anywhere, so every optimizer suggestion was applied.
+        """
+        bus = EventBus(url_prefix=f"inproc://test_pid_ai_{uuid.uuid4().hex[:8]}")
+        bus.start()
+        try:
+            sample_controller = Controller(
+                id=1, name="TIC-AI", scan_rate_s=0.1,
+                pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
+            )
+            worker = PIDWorker(
+                bus=bus, controller=sample_controller,
+                engine=PIDEngine(), mode_manager=ModeManager(),
+            )
+            worker.set_mode(ControllerMode.AUTO)
+            worker.start()
+
+            pub = bus.create_publisher()
+            time.sleep(0.05)
+            pub.send(
+                f"TELEMETRY.{sample_controller.id}".encode(),
+                msgpack.packb({"pv": 50.0, "sp": 50.0, "co": 50.0}),
+            )
+            time.sleep(0.1)
+
+            for gate in ({"apply": False}, {}):
+                pub.send(
+                    f"ACTION.AI.{sample_controller.id}".encode(),
+                    msgpack.packb({
+                        "controller_id": sample_controller.id,
+                        "new_ki": 15.0,
+                        "gamma": 0.5,
+                        **gate,
+                    }),
+                )
+                time.sleep(0.15)
+                # Ti stays where the operator left it. An absent key is an
+                # unstated gate, and unstated must not authorise a write.
+                assert sample_controller.pid_params.reset == pytest.approx(10.0)
         finally:
             worker.stop()
             bus.stop()

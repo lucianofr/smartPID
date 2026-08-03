@@ -11,7 +11,7 @@ import { TooltipProvider } from '@/components/Tooltip';
 import { LoginPage } from '@/pages/LoginPage';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { createResyncRunner } from '@/realtime/resync';
-import { ThemeProvider } from '@/theme/ThemeProvider';
+import { ThemeProvider, ThemeSync } from '@/theme/ThemeProvider';
 
 /**
  * Composition root. Provider order is load-bearing: the realtime socket needs
@@ -67,6 +67,7 @@ export function App() {
       <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider onPermissionDenied={onPermissionDenied}>
+          <ThemeSync />
           <BrowserRouter>
             <RealtimeSession>
               <Routes>

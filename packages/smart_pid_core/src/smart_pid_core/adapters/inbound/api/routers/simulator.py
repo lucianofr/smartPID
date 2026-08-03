@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_repo,
@@ -24,8 +24,8 @@ from smart_pid_domain.dtos.simulator import (
     ControllerSimStatus,
     OPCUAServerStatus,
     SimulatorDisturbanceRequest,
+    SimulatorLoopCreateRequest,
     SimulatorParametersRequest,
-    SimulatorPIDEnableRequest,
     SimulatorPIDModeRequest,
     SimulatorPIDParamsRequest,
     SimulatorPIDSPRequest,
@@ -114,6 +114,41 @@ async def get_status(
     )
 
 
+# --- Loop lifecycle -------------------------------------------------------
+# The simulator is an independent module: its loops are created and removed
+# here, NOT as a side effect of project-controller CRUD. Deleting a malha
+# leaves its twin running, and a twin can exist with no malha at all, which
+# is what makes the simulator usable for tuning experiments on its own.
+
+
+@router.post("/loops", response_model=ControllerSimStatus)
+async def create_simulator_loop(
+    body: SimulatorLoopCreateRequest,
+    _user: Annotated[UserClaims, Depends(require_admin)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> ControllerSimStatus:
+    try:
+        cid = adapter.create_loop(
+            controller_id=body.controller_id,
+            pv_min=body.pv_min,
+            pv_max=body.pv_max,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return adapter.get_controller_status(cid)
+
+
+@router.delete("/loops/{controller_id}", status_code=204)
+async def delete_simulator_loop(
+    controller_id: int,
+    _user: Annotated[UserClaims, Depends(require_admin)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+) -> Response:
+    if not adapter.unregister_controller(controller_id):
+        raise _not_registered(controller_id)
+    return Response(status_code=204)
+
+
 @router.get("/opcua/status", response_model=OPCUAServerStatus)
 async def get_opcua_status(
     _user: Annotated[UserClaims, Depends(require_admin)],
@@ -197,21 +232,6 @@ async def clear_disturbance(
     with _sim_controller(adapter, controller_id):
         adapter.clear_disturbance(controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail="Disturbances cleared")
-
-
-@router.post("/{controller_id}/pid/enable", response_model=CommandResponse)
-async def enable_pid(
-    controller_id: int,
-    body: SimulatorPIDEnableRequest,
-    _user: Annotated[UserClaims, Depends(require_admin)],
-    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
-    repo: Annotated[SQLiteRepository, Depends(get_repo)],
-) -> CommandResponse:
-    with _sim_controller(adapter, controller_id):
-        adapter.enable_pid(controller_id, body.enabled)
-    await persist_sim_config(adapter, repo, controller_id)
-    state = "enabled" if body.enabled else "disabled"
-    return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID {state}")
 
 
 @router.post("/{controller_id}/pid/params", response_model=CommandResponse)

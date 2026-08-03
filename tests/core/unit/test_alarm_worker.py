@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
+import msgpack
 import pytest
 
 from smart_pid_core.application.workers.alarm_worker import AlarmWorker
@@ -280,3 +281,136 @@ class TestAlarmWorkerEnrichment:
         assert 1 not in worker._alarm_configs
         assert 1 not in worker._controller_meta
         assert 1 not in worker._pv_ranges
+
+
+class TestOnlyConfiguredAndEnabledAlarmsAreLive:
+    """Regression: FIC-101 had no alarms configured yet announced HI at 80.
+
+    ``Configuracao_Alarmes`` is keyed by ``controlador_id`` and SQLite reuses
+    ``max(id) + 1``, so a row left behind by a deleted loop was inherited by
+    whatever loop next took that id.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_row_whose_controller_is_gone_is_not_loaded(self, tmp_path):
+        from sqlalchemy import text
+
+        from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+        from smart_pid_core.application.workers.alarm_worker import load_alarm_configs
+        from smart_pid_domain.models.controller import Controller
+
+        repo = SQLiteRepository(tmp_path / "p.spid")
+        await repo.initialize()
+        try:
+            live = await repo.save(Controller(id=0, name="FIC-101"))
+            async with repo.session_factory() as s:
+                # One row for the live loop, one orphaned by a deleted loop.
+                for cid, limit in ((live.id, 90.0), (live.id + 50, 80.0)):
+                    await s.execute(
+                        text(
+                            "INSERT INTO Configuracao_Alarmes"
+                            " (controlador_id, tipo_alarme, prioridade, limite, habilitado)"
+                            " VALUES (:cid, 'HI', 'WARNING', :lim, 1)"
+                        ),
+                        {"cid": cid, "lim": limit},
+                    )
+                await s.commit()
+
+            configs = await load_alarm_configs(repo.session_factory)
+            assert set(configs) == {live.id}
+            assert configs[live.id].hi_value == 90.0
+        finally:
+            await repo.close()
+
+    @pytest.mark.asyncio
+    async def test_a_controller_with_every_alarm_disabled_gets_no_config(self, tmp_path):
+        from sqlalchemy import text
+
+        from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+        from smart_pid_core.application.workers.alarm_worker import load_alarm_configs
+        from smart_pid_domain.models.controller import Controller
+
+        repo = SQLiteRepository(tmp_path / "p.spid")
+        await repo.initialize()
+        try:
+            c = await repo.save(Controller(id=0, name="FIC-101"))
+            async with repo.session_factory() as s:
+                await s.execute(
+                    text(
+                        "INSERT INTO Configuracao_Alarmes"
+                        " (controlador_id, tipo_alarme, prioridade, limite, habilitado)"
+                        " VALUES (:cid, 'HI', 'WARNING', 80.0, 0)"
+                    ),
+                    {"cid": c.id},
+                )
+                await s.commit()
+            assert await load_alarm_configs(repo.session_factory) == {}
+        finally:
+            await repo.close()
+
+    def test_disabling_every_alarm_drops_the_live_config(self, mock_bus):
+        """Symmetry with load: silencing a loop must take effect now, not at
+        the next daemon restart."""
+        from smart_pid_domain.models.alarm_config import AlarmConfig
+
+        worker = AlarmWorker(bus=mock_bus, alarm_configs={})
+        worker.update_config(7, AlarmConfig(hi_enabled=True, hi_value=80.0))
+        assert 7 in worker._alarm_configs
+
+        worker.update_config(7, AlarmConfig(hi_enabled=False, hi_value=80.0))
+        assert 7 not in worker._alarm_configs
+
+
+
+class TestDeviationSuppressionFromTheWire:
+    """The `sp_ramping` flag has to survive the FRAME, not just the engine.
+
+    ``AlarmEngine`` suppressed deviation alarms during an SP ramp from day one,
+    but no producer ever put ``sp_ramping`` on ``STATUS.{id}`` (PIDWorker never
+    called ``apply_sp_ramp``), so the consumer below always read the ``False``
+    default and the suppression never once fired in production.
+    """
+
+    @staticmethod
+    def _frame(*, sp_ramping: bool | None) -> bytes:
+        data = {"controller_id": 1, "pv": 60.0, "sp": 50.0}
+        if sp_ramping is not None:
+            data["sp_ramping"] = sp_ramping
+        return msgpack.packb(data)
+
+    def _dv_events(self, payload: bytes) -> list[dict]:
+        from smart_pid_domain.models.alarm_config import AlarmConfig
+
+        config = AlarmConfig(
+            dv_hi_enabled=True, dv_hi_value=5.0,
+            dv_hi_priority=AlarmPriority.WARNING,
+        )
+        worker = AlarmWorker(bus=MagicMock(), alarm_configs={1: config})
+        sub, pub = MagicMock(), MagicMock()
+        # One frame, then stop: recv returning None would spin forever.
+        def _recv(timeout_ms: int = 0) -> tuple[bytes, bytes] | None:  # noqa: ARG001
+            worker._stop_event.set()
+            return (b"STATUS.1", payload)
+
+        sub.recv.side_effect = _recv
+        worker._loop(sub, pub)
+        return [
+            msgpack.unpackb(call.args[1])
+            for call in pub.send.call_args_list
+            if call.args[0].startswith(b"EVENT.ALARM.")
+        ]
+
+    def test_a_ramping_setpoint_suppresses_the_deviation_alarm(self):
+        assert self._dv_events(self._frame(sp_ramping=True)) == []
+
+    def test_a_settled_setpoint_still_raises_it(self):
+        events = self._dv_events(self._frame(sp_ramping=False))
+        assert [(e["alarm_type"], e["transition"]) for e in events] == [
+            ("DV_HI", "TRIGGERED"),
+        ]
+
+    def test_a_producer_that_omits_the_key_is_treated_as_settled(self):
+        """MonitorWorker publishes no `sp_ramping`: monitor mode runs no local
+        ramp, so the absent key must mean "not ramping", never "suppress"."""
+        events = self._dv_events(self._frame(sp_ramping=None))
+        assert [e["alarm_type"] for e in events] == ["DV_HI"]

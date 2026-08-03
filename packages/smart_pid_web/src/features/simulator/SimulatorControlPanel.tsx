@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Button } from '@/components/Button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/Dialog';
 import { EmptyState, LoadingState } from '@/components/MissingState';
 import { useCan } from '@/auth/useCan';
 import type { StatusData } from '@/lib/envelope';
@@ -37,6 +46,7 @@ export function SimulatorControlPanel({ controllerId }: SimulatorControlPanelPro
   const live = useRealtime<StatusData>(controllerId, 'status').last?.data;
   const mutations = useSimulatorMutations(controllerId);
 
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const paramsTimer = useRef<number>();
   const commitParams = mutations.parameters.mutate;
   const debouncedCommitParams = useCallback(
@@ -74,7 +84,29 @@ export function SimulatorControlPanel({ controllerId }: SimulatorControlPanelPro
           running={data?.running === true}
           onStart={() => mutations.start.mutate()}
           onStop={() => mutations.stop.mutate()}
-        />
+        >
+          <div
+            role="group"
+            aria-label="Simulator loop lifecycle"
+            className="flex items-center gap-2"
+          >
+            <Button
+              size="sm"
+              disabled={mutations.createLoop.isPending}
+              onClick={() => mutations.createLoop.mutate()}
+            >
+              Novo loop de simulação
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={mutations.deleteLoop.isPending || controller === undefined}
+              onClick={() => setConfirmDeleteOpen(true)}
+            >
+              Apagar loop atual
+            </Button>
+          </div>
+        </StartStopControl>
         {controller ? (
           <>
             <PresetSelector
@@ -92,11 +124,9 @@ export function SimulatorControlPanel({ controllerId }: SimulatorControlPanelPro
             />
             <PIDSettings
               key={controllerId}
-              enabled={controller.pid_enabled}
               kp={controller.pid_kp}
               ti={controller.pid_ti}
               td={controller.pid_td}
-              onToggleEnabled={(enabled) => mutations.pidEnable.mutate(enabled)}
               onApplyParams={(p) => mutations.pidParams.mutate(p)}
             />
             <DisturbanceControls
@@ -146,20 +176,43 @@ export function SimulatorControlPanel({ controllerId }: SimulatorControlPanelPro
           mode={twin.mode}
           onSetSp={(sp) => mutations.sp.mutate(sp)}
           onSetCo={(co) => mutations.co.mutate(co)}
-          onSetMode={(mode) => {
-            mutations.mode.mutate(mode);
-            // AUTO is meaningless without the internal PID armed — CO sits
-            // frozen with zero feedback otherwise (confirmed live: mode=AUTO
-            // alone never moves CO despite a real SP/PV error). `/pid/enable`
-            // is admin-only, so only couple it when this session already
-            // reaches the config region — an operator's AUTO click still
-            // just sets mode, same as before.
-            if (mode === 'AUTO' && canConfigure && controller?.pid_enabled !== true) {
-              mutations.pidEnable.mutate(true);
-            }
-          }}
+          onSetMode={(mode) => mutations.mode.mutate(mode)}
         />
       )}
+      {canConfigure ? (
+        <Dialog
+          open={confirmDeleteOpen}
+          onOpenChange={(next) => {
+            if (!next) setConfirmDeleteOpen(false);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Apagar loop de simulação #{controllerId}</DialogTitle>
+              <DialogDescription>
+                O modelo de processo desta malha sai do gêmeo digital. A ação não pode ser
+                desfeita.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setConfirmDeleteOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={mutations.deleteLoop.isPending}
+                onClick={() =>
+                  mutations.deleteLoop.mutate(undefined, {
+                    onSuccess: () => setConfirmDeleteOpen(false),
+                  })
+                }
+              >
+                Apagar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </section>
   );
 }

@@ -3,8 +3,17 @@ import type { components } from './generated/openapi';
 /** Lowercase roles — spec §9, phase-0 enum migration. */
 export type Role = 'admin' | 'user';
 
-/** GET /auth/me response (phase 0: response_model=UserClaims, require_user). */
-export type MeResponse = components['schemas']['UserClaims'];
+/**
+ * GET /auth/me response (phase 0: response_model=UserClaims, require_user).
+ *
+ * `theme` is the per-USER palette (PUT /users/me/theme) — localStorage alone is
+ * per-browser, so it cannot follow an operator to another station. Declared
+ * here as optional so the app compiles against an OpenAPI snapshot taken
+ * before the field landed; the server sends `string | null`.
+ */
+export type MeResponse = components['schemas']['UserClaims'] & {
+  theme?: string | null;
+};
 
 /** POST /auth/login response — unchanged by phase 0: {access_token, token_type}. */
 export type TokenResponse = components['schemas']['TokenResponse'];

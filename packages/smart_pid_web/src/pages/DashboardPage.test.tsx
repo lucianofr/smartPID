@@ -16,7 +16,7 @@ function renderDashboard(
   path = '/',
   realtime = createFakeRealtime(),
 ) {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: 'admin', role: 'admin' });
   const queryClient = createQueryClient();
   queryClient.setQueryData(queryKeys.controllers, controllers);
@@ -33,6 +33,7 @@ function renderDashboard(
 }
 
 beforeEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
 });
 

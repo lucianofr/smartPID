@@ -160,7 +160,6 @@ interface SimState {
     step_amplitude: number;
     noise_active: boolean;
     noise_amplitude: number;
-    pid_enabled: boolean;
     pid_kp: number;
     pid_ti: number;
     pid_td: number;
@@ -191,7 +190,6 @@ function freshSimState(): SimState {
       step_amplitude: 0,
       noise_active: false,
       noise_amplitude: 0,
-      pid_enabled: false,
       pid_kp: 1,
       pid_ti: 10,
       pid_td: 0,
@@ -242,11 +240,6 @@ async function mockSimulator(page: Page, sim: SimState): Promise<void> {
   });
   await page.route('**/api/simulator/1/co', ok);
   await page.route('**/api/simulator/1/pid/mode', ok);
-  await page.route('**/api/simulator/1/pid/enable', (route) => {
-    const body = route.request().postDataJSON() as { enabled: boolean };
-    sim.c.pid_enabled = body.enabled;
-    return ok(route);
-  });
   await page.route('**/api/simulator/1/pid/params', (route) => {
     const body = route.request().postDataJSON() as { kp: number; ti: number; td: number };
     sim.c.pid_kp = body.kp;
@@ -299,7 +292,8 @@ test.describe('Simulator page', () => {
     const remove = page.getByRole('button', { name: /^remove$/i });
     await expect(remove).toBeDisabled();
 
-    await page.getByRole('spinbutton', { name: /amplitude/i }).fill('20');
+    // exact: the auto-disturbance field is also named "Amplitude (%)".
+    await page.getByRole('spinbutton', { name: 'Amplitude', exact: true }).fill('20');
     await page.getByRole('button', { name: /inject disturbance/i }).click();
 
     // Inject POST sets step_active:true -> refetch -> disturbanceActive -> Remove enabled.
@@ -311,15 +305,8 @@ test.describe('Simulator page', () => {
     await expect(remove).toBeDisabled();
   });
 
-  test('enabling the internal PID unlocks Kp/Ti/Td, and Apply converges to the new value', async ({
-    page,
-  }) => {
+  test('Kp/Ti/Td are editable and Apply converges to the new value', async ({ page }) => {
     const kpField = page.getByRole('spinbutton', { name: /^kp$/i });
-    await expect(kpField).toBeDisabled();
-
-    await page.getByRole('switch', { name: /enable pid/i }).click();
-
-    // /pid/enable POST sets sim.c.pid_enabled -> refetch -> fields unlock.
     await expect(kpField).toBeEnabled();
 
     await kpField.fill('3.5');

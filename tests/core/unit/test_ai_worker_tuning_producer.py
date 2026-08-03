@@ -333,3 +333,113 @@ class TestRetuneProduction:
         # lambda = max(3*0.04, 0.8*0.04) = 0.12 -> Kp = 0.12 / (2*1.5*0.16)
         assert rec.recommended_kp == pytest.approx(0.12 / 0.48)
         assert "SURGE_LEVEL" in rec.reason
+
+
+class TestIntegralSuggestionIsOfferedWhenAutoApplyIsOff:
+    """With the auto-apply gate closed the optimizer still knows what it
+    wants. If that suggestion is not parked anywhere, the operator can see it
+    on the faceplate and has no way to accept it — the Apply button stays
+    disabled and the loop can never be tuned by hand.
+    """
+
+    def test_it_parks_a_pending_recommendation(self) -> None:
+        store = TuningRecommendationStore()
+        controller = _controller()
+        worker = _worker(controller, store)
+
+        worker._park_integral_suggestion(10.0, 13.5)
+
+        tracked = store.get(1)
+        assert tracked is not None
+        assert tracked.status == TuningRecStatus.PENDING
+        rec = tracked.recommendation
+        assert rec.current_ti == 10.0
+        assert rec.recommended_ti == 13.5
+        # Only the integral term moves.
+        assert rec.recommended_kp == rec.current_kp == controller.pid_params.gain
+        assert rec.recommended_td == rec.current_td == controller.pid_params.rate
+
+    def test_a_suggestion_that_changes_nothing_is_not_offered(self) -> None:
+        store = TuningRecommendationStore()
+        worker = _worker(_controller(), store)
+        worker._park_integral_suggestion(10.0, 10.0)
+        assert store.get(1) is None
+
+    def test_it_never_overwrites_a_standing_full_retune(self) -> None:
+        """A full Kp+Ti+Td proposal is richer and may already be on the
+        operator's screen awaiting an answer."""
+        from uuid import uuid4
+
+        from smart_pid_domain.models.tuning import TuningRecommendation
+
+        store = TuningRecommendationStore()
+        worker = _worker(_controller(), store)
+        store.put(TuningRecommendation(
+            id=uuid4(), controller_id=1,
+            current_kp=1.0, current_ti=10.0, current_td=0.0,
+            recommended_kp=2.5, recommended_ti=20.0, recommended_td=1.0,
+            reason="full retune", timestamp=1.0,
+        ))
+
+        worker._park_integral_suggestion(10.0, 13.5)
+
+        rec = store.get(1).recommendation
+        assert rec.reason == "full retune"
+        assert rec.recommended_kp == 2.5
+
+    def test_it_refreshes_its_own_earlier_suggestion(self) -> None:
+        store = TuningRecommendationStore()
+        worker = _worker(_controller(), store)
+        worker._park_integral_suggestion(10.0, 12.0)
+        worker._park_integral_suggestion(10.0, 15.0)
+        assert store.get(1).recommendation.recommended_ti == 15.0
+
+    def test_no_store_is_not_an_error(self) -> None:
+        worker = _worker(_controller(), TuningRecommendationStore())
+        worker._tuning_store = None
+        worker._park_integral_suggestion(10.0, 13.5)  # must not raise
+
+
+class TestLiveConfigEditsReachTheWorker:
+    """The worker caches its Controller, so a persisted edit has to be pushed
+    in. Without this the auto-apply switch moved in the database while the
+    optimizer thread kept reading its start-up copy."""
+
+    def test_the_auto_apply_gate_can_be_flipped_at_runtime(self) -> None:
+        from dataclasses import replace
+
+        from smart_pid_domain.enums import TuningWriteMode
+
+        controller = _controller()
+        worker = _worker(controller, TuningRecommendationStore())
+        assert worker._controller.tuning_write_mode == TuningWriteMode.APPROVAL_REQUIRED
+
+        worker.update_controller(
+            replace(controller, tuning_write_mode=TuningWriteMode.AUTO_APPLY),
+        )
+        assert worker._controller.tuning_write_mode == TuningWriteMode.AUTO_APPLY
+
+    def test_a_config_save_does_not_restart_a_stopped_optimizer(self) -> None:
+        """`_enabled` belongs to CMD.AI, not to the config form."""
+        from dataclasses import replace
+
+        controller = _controller()
+        worker = _worker(controller, TuningRecommendationStore())
+        worker.set_enabled(False)
+        worker.set_paused(True)
+
+        worker.update_controller(replace(controller, optimization_enabled=True))
+
+        assert worker.is_enabled is False
+        assert worker.is_paused is True
+
+    def test_it_adopts_the_new_ai_period_and_band(self) -> None:
+        from dataclasses import replace
+
+        controller = _controller()
+        worker = _worker(controller, TuningRecommendationStore())
+        worker.update_controller(
+            replace(controller, tss_s=30.0, stability_band_pct=0.5),
+        )
+        assert worker._ai_period_s == pytest.approx(90.0)
+        assert worker._stability_band_pct == pytest.approx(0.5)

@@ -109,6 +109,49 @@ class TestOPCUAServerRegisterController:
         finally:
             server.stop()
 
+    def test_reregistration_keeps_the_client_reading_live_values(self) -> None:
+        """A re-registered controller must keep its node ids.
+
+        Minting a second ``CTRL_{id}`` folder orphans the first: the twin
+        ticks the new nodes while a client bound to the old ones freezes on
+        the last value it ever saw — the Sim trend and the block diagram then
+        disagree because they read different node sets.
+        """
+        from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
+        from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
+        from smart_pid_core.config import CoreSettings
+
+        port = _get_free_port()
+        server = OPCUAServer(port=port)
+        server.start()
+        try:
+            first = server.register_controller(1)
+            settings = CoreSettings(
+                jwt_secret="test-secret-key-minimum-32-bytes!",
+                opcua_endpoint=f"opc.tcp://localhost:{port}",
+            )  # type: ignore[call-arg]
+            client = OPCUAAdapter(settings=settings)
+            client.register_controller(
+                controller_id=1,
+                node_id_pv=first["pv"],
+                node_id_sp=first["sp"],
+                node_id_co=first["co"],
+            )
+            client.start()
+            try:
+                assert client.wait_connected(timeout_s=5.0)
+
+                # Delete + re-create the simulator loop for the same id.
+                assert server.register_controller(1) == first
+
+                server.update_values(controller_id=1, values={"pv": 61.5})
+                time.sleep(0.3)
+                assert client.read_telemetry(1).pv.value == pytest.approx(61.5, abs=0.5)
+            finally:
+                client.stop()
+        finally:
+            server.stop()
+
 
 class TestOPCUAServerUpdateValues:
     def test_update_values_readable_by_client(self) -> None:

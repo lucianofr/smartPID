@@ -142,29 +142,49 @@ OUTPUT_CENTERS: dict[str, float] = {
     "RM": -0.35, "R": -0.15, "M": 0.0, "A": +0.15, "AM": +0.35,
 }
 
+# Reducing Ti is the destabilising direction: a loop already at its limit is
+# pushed into a limit cycle by a faster integrator, and the tuner then spends
+# several cycles undoing it. Increasing Ti only costs speed. So a reduction is
+# only ever justified by POSITIVE evidence of laziness — a standing offset the
+# valve is NOT working to close — and every ambiguous combination resolves
+# towards damping, or towards leaving the loop alone.
 RULES: list[Rule] = [
-    # R1: persistent offset with calm valve → integrator lazy
+    # R1: persistent offset with a calm valve → integrator genuinely lazy.
+    # This is the only signature that earns a reduction.
     ({"iae": "HIGH", "osc": "STABLE", "eff": "SMOOTH"}, "R"),
     ({"iae": "HIGH", "osc": "STABLE", "eff": "MODERATE"}, "R"),
-    # R1': offset with calm osc + excessive effort → response too slow
-    ({"iae": "HIGH", "osc": "STABLE", "eff": "EXCESS"}, "RM"),
+    # R1': offset the valve is already fighting at full stroke. NOT a slow
+    # loop — a loop at its limit (output saturation, a downstream
+    # constraint, stiction, or an oscillation the detector could not
+    # resolve). Speeding the integrator up there only winds it harder.
+    # This rule used to say "RM" (−0.35); combined with an OSC reading that
+    # collapses to 0 when the settling mask covers the window, it is what
+    # drove Ti down cycle after cycle on a visibly oscillating loop. Damp.
+    ({"iae": "HIGH", "osc": "STABLE", "eff": "EXCESS"}, "A"),
+    ({"iae": "MED",  "osc": "STABLE", "eff": "EXCESS"}, "A"),
+    ({"iae": "LOW",  "osc": "STABLE", "eff": "EXCESS"}, "A"),
     # R2: limit cycle territory
     ({"iae": "HIGH", "osc": "UNSTABLE"}, "AM"),
     ({"iae": "MED",  "osc": "UNSTABLE"}, "AM"),
     ({"iae": "LOW",  "osc": "UNSTABLE"}, "A"),
     # R3: nervous loop (oscillating + chattering valve) → slow down integrator
     ({"osc": "OSC", "eff": "EXCESS"}, "A"),
-    ({"iae": "LOW", "osc": "OSC", "eff": "MODERATE"}, "A"),
-    # R3': sustained PV oscillation with calm valve. Classical tuning says
-    # oscillation → more damping, so increase Ti regardless of valve state.
-    ({"iae": "LOW",  "osc": "OSC", "eff": "SMOOTH"}, "A"),
+    # R3': sustained PV oscillation with a calm valve. Classical tuning says
+    # oscillation → more damping — but only when the oscillation actually
+    # costs something. Mild ringing on a loop already holding a low error is
+    # the normal shape of a step response; damping it further only buys
+    # sluggishness, and chasing it makes Ti creep up without bound on any
+    # loop whose setpoint keeps moving.
+    ({"iae": "LOW",  "osc": "OSC", "eff": "MODERATE"}, "M"),
+    ({"iae": "LOW",  "osc": "OSC", "eff": "SMOOTH"}, "M"),
     ({"iae": "MED",  "osc": "OSC", "eff": "SMOOTH"}, "A"),
     ({"iae": "HIGH", "osc": "OSC", "eff": "SMOOTH"}, "AM"),
     # R4: acceptable compromise
     ({"iae": "MED", "osc": "OSC", "eff": "MODERATE"}, "M"),
     # R5: settled
-    ({"iae": "LOW", "osc": "STABLE"}, "M"),
-    # R6: moderate offset, mild oscillation → gentle reduce
+    ({"iae": "LOW", "osc": "STABLE", "eff": "SMOOTH"}, "M"),
+    ({"iae": "LOW", "osc": "STABLE", "eff": "MODERATE"}, "M"),
+    # R6: moderate offset, calm PV and calm valve → gentle reduce
     ({"iae": "MED", "osc": "STABLE", "eff": "SMOOTH"}, "R"),
     ({"iae": "MED", "osc": "STABLE", "eff": "MODERATE"}, "R"),
 ]
@@ -183,6 +203,10 @@ class FuzzyEngineV2:
     # Δerror below this magnitude is ignored when counting direction
     # reversals — keeps quantisation noise from inflating the freq factor.
     _OSC_REVERSAL_NOISE_THR = 0.005
+    # Fewest non-settling samples the oscillation indicators need before
+    # their verdict means anything. Below this the window is dominated by
+    # masked SP-step transients and the only honest answer is "hold".
+    _MIN_OSC_SAMPLES = 8
 
     def __init__(self, window_samples: int | None = None) -> None:
         n = window_samples if window_samples is not None else self._DEFAULT_WINDOW
@@ -316,10 +340,37 @@ class FuzzyEngineV2:
         zero_crossings = int(stats.get("zero_crossings", reversals))
         tv_per = float(stats.get("tv_per_sample", 0.0))
         n = int(stats.get("sample_count", 0))
+        # How many samples the oscillation metrics were actually allowed to
+        # see. StatsWorker masks SP-step transients; when the setpoint moves
+        # faster than the mask decays, that masking can cover the entire
+        # window and every oscillation metric collapses to a structural
+        # zero. Reading that as "STABLE" is what made the tuner cut Ti on a
+        # loop in a limit cycle. No evidence is a hold, not a verdict.
+        osc_n = int(stats.get("osc_sample_count", n))
+        if osc_n < self._MIN_OSC_SAMPLES:
+            return AIDecisionV2(
+                delta_ti=0.0,
+                new_ti=ti_current,
+                inputs={"IAE": 0.0, "OSC": 0.0, "EFF": 0.0,
+                        "osc_samples": osc_n, "window": n},
+                reasoning=(
+                    f"FuzzyV2[SP]: hold — only {osc_n} of {n} samples are "
+                    f"admissible for oscillation analysis "
+                    f"(need {self._MIN_OSC_SAMPLES})"
+                ),
+                membership_values={},
+            )
 
         iae = min(1.0, (mean_abs / span if span > 0 else 0.0) / self._IAE_FULL_SCALE)
         pk_pk_frac = (pk_pk_raw / span) if span > 0 else 0.0
-        amp_norm = min(1.0, pk_pk_frac / self._OSC_PKPK_FULL_SCALE)
+        # Judge the amplitude against the excitation, not against a fixed
+        # slice of span: a 15 %-of-span error swing is a limit cycle when
+        # the setpoint never moved and a textbook step response when the
+        # setpoint jumped 40 %. With a fixed setpoint sp_pk_pk is 0 and this
+        # is exactly the original fixed scale.
+        sp_travel = float(stats.get("sp_pk_pk", 0.0))
+        scale = max(self._OSC_PKPK_FULL_SCALE * span, sp_travel)
+        amp_norm = min(1.0, pk_pk_raw / scale) if scale > 0 else 0.0
         osc = amp_norm if (zero_crossings >= 2 and reversals >= 2) else 0.0
         # TV is published in raw CO units (0..100). Normalise to fraction.
         eff = min(1.0, (tv_per / 100.0) / self._TV_FULL_SCALE)

@@ -131,6 +131,11 @@ class PIDWorker:
         self._last_trk_val: float = 0.0
         self._simulate_pv: float | None = None
         self._last_good_trk_in_d: bool = False
+        # SP_WRK: the rate-limited setpoint the PID actually chases while
+        # sp_rate_up/sp_rate_dn are non-zero. None outside the closed-loop
+        # modes, so re-entering AUTO ramps from the SP in force then instead
+        # of a stale value captured before the operator went to MAN.
+        self._sp_working: float | None = None
         # Mode reported by the monitored controller (SUPERVISORY only). None
         # until a telemetry frame carries one; self._mode is SmartPID's own
         # mode and is not the same fact.
@@ -270,6 +275,7 @@ class PIDWorker:
                 self._drain_ai_actions(ai_sub)
 
                 delta_cv = 0.0
+                sp_ramping = False
 
                 # Shed timeout detection
                 if self._has_telemetry and self._controller.shed_time_s > 0:
@@ -353,6 +359,40 @@ class PIDWorker:
                             self._last_rcas_in.value,
                         )
                         self._last_sp = effective_sp
+
+                    # SP rate limiting (SP_WRK). Only the closed-loop modes:
+                    # MAN/LO/IMAN force SP to PV, and BYPASS passes SP to the
+                    # output, so ramping either would rewrite a value that is
+                    # not a setpoint. `_last_sp` deliberately keeps the TARGET
+                    # -- feeding the ramped value back as the next target
+                    # collapses the ramp to one scan.
+                    if self._mode in {
+                        ControllerMode.AUTO,
+                        ControllerMode.CAS,
+                        ControllerMode.RCAS,
+                    }:
+                        sp_target = effective_sp.value
+                        working = self._engine.apply_sp_ramp(
+                            sp_target=sp_target,
+                            sp_current=(
+                                self._sp_working
+                                if self._sp_working is not None
+                                else sp_target
+                            ),
+                            rate_up=self._controller.sp_rate_up,
+                            rate_dn=self._controller.sp_rate_dn,
+                            dt=scan_s,
+                        )
+                        self._sp_working = working
+                        # apply_sp_ramp returns sp_target exactly once the ramp
+                        # arrives, so equality is the arrival test -- no epsilon.
+                        sp_ramping = working != sp_target
+                        if sp_ramping:
+                            effective_sp = dataclasses.replace(
+                                effective_sp, value=working,
+                            )
+                    else:
+                        self._sp_working = None
 
                     # Mode-dependent output computation
                     if (
@@ -536,6 +576,10 @@ class PIDWorker:
                         "ti": ti_out,
                         "td": td_out,
                         "integral_val": self._state.cv,
+                        # Consumed by AlarmWorker: deviation alarms are
+                        # suppressed while the SP is still travelling, because
+                        # the PV-SP gap during a ramp is expected, not a fault.
+                        "sp_ramping": sp_ramping,
                         "timestamp": datetime.now(tz=UTC).isoformat(),
                     }
                     pub.send(
@@ -670,6 +714,13 @@ class PIDWorker:
                 pass
 
     def _drain_ai_actions(self, sub) -> None:  # noqa: ANN001
+        """Adopt an optimizer Ti/Ki suggestion — only when it is authorised.
+
+        ``apply`` is the loop's auto-apply gate (``tuning_write_mode``).
+        AIWorker publishes every suggestion so the HMI can display it; a
+        DDC loop must only adopt one when the operator has switched
+        auto-apply on. Absent key = older publisher = do not write.
+        """
         while True:
             msg = sub.recv(timeout_ms=0)
             if msg is None:
@@ -677,6 +728,8 @@ class PIDWorker:
             _topic, payload = msg
             try:
                 data = msgpack.unpackb(payload)
+                if not data.get("apply", False):
+                    continue
                 new_ki = data.get("new_ki")
                 if new_ki is not None:
                     with self._lock:

@@ -47,7 +47,7 @@ const CONTROLLERS = [
 const fetchMock = vi.fn();
 
 beforeEach(() => {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.stubGlobal('fetch', fetchMock);
   fetchMock.mockImplementation((path: string) => {
     const body =
@@ -67,6 +67,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   fetchMock.mockReset();
+  localStorage.clear();
   sessionStorage.clear();
 });
 

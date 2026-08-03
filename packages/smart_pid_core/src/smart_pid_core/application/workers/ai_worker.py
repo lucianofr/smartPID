@@ -35,7 +35,13 @@ from smart_pid_core.domain.services.tuning_recommender import (
     identify_fopdt,
     recommend_pid,
 )
-from smart_pid_domain.enums import AIEngine, ControllerMode, IntegralType
+from smart_pid_domain.enums import (
+    AIEngine,
+    ControllerMode,
+    IntegralType,
+    TuningRecStatus,
+    TuningWriteMode,
+)
 from smart_pid_domain.events import TuningRecommended
 from smart_pid_domain.models.tuning import TuningRecommendation
 
@@ -46,6 +52,9 @@ if TYPE_CHECKING:
         EventBus,
     )
     from smart_pid_core.application.tuning_store import TuningRecommendationStore
+    from smart_pid_core.application.workers.system_event_worker import (
+        SystemEventWorker,
+    )
     from smart_pid_core.domain.services.tuning_recommender import TuningProposal
     from smart_pid_domain.models.controller import Controller
 
@@ -107,13 +116,20 @@ class AIWorker:
         model_dir: Path | None = None,
         tuning_store: TuningRecommendationStore | None = None,
         stability_band_pct: float = _DEFAULT_STABILITY_BAND_PCT,
+        system_event_worker: SystemEventWorker | None = None,
     ) -> None:
         """``stability_band_pct`` is the daemon-wide steady-state band, in % of
         SP. The loop's own ``Controller.stability_band_pct`` overrides it when
         set; ``None`` there means "inherit this global".
+
+        ``system_event_worker`` receives one LOG-severity entry per
+        suggestion so the alarm/event history can show what the optimizer
+        proposed and whether it was applied. ``None`` disables that (unit
+        tests, and any deployment without the event log).
         """
         self._bus = bus
         self._controller = controller
+        self._system_event_worker = system_event_worker
         self._ai_config = controller.ai_config
         # AI period = 3 × TSS (wait for process to settle before next adjustment)
         self._ai_period_s = 3.0 * controller.tss_s
@@ -167,6 +183,7 @@ class AIWorker:
         self._sp_changed_mono: float = 0.0
         self._last_proposal: TuningProposal | None = None
         self._last_retune_skip: str | None = None
+        self._last_cycle_skip: str | None = None
 
     @property
     def controller_id(self) -> int:
@@ -264,6 +281,30 @@ class AIWorker:
     def update_tss(self, tss_s: float) -> None:
         """Hot-reload AI period when TSS changes. Thread-safe via GIL."""
         self._ai_period_s = 3.0 * tss_s
+
+    def update_controller(self, controller: Controller) -> None:
+        """Adopt a persisted config edit without restarting the worker.
+
+        The worker caches the ``Controller`` it was constructed with, so a
+        field edited through ``PUT /controllers/{id}`` never reached it.
+        That is what made the faceplate's auto-apply switch look dead even
+        after the flag was wired: the flag moved in the database while this
+        thread kept consulting the copy it started with, and the operator's
+        choice only took effect at the next daemon restart.
+
+        Runtime lifecycle state (``_enabled`` / ``_paused``, owned by CMD.AI
+        and the REST optimizer commands) is deliberately NOT refreshed here:
+        a config save must not silently restart an optimizer the operator
+        stopped. Reference assignment is atomic under the GIL, same as
+        ``set_enabled``.
+        """
+        self._controller = controller
+        self._ai_config = controller.ai_config
+        self._integral_type = controller.integral_type.value
+        self._execution_mode = controller.execution_mode.value
+        self._ai_period_s = 3.0 * controller.tss_s
+        if controller.stability_band_pct is not None:
+            self._stability_band_pct = controller.stability_band_pct
 
     def set_paused(self, paused: bool) -> None:
         """Set the pause hold directly, mirroring `set_enabled`.
@@ -433,6 +474,20 @@ class AIWorker:
             return "stability_band"
         return None
 
+    def _skip_cycle(self, reason: str) -> None:
+        """Edge-log a cycle the optimizer could not even attempt.
+
+        Edge-triggered so a loop that will never run (no engine, external
+        PID in manual) does not fill the log, but the reason is visible at
+        INFO rather than only under DEBUG. "Why is there no recommendation
+        for this loop?" must be answerable from a production log.
+        """
+        if reason != self._last_cycle_skip:
+            self._last_cycle_skip = reason
+            logger.info(
+                "ai_worker_skip cid=%d reason=%s", self.controller_id, reason,
+            )
+
     def _log_optimization_skip(self, reason: str) -> None:
         """Record every skipped optimization, one JSON object per line.
 
@@ -448,6 +503,96 @@ class AIWorker:
                 "reason": reason,
             }),
         )
+
+    def _emit_suggestion_event(
+        self, old_ki: float, new_ki: float, applied: bool, pub,  # noqa: ANN001
+    ) -> None:
+        """Record one optimizer suggestion in the system-event log.
+
+        The alarm/event history reads that log, and until now the online
+        integral nudge left no trace there at all: an operator could see the
+        optimizer's live LOG.AI stream on the loop page and find nothing
+        afterwards. LOG severity keeps it out of the alarm severities while
+        still being selectable under PRIORIDADE = LOG / TODAS.
+
+        ``pub`` is this thread's publisher — ZeroMQ sockets belong to the
+        thread that made them, so the worker's shared one must not be used
+        from here.
+
+        A suggestion that does not move the parameter is not news; skipping
+        it keeps a settled loop from writing an identical row every cycle.
+        """
+        sew = self._system_event_worker
+        if sew is None or old_ki == new_ki:
+            return
+        label = "aplicada" if applied else "sugerida (aguardando confirmacao)"
+        param = "Ki" if self._integral_type == "GAIN_KI" else "Ti"
+        try:
+            sew.emit(
+                source="AI",
+                severity="LOG",
+                message=(
+                    f"{self._controller.name}: sintonia {label} — "
+                    f"{param} {old_ki:.4f} -> {new_ki:.4f}"
+                ),
+                pub=pub,
+            )
+        except Exception:
+            # Never blanket-suppress: swallowing this is exactly how the
+            # cross-thread publish failure stayed invisible.
+            logger.exception(
+                "ai_suggestion_event_failed cid=%d", self.controller_id,
+            )
+
+    def _park_integral_suggestion(self, old_ki: float, new_ki: float) -> None:
+        """Offer the integral nudge for manual confirmation.
+
+        With auto-apply off the optimizer still knows what it would do, and
+        the operator needs a way to say yes. Parking the move as a PENDING
+        ``TuningRecommendation`` lights up the faceplate's `Apply tuning`
+        button and routes the write through
+        ``POST /commands/apply-tuning/{id}`` — the same guarded path the full
+        retune uses, so it inherits the AUTO-mode check, the
+        ``max_tuning_change_pct`` clamp and the audit trail.
+
+        Kp and Td are carried through unchanged: this proposal is only ever
+        about the integral term.
+
+        A standing full-retune proposal is richer and is left alone; this
+        one only fills an empty slot.
+        """
+        store = self._tuning_store
+        if store is None or old_ki == new_ki:
+            return
+        # Refresh only our own kind of proposal, never overwrite a full
+        # retune the operator has not answered yet: that one carries Kp and
+        # Td changes this suggestion knows nothing about.
+        existing = store.get(self.controller_id)
+        if (
+            existing is not None
+            and existing.status == TuningRecStatus.PENDING
+            and existing.recommendation.recommended_kp
+            != self._controller.pid_params.gain
+        ):
+            return
+        kp = self._controller.pid_params.gain
+        td = self._controller.pid_params.rate
+        param = "Ki" if self._integral_type == "GAIN_KI" else "Ti"
+        store.put(TuningRecommendation(
+            id=uuid4(),
+            controller_id=self.controller_id,
+            current_kp=kp,
+            current_ti=old_ki,
+            current_td=td,
+            recommended_kp=kp,
+            recommended_ti=new_ki,
+            recommended_td=td,
+            reason=(
+                f"Otimizador {self._ai_config.engine.value}: "
+                f"{param} {old_ki:.4f} -> {new_ki:.4f}"
+            ),
+            timestamp=time.time(),
+        ))
 
     def _maybe_recommend_retune(self, pub) -> None:  # noqa: ANN001
         """Synthesise a full PID retune and park it in the store, if warranted.
@@ -564,6 +709,26 @@ class AIWorker:
             proposal.lambda_s, current_kp, proposal.kp,
             current_ti, proposal.ti, current_td, proposal.td,
         )
+        # Same reason as the integral nudge: a proposal nobody can find
+        # afterwards may as well not have been made. `pub` is this thread's
+        # socket — see _emit_suggestion_event.
+        if self._system_event_worker is not None:
+            try:
+                self._system_event_worker.emit(
+                    source="AI",
+                    severity="LOG",
+                    message=(
+                        f"{self._controller.name}: retune completo sugerido — "
+                        f"Kp {current_kp:.3f}->{proposal.kp:.3f}, "
+                        f"Ti {current_ti:.3f}->{proposal.ti:.3f}, "
+                        f"Td {current_td:.3f}->{proposal.td:.3f}"
+                    ),
+                    pub=pub,
+                )
+            except Exception:
+                logger.exception(
+                    "ai_retune_event_failed cid=%d", self.controller_id,
+                )
 
     def _run(self) -> None:
         telem_sub = self._bus.create_subscriber(
@@ -640,16 +805,18 @@ class AIWorker:
                 if not self._enabled or self._paused:
                     continue
 
-                # Only compute if we have telemetry AND mode is automatic
+                # Only compute if we have telemetry AND mode is automatic.
+                # Both branches are edge-logged at INFO: "why is there no
+                # recommendation for this loop?" is the first question anyone
+                # asks, and a DEBUG-only answer means the operator gets
+                # silence from a production log level.
                 if not self._has_telemetry or self._engine is None:
+                    self._skip_cycle("no_telemetry" if self._engine else "engine_none")
                     continue
                 if not self._is_auto_mode():
-                    logger.debug(
-                        "ai_worker_skip controller_id=%d reason=mode=%s",
-                        self.controller_id,
-                        self._last_mode,
-                    )
+                    self._skip_cycle(f"mode={self._last_mode or 'UNKNOWN'}")
                     continue
+                self._last_cycle_skip = None
 
                 # Full PID retune proposal (Kp + Ti + Td). Confirm-gated —
                 # this only fills the recommendation store, it never writes.
@@ -740,14 +907,33 @@ class AIWorker:
                     reasoning = decision.reasoning
 
                 old_ki = self._ki_current
-                self._ki_current = new_ki
                 self._prev_error = error
+
+                # The auto-apply gate: the per-loop `tuning_write_mode`.
+                # IOWorker (SUPERVISORY) and PIDWorker (DDC) both consume
+                # ACTION.AI and used to write `new_ki` to the process
+                # unconditionally, so the faceplate's "auto-apply tuning"
+                # switch governed nothing and every suggestion landed in the
+                # plant. The suggestion is still published either way — the
+                # HMI has to show what the optimizer would do — but only an
+                # `auto_apply` loop lets a consumer act on it.
+                auto_apply = (
+                    self._controller.tuning_write_mode == TuningWriteMode.AUTO_APPLY
+                )
+                # Only advance the engine's working Ti when the value was
+                # actually applied. Compounding un-applied suggestions would
+                # walk `_ki_current` away from the Ti the process is really
+                # running, and every later proposal would be computed
+                # against a number that exists nowhere but in this thread.
+                if auto_apply:
+                    self._ki_current = new_ki
 
                 # Publish ACTION.AI
                 action_data = {
                     "controller_id": self.controller_id,
                     "gamma": gamma_value,
                     "new_ki": new_ki,
+                    "apply": auto_apply,
                     "engine": self._ai_config.engine.value,
                     "objective": self._ai_config.objective.value,
                     "integral_type": self._integral_type,
@@ -759,6 +945,17 @@ class AIWorker:
                     f"ACTION.AI.{self.controller_id}".encode(),
                     msgpack.packb(action_data),
                 )
+                # An un-applied suggestion is only useful if it can be found
+                # later, so it also goes to the system-event log the
+                # alarm/event history reads. LOG severity: informational,
+                # never an alarm.
+                self._emit_suggestion_event(old_ki, new_ki, auto_apply, pub)
+                # Gate closed: the suggestion still needs somewhere to go, or
+                # the operator can see what the optimizer wants and has no way
+                # to say yes. Parking it as PENDING is what enables the
+                # faceplate's `Apply tuning` button.
+                if not auto_apply:
+                    self._park_integral_suggestion(old_ki, new_ki)
 
                 # Publish LOG.AI
                 log_data = {

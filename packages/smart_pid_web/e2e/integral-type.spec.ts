@@ -38,7 +38,7 @@ test('integral type renders as a radio group, saves, and reopens on the saved va
   const dialog = await openConfig(page);
   await expect(dialog).toBeVisible();
 
-  const timeTi = dialog.getByRole('radio', { name: 'Tempo Integral (1/Ti)' });
+  const timeTi = dialog.getByRole('radio', { name: 'Tempo Integral (Ti)' });
   const gainKi = dialog.getByRole('radio', { name: 'Ganho Integral (Ki)' });
 
   // Renders: both alternatives visible at once, current value selected.

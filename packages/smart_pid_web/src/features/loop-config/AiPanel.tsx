@@ -14,6 +14,8 @@ import { useRealtime } from '@/realtime/useRealtime';
 import { cn } from '@/lib/utils';
 import { ConfirmApplyTuningDialog } from './ConfirmApplyTuningDialog';
 import { applyTuning, type AiAction } from './commandApi';
+import { useControllers } from '@/features/dashboard/useControllers';
+import { useUpdateControllerMutation } from './useCommands';
 import { tuningRecommendationKey, useAiAction, useAiStatus, useTuningRecommendation } from './useAiControls';
 
 export interface AiPanelProps {
@@ -128,30 +130,39 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
   const logRef = useRef<HTMLDivElement>(null);
   const autoApplyId = useId();
 
-  // Per-loop operator choice: auto-apply each pending tuning suggestion, or
-  // wait for the manual Apply tuning confirm. Persisted so it survives a reload.
-  const autoApplyKey = `smartpid:autoTune:${controllerId}`;
-  const [autoApply, setAutoApply] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(autoApplyKey) === '1';
-    } catch {
-      return false;
-    }
-  });
+  // The operator's auto-apply choice is a PROPERTY OF THE LOOP, not of this
+  // browser. It used to live in localStorage and gate nothing but the
+  // confirm dialog below, while the optimizer's continuous Ti/Ki nudge went
+  // straight to the process on every cycle regardless — which is why the
+  // switch appeared to do nothing. It now reads and writes the controller's
+  // persisted `tuning_write_mode`, the same field the AI worker consults
+  // before authorising a write.
+  const controllers = useControllers();
+  const controller = controllers.data?.find((c) => c.id === controllerId);
+  const autoApply = controller?.tuning_write_mode === 'auto_apply';
+  const updateController = useUpdateControllerMutation();
   // Guards the auto-apply effect against re-firing on the same suggestion before
   // the invalidation clears it — dedup by the recommendation's timestamp.
   const lastAutoAppliedRef = useRef<number | null>(null);
 
   const toggleAutoApply = useCallback(
     (next: boolean) => {
-      setAutoApply(next);
-      try {
-        localStorage.setItem(autoApplyKey, next ? '1' : '0');
-      } catch {
-        /* storage unavailable — the in-memory toggle still governs this session */
-      }
+      updateController.mutate(
+        {
+          id: controllerId,
+          patch: { tuning_write_mode: next ? 'auto_apply' : 'approval_required' },
+        },
+        {
+          onError: () =>
+            toast({
+              title: 'Não foi possível alterar a aplicação automática',
+              description: `Malha ${tag}`,
+              tone: 'crit',
+            }),
+        },
+      );
     },
-    [autoApplyKey],
+    [controllerId, tag, updateController],
   );
 
   const { subscribe } = ai;
@@ -226,8 +237,20 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
   // Amber is the §6.3 call-to-action, not decoration: the box only lights up
   // when there is a write to authorise. Otherwise it is neutral chrome.
   const proposing = pendingRecommendation && rec !== undefined;
+  // Name only the parameters that actually move. The optimizer's continuous
+  // nudge touches the integral term alone, and printing `Kp 1.00→1.00`
+  // beside it reads as a change the operator would then look for in vain.
   const body = proposing
-    ? `Kp ${formatNumber(rec.current_kp, 2)}→${formatNumber(rec.recommended_kp, 2)} · Ti ${formatNumber(rec.current_ti, 2)}→${formatNumber(rec.recommended_ti, 2)}`
+    ? (
+        [
+          ['Kp', rec.current_kp, rec.recommended_kp] as const,
+          ['Ti', rec.current_ti, rec.recommended_ti] as const,
+          ['Td', rec.current_td, rec.recommended_td] as const,
+        ]
+          .filter(([, from, to]) => from !== to)
+          .map(([name, from, to]) => `${name} ${formatNumber(from, 2)}→${formatNumber(to, 2)}`)
+          .join(' · ') || 'Sem mudança material.'
+      )
     : LIFECYCLE_BODY[lifecycle];
 
   return (
@@ -330,6 +353,7 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
               <Switch
                 id={autoApplyId}
                 checked={autoApply}
+                disabled={controller === undefined || updateController.isPending}
                 onCheckedChange={toggleAutoApply}
               />
             </div>

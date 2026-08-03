@@ -67,6 +67,7 @@ function renderFooter(rows: AlarmRow[] = []) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
 });
 

@@ -93,7 +93,9 @@ class TestMe:
     ) -> None:
         resp = await client.get("/auth/me", headers=admin_headers)
         assert resp.status_code == 200
-        assert resp.json() == {"user_id": 1, "username": "admin", "role": "admin"}
+        assert resp.json() == {
+            "user_id": 1, "username": "admin", "role": "admin", "theme": None,
+        }
 
     @pytest.mark.asyncio
     async def test_me_returns_user_claims(
@@ -101,7 +103,35 @@ class TestMe:
     ) -> None:
         resp = await client.get("/auth/me", headers=user_headers)
         assert resp.status_code == 200
-        assert resp.json() == {"user_id": 2, "username": "operator", "role": "user"}
+        assert resp.json() == {
+            "user_id": 2, "username": "operator", "role": "user", "theme": None,
+        }
+
+    @pytest.mark.asyncio
+    async def test_me_reports_the_stored_theme(
+        self, client: AsyncClient, user_headers: dict[str, str]
+    ) -> None:
+        """The palette follows the USER, so /auth/me is where a fresh
+        browser learns it. Stored as null until the operator chooses."""
+        put = await client.put(
+            "/users/me/theme", json={"theme": "phosphor"}, headers=user_headers,
+        )
+        assert put.status_code == 204, put.text
+
+        resp = await client.get("/auth/me", headers=user_headers)
+        assert resp.status_code == 200
+        assert resp.json()["theme"] == "phosphor"
+
+    @pytest.mark.asyncio
+    async def test_theme_must_be_one_the_frontend_can_render(
+        self, client: AsyncClient, user_headers: dict[str, str]
+    ) -> None:
+        """An unrenderable value parked on the account would leave the
+        operator staring at an unstyled page after every login."""
+        resp = await client.put(
+            "/users/me/theme", json={"theme": "chartreuse"}, headers=user_headers,
+        )
+        assert resp.status_code == 422, resp.text
 
     @pytest.mark.asyncio
     async def test_me_requires_token(self, client: AsyncClient) -> None:

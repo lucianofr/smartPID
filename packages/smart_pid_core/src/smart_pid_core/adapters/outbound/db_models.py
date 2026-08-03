@@ -120,6 +120,8 @@ class Controladores(SpidBase):
     ai_limit_min: Mapped[float]
     ai_limit_max: Mapped[float]
     optimization_enabled: Mapped[int]
+    tuning_write_mode: Mapped[str]
+    max_tuning_change_pct: Mapped[float]
     stability_band_pct: Mapped[float | None]
     sl_band_lo_pct: Mapped[float | None]
     sl_band_hi_pct: Mapped[float | None]
@@ -271,6 +273,7 @@ class Usuarios(UsersBase):
     perfil: Mapped[str]
     ativo: Mapped[int]
     criado_em: Mapped[str]
+    tema: Mapped[str | None]
 
 
 # Core table handles for Core-statement call sites (spec §10 pins

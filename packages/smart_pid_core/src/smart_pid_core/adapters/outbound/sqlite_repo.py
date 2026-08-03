@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping  # noqa: TC003
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,7 @@ from smart_pid_domain.enums import (
     ProcessSpeed,
     ProcessType,
     TrackOpt,
+    TuningWriteMode,
 )
 from smart_pid_domain.models.controller import (
     AIConfig,
@@ -130,6 +132,10 @@ CREATE TABLE IF NOT EXISTS Controladores (
     ai_limit_max        REAL    NOT NULL DEFAULT 10.0,
     -- ENABLE_OPTIMIZER: master enable for the online tuning optimizer
     optimization_enabled INTEGER NOT NULL DEFAULT 1,
+    -- Whether the optimizer's Ti/Ki move is written to the process by
+    -- itself ('auto_apply') or only offered for confirmation.
+    tuning_write_mode   TEXT    NOT NULL DEFAULT 'approval_required',
+    max_tuning_change_pct REAL  NOT NULL DEFAULT 10.0,
     stability_band_pct  REAL,
     -- Surge Level safe-band tuning (NULL bounds → engine default 20-80 %)
     sl_band_lo_pct      REAL,
@@ -229,7 +235,13 @@ CREATE TABLE IF NOT EXISTS Log_System_Events (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp       TEXT    NOT NULL DEFAULT (datetime('now')),
     source          TEXT    NOT NULL,
-    severity        TEXT    NOT NULL CHECK(severity IN ('CRITICAL','WARNING','INFO')),
+    -- Must cover the whole AlarmPriority vocabulary, not a subset of it.
+    -- The HMI history filter offers CRITICAL/WARNING/ADVISORY/LOG and the
+    -- optimizer records its suggestions at LOG; with those two missing every
+    -- such insert died on this CHECK, so the events never reached the panel
+    -- that filters for them.
+    severity        TEXT    NOT NULL
+                    CHECK(severity IN ('CRITICAL','WARNING','ADVISORY','INFO','LOG')),
     message         TEXT    NOT NULL
 );
 
@@ -278,6 +290,13 @@ _CONTROLADORES_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("rl_learning_rate", "REAL NOT NULL DEFAULT 0.0003"),
     ("rl_train_interval", "INTEGER NOT NULL DEFAULT 32"),
     ("optimization_enabled", "INTEGER NOT NULL DEFAULT 1"),
+    # Auto-apply gate for the online Ti/Ki nudge. Present on the model and
+    # the API since the tuning-policy work, but never persisted, so the
+    # operator's choice died with the process and the workers had nothing
+    # to read — the suggestion was written to the plant every cycle
+    # regardless of the faceplate switch.
+    ("tuning_write_mode", "TEXT NOT NULL DEFAULT 'approval_required'"),
+    ("max_tuning_change_pct", "REAL NOT NULL DEFAULT 10.0"),
     # scan_rate_s is normally created by _migrate_scan_rate() (which converts
     # the legacy ms value); this entry only covers a file that has neither.
     ("scan_rate_s", "REAL NOT NULL DEFAULT 1.0"),
@@ -412,6 +431,50 @@ class SQLiteRepository:
         await self._add_missing_columns(
             driver, "Configuracao_Alarmes", _ALARMES_ADDED_COLUMNS,
         )
+        await self._migrate_system_event_severity(driver)
+
+    async def _migrate_system_event_severity(
+        self, driver: aiosqlite.Connection,
+    ) -> None:
+        """Widen ``Log_System_Events.severity`` to the full vocabulary.
+
+        The original CHECK allowed only CRITICAL/WARNING/INFO, so every
+        ADVISORY or LOG insert failed — silently, because the writer runs on
+        a background task. The optimizer records its suggestions at LOG and
+        the HMI history offers a LOG filter, which meant the panel filtered
+        for rows the database had been refusing all along.
+
+        SQLite cannot alter a CHECK constraint, so the append-only log is
+        rebuilt: create, copy, drop, rename. Skipped when the current table
+        already accepts LOG.
+        """
+        row = await (await driver.execute(
+            "SELECT sql FROM sqlite_master"
+            " WHERE type = 'table' AND name = 'Log_System_Events'"
+        )).fetchone()
+        if row is None or "'LOG'" in (row[0] or ""):
+            return
+        await driver.executescript(
+            """
+            CREATE TABLE Log_System_Events_new (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp       TEXT    NOT NULL DEFAULT (datetime('now')),
+                source          TEXT    NOT NULL,
+                severity        TEXT    NOT NULL
+                                CHECK(severity IN
+                                      ('CRITICAL','WARNING','ADVISORY','INFO','LOG')),
+                message         TEXT    NOT NULL
+            );
+            INSERT INTO Log_System_Events_new (id, timestamp, source, severity, message)
+                SELECT id, timestamp, source, severity, message FROM Log_System_Events;
+            DROP TABLE Log_System_Events;
+            ALTER TABLE Log_System_Events_new RENAME TO Log_System_Events;
+            CREATE INDEX IF NOT EXISTS idx_sysevents_timestamp
+                ON Log_System_Events(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_sysevents_severity
+                ON Log_System_Events(severity);
+            """
+        )
 
     async def _migrate_scan_rate(self, driver: aiosqlite.Connection) -> None:
         """Convert a legacy ``scan_rate_ms`` column into ``scan_rate_s``."""
@@ -457,7 +520,20 @@ class SQLiteRepository:
         return [self._row_to_controller(r) for r in rows]
 
     async def delete(self, controller_id: int) -> None:
-        """Delete controller or raise KeyError."""
+        """Delete controller or raise KeyError.
+
+        Also drops the rows that would otherwise outlive it and be
+        inherited by whatever controller next lands on this id. SQLite
+        hands out ``max(id) + 1``, so deleting the newest loop and
+        creating another one reuses the id immediately -- and the new
+        loop silently picked up the dead loop's alarm limits, firing
+        alarms nobody had configured for it.
+
+        Alarm HISTORY is deliberately kept (it is a record of something
+        that really happened), but any still-open row is closed: an
+        un-cleared alarm belonging to a deleted loop would be re-seeded
+        as active on the next daemon start.
+        """
         async with self.session_factory() as session:
             found = (
                 await session.execute(
@@ -467,6 +543,17 @@ class SQLiteRepository:
             ).first()
             if found is None:
                 raise KeyError(controller_id)
+            await session.execute(
+                text("DELETE FROM Configuracao_Alarmes WHERE controlador_id = :cid"),
+                {"cid": controller_id},
+            )
+            await session.execute(
+                text(
+                    "UPDATE Log_Alarmes SET cleared_at = :now "
+                    "WHERE controlador_id = :cid AND cleared_at IS NULL"
+                ),
+                {"cid": controller_id, "now": datetime.now(tz=UTC).isoformat()},
+            )
             await session.execute(
                 text("DELETE FROM Controladores WHERE id = :cid"),
                 {"cid": controller_id},
@@ -608,6 +695,8 @@ class SQLiteRepository:
             "rl_learning_rate": c.ai_config.rl_learning_rate,
             "rl_train_interval": c.ai_config.rl_train_interval,
             "optimization_enabled": int(c.optimization_enabled),
+            "tuning_write_mode": str(c.tuning_write_mode),
+            "max_tuning_change_pct": c.max_tuning_change_pct,
             "stability_band_pct": c.stability_band_pct,
             "sl_band_lo_pct": c.ai_config.sl_band_lo_pct,
             "sl_band_hi_pct": c.ai_config.sl_band_hi_pct,
@@ -738,6 +827,8 @@ class SQLiteRepository:
                 sl_co_ramp_max_pct_min=row["sl_co_ramp_max_pct_min"],
             ),
             optimization_enabled=bool(row["optimization_enabled"]),
+            tuning_write_mode=TuningWriteMode(row["tuning_write_mode"]),
+            max_tuning_change_pct=row["max_tuning_change_pct"],
             stability_band_pct=row["stability_band_pct"],
         )
 

@@ -8,7 +8,7 @@ import { DEFAULT_PREFERENCES, PREFERENCES_KEY } from './settingsTypes';
 import { readPreferences, reloadPreferences } from './useSettings';
 
 function renderSettings(role: Role = 'admin') {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   // The preference store is module-level; a real page load re-reads storage.
   reloadPreferences();
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });

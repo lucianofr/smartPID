@@ -21,6 +21,8 @@ const CONFIG_CONTROLS = [
   'Inject disturbance',
   'Remove',
   'Apply PID parameters',
+  'Apply auto-SP',
+  'Apply auto-disturbance',
 ] as const;
 
 function controller(overrides: Partial<ControllerSimStatus> = {}): ControllerSimStatus {
@@ -34,7 +36,6 @@ function controller(overrides: Partial<ControllerSimStatus> = {}): ControllerSim
     step_amplitude: 0,
     noise_active: false,
     noise_amplitude: 0,
-    pid_enabled: false,
     pid_kp: 1,
     pid_ti: 10,
     pid_td: 0,
@@ -59,7 +60,7 @@ function snapshot(overrides: Partial<ControllerSimStatus> = {}, running = true):
 
 function renderPanel(options: { role?: Role; status?: SimulatorStatus } = {}) {
   const role = options.role ?? 'admin';
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
   const statusSpy = vi
     .spyOn(endpoints, 'simulatorStatus')
@@ -74,6 +75,7 @@ function renderPanel(options: { role?: Role; status?: SimulatorStatus } = {}) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
   vi.spyOn(simulatorApi, 'start').mockResolvedValue({ ok: true });
   vi.spyOn(simulatorApi, 'preset').mockResolvedValue({ ok: true });
@@ -84,7 +86,7 @@ beforeEach(() => {
   vi.spyOn(simulatorApi, 'setSp').mockResolvedValue({ ok: true });
   vi.spyOn(simulatorApi, 'setMode').mockResolvedValue({ ok: true });
   vi.spyOn(simulatorApi, 'setAutoSp').mockResolvedValue(controller());
-  vi.spyOn(simulatorApi, 'enablePid').mockResolvedValue({ ok: true });
+  vi.spyOn(simulatorApi, 'setAutoDisturbance').mockResolvedValue(controller());
   vi.spyOn(simulatorApi, 'setPidParams').mockResolvedValue({ ok: true });
 });
 
@@ -102,7 +104,9 @@ describe('SimulatorControlPanel — permission split', () => {
     expect(screen.getByRole('combobox', { name: 'Process preset' })).toBeInTheDocument();
     expect(screen.getByRole('slider', { name: 'Gain' })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Auto-SP' })).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Enable PID' })).toBeInTheDocument();
+    // The twin's PID is always running; AUTO/MAN is the only switch. An enable
+    // toggle could only contradict the mode, so it must never come back.
+    expect(screen.queryByRole('switch', { name: 'Enable PID' })).toBeNull();
   });
 
   it('shows a user the designed restricted state instead of the configuration region', async () => {
@@ -113,7 +117,6 @@ describe('SimulatorControlPanel — permission split', () => {
     }
     expect(screen.queryByRole('combobox', { name: 'Process preset' })).toBeNull();
     expect(screen.queryByRole('switch', { name: 'Auto-SP' })).toBeNull();
-    expect(screen.queryByRole('switch', { name: 'Enable PID' })).toBeNull();
     expect(statusSpy).not.toHaveBeenCalled();
   });
 
@@ -227,15 +230,54 @@ describe('SimulatorControlPanel — server-owned state', () => {
     );
   });
 
-  it('toggling Enable PID calls simulatorApi.enablePid', async () => {
-    renderPanel();
-    fireEvent.click(await screen.findByRole('switch', { name: 'Enable PID' }));
-    await waitFor(() => expect(simulatorApi.enablePid).toHaveBeenCalledWith(1, true));
+  it('commits the drafted auto-SP band on Apply, keeping the enabled flag the server holds', async () => {
+    renderPanel({
+      status: snapshot({ auto_sp: { enabled: true, sp_min_pct: 10, sp_max_pct: 90, period_s: 30 } }),
+    });
+    // Editing alone must not write — only Apply (or blur) commits.
+    fireEvent.change(await screen.findByRole('spinbutton', { name: 'SP mín (%)' }), {
+      target: { value: '20' },
+    });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'SP máx (%)' }), {
+      target: { value: '80' },
+    });
+    expect(simulatorApi.setAutoSp).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply auto-SP' }));
+    await waitFor(() =>
+      expect(simulatorApi.setAutoSp).toHaveBeenCalledWith(1, {
+        enabled: true,
+        sp_min_pct: 20,
+        sp_max_pct: 80,
+        period_s: 30,
+      }),
+    );
+  });
+
+  it('commits the drafted auto-disturbance shape on Apply without arming it', async () => {
+    renderPanel({
+      status: snapshot({
+        auto_disturbance: { enabled: false, max_amplitude_pct: 10, period_s: 30 },
+      }),
+    });
+    fireEvent.change(await screen.findByRole('spinbutton', { name: 'Amplitude (%)' }), {
+      target: { value: '25' },
+    });
+    expect(simulatorApi.setAutoDisturbance).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply auto-disturbance' }));
+    await waitFor(() =>
+      expect(simulatorApi.setAutoDisturbance).toHaveBeenCalledWith(1, {
+        enabled: false,
+        max_amplitude_pct: 25,
+        period_s: 30,
+      }),
+    );
   });
 
   it('seeds Kp/Ti/Td from the server and applies edited values', async () => {
     renderPanel({
-      status: snapshot({ pid_enabled: true, pid_kp: 2.5, pid_ti: 8, pid_td: 1.2 }),
+      status: snapshot({ pid_kp: 2.5, pid_ti: 8, pid_td: 1.2 }),
     });
     expect(await screen.findByRole('spinbutton', { name: 'Kp' })).toHaveValue(2.5);
     expect(screen.getByRole('spinbutton', { name: 'Ti' })).toHaveValue(8);
@@ -252,14 +294,14 @@ describe('SimulatorControlPanel — server-owned state', () => {
   });
 
   it('resets the Kp/Ti/Td drafts instead of applying the previous loop\'s values (key={controllerId})', async () => {
-    sessionStorage.setItem('smart-pid-token', 'jwt');
+    localStorage.setItem('smart-pid-token', 'jwt');
     vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: 'admin', role: 'admin' });
     vi.spyOn(endpoints, 'simulatorStatus').mockResolvedValue({
       enabled: true,
       running: true,
       controllers: {
-        1: controller({ pid_enabled: true, pid_kp: 1, pid_ti: 10, pid_td: 0 }),
-        2: controller({ pid_enabled: true, pid_kp: 7, pid_ti: 20, pid_td: 3 }),
+        1: controller({ pid_kp: 1, pid_ti: 10, pid_td: 0 }),
+        2: controller({ pid_kp: 7, pid_ti: 20, pid_td: 3 }),
       },
     });
     const realtime = createFakeRealtime();
@@ -286,8 +328,8 @@ describe('SimulatorControlPanel — server-owned state', () => {
     expect(screen.getByRole('spinbutton', { name: 'Td' })).toHaveValue(3);
   });
 
-  it('keeps Kp/Ti/Td and Apply editable while the PID is off — staging values before arming it', async () => {
-    renderPanel({ status: snapshot({ pid_enabled: false, pid_kp: 1, pid_ti: 10, pid_td: 0 }) });
+  it('keeps Kp/Ti/Td and Apply editable in MAN — staging tuning before handing over to AUTO', async () => {
+    renderPanel({ status: snapshot({ pid_mode: 0, pid_kp: 1, pid_ti: 10, pid_td: 0 }) });
     expect(await screen.findByRole('spinbutton', { name: 'Kp' })).toBeEnabled();
     expect(screen.getByRole('spinbutton', { name: 'Ti' })).toBeEnabled();
     expect(screen.getByRole('spinbutton', { name: 'Td' })).toBeEnabled();
@@ -304,5 +346,41 @@ describe('SimulatorControlPanel — server-owned state', () => {
     renderPanel({ status: { enabled: false, running: false, controllers: {} } });
     expect(await screen.findByText('Simulador desabilitado no servidor')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Start' })).toBeNull();
+  });
+});
+
+describe('SimulatorControlPanel — loop lifecycle', () => {
+  it('creates a loop with the default PV range and locks the button while the write is in flight', async () => {
+    const createSpy = vi
+      .spyOn(simulatorApi, 'createLoop')
+      .mockReturnValue(new Promise<ControllerSimStatus>(() => {}));
+    renderPanel();
+
+    const create = await screen.findByRole('button', { name: 'Novo loop de simulação' });
+    fireEvent.click(create);
+
+    await waitFor(() =>
+      expect(createSpy).toHaveBeenCalledWith({ controller_id: null, pv_min: 0, pv_max: 100 }),
+    );
+    await waitFor(() => expect(create).toBeDisabled());
+  });
+
+  it('deletes only through the confirmation, never on the first click', async () => {
+    const deleteSpy = vi.spyOn(simulatorApi, 'deleteLoop').mockResolvedValue(undefined);
+    renderPanel();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Apagar loop atual' }));
+    expect(deleteSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Apagar' }));
+    await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('keeps the lifecycle buttons out of the restricted operator view', async () => {
+    renderPanel({ role: 'user' });
+    await screen.findByText('Simulador gerenciado pelo administrador');
+    expect(screen.queryByRole('button', { name: 'Novo loop de simulação' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Apagar loop atual' })).toBeNull();
   });
 });

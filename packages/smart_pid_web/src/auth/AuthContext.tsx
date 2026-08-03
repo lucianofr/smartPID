@@ -15,6 +15,23 @@ import type { MeResponse } from '../api/types';
 /** Kept verbatim — retained E2E specs seed this key. */
 const STORAGE_KEY = 'smart-pid-token';
 
+/**
+ * The JWT lives in localStorage, not sessionStorage: sessionStorage is
+ * per-tab, so every new tab forced operators to re-authenticate even though
+ * the token was still valid for hours. localStorage is shared across tabs of
+ * the same origin. The one-time migration adopts tokens issued before this
+ * change so the fix itself does not force one more re-login.
+ */
+function readStoredToken(): string | null {
+  const persisted = localStorage.getItem(STORAGE_KEY);
+  if (persisted !== null) return persisted;
+  const legacy = sessionStorage.getItem(STORAGE_KEY);
+  if (legacy === null) return null;
+  localStorage.setItem(STORAGE_KEY, legacy);
+  sessionStorage.removeItem(STORAGE_KEY);
+  return legacy;
+}
+
 export type AuthUser = MeResponse;
 
 export interface AuthContextValue {
@@ -37,7 +54,7 @@ export interface AuthProviderProps {
 }
 
 export function AuthProvider({ children, onPermissionDenied }: AuthProviderProps) {
-  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem(STORAGE_KEY));
+  const [token, setToken] = useState<string | null>(readStoredToken);
   const [user, setUser] = useState<AuthUser | null>(null);
   const tokenRef = useRef<string | null>(token);
   tokenRef.current = token;
@@ -52,7 +69,8 @@ export function AuthProvider({ children, onPermissionDenied }: AuthProviderProps
   }, []);
 
   const logout = useCallback(() => {
-    sessionStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY); // legacy sessions issued before the move
     tokenRef.current = null;
     setToken(null);
     setUser(null);
@@ -60,7 +78,7 @@ export function AuthProvider({ children, onPermissionDenied }: AuthProviderProps
 
   const login = useCallback(async (username: string, password: string) => {
     const res = await endpoints.login(username, password);
-    sessionStorage.setItem(STORAGE_KEY, res.access_token);
+    localStorage.setItem(STORAGE_KEY, res.access_token);
     // The immediate /auth/me below must already carry the fresh token.
     tokenRef.current = res.access_token;
     setToken(res.access_token);

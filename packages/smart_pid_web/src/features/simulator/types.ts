@@ -14,10 +14,23 @@ export type SimulatorParametersRequest = components['schemas']['SimulatorParamet
 export type SimulatorDisturbanceRequest = components['schemas']['SimulatorDisturbanceRequest'];
 export type SimulatorPIDModeRequest = components['schemas']['SimulatorPIDModeRequest'];
 export type SimulatorPIDSPRequest = components['schemas']['SimulatorPIDSPRequest'];
-export type SimulatorPIDEnableRequest = components['schemas']['SimulatorPIDEnableRequest'];
 export type SimulatorPIDParamsRequest = components['schemas']['SimulatorPIDParamsRequest'];
 export type AutoSPRequest = components['schemas']['AutoSPRequest'];
 export type AutoDisturbanceRequest = components['schemas']['AutoDisturbanceRequest'];
+
+/**
+ * `POST /simulator/loops` body. Hand-written on purpose: loop lifecycle is a
+ * newer route than the generated schema snapshot. `controller_id: null` asks
+ * the server to allocate the next free loop id.
+ */
+export interface SimulatorLoopCreateRequest {
+  controller_id: number | null;
+  pv_min: number;
+  pv_max: number;
+}
+
+/** PV range a freshly created simulator loop starts with. */
+export const SIM_LOOP_PV_DEFAULTS = { pv_min: 0, pv_max: 100 } as const;
 
 /** Selectable process models (models/process_preset.py). */
 export const PRESET_NAMES = ['FLOW', 'PRESSURE', 'LEVEL', 'TEMPERATURE', 'CUSTOM'] as const;

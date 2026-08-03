@@ -13,6 +13,7 @@ const meResponse = (role: 'admin' | 'user') =>
   });
 
 beforeEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
@@ -44,7 +45,7 @@ describe('RouteGuard', () => {
   });
 
   it('renders children for an authenticated session', async () => {
-    sessionStorage.setItem('smart-pid-token', 't');
+    localStorage.setItem('smart-pid-token', 't');
     fetchMock.mockResolvedValueOnce(meResponse('user'));
     app(
       <RouteGuard>
@@ -55,7 +56,7 @@ describe('RouteGuard', () => {
   });
 
   it('adminOnly renders nothing while the role is unknown, then admits admin', async () => {
-    sessionStorage.setItem('smart-pid-token', 't');
+    localStorage.setItem('smart-pid-token', 't');
     let release!: (r: Response) => void;
     fetchMock.mockReturnValueOnce(new Promise<Response>((r) => { release = r; }));
     app(
@@ -70,7 +71,7 @@ describe('RouteGuard', () => {
   });
 
   it('adminOnly redirects a user-role session to /', async () => {
-    sessionStorage.setItem('smart-pid-token', 't');
+    localStorage.setItem('smart-pid-token', 't');
     fetchMock.mockResolvedValueOnce(meResponse('user'));
     app(
       <RouteGuard adminOnly>

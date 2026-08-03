@@ -69,8 +69,6 @@ export function SimulatorPage() {
             <TwinTrend
               key={controllerId}
               controllerId={controllerId}
-              twinSp={controller?.sp}
-              twinCo={controller?.co}
             />
             <div className="shrink-0">
               <ClosedLoopDiagram controller={controller} />

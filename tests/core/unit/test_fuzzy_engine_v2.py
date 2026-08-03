@@ -1425,3 +1425,84 @@ class TestDispatcher:
             value = "XXX"
         with pytest.raises(ValueError):
             FuzzyEngineV2Dispatcher(_Fake())  # type: ignore[arg-type]
+
+
+class TestSPTrackingNeverInvertsOnAnOscillatingLoop:
+    """Regression: the tuner reduced Ti on a loop that was in a limit cycle.
+
+    Two faults combined. StatsWorker's SP-step settling mask could cover the
+    whole window, zeroing every oscillation indicator; the engine then read
+    OSC=0 as "steady" and the rule ``IAE=HIGH & OSC=STABLE & EFF=EXCESS``
+    said RM (-0.35). Three cycles of that on an already-oscillating loop is
+    exactly what was reported.
+    """
+
+    @staticmethod
+    def _stats(**over):
+        base = {
+            "mean_abs_error": 16.0,   # IAE high
+            "pk_pk_error": 0.0,
+            "recent_pk_pk_error": 0.0,
+            "reversals": 0,
+            "zero_crossings": 0,
+            "tv_per_sample": 18.0,    # valve thrashing -> EFF EXCESS
+            "sample_count": 300,
+            "osc_sample_count": 300,
+            "sp_pk_pk": 0.0,
+        }
+        base.update(over)
+        return base
+
+    def _decide(self, stats, ti=1.0):
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        return FuzzyEngineV2().compute_adjustment_from_stats(
+            stats=stats, span=100.0, ti_current=ti,
+            limit_min=0.05, limit_max=600.0,
+        )
+
+    def test_thrashing_valve_with_a_standing_error_never_speeds_the_integrator(self):
+        """High IAE + calm-looking PV + EXCESS valve effort is a loop at its
+        limit, not a slow one. This is the exact rule that produced -0.35."""
+        d = self._decide(self._stats())
+        assert d.delta_ti >= 0.0, d.reasoning
+
+    def test_a_masked_window_is_a_hold_not_a_verdict(self):
+        """When the settling mask ate the window there is no evidence at all,
+        and 'no evidence' must not read as 'steady with an offset'."""
+        d = self._decide(self._stats(osc_sample_count=0))
+        assert d.delta_ti == 0.0
+        assert d.new_ti == 1.0
+        assert "admissible" in d.reasoning
+
+    def test_confirmed_limit_cycle_increases_ti(self):
+        d = self._decide(self._stats(
+            recent_pk_pk_error=60.0, reversals=40, zero_crossings=38,
+        ))
+        assert d.delta_ti > 0.0
+        assert d.new_ti > 1.0
+
+    def test_sustained_reduction_needs_a_calm_valve(self):
+        """The reduce path still exists — it just needs the real signature:
+        a standing offset the valve is NOT fighting."""
+        d = self._decide(self._stats(tv_per_sample=0.2), ti=50.0)
+        assert d.delta_ti < 0.0
+        assert d.new_ti < 50.0
+
+    def test_amplitude_is_judged_against_the_excitation(self):
+        """A 20-unit error swing is a limit cycle when the setpoint never
+        moved, and an ordinary step response when it jumped 40."""
+        osc = {"recent_pk_pk_error": 20.0, "reversals": 30, "zero_crossings": 28,
+               "mean_abs_error": 4.0, "tv_per_sample": 2.0}
+        fixed_sp = self._decide(self._stats(**osc, sp_pk_pk=0.0))
+        moving_sp = self._decide(self._stats(**osc, sp_pk_pk=40.0))
+        assert fixed_sp.inputs["OSC"] > moving_sp.inputs["OSC"]
+        assert fixed_sp.inputs["OSC"] == pytest.approx(1.0)
+
+    def test_a_fixed_setpoint_keeps_the_original_amplitude_scale(self):
+        """sp_pk_pk = 0 must reproduce the pre-change behaviour exactly:
+        15 % of span saturates the amplitude term."""
+        d = self._decide(self._stats(
+            recent_pk_pk_error=15.0, reversals=10, zero_crossings=10,
+            mean_abs_error=4.0, tv_per_sample=2.0, sp_pk_pk=0.0,
+        ))
+        assert d.inputs["OSC"] == pytest.approx(1.0)

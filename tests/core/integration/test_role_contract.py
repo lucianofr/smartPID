@@ -54,7 +54,6 @@ ADMIN_ONLY_ROUTES: list[tuple[str, str, dict | None]] = [
         {"controller_id": 1, "type": "step", "amplitude": 1.0},
     ),
     ("delete", "/simulator/disturbance/1", None),
-    ("post", "/simulator/1/pid/enable", {"controller_id": 1, "enabled": True}),
     (
         "post",
         "/simulator/1/pid/params",
@@ -130,7 +129,7 @@ async def _request(
 
 class TestRouteInventory:
     def test_admin_only_route_count(self) -> None:
-        assert len(ADMIN_ONLY_ROUTES) == 40
+        assert len(ADMIN_ONLY_ROUTES) == 39
 
     def test_user_allowed_route_count(self) -> None:
         assert len(USER_ALLOWED_ROUTES) == 28

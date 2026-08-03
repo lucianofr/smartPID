@@ -18,7 +18,6 @@ const SIM_CONTROLLER: ControllerSimStatus = {
   step_amplitude: 0,
   noise_active: false,
   noise_amplitude: 0,
-  pid_enabled: false,
   pid_kp: 1,
   pid_ti: 10,
   pid_td: 0,
@@ -37,7 +36,7 @@ const SIM_CONTROLLER: ControllerSimStatus = {
 
 function renderPage(options: { role?: Role; status?: SimulatorStatus } = {}) {
   const role = options.role ?? 'admin';
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
   vi.spyOn(endpoints, 'simulatorStatus').mockResolvedValue(
     options.status ?? { enabled: true, running: true, controllers: { 1: SIM_CONTROLLER } },
@@ -55,7 +54,10 @@ function renderPage(options: { role?: Role; status?: SimulatorStatus } = {}) {
   };
 }
 
-beforeEach(() => sessionStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  sessionStorage.clear();
+});
 afterEach(() => vi.restoreAllMocks());
 
 describe('SimulatorPage', () => {

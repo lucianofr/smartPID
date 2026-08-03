@@ -20,6 +20,9 @@ from smart_pid_domain.exceptions import ControllerNotFoundError, DomainError
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import EventBus
     from smart_pid_core.application.tuning_store import TuningRecommendationStore
+    from smart_pid_core.application.workers.system_event_worker import (
+        SystemEventWorker,
+    )
     from smart_pid_domain.models.controller import Controller
 
 
@@ -45,6 +48,7 @@ class LoopManager:
         model_dir: Path | None = None,
         tuning_store: TuningRecommendationStore | None = None,
         stability_band_pct: float = 2.0,
+        system_event_worker: SystemEventWorker | None = None,
     ) -> None:
         self._bus = bus
         self._execution_mode = execution_mode
@@ -55,6 +59,9 @@ class LoopManager:
         # Daemon-wide steady-state band (% of SP). A loop with its own
         # ``stability_band_pct`` overrides it; the rest inherit this.
         self._stability_band_pct = stability_band_pct
+        # Handed to every AIWorker so each tuning suggestion lands in the
+        # system-event log the alarm/event history reads.
+        self._system_event_worker = system_event_worker
         self._loops: dict[int, LoopContext] = {}
 
     def start_loop(
@@ -71,6 +78,7 @@ class LoopManager:
             bus=self._bus, controller=controller, initial_ki=initial_ki,
             model_dir=self._model_dir, tuning_store=self._tuning_store,
             stability_band_pct=self._stability_band_pct,
+            system_event_worker=self._system_event_worker,
         )
 
         if self._execution_mode == "monitor":
@@ -154,6 +162,12 @@ class LoopManager:
         ctx.controller = controller
         if ctx.pid_worker is not None:
             ctx.pid_worker.update_controller(controller)
+        # The AI worker caches its own Controller too. Without this the
+        # per-loop auto-apply gate (`tuning_write_mode`) moved in the
+        # database while the optimizer thread kept reading the copy it was
+        # started with, so the faceplate switch did nothing until restart.
+        if ctx.ai_worker is not None:
+            ctx.ai_worker.update_controller(controller)
 
     def set_setpoint(self, controller_id: int, value: float) -> None:
         """Set SP value. Validates against sp_limits."""
@@ -227,6 +241,7 @@ class LoopManager:
             bus=self._bus, controller=controller, initial_ki=current_ki,
             model_dir=self._model_dir, tuning_store=self._tuning_store,
             stability_band_pct=self._stability_band_pct,
+            system_event_worker=self._system_event_worker,
         )
         ctx.ai_worker.start()
         logger.info(

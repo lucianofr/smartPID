@@ -51,7 +51,6 @@ class ControllerSimStatus(BaseModel):
     noise_active: bool
     noise_amplitude: float
     # PID internal state
-    pid_enabled: bool = False
     pid_kp: float = 1.0
     pid_ti: float = 10.0
     pid_td: float = 0.0
@@ -73,11 +72,6 @@ class SimulatorStatusResponse(BaseModel):
     enabled: bool
     running: bool = False
     controllers: dict[int, ControllerSimStatus]
-
-
-class SimulatorPIDEnableRequest(BaseModel):
-    controller_id: int
-    enabled: bool
 
 
 class SimulatorPIDParamsRequest(BaseModel):
@@ -110,3 +104,16 @@ class OPCUAServerStatus(BaseModel):
     running: bool
     port: int
     endpoint: str
+
+
+class SimulatorLoopCreateRequest(BaseModel):
+    """Create a simulator loop that no project controller owns.
+
+    ``controller_id=None`` asks the simulator to allocate the next free id,
+    which is what the HMI's "new simulator loop" button sends: the operator
+    wants another twin, not a specific number.
+    """
+
+    controller_id: int | None = None
+    pv_min: float = 0.0
+    pv_max: float = 100.0

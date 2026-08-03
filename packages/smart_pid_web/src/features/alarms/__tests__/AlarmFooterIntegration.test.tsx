@@ -47,6 +47,7 @@ function renderFooter(rows: AlarmRow[] = []) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
   listeners.clear();
   reduceMotion = false;

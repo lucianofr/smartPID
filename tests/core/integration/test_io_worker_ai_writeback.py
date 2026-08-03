@@ -36,6 +36,7 @@ class TestIOWorkerAIWriteBack:
             "new_ki": 15.5,
             "integral_type": "TIME_TI",
             "execution_mode": "SUPERVISORY",
+            "apply": True,
             "gamma": 0.3,
         })
         mock_sub.recv.side_effect = [
@@ -68,6 +69,7 @@ class TestIOWorkerAIWriteBack:
             "new_ki": 0.05,
             "integral_type": "GAIN_KI",
             "execution_mode": "SUPERVISORY",
+            "apply": True,
             "gamma": -0.2,
         })
         mock_sub.recv.side_effect = [
@@ -96,6 +98,7 @@ class TestIOWorkerAIWriteBack:
             "controller_id": 1,
             "gamma": 0.1,
             "execution_mode": "SUPERVISORY",
+            "apply": True,
         })
         mock_sub.recv.side_effect = [
             (b"ACTION.AI.1", payload),
@@ -153,12 +156,14 @@ class TestIOWorkerAIWriteBack:
             "new_ki": 12.0,
             "integral_type": "TIME_TI",
             "execution_mode": "SUPERVISORY",
+            "apply": True,
         })
         p2 = msgpack.packb({
             "controller_id": 2,
             "new_ki": 8.5,
             "integral_type": "TIME_TI",
             "execution_mode": "SUPERVISORY",
+            "apply": True,
         })
         mock_sub.recv.side_effect = [
             (b"ACTION.AI.1", p1),
@@ -170,4 +175,58 @@ class TestIOWorkerAIWriteBack:
         assert adapter.write_pid_params.call_count == 2
         adapter.write_pid_params.assert_any_call(1, kp=None, ti=12.0, td=None)
         adapter.write_pid_params.assert_any_call(2, kp=None, ti=8.5, td=None)
+        bus.ctx.term()
+
+    def test_no_write_when_auto_apply_is_off(self) -> None:
+        """A suggestion the operator has not authorised must not be written.
+
+        `apply` mirrors the loop's `tuning_write_mode`. AIWorker publishes
+        every suggestion so the HMI can show it; only an `auto_apply` loop
+        lets it reach the plant. This is the regression: the flag did not
+        exist and every suggestion was written regardless of the switch.
+        """
+        bus = MagicMock()
+        bus.ctx = zmq.Context()
+        adapter = MagicMock()
+
+        worker = IOWorker(bus=bus, opcua_adapter=adapter, controller_ids=[1])
+
+        mock_sub = MagicMock()
+        payload = msgpack.packb({
+            "controller_id": 1,
+            "new_ki": 15.5,
+            "integral_type": "TIME_TI",
+            "execution_mode": "SUPERVISORY",
+            "apply": False,
+        })
+        mock_sub.recv.side_effect = [(b"ACTION.AI.1", payload), None]
+
+        worker._drain_and_write_ai_tuning(mock_sub)
+        adapter.write_pid_params.assert_not_called()
+        bus.ctx.term()
+
+    def test_no_write_when_apply_key_is_absent(self) -> None:
+        """An unstated gate is a closed gate.
+
+        A frame from an older publisher carries no `apply` key. Writing
+        into a live process on an assumption is the failure mode this whole
+        gate exists to prevent, so absence must deny.
+        """
+        bus = MagicMock()
+        bus.ctx = zmq.Context()
+        adapter = MagicMock()
+
+        worker = IOWorker(bus=bus, opcua_adapter=adapter, controller_ids=[1])
+
+        mock_sub = MagicMock()
+        payload = msgpack.packb({
+            "controller_id": 1,
+            "new_ki": 15.5,
+            "integral_type": "TIME_TI",
+            "execution_mode": "SUPERVISORY",
+        })
+        mock_sub.recv.side_effect = [(b"ACTION.AI.1", payload), None]
+
+        worker._drain_and_write_ai_tuning(mock_sub)
+        adapter.write_pid_params.assert_not_called()
         bus.ctx.term()

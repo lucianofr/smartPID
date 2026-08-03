@@ -13,7 +13,7 @@ function LocationProbe() {
 }
 
 function renderGate(role: Role = 'admin', projects: ProjectItem[] = [UNIT_A]) {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
   const list = vi.spyOn(endpoints, 'projectList').mockResolvedValue({ projects });
   render(
@@ -28,6 +28,7 @@ function renderGate(role: Role = 'admin', projects: ProjectItem[] = [UNIT_A]) {
 const dialog = () => screen.queryByRole('dialog', { name: 'Abrir projeto' });
 
 beforeEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
 });
 

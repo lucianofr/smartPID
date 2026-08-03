@@ -16,6 +16,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { useConnectionStatus } from '@/realtime/useConnectionStatus';
 import { useTheme, type ThemeId } from '@/theme/ThemeProvider';
 import { cn } from '@/lib/utils';
+import { useCurrentProject } from '@/features/projects/useCurrentProject';
 import { WelcomeGate } from '@/features/projects/WelcomeGate';
 import { StepMark, Wordmark, WORDMARK_TEXT } from './BrandMark';
 import { appRoutes, cfgRoutes, navRoutes } from './routes';
@@ -54,6 +55,9 @@ export function AppShell({ children }: AppShellProps) {
   const { logout, user } = useAuth();
   const { theme, setTheme, themes } = useTheme();
   const status = useConnectionStatus();
+  // Gated on a resolved session: `/project/current` is `require_user`, so the
+  // login route would otherwise spend a certain 401 on every cold load.
+  const { data: project } = useCurrentProject(user !== null);
   const navigate = useNavigate();
   // An `adminOnly` route redirects a user back to `/`, so offering it in the
   // configuration menu would only advertise a dead end (phase 10).
@@ -112,6 +116,19 @@ export function AppShell({ children }: AppShellProps) {
             </NavLink>
           ))}
         </nav>
+
+        {/* Which plant am I looking at — the answer rides at the end of the nav
+            row, not in a page body. Pending and failed both render nothing: a
+            placeholder here would read as a project named "—". */}
+        {project !== undefined ? (
+          <div className="hidden min-w-0 shrink items-center gap-2.5 md:flex">
+            <span aria-hidden="true" className="h-[22px] w-px shrink-0 bg-rule" />
+            <span className="sr-only">Projeto ativo</span>
+            <span className="min-w-0 truncate text-sm font-medium text-text-soft">
+              {project.name}
+            </span>
+          </div>
+        ) : null}
 
         <div className="ml-auto flex shrink-0 items-center gap-4">
           {/* Compact, always-on link state. It answers "is the field link up?"

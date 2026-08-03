@@ -22,9 +22,14 @@ function renderShell(realtime?: FakeRealtime) {
  * the token alone leaves `user` null, which is the deny-everything case.
  */
 function renderShellAs(role: Role) {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
   vi.spyOn(endpoints, 'projectList').mockResolvedValue({ projects: [] });
+  vi.spyOn(endpoints, 'projectCurrent').mockResolvedValue({
+    name: 'Planta Norte',
+    path: '/srv/projects/planta-norte.spid',
+    controller_count: 3,
+  });
   return renderShell();
 }
 
@@ -79,10 +84,10 @@ describe('AppShell', () => {
   });
 
   it('clears the session when Sair is pressed', () => {
-    sessionStorage.setItem('smart-pid-token', 'jwt');
+    localStorage.setItem('smart-pid-token', 'jwt');
     renderShell();
     fireEvent.click(screen.getByRole('button', { name: 'Sair' }));
-    expect(sessionStorage.getItem('smart-pid-token')).toBeNull();
+    expect(localStorage.getItem('smart-pid-token')).toBeNull();
   });
 
   it('switches the persisted theme from the cfg menu', async () => {
@@ -130,6 +135,24 @@ describe('AppShell', () => {
     await waitFor(() => expect(endpoints.me).toHaveBeenCalled());
     const nav = screen.getByRole('navigation', { name: 'Navegação principal' });
     expect(within(nav).getByRole('link', { name: 'Executivo' })).toBeVisible();
+  });
+
+  it('names the active project after the nav once /project/current resolves', async () => {
+    renderShellAs('user');
+    const name = await screen.findByText('Planta Norte');
+    expect(name).toBeVisible();
+    // sr-only prefix, not an aria-label on a role-less span: that is the
+    // labelling idiom the rest of the app uses for a bare value (TwinTrend).
+    expect(screen.getByText('Projeto ativo')).toBeInTheDocument();
+    // Ordering is the point: the name reads as the tail of the nav row, so a
+    // future header reshuffle that drags it back beside the brand must fail.
+    const nav = screen.getByRole('navigation', { name: 'Navegação principal' });
+    expect(nav.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders no project label while /project/current has not resolved', () => {
+    renderShell();
+    expect(screen.queryByText('Projeto ativo')).not.toBeInTheDocument();
   });
 });
 

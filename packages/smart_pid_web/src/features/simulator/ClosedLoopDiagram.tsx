@@ -8,6 +8,9 @@ export interface ClosedLoopDiagramProps {
 
 const ARROW_MARKER_ID = 'closed-loop-arrow';
 
+/** Counterpart of `PID_MODE_AUTO` on the same wire encoding (0 = MAN, 1 = AUTO). */
+const PID_MODE_MAN = 0;
+
 /** Matches DynamicsSliders' 2-decimal readout convention — also keeps every
  * label short enough to stay inside its block, since raw floats (random-walk
  * auto-excitation, unrounded backend values) can run to 15+ digits. */
@@ -23,8 +26,16 @@ function fmt(n: number): string {
  */
 export function ClosedLoopDiagram({ controller }: ClosedLoopDiagramProps) {
   const disturbed = controller?.step_active === true || controller?.noise_active === true;
-  const pidEnabled = controller?.pid_enabled === true;
-  const pidAuto = controller?.pid_mode === PID_MODE_AUTO;
+  /** Raw wire value AND its meaning — an operator reading the diagram should not
+   * have to remember that 1 means AUTO. Unknown stays unknown: an absent or
+   * out-of-range mode must not read as MAN. */
+  const pidMode = controller?.pid_mode;
+  const pidModeLabel =
+    pidMode === PID_MODE_AUTO
+      ? `MODE: ${PID_MODE_AUTO} - AUTO`
+      : pidMode === PID_MODE_MAN
+        ? `MODE: ${PID_MODE_MAN} - MAN`
+        : 'MODE: --';
 
   return (
     <figure className="flex flex-col gap-2 rounded-control border border-rule bg-surface p-3">
@@ -104,10 +115,10 @@ export function ClosedLoopDiagram({ controller }: ClosedLoopDiagramProps) {
         </g>
 
         {/* PID block */}
-        <g className={cn(controller != null && !pidEnabled && 'opacity-40')}>
+        <g>
           <title>
             Controlador PID interno do gêmeo digital — soma o erro (SP - PV) ponderado por Kp,
-            Ti, Td e escreve em CO quando habilitado e em AUTO.
+            Ti, Td e escreve em CO quando está em AUTO.
           </title>
           <rect
             x="150"
@@ -122,15 +133,13 @@ export function ClosedLoopDiagram({ controller }: ClosedLoopDiagramProps) {
             PID
           </text>
           {controller ? (
-            <>
-              <text x="220" y="84" textAnchor="middle" className="fill-text-soft text-[9px]">
-                {`Kp ${fmt(controller.pid_kp)} · Ti ${fmt(controller.pid_ti)} · Td ${fmt(controller.pid_td)}`}
-              </text>
-              <text x="220" y="98" textAnchor="middle" className="fill-text-soft text-[9px] uppercase">
-                {pidAuto ? 'AUTO' : 'MAN'}
-              </text>
-            </>
+            <text x="220" y="84" textAnchor="middle" className="fill-text-soft text-[9px]">
+              {`Kp ${fmt(controller.pid_kp)} · Ti ${fmt(controller.pid_ti)} · Td ${fmt(controller.pid_td)}`}
+            </text>
           ) : null}
+          <text x="220" y="98" textAnchor="middle" className="fill-text-soft text-[9px]">
+            {pidModeLabel}
+          </text>
         </g>
         <line
           x1="290"

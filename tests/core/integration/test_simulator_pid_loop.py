@@ -52,8 +52,7 @@ class TestSimulatorPIDClosesLoop:
         adapter._controllers[1].sp = 50.0
         adapter._controllers[1].last_co = 0.0
 
-        # Enable PID in AUTO with tuning suitable for FLOW (K=1.2, tau1=3, L=1)
-        adapter.enable_pid(1, enabled=True)
+        # AUTO with tuning suitable for FLOW (K=1.2, tau1=3, L=1)
         adapter.set_pid_params(1, kp=0.8, ti=4.0, td=0.5)
         adapter.set_pid_mode(1, mode=1)  # AUTO
 
@@ -68,8 +67,8 @@ class TestSimulatorPIDClosesLoop:
         # CO should be positive and driving the process
         assert final_co > 0.0, f"CO={final_co} should be positive"
 
-    def test_pid_disabled_does_not_close_loop(self, adapter: SimulatorAdapter) -> None:
-        """With PID disabled, CO stays at initial value."""
+    def test_man_mode_does_not_close_loop(self, adapter: SimulatorAdapter) -> None:
+        """In MAN the twin's PID must not touch CO, which stays at its initial value."""
         adapter.register_controller(1)
         adapter.set_preset(1, ProcessPresetName.FLOW)
         adapter._controllers[1].sp = 50.0
@@ -84,7 +83,6 @@ class TestSimulatorPIDClosesLoop:
         """Writing Ti via OPC-UA callback changes PID behavior."""
         adapter.register_controller(1)
         adapter.set_preset(1, ProcessPresetName.FLOW)
-        adapter.enable_pid(1, enabled=True)
         adapter.set_pid_params(1, kp=0.8, ti=4.0, td=0.0)
         adapter.set_pid_mode(1, mode=1)
         adapter._controllers[1].sp = 50.0
@@ -115,7 +113,6 @@ class TestSimulatorPIDScanRate:
         adapter.set_preset(1, ProcessPresetName.FLOW)
         adapter._controllers[1].sp = 50.0
         adapter._controllers[1].last_co = 0.0
-        adapter.enable_pid(1, enabled=True)
         adapter.set_pid_params(1, kp=0.8, ti=4.0, td=0.0)
         adapter.set_pid_mode(1, mode=1)  # AUTO
 

@@ -65,7 +65,7 @@ function exportBody(): unknown {
 }
 
 beforeEach(() => {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.stubGlobal('fetch', fetchMock);
   vi.stubGlobal('URL', Object.assign(URL, {
     createObjectURL: vi.fn(() => 'blob:export'),
@@ -74,6 +74,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
   fetchMock.mockReset();
   vi.unstubAllGlobals();

@@ -19,7 +19,7 @@ import { useSimulatorStatus, useTwinRunning } from '../useSimulatorStatus';
 const SNAPSHOT: SimulatorStatus = { enabled: true, running: true, controllers: {} };
 
 function renderStatus(role: Role) {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
   const queryClient = createQueryClient();
   const wrapper = ({ children }: { children: ReactNode }) => (
@@ -30,7 +30,10 @@ function renderStatus(role: Role) {
   return renderHook(() => ({ status: useSimulatorStatus(), user: useAuth().user }), { wrapper });
 }
 
-beforeEach(() => sessionStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  sessionStorage.clear();
+});
 afterEach(() => vi.restoreAllMocks());
 
 describe('useSimulatorStatus', () => {
@@ -82,7 +85,7 @@ describe('useSimulatorStatus', () => {
 
 describe('useTwinRunning — ambient cache read', () => {
   it('reads the entry the §7 resync primes without issuing its own request', async () => {
-    sessionStorage.setItem('smart-pid-token', 'jwt');
+    localStorage.setItem('smart-pid-token', 'jwt');
     vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: 'admin', role: 'admin' });
     const status = vi.spyOn(endpoints, 'simulatorStatus').mockResolvedValue(SNAPSHOT);
     const queryClient = createQueryClient();

@@ -10,9 +10,11 @@ import { ALARM_TYPES, type AlarmSeverity, type AlarmType } from './types';
 import { HISTORY_LIMIT, useAlarmHistory, type AlarmHistoryFilter } from './useAlarms';
 
 /**
- * Alarm history (§6.4). `/alarms/history` REQUIRES both bounds, so the range
- * is always explicit; priority and type are NOT query parameters there and are
- * narrowed client-side over the fetched window instead.
+ * Alarm AND event history (§6.4): the panel merges `/alarms/history` with
+ * `/system-events` (optimizer suggestions land there as `AI`/`LOG`). Both
+ * REQUIRE both bounds, so the range is always explicit; priority and type are
+ * NOT query parameters there and are narrowed client-side over the fetched
+ * window instead.
  *
  * Filters are staged in a draft and committed by `Aplicar filtros`: a half-typed
  * range must never fire a request, and a failed fetch must not eat the range
@@ -88,7 +90,7 @@ export function AlarmHistory() {
   const rows = query.data ?? [];
 
   return (
-    <section aria-label="Histórico de alarmes" className="flex min-h-0 flex-1 flex-col">
+    <section aria-label="Histórico de alarmes e eventos" className="flex min-h-0 flex-1 flex-col">
       <form
         aria-label="Filtros do histórico"
         className="flex flex-wrap items-end gap-3 border-b border-rule px-3 py-2"
@@ -192,7 +194,7 @@ export function AlarmHistory() {
         />
       ) : rows.length === 0 ? (
         <EmptyState
-          message="Nenhum alarme no período."
+          message="Nenhum alarme ou evento no período."
           hint="Amplie o intervalo ou remova os filtros."
         />
       ) : (
@@ -201,17 +203,21 @@ export function AlarmHistory() {
             items={rows}
             height="100%"
             estimateSize={ROW_HEIGHT}
-            getKey={(row) => row.id}
-            aria-label="Lista do histórico de alarmes"
+            // Alarm ids and event ids come from different tables and collide.
+            getKey={(row) => `${row.kind}-${row.id}`}
+            aria-label="Lista do histórico de alarmes e eventos"
             renderItem={(row) => {
-              const sev = severity(toSeverity(row.priority));
+              const severityId = row.kind === 'alarm' ? toSeverity(row.priority) : row.severity;
+              const sev = severity(severityId);
               return (
                 <div
-                  data-testid={`history-row-${row.id}`}
+                  data-testid={
+                    row.kind === 'alarm' ? `history-row-${row.id}` : `history-event-${row.id}`
+                  }
                   className={cn(
                     GRID,
                     'h-full border-b border-rule text-sm',
-                    severityClass(toSeverity(row.priority)),
+                    severityClass(severityId),
                   )}
                 >
                   <span className="inline-flex items-center gap-1.5 text-2xs font-medium tracking-wider">
@@ -219,21 +225,27 @@ export function AlarmHistory() {
                     {sev.label}
                   </span>
                   <span className="truncate font-medium text-text">
-                    {row.controller_name ?? '—'}
+                    {row.kind === 'alarm' ? (row.controller_name ?? '—') : row.source}
                   </span>
-                  <span className="truncate text-text">
-                    <span className="font-medium">{row.alarm_type}</span>{' '}
-                    <span className="numeric">{formatNumber(row.value, 2)}</span>{' '}
-                    <span className="text-text-soft">
-                      (lim <span className="numeric">{formatNumber(row.limit, 2)}</span>)
+                  {row.kind === 'alarm' ? (
+                    <span className="truncate text-text">
+                      <span className="font-medium">{row.alarm_type}</span>{' '}
+                      <span className="numeric">{formatNumber(row.value, 2)}</span>{' '}
+                      <span className="text-text-soft">
+                        (lim <span className="numeric">{formatNumber(row.limit, 2)}</span>)
+                      </span>
                     </span>
+                  ) : (
+                    <span className="truncate text-text">{row.message}</span>
+                  )}
+                  <span className="text-2xs text-text-soft">
+                    {row.kind === 'alarm' ? row.status : '—'}
                   </span>
-                  <span className="text-2xs text-text-soft">{row.status}</span>
                   <span className="numeric text-2xs text-text-soft">
                     {formatTimestamp(row.timestamp)}
                   </span>
                   <span className="truncate text-2xs text-text-soft">
-                    {row.ack_by_user ?? '—'}
+                    {row.kind === 'alarm' ? (row.ack_by_user ?? '—') : '—'}
                   </span>
                 </div>
               );

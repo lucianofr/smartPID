@@ -669,9 +669,11 @@ async def delete_controller(
         await repo.delete(controller_id)
     except KeyError:
         raise ControllerNotFoundError(controller_id) from None
-    # Mirror of create: a simulator entry for a deleted loop would keep being
-    # integrated and keep answering /simulator/* for a controller that is gone.
-    _sync_simulator_registration(request, None, controller_id)
+    # The simulator loop is deliberately NOT removed here. The simulator is
+    # an independent module: its loops are managed through
+    # POST/DELETE /simulator/loops, so deleting a project controller must
+    # not destroy a twin the operator may still be using to exercise
+    # tuning. The twin keeps ticking on its own until it is deleted there.
     # Mirror of create: an orphaned PIDWorker/AIWorker/StatsWorker would keep
     # running for a controller no longer in the DB, and IOWorker would keep
     # issuing OPC-UA reads for it.

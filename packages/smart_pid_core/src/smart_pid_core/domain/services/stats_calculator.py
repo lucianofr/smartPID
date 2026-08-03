@@ -18,6 +18,10 @@ class _Sample:
     # (pk-pk, reversals, zero_crossings). They still contribute to IAE
     # and family so error-budget tracking is unaffected.
     is_settling: bool = False
+    # Setpoint at the time of the sample. The oscillation amplitude is
+    # judged against how hard the loop was excited over the window
+    # (see :meth:`sp_pk_pk`), so the SP has to travel with the sample.
+    sp: float = 0.0
 
 
 class StatsCalculator:
@@ -62,6 +66,7 @@ class StatsCalculator:
         co: float,
         dt: float,
         is_settling: bool = False,
+        sp: float | None = None,
     ) -> None:
         """Add a new sample to the sliding window.
 
@@ -70,6 +75,11 @@ class StatsCalculator:
         and standard-deviation metrics, but are ignored by the
         oscillation indicators (pk_pk, reversals, zero_crossings) so
         the fuzzy tuner does not interpret SP-chasing as oscillation.
+
+        ``sp`` records the setpoint in force for this sample; it defaults
+        to the calculator's current setpoint. :meth:`sp_pk_pk` uses it to
+        report how far the setpoint travelled across the window, which is
+        what the oscillation amplitude has to be judged against.
         """
         self._elapsed_time += dt
         self._samples.append(
@@ -79,6 +89,7 @@ class StatsCalculator:
                 dt=dt,
                 elapsed_time=self._elapsed_time,
                 is_settling=is_settling,
+                sp=self._setpoint if sp is None else sp,
             )
         )
 
@@ -156,6 +167,31 @@ class StatsCalculator:
         return [s.error for s in self._samples if not s.is_settling]
 
     @property
+    def osc_sample_count(self) -> int:
+        """How many samples the oscillation indicators are allowed to see.
+
+        Zero means the settling mask covered the whole window, so pk-pk,
+        reversals and zero-crossings are all structurally 0 — "unmeasured",
+        NOT "steady". A consumer that cannot tell those apart will read a
+        violently excited loop as calm; the fuzzy tuner gates on this.
+        """
+        return sum(1 for s in self._samples if not s.is_settling)
+
+    @property
+    def sp_pk_pk(self) -> float:
+        """Peak-to-peak setpoint travel over the window (engineering units).
+
+        The scale the oscillation amplitude has to be judged against. An
+        error excursion of 15 % of span is a limit cycle when the setpoint
+        never moved and an ordinary step response when the setpoint jumped
+        40 %; without this the two are indistinguishable.
+        """
+        if not self._samples:
+            return 0.0
+        sps = [s.sp for s in self._samples]
+        return max(sps) - min(sps)
+
+    @property
     def pk_pk_error(self) -> float:
         """Peak-to-peak of error over the window (raw engineering units).
 
@@ -211,11 +247,20 @@ class StatsCalculator:
         number the engine sees, without re-implementing the gating logic.
         ``recent_pk_pk_error`` rejects stale swings; the reversal /
         zero-crossing gates reject ramps and SP-step transients.
+
+        The amplitude is normalised by the LARGER of ``pkpk_full_scale_frac
+        × span`` and the setpoint travel over the window. With a fixed
+        setpoint that is exactly the old fixed scale; with a setpoint that
+        is being driven around (auto-SP excitation, an operator stepping
+        the loop) it stops an ordinary step response from reading as a
+        limit cycle and pushing the tuner to over-damp a healthy loop.
         """
         if self._span <= 0:
             return 0.0
-        pk_pk_frac = self.recent_pk_pk_error / self._span
-        amp_norm = min(1.0, pk_pk_frac / pkpk_full_scale_frac)
+        scale = max(pkpk_full_scale_frac * self._span, self.sp_pk_pk)
+        if scale <= 0:
+            return 0.0
+        amp_norm = min(1.0, self.recent_pk_pk_error / scale)
         if (
             self.reversals < min_reversals
             or self.zero_crossings < min_zero_crossings

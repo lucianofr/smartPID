@@ -13,7 +13,6 @@ const CONTROLLER: ControllerSimStatus = {
   step_amplitude: 5,
   noise_active: false,
   noise_amplitude: 0,
-  pid_enabled: true,
   pid_kp: 0.87,
   pid_ti: 1.25,
   pid_td: 0.3,
@@ -45,6 +44,25 @@ describe('ClosedLoopDiagram', () => {
     expect(screen.getByText('3.20')).toBeInTheDocument(); // disturbance_output
     // Internal PID params fit in the widened block.
     expect(screen.getByText('Kp 0.87 · Ti 1.25 · Td 0.30')).toBeInTheDocument();
+    // The wire int AND its meaning — 1 alone is unreadable at a glance.
+    expect(screen.getByText('MODE: 1 - AUTO')).toBeInTheDocument();
+  });
+
+  it('reads pid_mode 0 as MAN', () => {
+    render(<ClosedLoopDiagram controller={{ ...CONTROLLER, pid_mode: 0 }} />);
+    expect(screen.getByText('MODE: 0 - MAN')).toBeInTheDocument();
+    expect(screen.queryByText('MODE: 1 - AUTO')).not.toBeInTheDocument();
+  });
+
+  it('shows an unknown mode instead of silently reading as MAN', () => {
+    // An absent (or out-of-range) mode is NOT manual — claiming MAN would be a lie.
+    render(
+      <ClosedLoopDiagram
+        controller={{ ...CONTROLLER, pid_mode: undefined as unknown as number }}
+      />,
+    );
+    expect(screen.getByText('MODE: --')).toBeInTheDocument();
+    expect(screen.queryByText('MODE: 0 - MAN')).not.toBeInTheDocument();
   });
 
   it('shows generic topology labels but no numeric readouts without a snapshot', () => {
@@ -53,5 +71,6 @@ describe('ClosedLoopDiagram', () => {
     expect(screen.getByText('ERRO')).toBeInTheDocument();
     expect(screen.queryByText('55.00')).not.toBeInTheDocument();
     expect(screen.queryByText('3.20')).not.toBeInTheDocument();
+    expect(screen.getByText('MODE: --')).toBeInTheDocument();
   });
 });

@@ -8,18 +8,23 @@ frontend management panel arrives in phase 10.
 from typing import Annotated
 
 import aiosqlite
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from smart_pid_core.adapters.inbound.api.auth import hash_password
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_audit_repo,
     get_user_repo,
     require_admin,
+    require_user,
 )
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository  # noqa: TC001
 from smart_pid_core.adapters.outbound.user_repo import User, UserRepository  # noqa: TC001
 from smart_pid_domain.dtos.auth import UserClaims, UserCreate  # noqa: TC001
-from smart_pid_domain.dtos.users import UserResponse, UserUpdate  # noqa: TC001
+from smart_pid_domain.dtos.users import (  # noqa: TC001
+    UserResponse,
+    UserThemeUpdate,
+    UserUpdate,
+)
 from smart_pid_domain.enums import AuditAction, UserRole
 
 router = APIRouter()
@@ -162,3 +167,21 @@ async def deactivate_user(
         None,
     )
     return _to_response(updated)
+
+
+@router.put("/me/theme", status_code=status.HTTP_204_NO_CONTENT)
+async def set_my_theme(
+    body: UserThemeUpdate,
+    current_user: Annotated[UserClaims, Depends(require_user)],
+    user_repo: Annotated[UserRepository, Depends(get_user_repo)],
+) -> Response:
+    """Persist the caller's HMI palette on their own account.
+
+    Deliberately NOT admin-gated and deliberately scoped to ``me``: this is
+    the one thing in this router every user owns. The palette used to live
+    only in the browser's localStorage, so signing in from another machine
+    -- or after the profile was cleared -- silently reverted the operator to
+    the default theme.
+    """
+    await user_repo.set_theme(current_user.user_id, body.theme)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

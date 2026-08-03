@@ -49,7 +49,6 @@ class _ControllerSim:
     noise_active: bool = False
     noise_amplitude: float = 0.0
     # Internal PID
-    pid_enabled: bool = False
     pid_params: PIDParams = field(default_factory=PIDParams)
     pid_state: PIDState = field(default_factory=PIDState)
     pid_mode: int = 0  # 0=MAN, 1=AUTO
@@ -127,6 +126,18 @@ def bind_opcua_client(
 # PV, but the controller only samples/acts once per second (zero-order hold on
 # CO between scans), mirroring a real 1 s PID scan rate.
 PID_SCAN_INTERVAL_S: float = 1.0
+
+# A valve cannot open past full nor shut past closed. The internal PID
+# already clamps through PIDEngine's out_limits, but CO also arrives from
+# OPC-UA clients and from the operator's manual-output field, and those
+# paths wrote straight through.
+CO_MIN_PCT: float = 0.0
+CO_MAX_PCT: float = 100.0
+
+
+def _clamp_co(co: float) -> float:
+    return min(CO_MAX_PCT, max(CO_MIN_PCT, co))
+
 
 # OPC-UA parameters whose mutation changes persistent PID configuration.
 # CO and SP are excluded: they are transient runtime values written every
@@ -216,7 +227,7 @@ class SimulatorAdapter:
             if ctrl is None:
                 return
             if param == "co":
-                ctrl.last_co = value
+                ctrl.last_co = _clamp_co(value)
             elif param == "sp":
                 ctrl.sp = value
             elif param == "kp":
@@ -230,7 +241,7 @@ class SimulatorAdapter:
             elif param == "pid_sp":
                 ctrl.sp = value
             elif param == "mode":
-                ctrl.pid_mode = int(value)
+                self._apply_pid_mode_locked(ctrl, int(value))
             if param in _OPCUA_PERSISTABLE_PARAMS:
                 self._dirty_cids.add(controller_id)
 
@@ -251,20 +262,10 @@ class SimulatorAdapter:
         with self._lock:
             ctrl = self._controllers.get(controller_id)
             if ctrl is not None:
-                ctrl.last_co = co
+                ctrl.last_co = _clamp_co(co)
 
     def write_parameter(self, controller_id: int, param: str, value: float) -> None:
         """No-op for simulator — satisfies ControlWriter protocol."""
-
-    def enable_pid(self, controller_id: int, enabled: bool) -> None:
-        with self._lock:
-            ctrl = self._controllers[controller_id]
-            ctrl.pid_enabled = enabled
-            if enabled:
-                ctrl.pid_state = self._pid_engine.bumpless_transfer(
-                    ctrl.pid_state, current_pv=ctrl.live_pv, current_co=ctrl.last_co,
-                    params=ctrl.pid_params,
-                )
 
     def set_pid_sp(self, controller_id: int, sp: float) -> None:
         with self._lock:
@@ -299,20 +300,34 @@ class SimulatorAdapter:
                 "ti": ctrl.pid_params.reset,
                 "td": ctrl.pid_params.rate,
                 "pid_structure": ctrl.pid_structure,
-                "pid_enabled": ctrl.pid_enabled,
+                "pid_enabled": True,
             }
         self._opcua_server.update_values(controller_id=controller_id, values=values)
 
     def set_pid_mode(self, controller_id: int, mode: int) -> None:
         with self._lock:
-            ctrl = self._controllers[controller_id]
-            ctrl.pid_mode = mode
+            self._apply_pid_mode_locked(self._controllers[controller_id], mode)
+
+    def _apply_pid_mode_locked(self, ctrl: _ControllerSim, mode: int) -> None:
+        """Set the twin's PID mode. Caller MUST already hold ``self._lock``.
+
+        MAN -> AUTO reseeds the integrator from the CO the operator left behind,
+        or the controller bumps the output the instant it takes over. That
+        transfer used to ride on ``enable_pid()``; the twin's PID is always on
+        now, so the mode change is the only transition left that can bump.
+        """
+        if mode == 1 and ctrl.pid_mode != 1:
+            ctrl.pid_state = self._pid_engine.bumpless_transfer(
+                ctrl.pid_state, current_pv=ctrl.live_pv, current_co=ctrl.last_co,
+                params=ctrl.pid_params,
+            )
+        ctrl.pid_mode = mode
 
     def get_pid_status(self, controller_id: int) -> dict:
         with self._lock:
             ctrl = self._controllers[controller_id]
             return {
-                "enabled": ctrl.pid_enabled,
+                "enabled": True,
                 "kp": ctrl.pid_params.gain,
                 "ti": ctrl.pid_params.reset,
                 "td": ctrl.pid_params.rate,
@@ -331,6 +346,40 @@ class SimulatorAdapter:
                     pv_max=pv_max,
                 )
                 self._opcua_server.register_controller(controller_id)
+
+    def create_loop(
+        self,
+        controller_id: int | None = None,
+        pv_min: float = 0.0,
+        pv_max: float = 100.0,
+    ) -> int:
+        """Create a simulator loop that no project controller owns.
+
+        The simulator is a standalone module: its loops exist to exercise
+        tuning and the HMI, and tying their lifecycle to ``POST/DELETE
+        /controllers`` meant you could not add a test loop without also
+        adding a real one, nor drop a test loop without deleting a real one.
+
+        ``controller_id=None`` allocates the next free id. Returns the id
+        actually used. Raises ``ValueError`` if the id is already taken —
+        silently returning the existing loop would let a caller believe it
+        got a fresh one and then wonder why it came pre-configured.
+        """
+        with self._lock:
+            if controller_id is None:
+                controller_id = (max(self._controllers) + 1) if self._controllers else 1
+            elif controller_id in self._controllers:
+                raise ValueError(
+                    f"Simulator loop {controller_id} already exists",
+                )
+            self._controllers[controller_id] = _ControllerSim(
+                controller_id=controller_id,
+                pv_min=pv_min,
+                pv_max=pv_max,
+            )
+            self._opcua_server.register_controller(controller_id)
+        logger.info("Simulator: created standalone loop (id=%d)", controller_id)
+        return controller_id
 
     def has_controller(self, controller_id: int) -> bool:
         """Return True when *controller_id* has simulation state here.
@@ -457,7 +506,6 @@ class SimulatorAdapter:
             ctrl.model = ProcessModel(
                 gain=ctrl.gain, tau1=ctrl.tau1, tau2=ctrl.tau2, dead_time=ctrl.dead_time,
             )
-            ctrl.pid_enabled = cfg.get("pid_enabled", False)
             ctrl.pid_params.gain = cfg.get("pid_kp", 1.0)
             ctrl.pid_params.reset = cfg.get("pid_ti", 10.0)
             ctrl.pid_params.rate = cfg.get("pid_td", 0.0)
@@ -485,7 +533,6 @@ class SimulatorAdapter:
             step_amplitude=ctrl.step_amplitude,
             noise_active=ctrl.noise_active,
             noise_amplitude=ctrl.noise_amplitude,
-            pid_enabled=ctrl.pid_enabled,
             pid_kp=ctrl.pid_params.gain,
             pid_ti=ctrl.pid_params.reset,
             pid_td=ctrl.pid_params.rate,
@@ -522,7 +569,7 @@ class SimulatorAdapter:
                 "tau1": ctrl.tau1,
                 "tau2": ctrl.tau2 if ctrl.tau2 is not None else 0.0,
                 "dead_time": ctrl.dead_time,
-                "pid_enabled": ctrl.pid_enabled,
+                "pid_enabled": True,
                 "pid_kp": ctrl.pid_params.gain,
                 "pid_ti": ctrl.pid_params.reset,
                 "pid_td": ctrl.pid_params.rate,
@@ -583,8 +630,14 @@ class SimulatorAdapter:
                             ctrl.step_active = True
                             # step disturbance persists until next firing or manual clear
 
-                # Process model step (raw output before disturbances)
-                process_output = ctrl.model.step(co=ctrl.last_co, dt=dt)
+                # Process model step (raw output before disturbances).
+                # Saturated at the instrument range: the transfer function
+                # is linear, so with K = 2.4 a CO of 80 % would otherwise
+                # report PV = 192 %.
+                pv_limits = (ctrl.pv_min, ctrl.pv_max)
+                process_output = ctrl.model.step(
+                    co=ctrl.last_co, dt=dt, pv_limits=pv_limits,
+                )
 
                 # Disturbance contribution
                 disturbance = 0.0
@@ -593,7 +646,10 @@ class SimulatorAdapter:
                 if ctrl.noise_active:
                     disturbance += random.gauss(0, ctrl.noise_amplitude)
 
-                pv = process_output + disturbance
+                # A disturbance rides on the measurement, so it can push the
+                # reading past the range too. The transmitter still cannot
+                # report past its span.
+                pv = min(ctrl.pv_max, max(ctrl.pv_min, process_output + disturbance))
 
                 # Store live values for status queries
                 ctrl.live_pv = pv
@@ -606,7 +662,7 @@ class SimulatorAdapter:
                 # scans (zero-order hold), same as a real 1 s controller.
                 error = ctrl.sp - pv
                 ctrl.live_error = error
-                if ctrl.pid_enabled and ctrl.pid_mode == 1:
+                if ctrl.pid_mode == 1:
                     ctrl.pid_elapsed_s += dt
                     # 1e-6 absorbs float summation drift (0.1*10 == 0.999…) so an
                     # exact 1 s cadence fires on tick 10, not tick 11.
@@ -627,7 +683,7 @@ class SimulatorAdapter:
                     ctrl.pid_elapsed_s = 0.0
 
                 # Echo only state values computed by the simulator. PID config
-                # (kp/ti/td/pid_structure/pid_enabled) is owned by external
+                # (kp/ti/td/pid_structure) is owned by external
                 # clients (HMI, AI optimizer) and re-writing it every tick races
                 # with their OPC-UA writes and reverts their changes.
                 # Config is pushed separately via _sync_pid_config_to_opcua().
@@ -638,7 +694,7 @@ class SimulatorAdapter:
                         "sp": ctrl.sp,
                         "co": ctrl.last_co,
                         "mode": ctrl.pid_mode,
-                        "status": 1 if ctrl.pid_enabled else 0,
+                        "status": 1,
                         "pid_sp": ctrl.sp,
                         "pid_cv": ctrl.pid_state.cv,
                         "error": error,

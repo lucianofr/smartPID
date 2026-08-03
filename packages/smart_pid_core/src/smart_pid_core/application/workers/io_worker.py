@@ -311,6 +311,12 @@ class IOWorker:
 
         Only writes for SUPERVISORY loops (PID runs in DCS).
         DDC loops are handled internally by the PID worker.
+
+        ``apply`` is the loop's auto-apply gate. AIWorker publishes every
+        suggestion so the HMI can show it, but only an ``auto_apply`` loop
+        authorises writing it to the plant. A missing key means an older
+        publisher, and the safe reading of "unstated" for a write into a
+        live process is "do not".
         """
         while True:
             msg = sub.recv(timeout_ms=0)
@@ -321,6 +327,8 @@ class IOWorker:
                 data = msgpack.unpackb(payload)
                 execution_mode = data.get("execution_mode", "")
                 if execution_mode != "SUPERVISORY":
+                    continue
+                if not data.get("apply", False):
                     continue
                 new_ki = data.get("new_ki")
                 if new_ki is None:

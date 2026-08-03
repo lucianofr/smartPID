@@ -29,7 +29,7 @@ const RETIRED: UserRow = {
 };
 
 function renderPanel(role: Role = 'admin', users: UserRow[] = [ADMIN, OPERATOR, RETIRED]) {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
   const list = vi.spyOn(endpoints, 'users').mockResolvedValue(users);
   render(
@@ -43,6 +43,7 @@ function renderPanel(role: Role = 'admin', users: UserRow[] = [ADMIN, OPERATOR, 
 const row = (name: string) => screen.getByRole('row', { name: new RegExp(name) });
 
 beforeEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
 });
 
@@ -59,7 +60,7 @@ describe('UsersPanel roster', () => {
   });
 
   it('refuses the whole panel to a user — users.manage is admin-only', async () => {
-    sessionStorage.setItem('smart-pid-token', 'jwt');
+    localStorage.setItem('smart-pid-token', 'jwt');
     vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 2, username: 'op', role: 'user' });
     const list = vi.spyOn(endpoints, 'users');
     render(

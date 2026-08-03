@@ -76,15 +76,6 @@ describe('simulatorApi wire contract', () => {
     });
   });
 
-  it('POSTs the PID enable flag', async () => {
-    await simulatorApi.enablePid(1, true);
-    expect(call()).toMatchObject({
-      url: '/api/simulator/1/pid/enable',
-      method: 'POST',
-      body: { controller_id: 1, enabled: true },
-    });
-  });
-
   it('POSTs the PID params', async () => {
     await simulatorApi.setPidParams(1, { kp: 2.5, ti: 8, td: 1.2 });
     expect(call()).toMatchObject({
@@ -147,6 +138,21 @@ describe('simulatorApi wire contract', () => {
       method: 'PUT',
       body: { enabled: false, max_amplitude_pct: 10 },
     });
+  });
+
+  it('creates a loop with POST /loops — a null controller_id asks for the next free id', async () => {
+    await simulatorApi.createLoop({ controller_id: null, pv_min: 0, pv_max: 100 });
+    expect(call()).toMatchObject({
+      url: '/api/simulator/loops',
+      method: 'POST',
+      body: { controller_id: null, pv_min: 0, pv_max: 100 },
+    });
+  });
+
+  it('deletes a loop with DELETE /loops/{id} and tolerates the 204 empty body', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })));
+    await expect(simulatorApi.deleteLoop(3)).resolves.toBeUndefined();
+    expect(call()).toMatchObject({ url: '/api/simulator/loops/3', method: 'DELETE' });
   });
 
   it('surfaces the admin-only 403 as a classified ApiError, never a bare throw', async () => {

@@ -49,3 +49,39 @@ def test_emit_no_repo_no_error():
 
     # Should not raise
     worker.emit("BACKEND", "INFO", "Started")
+
+
+def test_emit_uses_the_callers_publisher_when_given_one():
+    """ZeroMQ sockets belong to the thread that created them.
+
+    The per-loop AI workers emit from their own threads; sharing this
+    object's publisher with them is undefined behaviour and silently
+    dropped every optimizer suggestion event.
+    """
+    from unittest.mock import MagicMock
+
+    from smart_pid_core.application.workers.system_event_worker import SystemEventWorker
+
+    bus = MagicMock()
+    own_pub = MagicMock()
+    bus.create_publisher.return_value = own_pub
+    worker = SystemEventWorker(bus=bus)
+
+    caller_pub = MagicMock()
+    worker.emit("AI", "LOG", "sintonia sugerida", pub=caller_pub)
+
+    caller_pub.send.assert_called_once()
+    own_pub.send.assert_not_called()
+
+
+def test_emit_falls_back_to_its_own_publisher():
+    from unittest.mock import MagicMock
+
+    from smart_pid_core.application.workers.system_event_worker import SystemEventWorker
+
+    bus = MagicMock()
+    own_pub = MagicMock()
+    bus.create_publisher.return_value = own_pub
+    SystemEventWorker(bus=bus).emit("USER", "INFO", "mode changed")
+
+    own_pub.send.assert_called_once()

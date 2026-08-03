@@ -22,7 +22,7 @@ function thresholds(): AlarmThreshold[] {
 }
 
 function renderConfig(role: Role = 'admin') {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
   vi.spyOn(endpoints, 'alarmConfig').mockResolvedValue({
     controller_id: 7,
@@ -38,6 +38,7 @@ function renderConfig(role: Role = 'admin') {
 const form = () => screen.queryByRole('form', { name: 'Configuração de alarmes' });
 
 beforeEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
 });
 
@@ -142,7 +143,7 @@ describe('AlarmConfigForm persistence', () => {
   });
 
   it('surfaces a load failure with a retry instead of an empty form', async () => {
-    sessionStorage.setItem('smart-pid-token', 'jwt');
+    localStorage.setItem('smart-pid-token', 'jwt');
     vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: 'admin', role: 'admin' });
     vi.spyOn(endpoints, 'alarmConfig').mockRejectedValue(new ApiError(500, 'server', 'boom'));
     render(

@@ -89,6 +89,9 @@ class OPCUAServer:
             self._thread.join(timeout=10.0)
             self._thread = None
         self._server = None
+        # The node handles belong to the server just destroyed; a restart
+        # re-creates them from the ids retained in _controller_node_ids.
+        self._controller_nodes.clear()
         logger.info("opcua_server_stopped")
 
     def register_controller(self, controller_id: int) -> dict[str, str]:
@@ -185,6 +188,16 @@ class OPCUAServer:
               Process/     — Input (CO fed to process model), Output (raw model output)
               Disturbance/ — Output (combined disturbance contribution)
         """
+        # Idempotent per controller id. Re-registration happens on every
+        # DELETE+POST /simulator/loops, on project open and on
+        # SimulatorAdapter.start(), and minting a second CTRL_{id} folder
+        # orphans the first one: _tick then writes the NEW nodes while every
+        # OPC-UA client stays bound to the DEAD ones. That is what froze the
+        # Sim trend (WS STATUS, read off the client) on stale values while the
+        # block diagram (/simulator/status, read off the twin) kept moving.
+        if self._controller_nodes.get(controller_id):
+            return self._controller_node_ids[controller_id]
+
         from asyncua import ua
 
         tag = f"CTRL_{controller_id}"

@@ -2,15 +2,16 @@ import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/r
 import { queryKeys } from '@/api/queryKeys';
 import type { CommandResponse } from '@/api/types';
 import { simulatorApi } from './api';
-import type {
-  AutoDisturbanceRequest,
-  AutoSPRequest,
-  ControllerSimStatus,
-  DisturbanceType,
-  Dynamics,
-  ProcessPresetName,
-  SimulatorPIDParamsRequest,
-  TwinMode,
+import {
+  SIM_LOOP_PV_DEFAULTS,
+  type AutoDisturbanceRequest,
+  type AutoSPRequest,
+  type ControllerSimStatus,
+  type DisturbanceType,
+  type Dynamics,
+  type ProcessPresetName,
+  type SimulatorPIDParamsRequest,
+  type TwinMode,
 } from './types';
 
 export interface DisturbanceInput {
@@ -23,7 +24,6 @@ export interface SimulatorMutations {
   stop: UseMutationResult<CommandResponse, Error, void>;
   preset: UseMutationResult<CommandResponse, Error, ProcessPresetName>;
   parameters: UseMutationResult<CommandResponse, Error, Dynamics>;
-  pidEnable: UseMutationResult<CommandResponse, Error, boolean>;
   pidParams: UseMutationResult<
     CommandResponse,
     Error,
@@ -36,6 +36,9 @@ export interface SimulatorMutations {
   mode: UseMutationResult<CommandResponse, Error, TwinMode>;
   autoSp: UseMutationResult<ControllerSimStatus, Error, AutoSPRequest>;
   autoDisturbance: UseMutationResult<ControllerSimStatus, Error, AutoDisturbanceRequest>;
+  /** Loop lifecycle, admin-only and independent of controller CRUD. */
+  createLoop: UseMutationResult<ControllerSimStatus, Error, void>;
+  deleteLoop: UseMutationResult<void, Error, void>;
 }
 
 /**
@@ -70,10 +73,6 @@ export function useSimulatorMutations(controllerId: number): SimulatorMutations 
         }),
       onSuccess,
     }),
-    pidEnable: useMutation({
-      mutationFn: (enabled: boolean) => simulatorApi.enablePid(controllerId, enabled),
-      onSuccess,
-    }),
     pidParams: useMutation({
       mutationFn: (p: Omit<SimulatorPIDParamsRequest, 'controller_id'>) =>
         simulatorApi.setPidParams(controllerId, p),
@@ -101,6 +100,14 @@ export function useSimulatorMutations(controllerId: number): SimulatorMutations 
     }),
     autoDisturbance: useMutation({
       mutationFn: (b: AutoDisturbanceRequest) => simulatorApi.setAutoDisturbance(controllerId, b),
+      onSuccess,
+    }),
+    createLoop: useMutation({
+      mutationFn: () => simulatorApi.createLoop({ controller_id: null, ...SIM_LOOP_PV_DEFAULTS }),
+      onSuccess,
+    }),
+    deleteLoop: useMutation({
+      mutationFn: () => simulatorApi.deleteLoop(controllerId),
       onSuccess,
     }),
   };

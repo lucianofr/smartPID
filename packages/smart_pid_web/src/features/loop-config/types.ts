@@ -43,7 +43,7 @@ export type IntegralType = 'GAIN_KI' | 'TIME_TI';
  * picks; the value is the `IntegralType` StrEnum member the backend accepts.
  */
 export const INTEGRAL_TYPE_OPTIONS: readonly { value: IntegralType; label: string }[] = [
-  { value: 'TIME_TI', label: 'Tempo Integral (1/Ti)' },
+  { value: 'TIME_TI', label: 'Tempo Integral (Ti)' },
   { value: 'GAIN_KI', label: 'Ganho Integral (Ki)' },
 ];
 

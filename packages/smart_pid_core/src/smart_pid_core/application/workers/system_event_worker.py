@@ -28,9 +28,26 @@ class SystemEventWorker:
         self._event_loop = event_loop
         self._pub = bus.create_publisher()
 
-    def emit(self, source: str, severity: str, message: str) -> None:
-        """Publish system event on bus and enqueue persistence. Thread-safe."""
-        now = datetime.now(tz=UTC).isoformat()
+    def emit(
+        self,
+        source: str,
+        severity: str,
+        message: str,
+        pub: Any = None,
+    ) -> None:
+        """Publish a system event on the bus and enqueue persistence.
+
+        Persistence is thread-safe (``call_soon_threadsafe``). Publishing is
+        NOT: ZeroMQ sockets belong to the thread that created them, and this
+        object's own publisher was created wherever the worker was
+        constructed — the daemon's main thread.
+
+        A caller on another thread (the per-loop AI workers) MUST hand in its
+        own publisher via ``pub``. Sharing the internal socket across threads
+        is undefined behaviour, and it silently dropped every optimizer
+        suggestion event before this parameter existed.
+        """
+        now = datetime.now(UTC).isoformat()
         event_data = {
             "source": source,
             "severity": severity,
@@ -40,7 +57,7 @@ class SystemEventWorker:
 
         # Publish on ZMQ bus
         try:
-            self._pub.send(b"EVENT.SYSTEM", msgpack.packb(event_data))
+            (pub or self._pub).send(b"EVENT.SYSTEM", msgpack.packb(event_data))
         except Exception:
             logger.exception("system_event_publish_error")
 

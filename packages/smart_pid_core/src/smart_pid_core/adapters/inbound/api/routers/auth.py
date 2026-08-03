@@ -70,11 +70,19 @@ async def refresh_token(
 @router.get("/me", response_model=UserClaims)
 async def me(
     current_user: Annotated[UserClaims, Depends(require_user)],
+    user_repo: Annotated[UserRepository, Depends(get_user_repo)],
 ) -> UserClaims:
     """Return the authenticated principal's claims.
 
     The SPA populates its AuthContext from this route after login and
     refetches it whenever a 403 arrives (spec §11) — a role changed
     mid-session is discovered here, not by decoding the JWT client-side.
+
+    ``theme`` is read from the user row rather than the token: the palette
+    belongs to the operator, not to the browser profile, and it is what
+    makes the choice survive signing in somewhere else.
     """
-    return current_user
+    stored = await user_repo.get_by_id(current_user.user_id)
+    if stored is None:
+        return current_user
+    return current_user.model_copy(update={"theme": stored.theme})

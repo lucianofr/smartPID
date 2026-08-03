@@ -105,15 +105,41 @@ class ProcessModel:
             self._state = np.zeros((n, 1))
         self._dt = dt
 
-    def step(self, co: float, dt: float) -> float:
-        """Advance one time step. Returns the new PV value."""
+    def step(
+        self, co: float, dt: float, pv_limits: tuple[float, float] | None = None,
+    ) -> float:
+        """Advance one time step. Returns the new PV value.
+
+        ``pv_limits`` saturates the reading at the instrument range. A real
+        transmitter cannot report past its span; without a limit this linear
+        transfer function happily returns PV = K x CO = 240 %, which is not
+        a process, it is an unbounded gain block.
+
+        Only the OUTPUT is clamped -- the state is left alone deliberately.
+        This transfer function is always asymptotically stable (every pole
+        comes from a positive tau), so the state converges to a finite value
+        and cannot wind up behind the limit: drop CO and the reading leaves
+        saturation on the very next sample. Back-propagating the clamp into
+        the state would instead destroy the model, because the Pade dead-time
+        approximation opens with a genuine inverse response that dips below
+        the low limit -- re-seeding there zeroes the dynamics every tick and
+        the process never responds at all.
+        """
         if dt != self._dt or self._Ad is None:
             self._discretize(dt)
 
         u = np.array([[co]])
         y = self._Cd @ self._state + self._Dd @ u
         self._state = self._Ad @ self._state + self._Bd @ u
-        self._pv = float(y[0, 0])
+        pv = float(y[0, 0])
+
+        if pv_limits is not None:
+            lo, hi = pv_limits
+            if lo > hi:
+                lo, hi = hi, lo
+            pv = min(hi, max(lo, pv))
+
+        self._pv = pv
         return self._pv
 
     def reset(self) -> None:

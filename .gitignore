@@ -20,6 +20,17 @@ build/
 *.spid-wal
 *.spid-shm
 
+# Backend-managed project DBs carry their sidecars WITHOUT the .spid suffix
+# (projects/elkem -> projects/elkem-wal), so the patterns above never matched
+# them and every daemon run left two binaries in `git status`.
+/projects/*-wal
+/projects/*-shm
+
+# RL state the AI worker checkpoints next to the project file. Runtime state,
+# not source. Anchored: `models/` alone would also swallow the domain's own
+# packages/smart_pid_domain/src/smart_pid_domain/models/ package.
+/models/
+
 # Superpowers brainstorm sessions
 .superpowers/
 

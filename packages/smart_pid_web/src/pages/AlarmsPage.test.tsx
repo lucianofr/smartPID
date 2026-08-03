@@ -6,7 +6,7 @@ import { createQueryClient, TestProviders } from '@/test/providers';
 import { AlarmsPage } from './AlarmsPage';
 
 function renderPage(role: Role) {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
   vi.spyOn(endpoints, 'activeAlarms').mockResolvedValue([]);
   vi.spyOn(endpoints, 'controllers').mockResolvedValue([]);
@@ -18,6 +18,7 @@ function renderPage(role: Role) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
 });
 

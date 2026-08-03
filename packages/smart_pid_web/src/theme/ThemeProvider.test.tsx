@@ -1,13 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { act, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { endpoints } from '@/api/endpoints';
+import type { MeResponse } from '@/api/types';
+import { TestProviders } from '@/test/providers';
 import {
   DEFAULT_THEME,
   LEGACY_THEME_MAP,
   STORAGE_KEY,
   THEMES,
   ThemeProvider,
+  ThemeSync,
   resolveStoredTheme,
   useTheme,
 } from './ThemeProvider';
@@ -25,7 +29,12 @@ function Probe() {
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   document.documentElement.removeAttribute('data-theme');
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('theme registry (spec §6.8 + §10.2)', () => {
@@ -123,5 +132,87 @@ describe('index.html pre-paint script stays in sync with LEGACY_THEME_MAP', () =
     // or a fresh profile flashes one theme and settles on another.
     expect(html).toContain(`<html lang="pt-BR" data-theme="${DEFAULT_THEME}">`);
     expect(html).toContain(`legacy[stored] || '${DEFAULT_THEME}'`);
+  });
+});
+
+/**
+ * The palette is a per-USER preference, not a per-browser one: an operator who
+ * signs in at another station must not be handed the default back. localStorage
+ * stays the pre-paint cache; `GET /auth/me` is the authority.
+ */
+describe('ThemeSync — the theme follows the user', () => {
+  /** Seeds a resolved session carrying (or not carrying) a stored palette. */
+  function renderWithSession(theme: MeResponse['theme']) {
+    localStorage.setItem('smart-pid-token', 'jwt');
+    const me = vi
+      .spyOn(endpoints, 'me')
+      .mockResolvedValue({ user_id: 1, username: 'operador', role: 'user', theme });
+    render(
+      <TestProviders>
+        <ThemeSync />
+        <Probe />
+      </TestProviders>,
+    );
+    return me;
+  }
+
+  it('adopts the stored user palette on login and mirrors it into the cache', async () => {
+    const push = vi.spyOn(endpoints, 'setUserTheme').mockResolvedValue(undefined);
+    renderWithSession('neon');
+
+    await waitFor(() => expect(screen.getByTestId('current').textContent).toBe('neon'));
+    expect(document.documentElement.getAttribute('data-theme')).toBe('neon');
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('neon');
+    // Adoption is not a change — echoing the server's own value back is a
+    // wasted write on every single login.
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('leaves the cached palette alone for a user who never chose one', async () => {
+    localStorage.setItem(STORAGE_KEY, 'isa101');
+    const push = vi.spyOn(endpoints, 'setUserTheme').mockResolvedValue(undefined);
+    const me = renderWithSession(null);
+
+    await waitFor(() => expect(me).toHaveBeenCalled());
+    expect(screen.getByTestId('current').textContent).toBe('isa101');
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('pushes a picked palette to the server', async () => {
+    const push = vi.spyOn(endpoints, 'setUserTheme').mockResolvedValue(undefined);
+    const me = renderWithSession(null);
+    await waitFor(() => expect(me).toHaveBeenCalled());
+
+    act(() => {
+      screen.getByText('phosphor').click();
+    });
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('phosphor'));
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('phosphor');
+  });
+
+  it('keeps the picked palette when the server write fails', async () => {
+    const push = vi
+      .spyOn(endpoints, 'setUserTheme')
+      .mockRejectedValue(new Error('offline'));
+    const me = renderWithSession(null);
+    await waitFor(() => expect(me).toHaveBeenCalled());
+
+    act(() => {
+      screen.getByText('phosphor').click();
+    });
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('phosphor'));
+    expect(screen.getByTestId('current').textContent).toBe('phosphor');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('phosphor');
+  });
+
+  it('does not reset the palette on logout', async () => {
+    const me = renderWithSession('neon');
+    await waitFor(() => expect(me).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId('current').textContent).toBe('neon'));
+
+    // The session ends where the token does; the station keeps its palette.
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('neon');
   });
 });

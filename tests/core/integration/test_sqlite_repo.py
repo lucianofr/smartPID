@@ -128,7 +128,14 @@ class TestForeignKeysStayInert:
             await session.commit()
 
     @pytest.mark.asyncio
-    async def test_delete_controller_does_not_cascade(self, repo) -> None:
+    async def test_delete_controller_clears_its_alarm_config(self, repo) -> None:
+        """The alarm config must NOT outlive its controller.
+
+        SQLite hands out ``max(id) + 1``, so the next controller created
+        after a delete can land on the freed id and inherit the dead loop's
+        limits. That is exactly how a brand-new FIC-101 with nothing
+        configured started announcing a HI alarm at 80.
+        """
         from sqlalchemy import text
 
         saved = await repo.save(Controller(id=0, name="TIC-900"))
@@ -150,4 +157,114 @@ class TestForeignKeysStayInert:
                     {"cid": saved.id},
                 )
             ).scalar()
-        assert count == 1  # child row survived — cascade inert, as before the port
+        assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_delete_controller_closes_its_open_alarms(self, repo) -> None:
+        """History is kept, but nothing is left standing.
+
+        An un-cleared row for a deleted loop would be re-seeded as an
+        active alarm on the next daemon start, lighting the banner for a
+        loop that no longer exists.
+        """
+        from sqlalchemy import text
+
+        saved = await repo.save(Controller(id=0, name="TIC-901"))
+        async with repo.session_factory() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO Log_Alarmes"
+                    " (controlador_id, tipo_alarme, prioridade, valor, limite,"
+                    "  reconhecido)"
+                    " VALUES (:cid, 'HI', 'WARNING', 95.0, 90.0, 0)"
+                ),
+                {"cid": saved.id},
+            )
+            await session.commit()
+        await repo.delete(saved.id)
+        async with repo.session_factory() as session:
+            rows = (
+                await session.execute(
+                    text(
+                        "SELECT cleared_at FROM Log_Alarmes"
+                        " WHERE controlador_id = :cid"
+                    ),
+                    {"cid": saved.id},
+                )
+            ).scalars().all()
+        assert len(rows) == 1, "history must survive the delete"
+        assert rows[0] is not None, "no alarm may be left open"
+
+
+class TestSystemEventSeverityVocabulary:
+    """The event log has to accept every severity the HMI can filter for.
+
+    The original CHECK allowed CRITICAL/WARNING/INFO only. The optimizer
+    records its suggestions at LOG and the history panel offers a LOG
+    filter, so those inserts failed on a background task and the panel
+    filtered for rows the database had been refusing all along.
+    """
+
+    @pytest.mark.asyncio
+    async def test_every_hmi_severity_can_be_stored(self, repo) -> None:
+        from smart_pid_core.adapters.outbound.system_event_repo import (
+            SystemEventRepository,
+        )
+
+        events = SystemEventRepository(repo.session_factory)
+        for severity in ("CRITICAL", "WARNING", "ADVISORY", "INFO", "LOG"):
+            await events.insert_event("AI", severity, f"probe {severity}")
+
+        from datetime import UTC, datetime, timedelta
+        now = datetime.now(UTC)
+        rows = await events.get_history(
+            start=now - timedelta(hours=1), end=now + timedelta(hours=1),
+        )
+        assert {r["severity"] for r in rows} == {
+            "CRITICAL", "WARNING", "ADVISORY", "INFO", "LOG",
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_legacy_narrow_check_is_widened_on_open(self, tmp_path) -> None:
+        """A .spid created before the fix must be migrated, not left broken."""
+        import aiosqlite
+
+        from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
+        from smart_pid_core.adapters.outbound.system_event_repo import (
+            SystemEventRepository,
+        )
+
+        path = tmp_path / "legacy.spid"
+        async with aiosqlite.connect(path) as db:
+            await db.execute(
+                """CREATE TABLE Log_System_Events (
+                       id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                       timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+                       source    TEXT NOT NULL,
+                       severity  TEXT NOT NULL
+                                 CHECK(severity IN ('CRITICAL','WARNING','INFO')),
+                       message   TEXT NOT NULL
+                   )"""
+            )
+            await db.execute(
+                "INSERT INTO Log_System_Events (source, severity, message)"
+                " VALUES ('BACKEND', 'INFO', 'pre-existing row')"
+            )
+            await db.commit()
+
+        repo = SQLiteRepository(path)
+        await repo.initialize()
+        try:
+            events = SystemEventRepository(repo.session_factory)
+            await events.insert_event("AI", "LOG", "sintonia sugerida")
+
+            from datetime import UTC, datetime, timedelta
+            now = datetime.now(UTC)
+            rows = await events.get_history(
+                start=now - timedelta(days=2), end=now + timedelta(hours=1),
+            )
+            messages = {r["message"] for r in rows}
+            assert "sintonia sugerida" in messages
+            assert "pre-existing row" in messages, "history must survive the rebuild"
+        finally:
+            await repo.close()

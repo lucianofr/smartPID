@@ -17,6 +17,12 @@ class User:
     role: str
     created_at: str
     active: bool = True
+    # Chosen HMI palette. Lives with the USER, not with the browser: the
+    # theme used to be localStorage-only, so signing in anywhere else (or
+    # after the profile was cleared) dropped the operator back to the
+    # default. NULL means "never chosen", which is not the same as "chose
+    # the default" and lets the client keep its local preference.
+    theme: str | None = None
 
 
 _USERS_DDL = """
@@ -26,9 +32,15 @@ CREATE TABLE IF NOT EXISTS Usuarios (
     senha_hash  TEXT    NOT NULL,
     perfil      TEXT    NOT NULL DEFAULT 'user',
     ativo       INTEGER NOT NULL DEFAULT 1,
-    criado_em   TEXT    NOT NULL DEFAULT (datetime('now'))
+    criado_em   TEXT    NOT NULL DEFAULT (datetime('now')),
+    tema        TEXT
 );
 """
+
+# Added after the table shipped, so an existing users.db needs it back-filled.
+_USERS_MIGRATIONS: tuple[tuple[str, str], ...] = (
+    ("tema", "TEXT"),
+)
 
 
 class UserRepository:
@@ -53,7 +65,18 @@ class UserRepository:
         self._db.row_factory = aiosqlite.Row
         await self._db.execute("PRAGMA journal_mode=WAL")
         await self._db.executescript(_USERS_DDL)
+        await self._apply_migrations()
         await self._db.commit()
+
+    async def _apply_migrations(self) -> None:
+        """Add columns introduced after the table first shipped."""
+        async with self.db.execute("PRAGMA table_info(Usuarios)") as cur:
+            existing = {row[1] for row in await cur.fetchall()}
+        for column, ddl in _USERS_MIGRATIONS:
+            if column not in existing:
+                await self.db.execute(
+                    f"ALTER TABLE Usuarios ADD COLUMN {column} {ddl}",
+                )
 
     async def close(self) -> None:
         """Close the SQLite connection."""
@@ -80,7 +103,7 @@ class UserRepository:
     async def get_by_username(self, username: str) -> User | None:
         """Return active user or None if not found."""
         async with self.db.execute(
-            "SELECT id, nome, senha_hash, perfil, criado_em, ativo"
+            "SELECT id, nome, senha_hash, perfil, criado_em, ativo, tema"
             " FROM Usuarios WHERE nome = ? AND ativo = 1",
             (username,),
         ) as cur:
@@ -94,18 +117,20 @@ class UserRepository:
             role=row[3],
             created_at=row[4],
             active=bool(row[5]),
+            theme=row[6],
         )
 
     async def list_all(self) -> list[User]:
         """Return all users."""
         async with self.db.execute(
-            "SELECT id, nome, senha_hash, perfil, criado_em, ativo FROM Usuarios ORDER BY id"
+            "SELECT id, nome, senha_hash, perfil, criado_em, ativo, tema"
+            " FROM Usuarios ORDER BY id"
         ) as cur:
             rows = await cur.fetchall()
         return [
             User(
                 id=r[0], username=r[1], password_hash=r[2],
-                role=r[3], created_at=r[4], active=bool(r[5]),
+                role=r[3], created_at=r[4], active=bool(r[5]), theme=r[6],
             )
             for r in rows
         ]
@@ -113,7 +138,8 @@ class UserRepository:
     async def get_by_id(self, user_id: int) -> User | None:
         """Return user by id or None if not found."""
         async with self.db.execute(
-            "SELECT id, nome, senha_hash, perfil, criado_em, ativo FROM Usuarios WHERE id = ?",
+            "SELECT id, nome, senha_hash, perfil, criado_em, ativo, tema"
+            " FROM Usuarios WHERE id = ?",
             (user_id,),
         ) as cur:
             row = await cur.fetchone()
@@ -121,8 +147,16 @@ class UserRepository:
             return None
         return User(
             id=row[0], username=row[1], password_hash=row[2],
-            role=row[3], created_at=row[4], active=bool(row[5]),
+            role=row[3], created_at=row[4], active=bool(row[5]), theme=row[6],
         )
+
+    async def set_theme(self, user_id: int, theme: str) -> User | None:
+        """Persist the user's chosen HMI palette."""
+        await self.db.execute(
+            "UPDATE Usuarios SET tema = ? WHERE id = ?", (theme, user_id),
+        )
+        await self.db.commit()
+        return await self.get_by_id(user_id)
 
     async def update(
         self,

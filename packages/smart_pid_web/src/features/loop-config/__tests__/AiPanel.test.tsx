@@ -68,13 +68,15 @@ function renderAi(
     recommendation?: TuningRecommendation;
     engine?: string;
     status?: Partial<AiStatus>;
+    tuningWriteMode?: string;
   } = {},
 ) {
   const role = options.role ?? 'admin';
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
   const controller = makeController({ id: 5, name: 'PIC-005' });
   controller.ai_config = { ...controller.ai_config, engine: options.engine ?? 'FUZZY' };
+  controller.tuning_write_mode = options.tuningWriteMode ?? 'approval_required';
   const queryClient = createQueryClient();
   queryClient.setQueryData(queryKeys.controllers, [controller]);
   queryClient.setQueryData(queryKeys.aiStatus(5), { ...aiStatus(), ...options.status });
@@ -206,11 +208,9 @@ describe('AiPanel', () => {
   });
 
   it('auto-applies a pending suggestion without the confirm dialog when the switch is on', async () => {
-    renderAi({ recommendation: PENDING });
-
-    fireEvent.click(
-      await screen.findByRole('switch', { name: 'Auto-aplicar sintonia' }),
-    );
+    // The switch now reflects the loop's persisted `tuning_write_mode`, so
+    // "on" is seeded on the controller rather than clicked into localStorage.
+    renderAi({ recommendation: PENDING, tuningWriteMode: 'auto_apply' });
 
     await waitFor(() => expect(postedPaths()).toContain('/api/commands/apply-tuning/5'));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -258,18 +258,73 @@ describe('AiPanel', () => {
     expect(toggle).toHaveAttribute('aria-checked', 'false');
   });
 
-  it('toggles auto-apply by clicking the label, not just the switch', async () => {
+  it('persists the auto-apply choice on the loop, not in this browser', async () => {
+    // The regression: the switch wrote `localStorage` and gated only the
+    // confirm dialog, while the optimizer's continuous Ti/Ki nudge went to
+    // the process on every cycle regardless. The choice has to reach the
+    // controller field the AI worker actually consults.
     renderAi({ recommendation: PENDING });
     const label = await screen.findByText('Auto-aplicar sintonia');
 
     fireEvent.click(label);
 
-    await waitFor(() =>
-      expect(screen.getByRole('switch', { name: 'Auto-aplicar sintonia' })).toHaveAttribute(
-        'aria-checked',
-        'true',
-      ),
-    );
-    expect(localStorage.getItem('smartpid:autoTune:5')).toBe('1');
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        (call) => (call[1] as RequestInit).method === 'PUT',
+      );
+      expect(put).toBeDefined();
+      expect(String(put?.[0])).toBe('/api/controllers/5');
+      expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({
+        tuning_write_mode: 'auto_apply',
+      });
+    });
+  });
+
+  it('switches back to approval_required when turned off', async () => {
+    renderAi({ recommendation: PENDING, tuningWriteMode: 'auto_apply' });
+    const toggle = await screen.findByRole('switch', { name: 'Auto-aplicar sintonia' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        (call) => (call[1] as RequestInit).method === 'PUT',
+      );
+      expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({
+        tuning_write_mode: 'approval_required',
+      });
+    });
+  });
+
+  it('leaves Apply tuning clickable so an operator can accept a suggestion by hand', async () => {
+    // With auto-apply OFF the optimizer still proposes; the operator must be
+    // able to say yes. Disabling the button in that state would leave the
+    // suggestion visible and unreachable.
+    renderAi({ recommendation: PENDING, tuningWriteMode: 'approval_required' });
+
+    const toggle = await screen.findByRole('switch', { name: 'Auto-aplicar sintonia' });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+
+    const apply = screen.getByRole('button', { name: 'Apply tuning' });
+    expect(apply).toBeEnabled();
+
+    fireEvent.click(apply);
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm Write' }));
+
+    await waitFor(() => expect(postedPaths()).toContain('/api/commands/apply-tuning/5'));
+  });
+
+  it('names only the parameters the proposal actually moves', async () => {
+    // The continuous nudge touches the integral term alone; printing
+    // `Kp 1.20→1.20` next to it invents a change that is not there.
+    renderAi({
+      recommendation: { ...PENDING, recommended_kp: PENDING.current_kp,
+                        recommended_td: PENDING.current_td },
+    });
+    const panel = await screen.findByTestId('ai-panel');
+    expect(panel).toHaveTextContent('Ti 30.00→25.00');
+    expect(panel).not.toHaveTextContent('Kp');
   });
 });

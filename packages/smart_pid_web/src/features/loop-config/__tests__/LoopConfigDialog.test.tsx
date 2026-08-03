@@ -14,7 +14,7 @@ function renderDialog(
   role: Role = 'admin',
   onClose = vi.fn(),
 ) {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
   const controller = makeController({ id: 5, name: 'PIC-005', description: 'Pressure', ...overrides });
   const queryClient = createQueryClient();
@@ -36,6 +36,7 @@ const offsetWidthDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, '
 const offsetHeightDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
 
 beforeEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
   Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 600 });
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, value: 400 });
@@ -131,7 +132,7 @@ describe('LoopConfigDialog — writes', () => {
 describe('LoopConfigDialog — integral type (radio)', () => {
   it('renders both alternatives as radios, defaulting to the loop value', async () => {
     renderDialog({ execution_mode: 'SUPERVISORY', integral_type: 'TIME_TI' });
-    const time = await screen.findByRole('radio', { name: 'Tempo Integral (1/Ti)' });
+    const time = await screen.findByRole('radio', { name: 'Tempo Integral (Ti)' });
     const gain = screen.getByRole('radio', { name: 'Ganho Integral (Ki)' });
     expect(time).toBeChecked();
     expect(gain).not.toBeChecked();
@@ -156,7 +157,7 @@ describe('LoopConfigDialog — integral type (radio)', () => {
     // What the server now returns for this loop after the PUT above.
     renderDialog({ execution_mode: 'SUPERVISORY', integral_type: 'GAIN_KI' });
     expect(await screen.findByRole('radio', { name: 'Ganho Integral (Ki)' })).toBeChecked();
-    expect(screen.getByRole('radio', { name: 'Tempo Integral (1/Ti)' })).not.toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Tempo Integral (Ti)' })).not.toBeChecked();
   });
 });
 
@@ -411,6 +412,19 @@ describe('LoopConfigDialog — AI Optimization section', () => {
     await screen.findByLabelText('Motor');
     expect(screen.queryByRole('button', { name: 'Salvar IA' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Salvar' })).toHaveLength(1);
+  });
+
+  it('explains the process-speed classes in a tooltip', async () => {
+    renderDialog();
+    await screen.findByLabelText('Velocidade do processo');
+    const trigger = screen.getByRole('button', {
+      name: 'Mais informações sobre Velocidade do processo',
+    });
+    fireEvent.focus(trigger);
+    const tip = await screen.findByRole('tooltip');
+    for (const speed of ['ULTRA_FAST', 'FAST', 'MEDIUM', 'SLOW']) {
+      expect(tip).toHaveTextContent(speed);
+    }
   });
 
   it('hides the surge band knobs for the other objectives', async () => {

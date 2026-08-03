@@ -57,11 +57,26 @@ class StatsWorker:
         # SP tracking with oscillation. 2 × TSS gives ~exp(-8) residual
         # at the boundary (well below the noise threshold), so when the
         # next SP step lands the previous transient is fully decayed.
+        #
+        # The cooldown is only the UPPER bound. It is released early, at
+        # the first zero crossing of the error after the step, because
+        # that is where the one-sided SP-chasing excursion actually ends.
+        # Without the early release a setpoint that moves faster than
+        # 2 × TSS (the simulator's auto-SP defaults to 30 s against a
+        # 60 s TSS) re-arms the cooldown forever and flags EVERY sample
+        # as settling. The oscillation metrics then read a structural
+        # zero, the tuner sees "steady with a standing offset", and it
+        # reduces Ti on a loop that is in fact in a limit cycle. A mask
+        # that can mute the whole window is not a mask.
         self._sp_change_frac = 0.01  # 1% of span = significant step
         self._settling_cooldown_samples = max(
             1, int(2.0 * controller.tss_s / controller.scan_rate_s),
         )
         self._settling_remaining: int = 0
+        # Sign of the error when the current settling window opened; the
+        # excursion is over once the error crosses back through zero.
+        self._settling_sign: int = 0
+        self._settling_noise_thr = 0.005 * controller.pv_scale.span
         self._prev_sp_at_sample: float | None = None
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -110,6 +125,13 @@ class StatsWorker:
             "tv_per_sample": calc.tv_per_sample,
             "osc": calc.osc_score(),
             "sample_count": calc.sample_count,
+            # Excitation context for the fuzzy OSC detector: how many
+            # samples it is allowed to look at, and how far the setpoint
+            # itself travelled. Without these the detector cannot tell
+            # "measured calm" from "measured nothing", nor a limit cycle
+            # from a step response.
+            "osc_sample_count": calc.osc_sample_count,
+            "sp_pk_pk": calc.sp_pk_pk,
         }
 
     def _run(self) -> None:
@@ -163,15 +185,29 @@ class StatsWorker:
                         )
                     ):
                         self._settling_remaining = self._settling_cooldown_samples
+                        self._settling_sign = 1 if error > 0 else -1
                     self._prev_sp_at_sample = self._last_sp
                     is_settling = self._settling_remaining > 0
                     if is_settling:
                         self._settling_remaining -= 1
+                        # Early release: the one-sided SP-chasing excursion
+                        # is over the moment the error crosses back through
+                        # zero. A limit cycle keeps crossing zero, so this
+                        # release makes the mask structurally incapable of
+                        # hiding one — which the bare cooldown was not.
+                        if (
+                            self._settling_sign != 0
+                            and abs(error) > self._settling_noise_thr
+                            and (1 if error > 0 else -1) != self._settling_sign
+                        ):
+                            self._settling_remaining = 0
+                            self._settling_sign = 0
                     self._calculator.add_sample(
                         error=error,
                         co=self._last_co,
                         dt=scan_s,
                         is_settling=is_settling,
+                        sp=self._last_sp,
                     )
                     self._sample_count_since_publish += 1
 

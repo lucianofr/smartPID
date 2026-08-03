@@ -310,7 +310,7 @@ class TestSimulatorAdapterConfigPersistence:
         assert cfg["tau1"] == 3.0
         assert cfg["tau2"] == 0.0  # None -> 0.0 for DB
         assert cfg["dead_time"] == 1.0
-        assert cfg["pid_enabled"] is False
+        assert cfg["pid_enabled"] is True
         assert cfg["pid_kp"] == 1.0
         assert cfg["pid_ti"] == 10.0
         assert cfg["pid_td"] == 0.0
@@ -324,7 +324,6 @@ class TestSimulatorAdapterConfigPersistence:
     def test_get_config_dict_after_mutations(self, adapter: SimulatorAdapter) -> None:
         adapter.register_controller(1)
         adapter.set_preset(1, ProcessPresetName.TEMPERATURE)
-        adapter.enable_pid(1, True)
         adapter.set_pid_params(1, kp=2.5, ti=8.0, td=0.5)
         adapter.set_pid_mode(1, 1)
         from smart_pid_domain.dtos.simulator import AutoDisturbanceRequest, AutoSPRequest
@@ -401,20 +400,9 @@ class TestSimulatorAdapterConfigPersistence:
 class TestSimulatorPIDInternal:
     """Tests for internal PID controller in simulator."""
 
-    def test_pid_disabled_by_default(self, adapter: SimulatorAdapter) -> None:
+    def test_pid_defaults_to_man(self, adapter: SimulatorAdapter) -> None:
         adapter.register_controller(1)
-        assert adapter._controllers[1].pid_enabled is False
-
-    def test_enable_pid(self, adapter: SimulatorAdapter) -> None:
-        adapter.register_controller(1)
-        adapter.enable_pid(1, enabled=True)
-        assert adapter._controllers[1].pid_enabled is True
-
-    def test_disable_pid(self, adapter: SimulatorAdapter) -> None:
-        adapter.register_controller(1)
-        adapter.enable_pid(1, enabled=True)
-        adapter.enable_pid(1, enabled=False)
-        assert adapter._controllers[1].pid_enabled is False
+        assert adapter._controllers[1].pid_mode == 0
 
     def test_set_pid_params(self, adapter: SimulatorAdapter) -> None:
         adapter.register_controller(1)
@@ -435,9 +423,21 @@ class TestSimulatorPIDInternal:
         adapter.set_pid_mode(1, mode=0)
         assert adapter._controllers[1].pid_mode == 0
 
+    def test_man_to_auto_is_bumpless(self, adapter: SimulatorAdapter) -> None:
+        """MAN -> AUTO must reseed the integrator from the CO the operator left.
+
+        The transfer used to ride on ``enable_pid()``; the twin's PID is always
+        on now, so ``set_pid_mode`` owns it. Without it the first AUTO scan
+        unwinds from a stale integrator and steps the valve.
+        """
+        adapter.register_controller(1)
+        adapter.write_output(1, 40.0)
+        adapter._tick(0.1)  # give the transfer a live PV to seed from
+        adapter.set_pid_mode(1, mode=1)
+        assert adapter._controllers[1].pid_state.cv == pytest.approx(40.0)
+
     def test_get_pid_status(self, adapter: SimulatorAdapter) -> None:
         adapter.register_controller(1)
-        adapter.enable_pid(1, enabled=True)
         adapter.set_pid_params(1, kp=3.0, ti=8.0, td=0.5)
         adapter.set_pid_mode(1, mode=1)
         status = adapter.get_pid_status(1)
@@ -447,26 +447,24 @@ class TestSimulatorPIDInternal:
         assert status["td"] == 0.5
         assert status["mode"] == 1
 
-    def test_tick_pid_disabled_co_unchanged(self, adapter: SimulatorAdapter) -> None:
-        """When PID disabled, CO is not modified by tick."""
+    def test_tick_defaults_to_man_co_unchanged(self, adapter: SimulatorAdapter) -> None:
+        """A freshly registered loop is in MAN, so the tick must leave CO alone."""
         adapter.register_controller(1)
         adapter.write_output(1, 25.0)
         adapter._tick(0.1)
         assert adapter._controllers[1].last_co == 25.0
 
     def test_tick_pid_man_mode_co_unchanged(self, adapter: SimulatorAdapter) -> None:
-        """When PID enabled but in MAN mode, CO is not modified by tick."""
+        """In MAN mode the twin's PID must not touch CO."""
         adapter.register_controller(1)
-        adapter.enable_pid(1, enabled=True)
         adapter.set_pid_mode(1, mode=0)  # MAN
         adapter.write_output(1, 25.0)
         adapter._tick(0.1)
         assert adapter._controllers[1].last_co == 25.0
 
     def test_tick_pid_auto_computes_co(self, adapter: SimulatorAdapter) -> None:
-        """When PID enabled in AUTO, CO is computed by PIDEngine."""
+        """In AUTO, CO is computed by PIDEngine."""
         adapter.register_controller(1)
-        adapter.enable_pid(1, enabled=True)
         adapter.set_pid_mode(1, mode=1)  # AUTO
         adapter._controllers[1].sp = 50.0
         adapter._controllers[1].last_co = 0.0
@@ -478,10 +476,8 @@ class TestSimulatorPIDInternal:
 
     def test_controller_sim_status_includes_pid(self, adapter: SimulatorAdapter) -> None:
         adapter.register_controller(1)
-        adapter.enable_pid(1, enabled=True)
         adapter.set_pid_params(1, kp=2.0, ti=5.0, td=0.5)
         status = adapter.get_controller_status(1)
-        assert status.pid_enabled is True
         assert status.pid_kp == 2.0
         assert status.pid_ti == 5.0
         assert status.pid_td == 0.5

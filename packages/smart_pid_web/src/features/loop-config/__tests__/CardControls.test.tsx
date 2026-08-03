@@ -9,7 +9,7 @@ function renderControls(
   props: Partial<React.ComponentProps<typeof CardControls>> = {},
   role: Role = 'admin',
 ) {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
   return render(
     <TestProviders queryClient={createQueryClient()}>
@@ -19,6 +19,7 @@ function renderControls(
 }
 
 beforeEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
 });
 
@@ -107,6 +108,7 @@ describe('CardControls', () => {
     expect(container).not.toBeEmptyDOMElement();
 
     // `viewer` is not a role the backend issues; a null role is the deny case.
+    localStorage.clear();
     sessionStorage.clear();
     const denied = render(
       <TestProviders queryClient={createQueryClient()}>

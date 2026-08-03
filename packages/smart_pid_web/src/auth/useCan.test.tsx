@@ -49,6 +49,7 @@ describe('can — pure capability matrix', () => {
 describe('useCan — hook over AuthContext', () => {
   const fetchMock = vi.fn();
   beforeEach(() => {
+    localStorage.clear();
     sessionStorage.clear();
     fetchMock.mockReset();
     vi.stubGlobal('fetch', fetchMock);
@@ -56,7 +57,7 @@ describe('useCan — hook over AuthContext', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('reflects the hydrated role', async () => {
-    sessionStorage.setItem('smart-pid-token', 't');
+    localStorage.setItem('smart-pid-token', 't');
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ user_id: 2, username: 'op', role: 'user' }), {
         status: 200,

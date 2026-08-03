@@ -33,3 +33,8 @@ class UserClaims(BaseModel):
     user_id: int
     username: str
     role: UserRole
+    # Chosen HMI palette, filled in by ``GET /auth/me`` from the user row.
+    # Absent from the JWT on purpose: the token is minted at login and the
+    # operator can change palette at any point in the session, so carrying
+    # it in the claims would serve a stale value until the next login.
+    theme: str | None = None

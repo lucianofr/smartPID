@@ -75,29 +75,16 @@ describe('useTrendWindow', () => {
     expect(result.current.data.t).toEqual([1020]);
   });
 
-  it('overrides frame SP/CO with the supplied values while PV rides the frame', () => {
-    const realtime = createFakeRealtime();
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <RealtimeContext.Provider value={realtime.value}>{children}</RealtimeContext.Provider>
-    );
-    const { result } = renderHook(
-      () => useTrendWindow(5, 60, 800, { sp: 77, co: 33 }),
-      { wrapper },
-    );
-    // Frame carries sp=55, co=42 (fixture defaults) — the override must win.
-    act(() => {
-      realtime.emit(statusEnvelope(5, 1, { pv: ff(10), timestamp: 1000 }));
-    });
-    expect(result.current.data.pv).toEqual([10]);
-    expect(result.current.data.sp).toEqual([77]);
-    expect(result.current.data.co).toEqual([33]);
-  });
-
-  it('keeps the frame SP/CO when no override is supplied', () => {
+  // Regression: SP/CO once came from a 1 Hz HTTP poll injected via an override
+  // prop. React Query pauses `refetchInterval` on a hidden tab, so the poll
+  // stopped while WS frames kept arriving and every frame re-pushed the same
+  // stale CO — a flat CO trace beside a live PV. One frame, one clock, always.
+  it('takes PV, SP and CO from the same status frame', () => {
     const { result, realtime } = setup();
     act(() => {
       realtime.emit(statusEnvelope(5, 1, { pv: ff(10), timestamp: 1000 }));
     });
+    expect(result.current.data.pv).toEqual([10]);
     expect(result.current.data.sp).toEqual([55]);
     expect(result.current.data.co).toEqual([42]);
   });

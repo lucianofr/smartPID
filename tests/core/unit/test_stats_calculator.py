@@ -301,3 +301,58 @@ class TestStatsCalculatorWindow:
         calc.reset()
         assert calc.iae == 0.0
         assert calc.sample_count == 0
+
+
+class TestOscillationEvidenceIsDistinguishableFromCalm:
+    """A window the settling mask ate reports zeros for every oscillation
+    metric. Consumers must be able to tell that apart from a genuinely
+    steady loop, or a limit cycle reads as calm."""
+
+    @staticmethod
+    def _calc(span=100.0):
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+        return StatsCalculator(window_size=50, span=span, setpoint=50.0)
+
+    def test_osc_sample_count_reports_admissible_samples(self):
+        calc = self._calc()
+        for i in range(20):
+            calc.add_sample(error=1.0, co=10.0, dt=1.0, is_settling=i < 15)
+        assert calc.sample_count == 20
+        assert calc.osc_sample_count == 5
+
+    def test_a_fully_masked_window_reports_zero_admissible_samples(self):
+        calc = self._calc()
+        for _ in range(20):
+            calc.add_sample(error=5.0, co=10.0, dt=1.0, is_settling=True)
+        assert calc.sample_count == 20
+        assert calc.osc_sample_count == 0
+        # Every oscillation metric is a structural zero here, which is
+        # precisely why the count above has to exist.
+        assert calc.pk_pk_error == 0.0
+        assert calc.reversals == 0
+        assert calc.zero_crossings == 0
+
+    def test_sp_pk_pk_tracks_setpoint_travel(self):
+        calc = self._calc()
+        for sp in (40.0, 60.0, 55.0, 70.0, 30.0):
+            calc.add_sample(error=1.0, co=10.0, dt=1.0, sp=sp)
+        assert calc.sp_pk_pk == pytest.approx(40.0)
+
+    def test_sp_defaults_to_the_calculator_setpoint(self):
+        calc = self._calc()
+        for _ in range(5):
+            calc.add_sample(error=1.0, co=10.0, dt=1.0)
+        assert calc.sp_pk_pk == pytest.approx(0.0)
+
+    def test_osc_score_is_judged_against_setpoint_travel(self):
+        """The same error swing is a limit cycle on a fixed setpoint and an
+        ordinary step response on one that is being driven around."""
+        fixed = self._calc()
+        moving = self._calc()
+        for i in range(40):
+            err = 10.0 if i % 2 == 0 else -10.0
+            fixed.add_sample(error=err, co=10.0 + (i % 2), dt=1.0, sp=50.0)
+            moving.add_sample(error=err, co=10.0 + (i % 2), dt=1.0,
+                              sp=30.0 if i % 8 < 4 else 70.0)
+        assert fixed.osc_score() > moving.osc_score()
+        assert fixed.osc_score() == pytest.approx(1.0)

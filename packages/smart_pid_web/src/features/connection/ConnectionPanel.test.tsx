@@ -11,7 +11,7 @@ const FT_101 = { node_id: 'ns=2;s=FT-101', display_name: 'FT-101', node_class: '
 const FOLDER = { node_id: 'ns=2;s=Plant', display_name: 'Plant', node_class: 'Object' };
 
 function mockSession(role: Role) {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
 }
 
@@ -42,6 +42,7 @@ const offsetWidthDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, '
 const offsetHeightDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
 
 beforeEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
   Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, value: 600 });
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, value: 400 });

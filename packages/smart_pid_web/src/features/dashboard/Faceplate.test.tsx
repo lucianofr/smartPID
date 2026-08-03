@@ -15,7 +15,7 @@ function me(role: Role): MeResponse {
 }
 
 function renderFaceplate(role: Role = 'admin') {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue(me(role));
   const queryClient = createQueryClient();
   queryClient.setQueryData(queryKeys.controllers, [makeController({ id: 5, name: 'PIC-005' })]);
@@ -31,6 +31,7 @@ function renderFaceplate(role: Role = 'admin') {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
 });
 

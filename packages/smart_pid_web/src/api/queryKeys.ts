@@ -27,6 +27,8 @@ export const queryKeys = {
   opcuaSearch: (query: string) => ['opcua', 'search', query] as const,
   /** Portable `.spid` roster — every project mutation invalidates it (phase 10). */
   projects: ['projects', 'list'] as const,
+  /** The active project behind the header label (§header, /project/current). */
+  projectCurrent: ['projects', 'current'] as const,
   /** Admin-only user roster (phase 10). */
   users: ['users'] as const,
   /** Backend health snapshot behind the executive dashboard (phase 9). */

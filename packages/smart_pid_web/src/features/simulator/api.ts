@@ -6,8 +6,8 @@ import type {
   AutoSPRequest,
   ControllerSimStatus,
   SimulatorDisturbanceRequest,
+  SimulatorLoopCreateRequest,
   SimulatorParametersRequest,
-  SimulatorPIDEnableRequest,
   SimulatorPIDParamsRequest,
   SimulatorPresetRequest,
   TwinMode,
@@ -32,11 +32,6 @@ export const simulatorApi = {
   preset: (body: SimulatorPresetRequest) => api.post<CommandResponse>('/simulator/preset', body),
   parameters: (body: SimulatorParametersRequest) =>
     api.put<CommandResponse>('/simulator/parameters', body),
-  enablePid: (controllerId: number, enabled: boolean) =>
-    api.post<CommandResponse>(`/simulator/${controllerId}/pid/enable`, {
-      controller_id: controllerId,
-      enabled,
-    } satisfies SimulatorPIDEnableRequest),
   setPidParams: (controllerId: number, body: Omit<SimulatorPIDParamsRequest, 'controller_id'>) =>
     api.post<CommandResponse>(`/simulator/${controllerId}/pid/params`, {
       controller_id: controllerId,
@@ -73,4 +68,11 @@ export const simulatorApi = {
     api.put<ControllerSimStatus>(`/simulator/${controllerId}/auto-sp`, body),
   setAutoDisturbance: (controllerId: number, body: AutoDisturbanceRequest) =>
     api.put<ControllerSimStatus>(`/simulator/${controllerId}/auto-disturbance`, body),
+
+  // ---- loop lifecycle: admin-only, independent of controller CRUD ----
+
+  /** `controller_id: null` lets the server allocate the next free loop id. */
+  createLoop: (body: SimulatorLoopCreateRequest) =>
+    api.post<ControllerSimStatus>('/simulator/loops', body),
+  deleteLoop: (controllerId: number) => api.delete<void>(`/simulator/loops/${controllerId}`),
 };

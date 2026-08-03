@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { Button } from '@/components/Button';
 import { Input } from '@/components/Field';
 import { Switch } from '@/components/Switch';
 import {
@@ -24,7 +25,8 @@ export interface AutoTogglesProps {
  *
  * Drafts are seeded once at mount (same reasoning as PIDSettings): the status
  * snapshot republishes these every tick and a field that re-syncs mid-entry
- * eats keystrokes. Committing on blur (or on enable) is what persists an edit.
+ * eats keystrokes. Committing on blur, on enable, or on Apply is what persists
+ * an edit — Apply is the explicit acknowledgement blur alone never gives.
  */
 export function AutoToggles({
   autoSp,
@@ -114,6 +116,13 @@ export function AutoToggles({
             />
           </div>
         </div>
+        <Button
+          size="sm"
+          className="shrink-0"
+          onClick={() => commitSp(autoSp?.enabled ?? false)}
+        >
+          Apply auto-SP
+        </Button>
       </div>
 
       <div className="flex items-center justify-between gap-3">
@@ -155,6 +164,13 @@ export function AutoToggles({
             />
           </div>
         </div>
+        <Button
+          size="sm"
+          className="shrink-0"
+          onClick={() => commitDist(autoDisturbance?.enabled ?? false)}
+        >
+          Apply auto-disturbance
+        </Button>
       </div>
     </fieldset>
   );

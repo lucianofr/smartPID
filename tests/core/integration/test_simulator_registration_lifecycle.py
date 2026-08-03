@@ -154,7 +154,6 @@ class TestCreateRegistersWithSimulator:
         """The same bug surfacing as a 404 on the /pid/* routes."""
         cid = await _create(client, deps)
         for path, body in (
-            (f"/simulator/{cid}/pid/enable", {"controller_id": cid, "enabled": True}),
             (
                 f"/simulator/{cid}/pid/params",
                 {"controller_id": cid, "kp": 2.0, "ti": 5.0, "td": 1.0},
@@ -180,9 +179,18 @@ class TestCreateRegistersWithSimulator:
         assert (sim.pv_min, sim.pv_max) == (20.0, 200.0)
 
 
-class TestDeleteUnregistersFromSimulator:
+class TestSimulatorLoopsAreIndependentOfControllers:
+    """The simulator is a standalone module.
+
+    Its loops used to be created and destroyed as a side effect of
+    controller CRUD, so you could not add a twin to experiment with
+    without also adding a real loop, and deleting a real loop silently
+    destroyed the twin someone was tuning against. Lifecycle now lives on
+    ``/simulator/loops``.
+    """
+
     @pytest.mark.asyncio
-    async def test_delete_drops_the_simulator_entry(
+    async def test_deleting_a_controller_leaves_its_twin_running(
         self, client: httpx.AsyncClient, deps: dict,
     ) -> None:
         adapter = deps["simulator_adapter"]
@@ -191,20 +199,77 @@ class TestDeleteUnregistersFromSimulator:
 
         resp = await client.delete(f"/controllers/{cid}", headers=deps["headers"])
         assert resp.status_code == 204, resp.text
-        assert not adapter.has_controller(cid)
+        assert adapter.has_controller(cid)
 
     @pytest.mark.asyncio
-    async def test_simulator_routes_404_after_delete(
+    async def test_a_loop_can_be_created_without_any_controller(
         self, client: httpx.AsyncClient, deps: dict,
     ) -> None:
-        """A deleted loop must stop answering, not serve a ghost 200."""
-        cid = await _create(client, deps)
-        await client.delete(f"/controllers/{cid}", headers=deps["headers"])
-
+        adapter = deps["simulator_adapter"]
         resp = await client.post(
+            "/simulator/loops",
+            json={"controller_id": 4242, "pv_min": 0.0, "pv_max": 100.0},
+            headers=deps["headers"],
+        )
+        assert resp.status_code == 200, resp.text
+        assert adapter.has_controller(4242)
+
+    @pytest.mark.asyncio
+    async def test_create_allocates_an_id_when_none_is_given(
+        self, client: httpx.AsyncClient, deps: dict,
+    ) -> None:
+        adapter = deps["simulator_adapter"]
+        resp = await client.post(
+            "/simulator/loops",
+            json={"controller_id": None, "pv_min": 0.0, "pv_max": 100.0},
+            headers=deps["headers"],
+        )
+        assert resp.status_code == 200, resp.text
+        assert any(adapter.has_controller(i) for i in range(1, 50))
+
+    @pytest.mark.asyncio
+    async def test_creating_an_existing_loop_is_a_conflict(
+        self, client: httpx.AsyncClient, deps: dict,
+    ) -> None:
+        """Silently returning the existing loop would let the caller believe
+        it got a fresh one and then wonder why it came pre-configured."""
+        body = {"controller_id": 77, "pv_min": 0.0, "pv_max": 100.0}
+        first = await client.post(
+            "/simulator/loops", json=body, headers=deps["headers"],
+        )
+        assert first.status_code == 200, first.text
+        second = await client.post(
+            "/simulator/loops", json=body, headers=deps["headers"],
+        )
+        assert second.status_code == 409, second.text
+
+    @pytest.mark.asyncio
+    async def test_delete_drops_the_loop_and_routes_stop_answering(
+        self, client: httpx.AsyncClient, deps: dict,
+    ) -> None:
+        adapter = deps["simulator_adapter"]
+        cid = await _create(client, deps)
+        assert adapter.has_controller(cid)
+
+        resp = await client.delete(
+            f"/simulator/loops/{cid}", headers=deps["headers"],
+        )
+        assert resp.status_code == 204, resp.text
+        assert not adapter.has_controller(cid)
+
+        ghost = await client.post(
             "/simulator/preset",
             json={"controller_id": cid, "preset": "FLOW"},
             headers=deps["headers"],
+        )
+        assert ghost.status_code == 404, ghost.text
+
+    @pytest.mark.asyncio
+    async def test_delete_of_an_unknown_loop_is_a_404(
+        self, client: httpx.AsyncClient, deps: dict,
+    ) -> None:
+        resp = await client.delete(
+            "/simulator/loops/31337", headers=deps["headers"],
         )
         assert resp.status_code == 404, resp.text
 
@@ -241,11 +306,6 @@ class TestUnknownIdIsAnHonest404:
                 "post",
                 f"/simulator/{UNKNOWN}/co",
                 {"controller_id": UNKNOWN, "sp": 42.0},
-            ),
-            (
-                "post",
-                f"/simulator/{UNKNOWN}/pid/enable",
-                {"controller_id": UNKNOWN, "enabled": True},
             ),
             (
                 "post",

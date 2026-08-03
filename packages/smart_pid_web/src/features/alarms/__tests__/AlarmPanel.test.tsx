@@ -28,7 +28,7 @@ function alarm(overrides: Partial<ActiveAlarm> = {}): ActiveAlarm {
 }
 
 function renderPanel(rows: ActiveAlarm[], role: Role = 'admin') {
-  sessionStorage.setItem('smart-pid-token', 'jwt');
+  localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: role, role });
   vi.spyOn(endpoints, 'activeAlarms').mockImplementation(() => Promise.resolve([...rows]));
   return render(
@@ -39,6 +39,7 @@ function renderPanel(rows: ActiveAlarm[], role: Role = 'admin') {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   sessionStorage.clear();
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, value: 600 });
 });

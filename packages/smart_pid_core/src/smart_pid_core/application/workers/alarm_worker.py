@@ -26,7 +26,20 @@ logger = logging.getLogger(__name__)
 
 
 async def load_alarm_configs(session_factory) -> dict[int, AlarmConfig]:  # noqa: ANN001
-    """Load alarm configurations from Configuracao_Alarmes table."""
+    """Load alarm configurations from Configuracao_Alarmes table.
+
+    Only rows whose controller still EXISTS are loaded, and only
+    controllers with at least one ENABLED alarm get an entry.
+
+    Both filters are load-bearing. ``Configuracao_Alarmes`` is keyed by
+    ``controlador_id``, and SQLite hands out ``max(id) + 1``, so a row left
+    behind by a deleted loop is inherited by whatever loop next takes that
+    id. That is how a freshly created FIC-101 with nothing configured
+    started announcing a HI alarm at 80: the limit belonged to a loop that
+    had been deleted. Dropping all-disabled controllers then keeps the
+    worker from evaluating a config whose every branch is a no-op, so
+    "has an entry here" reads as "has something to check".
+    """
     from sqlalchemy import text
 
     from smart_pid_domain.enums import AlarmPriority
@@ -36,7 +49,11 @@ async def load_alarm_configs(session_factory) -> dict[int, AlarmConfig]:  # noqa
     try:
         async with session_factory() as session:
             result = await session.execute(
-                text("SELECT * FROM Configuracao_Alarmes ORDER BY controlador_id")
+                text(
+                    "SELECT ca.* FROM Configuracao_Alarmes ca "
+                    "JOIN Controladores c ON c.id = ca.controlador_id "
+                    "ORDER BY ca.controlador_id"
+                )
             )
             rows = result.mappings().all()
     except Exception:
@@ -81,6 +98,15 @@ async def load_alarm_configs(session_factory) -> dict[int, AlarmConfig]:  # noqa
         dvhi_e, dvhi_v, dvhi_p, dvhi_don, dvhi_doff = _get("DV_HI", AlarmPriority.ADVISORY)
         dvlo_e, dvlo_v, dvlo_p, dvlo_don, dvlo_doff = _get("DV_LO", AlarmPriority.ADVISORY)
         deadband = max((a.get("hysteresis", 0.0) for a in alarms.values()), default=0.0)
+
+        if not any(
+            (hihi_e, hi_e, lo_e, lolo_e, dvhi_e, dvlo_e),
+        ):
+            # Every alarm on this loop is switched off. Registering the
+            # config anyway would leave the worker evaluating six disabled
+            # branches per frame and, worse, make "the loop has a config"
+            # stop meaning "the loop has something to announce".
+            continue
 
         configs[cid] = _AC(
             hihi_enabled=hihi_e,
@@ -231,7 +257,21 @@ class AlarmWorker:
         self.seed_active_alarms([a for a in active_alarms if a.get("cleared_at") is None])
 
     def update_config(self, controller_id: int, config: AlarmConfig) -> None:
-        """Update alarm config for a controller (thread-safe via GIL)."""
+        """Update alarm config for a controller (thread-safe via GIL).
+
+        Switching every alarm off DROPS the entry rather than storing an
+        all-disabled config, mirroring what ``load_alarm_configs`` does at
+        startup. Without the symmetry a loop the operator had just silenced
+        would keep a live config until the next daemon restart.
+        """
+        if not any((
+            config.hihi_enabled, config.hi_enabled,
+            config.lo_enabled, config.lolo_enabled,
+            config.dv_hi_enabled, config.dv_lo_enabled,
+        )):
+            self._alarm_configs.pop(controller_id, None)
+            self._engine.remove_controller(controller_id)
+            return
         self._alarm_configs[controller_id] = config
 
     def start(self) -> None:
