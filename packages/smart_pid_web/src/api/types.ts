@@ -20,6 +20,9 @@ export type TokenResponse = components['schemas']['TokenResponse'];
 
 export type ControllerResponse = components['schemas']['ControllerResponse'];
 export type AiStatus = components['schemas']['AIStatusResponse'];
+/** GET /controllers/{id}/ai/history — the loop's own tuning log, newest 50. */
+export type AiHistoryResponse = components['schemas']['AIHistoryResponse'];
+export type AiTuningLogEntry = components['schemas']['AITuningLogEntry'];
 export type AiConfigDto = components['schemas']['AIConfigDTO'];
 export type ScaleConfigDto = components['schemas']['ScaleConfigDTO'];
 export type TagBindingsDto = components['schemas']['TagBindingsDTO'];

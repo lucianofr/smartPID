@@ -13,6 +13,8 @@ export const queryKeys = {
   /** Per-loop threshold set behind the admin-only config form (phase 6). */
   alarmConfig: (controllerId: number) => ['alarms', 'config', controllerId] as const,
   aiStatus: (controllerId: number) => ['ai', 'status', controllerId] as const,
+  /** Per-loop tuning log behind the faceplate optimizer panel. */
+  aiHistory: (controllerId: number) => ['ai', 'history', controllerId] as const,
   opcuaStatus: ['opcua', 'status'] as const,
   simulatorStatus: ['simulator', 'status'] as const,
   /** Loop performance metrics for every controller (phase 7 multitrend). */

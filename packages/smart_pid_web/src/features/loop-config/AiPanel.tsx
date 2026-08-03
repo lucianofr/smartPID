@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { BrainCircuit, Check } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/api/queryKeys';
@@ -7,7 +7,7 @@ import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Switch } from '@/components/Switch';
 import { toast } from '@/components/Toast';
-import type { AiStatus } from '@/api/types';
+import type { AiStatus, AiTuningLogEntry } from '@/api/types';
 import type { AiData } from '@/lib/envelope';
 import { formatNumber, formatTimestamp } from '@/lib/format';
 import { useRealtime } from '@/realtime/useRealtime';
@@ -16,7 +16,13 @@ import { ConfirmApplyTuningDialog } from './ConfirmApplyTuningDialog';
 import { applyTuning, type AiAction } from './commandApi';
 import { useControllers } from '@/features/dashboard/useControllers';
 import { useUpdateControllerMutation } from './useCommands';
-import { tuningRecommendationKey, useAiAction, useAiStatus, useTuningRecommendation } from './useAiControls';
+import {
+  tuningRecommendationKey,
+  useAiAction,
+  useAiHistory,
+  useAiStatus,
+  useTuningRecommendation,
+} from './useAiControls';
 
 export interface AiPanelProps {
   controllerId: number;
@@ -88,14 +94,39 @@ export function aiLifecycle(status: AiStatus | undefined): AiLifecycle {
 
 /** One tuning-log row: wall clock left, what the engine did right. */
 interface AiLogEntry {
+  /** Epoch ms — places a seeded row against the live ones. */
+  readonly at: number;
   readonly time: string;
   readonly text: string;
 }
 
 function logEntry(env: AiData): AiLogEntry {
   return {
+    at: Date.parse(env.timestamp),
     time: formatTimestamp(env.timestamp),
     text: `${env.engine} γ=${env.gamma} Ki=${env.new_ki} — ${env.reasoning}`,
+  };
+}
+
+/**
+ * A persisted row carries no γ and no reasoning: the tuning log keeps the
+ * before/after pair and whether the write was authorised. The seeded line states
+ * exactly that and pads nothing the backend did not record — an unapproved row
+ * is a SUGGESTION the loop never took, and reads as one.
+ */
+function historyEntry(row: AiTuningLogEntry): AiLogEntry {
+  const move =
+    row.ki_before === null || row.ki_after === null
+      ? 'Ki —'
+      : `Ki ${formatNumber(row.ki_before, 2)}→${formatNumber(row.ki_after, 2)}`;
+  // The column is NOT NULL in the log table and the worker leaves it blank on
+  // every row it writes, so `null` alone is the wrong emptiness test — checking
+  // it that way printed a dangling em dash on every seeded line.
+  const objective = row.objective?.trim() ? ` — ${row.objective.trim()}` : '';
+  return {
+    at: Date.parse(row.timestamp),
+    time: formatTimestamp(row.timestamp),
+    text: `${row.engine} ${move}${objective}${row.approved ? '' : ' (sugerido, não aplicado)'}`,
   };
 }
 
@@ -119,11 +150,12 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
 
   const status = useAiStatus(controllerId, visible);
   const recommendation = useTuningRecommendation(controllerId, canTune);
+  const history = useAiHistory(controllerId, visible);
   const aiAction = useAiAction();
   const queryClient = useQueryClient();
   const ai = useRealtime<AiData>(controllerId, 'ai');
 
-  const [entries, setEntries] = useState<readonly AiLogEntry[]>([]);
+  const [live, setLive] = useState<readonly AiLogEntry[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [applyError, setApplyError] = useState<string | undefined>(undefined);
   const [applying, setApplying] = useState(false);
@@ -166,13 +198,37 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
   );
 
   const { subscribe } = ai;
-  useEffect(
-    () =>
-      subscribe((env) => {
-        setEntries((prev) => [...prev, logEntry(env.data)].slice(-MAX_LOG_LINES));
-      }),
-    [subscribe],
-  );
+  // `subscribe`'s identity changes with the loop scope, so clearing here is what
+  // keeps one loop's decisions out of another loop's log — the panel is reused
+  // across selections, not remounted (same reasoning as useRealtime's own
+  // `setLast(null)`).
+  useEffect(() => {
+    setLive([]);
+    return subscribe((env) => {
+      setLive((prev) => [...prev, logEntry(env.data)].slice(-MAX_LOG_LINES));
+    });
+  }, [subscribe]);
+
+  /**
+   * Seed ∪ live, for the SELECTED loop only.
+   *
+   * ACTION.AI fires once per AI period — minutes apart — so a live-only list is
+   * empty for most of the time the loop is on screen. The seed is the same
+   * "paint the window, then follow live" contract the trend uses.
+   *
+   * A live frame no newer than the newest seeded row is already IN that seed
+   * (the worker persists the decision it publishes), so this boundary dedups
+   * without matching two timestamps to the microsecond. Written `!(at <= max)`
+   * so an unparseable timestamp still renders: it is a frame that just arrived,
+   * not one the seed covers.
+   */
+  const entries = useMemo(() => {
+    // The route answers newest-first; the log reads oldest-first and scrolls to
+    // its own tail, so the seed goes in reversed.
+    const seeded = (history.data?.entries ?? []).map(historyEntry).reverse();
+    const newest = seeded.reduce((max, e) => Math.max(max, e.at), Number.NEGATIVE_INFINITY);
+    return [...seeded, ...live.filter((e) => !(e.at <= newest))].slice(-MAX_LOG_LINES);
+  }, [history.data, live]);
 
   // A log that does not follow its own tail is a scrollback, not a log.
   useEffect(() => {
@@ -196,6 +252,9 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
           });
           void queryClient.invalidateQueries({ queryKey: tuningRecommendationKey(controllerId) });
           void queryClient.invalidateQueries({ queryKey: queryKeys.aiStatus(controllerId) });
+          // The write just produced a tuning row; the log must show it without
+          // waiting for the engine's next ACTION.AI.
+          void queryClient.invalidateQueries({ queryKey: queryKeys.aiHistory(controllerId) });
           void queryClient.invalidateQueries({ queryKey: queryKeys.controllers });
         })
         .catch((error: unknown) => {
@@ -376,8 +435,9 @@ export function AiPanel({ controllerId, tag }: AiPanelProps) {
           </>
         ) : null}
 
-        {/* Always mounted, never faked: the rows are LOG.AI events off the bus,
-            and an empty bus says so rather than borrowing yesterday's tuning. */}
+        {/* Always mounted, never faked: the loop's own persisted tuning rows,
+            extended by LOG.AI events off the bus. An engine that has never run
+            says so rather than borrowing another loop's tuning. */}
         <div
           ref={logRef}
           role="log"

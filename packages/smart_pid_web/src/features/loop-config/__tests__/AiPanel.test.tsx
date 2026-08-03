@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { endpoints } from '@/api/endpoints';
 import { queryKeys } from '@/api/queryKeys';
-import type { AiStatus, Role } from '@/api/types';
+import type { AiStatus, AiTuningLogEntry, Role } from '@/api/types';
 import type { AiData, RealtimeEnvelope } from '@/lib/envelope';
 import { makeController } from '@/test/fixtures';
 import { createFakeRealtime, createQueryClient, TestProviders } from '@/test/providers';
@@ -62,6 +62,20 @@ const aiStatus = (overrides: Partial<AiStatus> = {}): AiStatus => ({
   ...overrides,
 });
 
+/** One persisted tuning row. `objective` is blank on every row the worker writes. */
+const histRow = (overrides: Partial<AiTuningLogEntry> = {}): AiTuningLogEntry => ({
+  id: 1,
+  controller_id: 5,
+  timestamp: '2026-07-26T09:58:00Z',
+  engine: 'FUZZY',
+  ki_before: 1.5,
+  ki_after: 2,
+  objective: '',
+  metric: 0.35,
+  approved: true,
+  ...overrides,
+});
+
 function renderAi(
   options: {
     role?: Role;
@@ -69,6 +83,7 @@ function renderAi(
     engine?: string;
     status?: Partial<AiStatus>;
     tuningWriteMode?: string;
+    history?: AiTuningLogEntry[];
   } = {},
 ) {
   const role = options.role ?? 'admin';
@@ -82,6 +97,12 @@ function renderAi(
   queryClient.setQueryData(queryKeys.aiStatus(5), { ...aiStatus(), ...options.status });
   if (options.recommendation !== undefined) {
     queryClient.setQueryData(tuningRecommendationKey(5), options.recommendation);
+  }
+  if (options.history !== undefined) {
+    queryClient.setQueryData(queryKeys.aiHistory(5), {
+      controller_id: 5,
+      entries: options.history,
+    });
   }
   const realtime = createFakeRealtime();
   return {
@@ -247,6 +268,39 @@ describe('AiPanel', () => {
 
     expect(log).toHaveTextContent('erro alto, subindo Ki');
     expect(log).toHaveTextContent('estabilizou');
+  });
+
+  it('seeds the log from this loop history and never doubles the newest row', async () => {
+    // ACTION.AI fires minutes apart, so a live-only log is blank for most of the
+    // time the loop is on screen. The seed paints it at once — and the seed/live
+    // boundary is what keeps the newest decision from printing twice.
+    const { realtime } = renderAi({
+      history: [
+        histRow({ id: 2, timestamp: '2026-07-26T09:59:00Z', ki_before: 2, ki_after: 2.7 }),
+        histRow({ id: 1, ki_before: 1.5, ki_after: 2, approved: false }),
+      ],
+    });
+    const log = await screen.findByRole('log', { name: 'LOG.AI' });
+
+    expect(log).not.toHaveTextContent('Sem eventos de IA.');
+    expect(log).toHaveTextContent('Ki 1.50→2.00');
+    expect(log).toHaveTextContent('(sugerido, não aplicado)');
+    // A blank `objective` must not print a dangling separator.
+    expect(log).not.toHaveTextContent('2.70 —');
+    // Oldest first, so the box scrolls to the newest decision at its tail.
+    expect(log.querySelectorAll('p')).toHaveLength(2);
+    expect(log.querySelectorAll('p')[0]).toHaveTextContent('Ki 1.50→2.00');
+
+    act(() => {
+      realtime.emit(aiEvent(1, { timestamp: '2026-07-26T09:59:00Z' }));
+    });
+    expect(log.querySelectorAll('p')).toHaveLength(2);
+
+    act(() => {
+      realtime.emit(aiEvent(2, { timestamp: '2026-07-26T10:00:00Z' }));
+    });
+    expect(log.querySelectorAll('p')).toHaveLength(3);
+    expect(log).toHaveTextContent('erro alto, subindo Ki');
   });
 
   it('names the auto-apply switch with its visible label', async () => {

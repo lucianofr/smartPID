@@ -6,8 +6,9 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import type { ApiError } from '@/api/client';
+import { endpoints } from '@/api/endpoints';
 import { queryKeys } from '@/api/queryKeys';
-import type { AiStatus } from '@/api/types';
+import type { AiHistoryResponse, AiStatus } from '@/api/types';
 import {
   getAiStatus,
   getTuningRecommendation,
@@ -33,6 +34,27 @@ export function useAiStatus(
     queryFn: () => getAiStatus(controllerId),
     enabled,
     // 404 = the loop has no AI worker. A settled state, not a transient failure.
+    retry: false,
+  });
+}
+
+/**
+ * The loop's persisted tuning log, used to SEED the panel's live LOG.AI list.
+ *
+ * ACTION.AI fires once per AI period — minutes apart — so a live-only log reads
+ * `Sem eventos de IA.` for most of the time an operator has the loop open, and
+ * loses every line on navigation. Keyed by `controllerId`, so switching loops
+ * swaps the log instead of blending two loops' decisions.
+ */
+export function useAiHistory(
+  controllerId: number,
+  enabled = true,
+): UseQueryResult<AiHistoryResponse, ApiError> {
+  return useQuery<AiHistoryResponse, ApiError>({
+    queryKey: queryKeys.aiHistory(controllerId),
+    queryFn: () => endpoints.aiHistory(controllerId),
+    enabled,
+    // 404 = the loop has no AI worker, same settled state as useAiStatus.
     retry: false,
   });
 }

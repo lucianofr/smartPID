@@ -1,5 +1,6 @@
 import { api } from './client';
 import type {
+  AiHistoryResponse,
   AiStatus,
   AiTuningLogRow,
   AlarmConfigResponse,
@@ -84,6 +85,15 @@ export const endpoints = {
 
   aiStatus: (controllerId: number) =>
     api.get<AiStatus>(`/controllers/${controllerId}/ai/status`),
+
+  /**
+   * The loop's own tuning log. Seeds the faceplate optimizer log so a freshly
+   * opened loop shows the engine's last decisions instead of `Sem eventos de
+   * IA.` until the next cycle — ACTION.AI fires once per AI period (minutes),
+   * so a live-only log is blank for most of the time an operator looks at it.
+   */
+  aiHistory: (controllerId: number) =>
+    api.get<AiHistoryResponse>(`/controllers/${controllerId}/ai/history`),
 
   opcuaStatus: () => api.get<OpcuaStatus>('/opcua/status'),
 
