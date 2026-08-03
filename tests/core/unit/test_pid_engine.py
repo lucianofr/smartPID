@@ -1,6 +1,8 @@
 """Unit tests for PID engine velocity form equation."""
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from smart_pid_core.domain.services.pid_engine import PIDEngine, PIDState
@@ -113,6 +115,33 @@ class TestPIDCompute:
         # Direct acting: error = PV - SP = 10
         assert result.delta_cv == pytest.approx(10.0, abs=1e-6)
 
+    @pytest.mark.parametrize("direct_acting", [False, True])
+    def test_derivative_sign_follows_the_loop_action(self, direct_acting: bool) -> None:
+        """Derivative-on-PV must equal derivative-on-error for BOTH actions.
+
+        The engine hardcoded the reverse-acting sign, so on a direct-acting loop
+        the derivative channel became positive feedback. Pinned against the
+        textbook velocity form rather than a recorded number.
+        """
+        params = PIDParams(gain=1.0, reset=0.0, rate=4.0, alpha=1.0)  # D only, no filter lag
+        pv2, pv1, pv0, sp = 50.0, 52.0, 55.0, 50.0
+        err = lambda pv: (pv - sp) if direct_acting else (sp - pv)  # noqa: E731
+        result = self.engine.compute(
+            params=params,
+            state=PIDState(cv=50.0, pv_prev=pv1, pv_prev2=pv2, error_prev=err(pv1)),
+            pv=FFSignal.good(pv0),
+            sp=FFSignal.good(sp),
+            bkcal_in=FFSignal.good(50.0),
+            dt=1.0,
+            out_limits=(-1e6, 1e6),
+            direct_acting=direct_acting,
+        )
+        e0, e1, e2 = err(pv0), err(pv1), err(pv2)
+        expected = params.gain * (
+            (e0 - e1) + (params.rate / 1.0) * (e0 - 2.0 * e1 + e2)
+        )
+        assert result.delta_cv == pytest.approx(expected, abs=1e-9)
+
 
 class TestAntiWindup:
     """Anti-reset windup: pause integral when output is saturated."""
@@ -171,6 +200,47 @@ class TestBumplessTransfer:
         assert new_state.cv == pytest.approx(65.0, abs=1e-6)
         assert new_state.pv_prev == pytest.approx(45.0, abs=1e-6)
         assert new_state.pv_prev2 == pytest.approx(45.0, abs=1e-6)
+
+    def test_transfer_is_bumpless_with_pv_filter_and_derivative(self) -> None:
+        """A loop sitting still at PV == SP must not move CO on transfer.
+
+        ``bumpless_transfer`` seeds the PV history with the RAW pv while the
+        filter memory defaulted to 0.0, so the first scan differenced a filtered
+        PV against a raw history and read a full-scale step. With a PV filter and
+        any Td that drove CO 40 -> 100 -> 0: the opposite of bumpless.
+        """
+        params = PIDParams(gain=1.0, reset=10.0, rate=4.0, alpha=1.0)
+        pv = sp = 62.0
+        state = PIDState()
+        for _ in range(300):  # settle the filters at PV == SP
+            state = self.engine.compute(
+                params=params,
+                state=state,
+                pv=FFSignal.good(pv),
+                sp=FFSignal.good(sp),
+                bkcal_in=FFSignal.good(state.cv),
+                dt=1.0,
+                out_limits=(0.0, 100.0),
+                pv_ftime=5.0,
+            ).new_state
+
+        held = self.engine.bumpless_transfer(
+            state=replace(state, cv=40.0), current_pv=pv, current_co=40.0, params=params,
+        )
+        for _ in range(3):
+            result = self.engine.compute(
+                params=params,
+                state=held,
+                pv=FFSignal.good(pv),
+                sp=FFSignal.good(sp),
+                bkcal_in=FFSignal.good(held.cv),
+                dt=1.0,
+                out_limits=(0.0, 100.0),
+                pv_ftime=5.0,
+            )
+            assert result.delta_cv == pytest.approx(0.0, abs=1e-9)
+            assert result.cv == pytest.approx(40.0, abs=1e-9)
+            held = result.new_state
 
 
 class TestSPRamp:

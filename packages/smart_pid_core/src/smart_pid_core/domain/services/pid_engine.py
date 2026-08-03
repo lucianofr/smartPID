@@ -168,7 +168,16 @@ class PIDEngine:
         d_term = 0.0
         if params.rate > 0 and dt > 0:
             d2_pv = pv_val - 2.0 * state.pv_prev + state.pv_prev2
-            d_raw = -params.gain * params.rate * (d2_pv / dt)
+            # The derivative acts on PV instead of error to avoid SP-step kick,
+            # so its sign has to follow the loop's action. Reverse acting has
+            # e = SP - PV, where rising PV LOWERS the error — hence the minus.
+            # A direct-acting loop has e = PV - SP and the same motion RAISES
+            # it, so the term flips. Sharing the reverse-acting sign turned the
+            # derivative channel into positive feedback on every direct-acting
+            # loop with Td > 0.
+            d_raw = params.gain * params.rate * (d2_pv / dt)
+            if not direct_acting:
+                d_raw = -d_raw
             # Apply derivative filter (exponential smoothing)
             alpha = min(max(params.alpha, 0.05), 1.0)
             d_term = alpha * d_raw + (1.0 - alpha) * state.derivative_filtered
@@ -249,6 +258,12 @@ class PIDEngine:
             sp_working=sp_val,
             derivative_filtered=0.0,
             is_saturated=False,
+            # Same filter-domain rule as bumpless_transfer: IMAN bypasses the
+            # filters, so their memory has to be left holding the values this
+            # handshake just used, or the first filtered scan after it sees a
+            # step from zero that never happened.
+            pv_filtered=pv_val,
+            sp_filtered=sp_val,
         )
 
         from smart_pid_domain.enums import InitSubStatus, SignalSeverity
@@ -290,6 +305,14 @@ class PIDEngine:
             sp_working=state.sp_working,
             derivative_filtered=0.0,
             is_saturated=False,
+            # The filters restart AT the current values, never at zero.
+            # ``compute`` differences the FILTERED PV against the history seeded
+            # here, so zeroed filter memory made the first scan read a
+            # full-scale PV step that never happened: with a PV filter and any
+            # Td that drove CO into BOTH limits on a loop sitting still at
+            # PV == SP — the exact opposite of a bumpless transfer.
+            pv_filtered=current_pv,
+            sp_filtered=state.sp_working,
         )
 
     def apply_sp_ramp(
