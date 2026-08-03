@@ -5,9 +5,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
+from smart_pid_core.adapters.inbound.simulator_adapter import (
+    SimulatorAdapter,
+    min_auto_sp_period_s,
+)
 from smart_pid_core.config import CoreSettings
 from smart_pid_domain.dtos.simulator import AutoDisturbanceRequest, AutoSPRequest
+from smart_pid_domain.enums import ProcessPresetName
 
 
 @pytest.fixture
@@ -68,6 +72,71 @@ class TestSetAutoSP:
         with adapter._lock:
             assert adapter._controllers[1].auto_sp_elapsed_s == 0.0
 
+    def test_period_below_the_settling_floor_is_raised(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        """A step the process cannot answer is a permanent transient, not excitation.
+
+        It pins CO at a limit after every step, makes the trend read as a square
+        wave however well the loop is tuned, and starves the optimizer's
+        steady-state FOPDT retune, which only identifies while the loop settles.
+        """
+        adapter.set_auto_sp(1, AutoSPRequest(enabled=True, period_s=1.0))
+        status = adapter.get_controller_status(1)
+        assert status.auto_sp is not None
+        floor = min_auto_sp_period_s(status.tau1, status.tau2, status.dead_time)
+        assert floor > 1.0
+        # The stored value IS the effective one, so the HMI reads the correction.
+        assert status.auto_sp.period_s == floor
+
+    def test_period_above_the_floor_is_left_alone(self, adapter: SimulatorAdapter) -> None:
+        """The floor only raises. An operator asking for slower excitation gets it."""
+        adapter.set_auto_sp(1, AutoSPRequest(enabled=True, period_s=600.0))
+        status = adapter.get_controller_status(1)
+        assert status.auto_sp is not None
+        assert status.auto_sp.period_s == 600.0
+
+    def test_slowing_the_process_re_derives_the_floor(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        """The floor tracks the model, so a period that cleared it can stop doing so."""
+        adapter.set_auto_sp(1, AutoSPRequest(enabled=True, period_s=40.0))
+        before = adapter.get_controller_status(1)
+        assert before.auto_sp is not None
+        assert before.auto_sp.period_s == 40.0  # clears the default FLOW floor
+
+        adapter.set_parameters(1, gain=2.0, tau1=30.0, tau2=15.0, dead_time=5.0)
+        after = adapter.get_controller_status(1)
+        assert after.auto_sp is not None
+        assert after.auto_sp.period_s == min_auto_sp_period_s(30.0, 15.0, 5.0)
+        assert after.auto_sp.period_s > 40.0
+
+    def test_switching_preset_re_derives_the_floor(self, adapter: SimulatorAdapter) -> None:
+        adapter.set_auto_sp(1, AutoSPRequest(enabled=True, period_s=40.0))
+        adapter.set_preset(1, ProcessPresetName.TEMPERATURE)
+        status = adapter.get_controller_status(1)
+        assert status.auto_sp is not None
+        assert status.auto_sp.period_s == min_auto_sp_period_s(
+            status.tau1, status.tau2, status.dead_time,
+        )
+
+    def test_a_persisted_short_period_is_raised_on_load(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        """Clamped, not rejected: a project saved before the floor existed — or
+        saved against a faster model — must still load."""
+        cfg = adapter.get_config_dict(1)
+        cfg["controlador_id"] = cfg.pop("controller_id")
+        cfg["auto_sp_enabled"] = True
+        cfg["auto_sp_period_s"] = 2.0
+        cfg["tau1"] = 22.2
+        cfg["tau2"] = 10.5
+        cfg["dead_time"] = 5.1
+        adapter.load_sim_config(cfg)
+        status = adapter.get_controller_status(1)
+        assert status.auto_sp is not None
+        assert status.auto_sp.period_s == min_auto_sp_period_s(22.2, 10.5, 5.1)
+
 
 class TestSetAutoDisturbance:
     def test_set_auto_dist_updates_fields(self, adapter: SimulatorAdapter) -> None:
@@ -89,13 +158,18 @@ class TestSetAutoDisturbance:
 
 class TestAutoExcitationTick:
     def test_auto_sp_fires_after_period(self, adapter: SimulatorAdapter) -> None:
+        # A requested period is raised to what the process can settle, so the
+        # tick loop has to run out the EFFECTIVE period, not the asked-for one.
         adapter.set_auto_sp(
             1, AutoSPRequest(enabled=True, sp_min_pct=40.0, sp_max_pct=60.0, period_s=1.0)
         )
         with adapter._lock:
-            initial_sp = adapter._controllers[1].sp
+            ctrl = adapter._controllers[1]
+            initial_sp = ctrl.sp
+            period = ctrl.auto_sp_period_s
+        assert period == min_auto_sp_period_s(ctrl.tau1, ctrl.tau2, ctrl.dead_time)
         dt = 0.1
-        for _ in range(int(1.0 / dt) + 2):  # exceed the 1.0s period
+        for _ in range(int(period / dt) + 2):
             adapter._tick(dt)
         with adapter._lock:
             ctrl = adapter._controllers[1]

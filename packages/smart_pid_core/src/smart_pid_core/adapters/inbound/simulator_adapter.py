@@ -139,6 +139,28 @@ def _clamp_co(co: float) -> float:
     return min(CO_MAX_PCT, max(CO_MIN_PCT, co))
 
 
+#: Multiple of the loop's own dynamics that an auto-SP period must clear.
+#:
+#: A setpoint step the process has not finished answering is not excitation, it
+#: is a permanent transient: CO rides a limit for tens of seconds after every
+#: step, the trend reads as a square wave no matter how well the loop is tuned,
+#: and the optimizer's FOPDT retune — which only identifies a model WHILE the
+#: loop sits settled — can never fire, leaving only the few-percent-per-cycle
+#: nudge to walk a bad Ti back over hours.
+#:
+#: 4x(tau1 + tau2 + dead_time) against the 98 %-settling time measured on this
+#: very model, per shipped preset: FLOW 16.0 vs 12.8 s, FIC-like 110.8 vs 76.4,
+#: TIC-like 151.2 vs 106.1, LEVEL 200.0 vs 143.1, TEMPERATURE 360.0 vs 269.1.
+#: The 1.3-1.4x margin is deliberate — the loop has to reach steady state AND
+#: hold there long enough to be identified, not merely graze it.
+AUTO_SP_SETTLE_MULTIPLE: float = 4.0
+
+
+def min_auto_sp_period_s(tau1: float, tau2: float | None, dead_time: float) -> float:
+    """Shortest auto-SP period this process can actually answer between steps."""
+    return AUTO_SP_SETTLE_MULTIPLE * (tau1 + (tau2 or 0.0) + dead_time)
+
+
 # OPC-UA parameters whose mutation changes persistent PID configuration.
 # CO and SP are excluded: they are transient runtime values written every
 # scan by the control loop, and persisting them would thrash the DB.
@@ -423,6 +445,7 @@ class SimulatorAdapter:
             ctrl.tau1 = p.tau1
             ctrl.tau2 = p.tau2
             ctrl.dead_time = p.dead_time
+            self._clamp_auto_sp_period(ctrl)
 
     def set_parameters(
         self,
@@ -444,6 +467,10 @@ class SimulatorAdapter:
             ctrl.tau1 = tau1
             ctrl.tau2 = tau2
             ctrl.dead_time = dead_time
+            # The floor moves with the model: a slower process needs longer
+            # between steps, and the period stored a moment ago may no longer
+            # clear it.
+            self._clamp_auto_sp_period(ctrl)
 
     def inject_step(self, controller_id: int, amplitude: float) -> None:
         with self._lock:
@@ -465,6 +492,29 @@ class SimulatorAdapter:
             ctrl.noise_active = False
             ctrl.noise_amplitude = 0.0
 
+    def _clamp_auto_sp_period(self, ctrl: _ControllerSim) -> None:
+        """Raise the auto-SP period to what this process can answer. Lock held.
+
+        Clamped, not rejected: the period also arrives from persisted config and
+        is re-derived whenever the model changes, so raising an error here would
+        make a saved project unloadable after a process-parameter edit. The
+        stored value IS the effective one, so ``_build_status`` — and therefore
+        the HMI and ``get_config_dict`` — reports the corrected period rather
+        than the one that was asked for.
+        """
+        floor = min_auto_sp_period_s(ctrl.tau1, ctrl.tau2, ctrl.dead_time)
+        if ctrl.auto_sp_period_s >= floor:
+            return
+        logger.warning(
+            "Simulator: auto-SP period %.1fs on controller %d is shorter than the "
+            "process can settle; raised to %.1fs (tau1=%.1f tau2=%.1f dead_time=%.1f). "
+            "Stepping SP before the loop answers keeps it in permanent transient "
+            "and blocks the optimizer's steady-state retune.",
+            ctrl.auto_sp_period_s, ctrl.controller_id, floor,
+            ctrl.tau1, ctrl.tau2 or 0.0, ctrl.dead_time,
+        )
+        ctrl.auto_sp_period_s = floor
+
     def set_auto_sp(self, controller_id: int, req: AutoSPRequest) -> None:
         """Configure (and enable/disable) auto SP variation for a controller."""
         with self._lock:
@@ -477,6 +527,7 @@ class SimulatorAdapter:
             ctrl.auto_sp_period_s = req.period_s
             if not req.enabled:
                 ctrl.auto_sp_elapsed_s = 0.0
+            self._clamp_auto_sp_period(ctrl)
 
     def set_auto_disturbance(self, controller_id: int, req: AutoDisturbanceRequest) -> None:
         """Configure (and enable/disable) auto disturbance injection for a controller."""
@@ -519,6 +570,7 @@ class SimulatorAdapter:
             ctrl.auto_dist_enabled = cfg.get("auto_dist_enabled", False)
             ctrl.auto_dist_max_pct = cfg.get("auto_dist_max_pct", 10.0)
             ctrl.auto_dist_period_s = cfg.get("auto_dist_period_s", 30.0)
+            self._clamp_auto_sp_period(ctrl)
         self._sync_pid_config_to_opcua(cid)
 
     def _build_status(self, ctrl: _ControllerSim) -> ControllerSimStatus:
