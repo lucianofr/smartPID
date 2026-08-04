@@ -265,7 +265,9 @@ CREATE TABLE IF NOT EXISTS Configuracao_Simulador (
     auto_sp_max_pct   REAL NOT NULL DEFAULT 70.0,
     auto_dist_enabled INTEGER NOT NULL DEFAULT 0,
     auto_dist_max_pct REAL NOT NULL DEFAULT 10.0,
-    pid_sp            REAL NOT NULL DEFAULT 50.0
+    pid_sp            REAL NOT NULL DEFAULT 50.0,
+    auto_sp_period_s   REAL NOT NULL DEFAULT 30.0,
+    auto_dist_period_s REAL NOT NULL DEFAULT 30.0
 );
 """
 
@@ -326,10 +328,14 @@ _ALARMES_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("delay_off_s", "REAL NOT NULL DEFAULT 0.0"),
 )
 
-# Configuracao_Simulador shipped in three generations: 6 columns, then +pid_*
-# (11), then +auto_*/pid_sp (17). The pid_* group was added to _DDL without a
-# matching back-fill, so gen1 files hit "no column named pid_enabled" on the
-# save_sim_config INSERT. Every column that INSERT names is listed here.
+# Configuracao_Simulador shipped in four generations: 6 columns, then +pid_*
+# (11), then +auto_*/pid_sp (17), then the two auto-excitation PERIODS (19).
+# The pid_* group was added to _DDL without a matching back-fill, so gen1 files
+# hit "no column named pid_enabled" on the save_sim_config INSERT. The periods
+# were worse than missing a column: get_config_dict emitted them, nothing stored
+# them, and load_sim_config's `cfg.get(..., 30.0)` silently substituted the
+# default, so an operator's excitation period never survived a restart.
+# Every column that INSERT names is listed here.
 _SIM_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("pid_enabled", "INTEGER NOT NULL DEFAULT 0"),
     ("pid_kp", "REAL NOT NULL DEFAULT 1.0"),
@@ -342,6 +348,8 @@ _SIM_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("auto_dist_enabled", "INTEGER NOT NULL DEFAULT 0"),
     ("auto_dist_max_pct", "REAL NOT NULL DEFAULT 10.0"),
     ("pid_sp", "REAL NOT NULL DEFAULT 50.0"),
+    ("auto_sp_period_s", "REAL NOT NULL DEFAULT 30.0"),
+    ("auto_dist_period_s", "REAL NOT NULL DEFAULT 30.0"),
 )
 
 
@@ -878,6 +886,8 @@ class SQLiteRepository:
         auto_dist_enabled: bool = False,
         auto_dist_max_pct: float = 10.0,
         pid_sp: float = 50.0,
+        auto_sp_period_s: float = 30.0,
+        auto_dist_period_s: float = 30.0,
     ) -> None:
         """Insert or replace a simulator configuration for *controller_id*."""
         async with self.session_factory() as session:
@@ -887,11 +897,13 @@ class SQLiteRepository:
                     " (controlador_id, preset, gain, tau1, tau2, dead_time,"
                     "  pid_enabled, pid_kp, pid_ti, pid_td, pid_mode,"
                     "  auto_sp_enabled, auto_sp_min_pct, auto_sp_max_pct,"
-                    "  auto_dist_enabled, auto_dist_max_pct, pid_sp)"
+                    "  auto_dist_enabled, auto_dist_max_pct, pid_sp,"
+                    "  auto_sp_period_s, auto_dist_period_s)"
                     " VALUES (:cid, :preset, :gain, :tau1, :tau2, :dead_time,"
                     "  :pid_enabled, :pid_kp, :pid_ti, :pid_td, :pid_mode,"
                     "  :auto_sp_enabled, :auto_sp_min_pct, :auto_sp_max_pct,"
-                    "  :auto_dist_enabled, :auto_dist_max_pct, :pid_sp)"
+                    "  :auto_dist_enabled, :auto_dist_max_pct, :pid_sp,"
+                    "  :auto_sp_period_s, :auto_dist_period_s)"
                 ),
                 {
                     "cid": controller_id, "preset": preset, "gain": gain,
@@ -904,6 +916,8 @@ class SQLiteRepository:
                     "auto_dist_enabled": int(auto_dist_enabled),
                     "auto_dist_max_pct": auto_dist_max_pct,
                     "pid_sp": pid_sp,
+                    "auto_sp_period_s": auto_sp_period_s,
+                    "auto_dist_period_s": auto_dist_period_s,
                 },
             )
             await session.commit()
@@ -949,6 +963,10 @@ class SQLiteRepository:
             "auto_dist_enabled": bool(row["auto_dist_enabled"]),
             "auto_dist_max_pct": row["auto_dist_max_pct"],
             "pid_sp": row.get("pid_sp", 50.0),
+            # `.get` guards the window between opening a pre-migration file and
+            # _apply_migrations adding the column, same as pid_sp above.
+            "auto_sp_period_s": row.get("auto_sp_period_s", 30.0),
+            "auto_dist_period_s": row.get("auto_dist_period_s", 30.0),
         }
 
     # ------------------------------------------------------------------

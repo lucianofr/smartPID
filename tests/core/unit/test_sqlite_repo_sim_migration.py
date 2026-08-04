@@ -72,6 +72,7 @@ _EXPECTED_SIM_COLUMNS = (
     "pid_enabled", "pid_kp", "pid_ti", "pid_td", "pid_mode",
     "auto_sp_enabled", "auto_sp_min_pct", "auto_sp_max_pct",
     "auto_dist_enabled", "auto_dist_max_pct", "pid_sp",
+    "auto_sp_period_s", "auto_dist_period_s",
 )
 
 _FULL_SAVE_KWARGS = {
@@ -81,6 +82,7 @@ _FULL_SAVE_KWARGS = {
     "pid_mode": 1,
     "auto_sp_enabled": True, "auto_sp_min_pct": 45.0, "auto_sp_max_pct": 70.0,
     "auto_dist_enabled": False, "auto_dist_max_pct": 10.0, "pid_sp": 50.0,
+    "auto_sp_period_s": 360.0, "auto_dist_period_s": 45.0,
 }
 
 
@@ -337,6 +339,7 @@ class _StubAdapter:
             "auto_sp_enabled": True, "auto_sp_min_pct": 45.0,
             "auto_sp_max_pct": 70.0, "auto_dist_enabled": False,
             "auto_dist_max_pct": 10.0, "pid_sp": 50.0,
+            "auto_sp_period_s": 360.0, "auto_dist_period_s": 45.0,
         }
 
 

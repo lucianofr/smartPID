@@ -141,6 +141,75 @@ class TestConfiguracaoSimulador:
         assert cfg["auto_dist_enabled"] is False
         assert cfg["auto_dist_max_pct"] == 10.0
 
+    async def test_every_field_the_adapter_emits_survives_the_round_trip(
+        self, repo: SQLiteRepository,
+    ) -> None:
+        """The whole config dict must round-trip, not just the fields we remembered.
+
+        ``auto_sp_period_s`` and ``auto_dist_period_s`` were emitted by
+        ``SimulatorAdapter.get_config_dict`` but had no column, no INSERT slot and
+        no row mapping, so ``load_sim_config``'s ``cfg.get(..., 30.0)`` silently
+        substituted the default and an operator's excitation period never
+        survived a restart. Nothing failed; the value just evaporated.
+
+        Driving this from the adapter's own dict is the point: a field added there
+        later cannot pass this test without a matching column.
+        """
+        from unittest.mock import MagicMock, patch
+
+        from smart_pid_core.adapters.inbound.sim_persistence import persist_sim_config
+        from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
+        from smart_pid_core.config import CoreSettings
+        from smart_pid_domain.dtos.simulator import AutoDisturbanceRequest, AutoSPRequest
+
+        settings = CoreSettings(
+            jwt_secret="test-secret-key-minimum-32-bytes!",
+            simulator_enabled=True,
+        )  # type: ignore[call-arg]
+        with patch(
+            "smart_pid_core.adapters.inbound.simulator_adapter.OPCUAServer",
+            return_value=MagicMock(controller_node_ids={}, is_running=False),
+        ):
+            adapter = SimulatorAdapter(settings=settings)
+            try:
+                adapter.register_controller(1)
+                adapter.set_parameters(1, gain=1.2, tau1=22.2, tau2=10.5, dead_time=5.1)
+                adapter.set_pid_params(1, kp=0.8, ti=37.0, td=2.5)
+                adapter.set_pid_mode(1, 1)
+                adapter.set_pid_sp(1, 61.5)
+                # Well above the settling floor, so the clamp leaves it alone and
+                # the value under test is the one the operator asked for.
+                adapter.set_auto_sp(
+                    1,
+                    AutoSPRequest(
+                        enabled=True, sp_min_pct=15.0, sp_max_pct=85.0, period_s=600.0,
+                    ),
+                )
+                adapter.set_auto_disturbance(
+                    1,
+                    AutoDisturbanceRequest(
+                        enabled=True, max_amplitude_pct=12.5, period_s=45.0,
+                    ),
+                )
+                saved = adapter.get_config_dict(1)
+                assert await persist_sim_config(adapter, repo, 1) is True
+            finally:
+                adapter.stop()
+
+        loaded = await repo.get_sim_config(1)
+        assert loaded is not None
+        # `controller_id` is the adapter's key, `controlador_id` the column's.
+        dropped = {
+            key
+            for key in saved
+            if key != "controller_id" and key not in loaded
+        }
+        assert dropped == set(), f"fields lost between adapter and DB: {sorted(dropped)}"
+        for key, value in saved.items():
+            if key == "controller_id":
+                continue
+            assert loaded[key] == value, f"{key}: saved {value!r}, loaded {loaded[key]!r}"
+
 
 # ── reopen ────────────────────────────────────────────────────────────
 
