@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from smart_pid_core.adapters.inbound.api.error_handlers import register_error_handlers
@@ -67,6 +68,26 @@ _SECURITY_HEADERS = {
         "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
     ),
 }
+
+
+class _SPAStaticFiles(StaticFiles):
+    """StaticFiles with an SPA history-API fallback.
+
+    ``html=True`` maps ``/`` to index.html, but client-side routes
+    (/simulator, /multitrend, ...) 404 on reload or deep-link because no
+    matching file exists. The React router owns those paths and renders
+    index.html for all of them, so fall back to it. Starlette raises
+    ``HTTPException(404)`` for a miss rather than returning a 404 response,
+    so the fallback intercepts the exception.
+    """
+
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                return await super().get_response("index.html", scope)
+            raise
 
 
 @asynccontextmanager
@@ -209,7 +230,7 @@ def create_app(
     if settings.web_dist_dir and os.path.isdir(settings.web_dist_dir):
         app.mount(
             "/",
-            StaticFiles(directory=settings.web_dist_dir, html=True),
+            _SPAStaticFiles(directory=settings.web_dist_dir, html=True),
             name="spa",
         )
 
