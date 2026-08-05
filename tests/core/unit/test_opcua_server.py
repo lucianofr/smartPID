@@ -33,7 +33,7 @@ class TestOPCUAServerInit:
 
         port = _get_free_port()
         server = OPCUAServer(port=port)
-        assert server.endpoint == f"opc.tcp://0.0.0.0:{port}"
+        assert server.endpoint == f"opc.tcp://localhost:{port}"
 
     def test_no_controllers_initially(self) -> None:
         from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer

@@ -8,6 +8,7 @@ import os
 import secrets
 import signal
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -19,8 +20,8 @@ from smart_pid_core.adapters.factory import AdapterFactory
 from smart_pid_core.adapters.inbound.api.app import create_app
 from smart_pid_core.adapters.inbound.api.auth import hash_password
 from smart_pid_core.adapters.inbound.sim_persistence import persist_sim_config
-from smart_pid_core.adapters.inbound.simulator_adapter import bind_opcua_client
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
+from smart_pid_core.adapters.outbound.simulator_client import bind_opcua_client
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
 from smart_pid_core.application.daemon_state import DaemonState
@@ -33,6 +34,8 @@ from smart_pid_domain.enums import ExecutionMode, UserRole
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from smart_pid_core.adapters.outbound.simulator_client import SimulatorClient
 
 logger = structlog.get_logger()
 
@@ -129,7 +132,7 @@ async def _seed_default_admin(user_repo: UserRepository) -> None:
 
 
 async def _sim_persist_flusher(
-    adapter,  # noqa: ANN001
+    client: SimulatorClient,
     repo: SQLiteRepository,
     stop_event: asyncio.Event,
     interval_s: float = 2.0,
@@ -137,23 +140,23 @@ async def _sim_persist_flusher(
     """Periodically persist simulator controllers whose PID config changed via OPC-UA.
 
     REST routes already persist on-demand. This flusher covers writes that reach
-    the simulator via OPC-UA (e.g. Ti updates from the Fuzzy/RL AI engine) which
+    the twin via OPC-UA (e.g. Ti updates from the Fuzzy/RL AI engine) which
     otherwise live only in memory and are lost on restart.
     """
     _log = structlog.get_logger()
     while not stop_event.is_set():
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(stop_event.wait(), timeout=interval_s)
-        for cid in adapter.consume_dirty_cids():
+        for cid in await client.consume_dirty_cids():
             try:
-                await persist_sim_config(adapter, repo, cid)
-                await _mirror_sim_pid_params(adapter, repo, cid)
+                await persist_sim_config(client, repo, cid)
+                await _mirror_sim_pid_params(client, repo, cid)
             except Exception:
                 _log.exception("sim_persist_flush_failed", controller_id=cid)
 
 
 async def _mirror_sim_pid_params(
-    adapter,  # noqa: ANN001
+    client: SimulatorClient,
     repo: SQLiteRepository,
     controller_id: int,
 ) -> None:
@@ -170,7 +173,7 @@ async def _mirror_sim_pid_params(
         return
     if controller.execution_mode is not ExecutionMode.SUPERVISORY:
         return
-    st = adapter.get_pid_status(controller_id)
+    st = await client.get_pid_status(controller_id)
     p = controller.pid_params
     if (p.gain, p.reset, p.rate) == (st["kp"], st["ti"], st["td"]):
         return
@@ -274,6 +277,31 @@ async def _retention_cleanup(
         await asyncio.sleep(interval_hours * 3600)
 
 
+#: Boot budget for the standalone simulator twin to answer GET /health. The
+#: daemon never runs simulator dynamics itself now, so a controller
+#: registration or /start issued before the twin process is listening would
+#: just 502 — better to block boot with a clear log than limp along degraded.
+_SIMULATOR_READY_TIMEOUT_S = 30.0
+_SIMULATOR_READY_BACKOFF_S = 1.0
+
+
+async def _wait_for_simulator_twin(client: SimulatorClient, url: str) -> None:
+    """Block until the twin process answers GET /health, or raise."""
+    deadline = time.monotonic() + _SIMULATOR_READY_TIMEOUT_S
+    while True:
+        if await client.health():
+            return
+        if time.monotonic() >= deadline:
+            logger.error(
+                "simulator_twin_unreachable", url=url, timeout_s=_SIMULATOR_READY_TIMEOUT_S,
+            )
+            raise RuntimeError(
+                f"Simulator twin at {url} did not become ready within "
+                f"{_SIMULATOR_READY_TIMEOUT_S:.0f}s"
+            )
+        await asyncio.sleep(_SIMULATOR_READY_BACKOFF_S)
+
+
 async def run_daemon(settings: CoreSettings) -> None:
     """Bootstrap and run the backend daemon until interrupted."""
     logger.info(
@@ -336,11 +364,13 @@ async def run_daemon(settings: CoreSettings) -> None:
 
     # Phase 4: Adapter factory (simulator or OPC-UA)
     adapter_factory = AdapterFactory(settings)
-    simulator_adapter = adapter_factory.simulator_adapter
-    if simulator_adapter is not None:
+    simulator_client = adapter_factory.simulator_client
+    if simulator_client is not None:
+        await _wait_for_simulator_twin(simulator_client, settings.simulator_url)
+
         controllers = await repo.list_all()
         for ctrl in controllers:
-            simulator_adapter.register_controller(
+            await simulator_client.register_controller(
                 ctrl.id,
                 pv_min=ctrl.pv_scale.eu_min,
                 pv_max=ctrl.pv_scale.eu_max,
@@ -353,30 +383,30 @@ async def run_daemon(settings: CoreSettings) -> None:
         # Restore persisted simulator configs from DB
         sim_configs = await repo.list_sim_configs()
         for cfg in sim_configs:
-            simulator_adapter.load_sim_config(cfg)
+            await simulator_client.load_sim_config(cfg)
         if sim_configs:
             logger.info("simulator_configs_restored", count=len(sim_configs))
 
-        simulator_adapter.start_opcua()
-        logger.info("opcua_server_started", port=settings.simulator_port)
-        simulator_adapter.start()
-        logger.info("simulator_started", port=settings.simulator_port)
+        # The twin owns its own OPC-UA server lifecycle end-to-end; POST
+        # /start is idempotent (the twin always has >=1 loop running once
+        # started, per its own boot contract).
+        await simulator_client.start()
+        logger.info("simulator_started", url=settings.simulator_url)
     else:
         logger.info("simulator_disabled", hint="set SPID_SIMULATOR_ENABLED=true to enable")
 
     # Phase 3b: OPC-UA adapter lifecycle
     opcua_adapter = adapter_factory.opcua_adapter
     if opcua_adapter is not None:
-        if simulator_adapter is not None:
+        if simulator_client is not None:
             # The twin owns the address space, so both the node ids and the
             # Mode encoding come from it and not from the project's
             # tag_bindings (empty for every simulator-registered controller).
             # Same binding is applied on POST /controllers and on project
             # open — see bind_opcua_client.
-            bound = bind_opcua_client(
-                opcua_adapter,
-                simulator_adapter,
-                list(simulator_adapter._opcua_server.controller_node_ids),
+            twin_controller_ids = await simulator_client.controller_ids()
+            bound = await bind_opcua_client(
+                opcua_adapter, simulator_client, twin_controller_ids,
             )
             logger.info("opcua_adapter_registered_from_simulator", controllers=bound)
         else:
@@ -533,7 +563,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         repo=repo,
         loop_manager=loop_manager,
         projects_dir=settings.projects_dir,
-        simulator_adapter=simulator_adapter,
+        simulator_client=simulator_client,
         daemon_state=daemon_state,
         opcua_adapter=opcua_adapter,
         db_worker=db_worker,
@@ -548,7 +578,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         user_repo=user_repo,
         loop_manager=loop_manager,
         settings=settings,
-        simulator_adapter=simulator_adapter,
+        simulator_client=simulator_client,
         opcua_adapter=opcua_adapter,
         stats_workers=loop_manager.get_stats_workers(),
         ai_workers=loop_manager.get_ai_workers(),
@@ -615,9 +645,9 @@ async def run_daemon(settings: CoreSettings) -> None:
 
     # Simulator config flusher (drains dirty set from OPC-UA-initiated writes)
     sim_flush_task: asyncio.Task | None = None
-    if simulator_adapter is not None:
+    if simulator_client is not None:
         sim_flush_task = asyncio.create_task(
-            _sim_persist_flusher(simulator_adapter, repo, stop_event)
+            _sim_persist_flusher(simulator_client, repo, stop_event)
         )
 
     # Run uvicorn and wait for shutdown signal concurrently
@@ -636,22 +666,23 @@ async def run_daemon(settings: CoreSettings) -> None:
         # stop_event already set — let the flusher complete one last drain
         with contextlib.suppress(Exception):
             await asyncio.wait_for(sim_flush_task, timeout=3.0)
-        if simulator_adapter is not None:
-            for cid in simulator_adapter.consume_dirty_cids():
+        if simulator_client is not None:
+            for cid in await simulator_client.consume_dirty_cids():
                 with contextlib.suppress(Exception):
-                    await persist_sim_config(simulator_adapter, repo, cid)
+                    await persist_sim_config(simulator_client, repo, cid)
     server.should_exit = True
     await server_task
     await telemetry_pub.stop()
     io_worker.stop()
     db_worker.stop()
     trend_buffer_worker.stop()
-    # Stop OPC-UA client BEFORE simulator (client depends on server)
+    # Stop OPC-UA client BEFORE closing the simulator client — the twin owns
+    # its own OPC-UA server and simulation lifecycle end to end; the daemon
+    # only closes its outbound RPC connection, never the twin process.
     if opcua_adapter is not None:
         opcua_adapter.stop()
-    if simulator_adapter is not None:
-        simulator_adapter.stop()
-        simulator_adapter.stop_opcua()
+    if simulator_client is not None:
+        await simulator_client.aclose()
     alarm_worker.stop()
     loop_manager.stop_all()
     bus.stop()

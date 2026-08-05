@@ -26,6 +26,7 @@ import sqlite3
 import time
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
@@ -323,14 +324,19 @@ class TestConcurrentWriters:
 
 
 class _StubAdapter:
-    """Minimal stand-in exposing only what persist_sim_config reads."""
+    """Minimal stand-in exposing only what persist_sim_config reads.
+
+    Mirrors the async ``SimulatorClient`` contract: ``get_config_dict`` is
+    awaitable and an unknown controller surfaces as ``HTTPException(404)``
+    (the twin REST service's translation), not ``KeyError``.
+    """
 
     def __init__(self, known: bool = True) -> None:
         self._known = known
 
-    def get_config_dict(self, controller_id: int) -> dict:
+    async def get_config_dict(self, controller_id: int) -> dict:
         if not self._known:
-            raise KeyError(controller_id)
+            raise HTTPException(status_code=404, detail="Controller not registered")
         return {
             "controller_id": controller_id, "preset": "TEMPERATURE",
             "gain": 1.5, "tau1": 60.0, "tau2": 20.0, "dead_time": 10.0,

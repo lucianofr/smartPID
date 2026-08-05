@@ -192,7 +192,17 @@ class TestConfiguracaoSimulador:
                     ),
                 )
                 saved = adapter.get_config_dict(1)
-                assert await persist_sim_config(adapter, repo, 1) is True
+
+                class _SyncAdapterAsClient:
+                    """Async shim: drives persist_sim_config's SimulatorClient-shaped
+                    contract straight off a real SimulatorAdapter, so this test still
+                    exercises the adapter's actual field set (see docstring above) —
+                    the round-trip under test is repo persistence, not the RPC hop."""
+
+                    async def get_config_dict(self, controller_id: int) -> dict:
+                        return adapter.get_config_dict(controller_id)
+
+                assert await persist_sim_config(_SyncAdapterAsClient(), repo, 1) is True
             finally:
                 adapter.stop()
 

@@ -10,7 +10,7 @@ from smart_pid_domain.dtos.auth import UserClaims
 from smart_pid_domain.enums import UserRole
 
 if TYPE_CHECKING:
-    from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
+    from smart_pid_core.adapters.outbound.simulator_client import SimulatorClient
     from smart_pid_core.adapters.outbound.ai_repo import AIRepository
     from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
     from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
@@ -150,14 +150,14 @@ def require_admin(
 
 
 
-def get_simulator_adapter(request: Request) -> SimulatorAdapter:
-    adapter = getattr(request.app.state, "simulator_adapter", None)
-    if adapter is None:
+def get_simulator_client(request: Request) -> SimulatorClient:
+    client = getattr(request.app.state, "simulator_client", None)
+    if client is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Simulator not enabled",
         )
-    return adapter
+    return client
 
 
 def get_opcua_adapter(request: Request) -> OPCUAAdapter:

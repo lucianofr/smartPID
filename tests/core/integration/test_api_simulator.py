@@ -100,7 +100,7 @@ class TestSimulatorPIDEndpoints:
         admin_headers: dict[str, str],
         sim_api_deps: dict,
     ) -> None:
-        sim_api_deps["simulator_adapter"].register_controller(1)
+        await sim_api_deps["simulator_client"].register_controller(1)
         resp = await client_with_simulator.post(
             "/simulator/1/pid/params",
             json={"controller_id": 1, "kp": 2.0, "ti": 5.0, "td": 1.0},
@@ -116,7 +116,7 @@ class TestSimulatorPIDEndpoints:
         admin_headers: dict[str, str],
         sim_api_deps: dict,
     ) -> None:
-        sim_api_deps["simulator_adapter"].register_controller(1)
+        await sim_api_deps["simulator_client"].register_controller(1)
         resp = await client_with_simulator.post(
             "/simulator/1/pid/mode",
             json={"controller_id": 1, "mode": "AUTO"},
@@ -131,9 +131,9 @@ class TestSimulatorPIDEndpoints:
         admin_headers: dict[str, str],
         sim_api_deps: dict,
     ) -> None:
-        adapter = sim_api_deps["simulator_adapter"]
-        adapter.register_controller(1)
-        adapter.set_pid_params(1, kp=3.0, ti=8.0, td=0.5)
+        client = sim_api_deps["simulator_client"]
+        await client.register_controller(1)
+        await client.set_pid_params(1, kp=3.0, ti=8.0, td=0.5)
         resp = await client_with_simulator.get(
             "/simulator/1/pid/status", headers=admin_headers,
         )

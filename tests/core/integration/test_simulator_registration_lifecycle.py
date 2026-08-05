@@ -9,6 +9,7 @@ the entry survived the controller.
 """
 from __future__ import annotations
 
+import socket
 import uuid
 from typing import TYPE_CHECKING
 
@@ -17,19 +18,26 @@ import pytest
 
 from smart_pid_core.adapters.inbound.api.app import create_app
 from smart_pid_core.adapters.inbound.api.auth import create_access_token, hash_password
-from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
+from smart_pid_core.adapters.outbound.simulator_client import SimulatorClient
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
 from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.config import CoreSettings
+from smart_pid_core.simulator_service import app as twin_app
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from fastapi import FastAPI
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
 
 
 @pytest.fixture
@@ -40,10 +48,14 @@ async def deps(tmp_path) -> AsyncIterator[dict]:
     ``register_controller(1)`` up front, which is precisely the state this bug
     hides in — the first controller created through the API is assigned id 1,
     so a pre-registered id 1 would make every assertion here pass vacuously.
+    (The twin's own boot always seeds id 0 — see the module docstring on
+    ``simulator_adapter.start()`` — but that lives in a disjoint id space
+    from the repo's autoincrement, which starts at 1.)
 
-    ``SimulatorAdapter`` is the real thing. Its ``OPCUAServer`` is constructed
-    but never started, so nothing binds a port; ``register_controller`` falls
-    through to the pre-start branch that only records the id.
+    The twin is the real thing: real ``SimulatorAdapter``, real OPC-UA
+    server, run as its own FastAPI app and reached only over
+    ``SimulatorClient`` via an in-process ASGI transport — the daemon has no
+    simulator dynamics of its own to construct here any more.
     """
     repo = SQLiteRepository(tmp_path / "test.spid")
     await repo.initialize()
@@ -55,28 +67,34 @@ async def deps(tmp_path) -> AsyncIterator[dict]:
         jwt_secret="test-secret-key-minimum-32-bytes!",
         simulator_enabled=True,
         simulator_interval_ms=50,
+        simulator_port=_free_port(),
     )  # type: ignore[call-arg]
     admin = await user_repo.create("admin", hash_password("admin"), "admin")
-    adapter = SimulatorAdapter(settings=settings)
 
-    yield {
-        "repo": repo,
-        "historian": SQLiteHistorian(repo.session_factory),
-        "user_repo": user_repo,
-        "audit_repo": AuditRepository(repo.session_factory),
-        "loop_manager": LoopManager(bus=bus),
-        "settings": settings,
-        "simulator_adapter": adapter,
-        "headers": {
-            "Authorization": "Bearer "
-            + create_access_token(
-                user_id=admin.id, username=admin.username, role="admin",
-                secret=settings.jwt_secret,
-            ),
-        },
-    }
+    twin_app.state.settings = settings
+    async with twin_app.router.lifespan_context(twin_app):
+        transport = httpx.ASGITransport(app=twin_app)
+        simulator_client = SimulatorClient(base_url="http://simulator", transport=transport)
 
-    adapter.stop()
+        yield {
+            "repo": repo,
+            "historian": SQLiteHistorian(repo.session_factory),
+            "user_repo": user_repo,
+            "audit_repo": AuditRepository(repo.session_factory),
+            "loop_manager": LoopManager(bus=bus),
+            "settings": settings,
+            "simulator_client": simulator_client,
+            "twin_app": twin_app,
+            "headers": {
+                "Authorization": "Bearer "
+                + create_access_token(
+                    user_id=admin.id, username=admin.username, role="admin",
+                    secret=settings.jwt_secret,
+                ),
+            },
+        }
+        await simulator_client.aclose()
+
     bus.stop()
     await user_repo.close()
     await repo.close()
@@ -86,7 +104,7 @@ def _build_app(deps: dict, *, simulator: bool) -> FastAPI:
     """Wire an app with the simulator either attached or absent.
 
     ``simulator=False`` reproduces ``SPID_SIMULATOR_ENABLED=false``, where
-    ``AdapterFactory.simulator_adapter`` is ``None``.
+    ``AdapterFactory.simulator_client`` is ``None``.
     """
     return create_app(
         repo=deps["repo"],
@@ -95,7 +113,7 @@ def _build_app(deps: dict, *, simulator: bool) -> FastAPI:
         loop_manager=deps["loop_manager"],
         settings=deps["settings"],
         audit_repo=deps["audit_repo"],
-        simulator_adapter=deps["simulator_adapter"] if simulator else None,
+        simulator_client=deps["simulator_client"] if simulator else None,
     )
 
 
@@ -137,7 +155,7 @@ class TestCreateRegistersWithSimulator:
         ``SimulatorAdapter.set_preset``.
         """
         cid = await _create(client, deps)
-        assert deps["simulator_adapter"].has_controller(cid)
+        assert await deps["simulator_client"].has_controller(cid)
 
         resp = await client.post(
             "/simulator/preset",
@@ -168,14 +186,14 @@ class TestCreateRegistersWithSimulator:
     ) -> None:
         """pv_min/pv_max drive auto-excitation span, so they must not default.
 
-        Reads private sim state — the same idiom the existing
-        ``test_simulator_adapter.py`` unit tests use — because no public
-        endpoint reports the registered span.
+        Reads private sim state off the twin app's live adapter — the same
+        idiom the existing ``test_simulator_adapter.py`` unit tests use —
+        because no public endpoint reports the registered span.
         """
         cid = await _create(
             client, deps, pv_scale={"eu_min": 20.0, "eu_max": 200.0, "unit": "degC"},
         )
-        sim = deps["simulator_adapter"]._controllers[cid]
+        sim = deps["twin_app"].state.adapter._controllers[cid]
         assert (sim.pv_min, sim.pv_max) == (20.0, 200.0)
 
 
@@ -193,39 +211,44 @@ class TestSimulatorLoopsAreIndependentOfControllers:
     async def test_deleting_a_controller_leaves_its_twin_running(
         self, client: httpx.AsyncClient, deps: dict,
     ) -> None:
-        adapter = deps["simulator_adapter"]
+        sim = deps["simulator_client"]
         cid = await _create(client, deps)
-        assert adapter.has_controller(cid)
+        assert await sim.has_controller(cid)
 
         resp = await client.delete(f"/controllers/{cid}", headers=deps["headers"])
         assert resp.status_code == 204, resp.text
-        assert adapter.has_controller(cid)
+        assert await sim.has_controller(cid)
 
     @pytest.mark.asyncio
     async def test_a_loop_can_be_created_without_any_controller(
         self, client: httpx.AsyncClient, deps: dict,
     ) -> None:
-        adapter = deps["simulator_adapter"]
+        sim = deps["simulator_client"]
         resp = await client.post(
             "/simulator/loops",
             json={"controller_id": 4242, "pv_min": 0.0, "pv_max": 100.0},
             headers=deps["headers"],
         )
         assert resp.status_code == 200, resp.text
-        assert adapter.has_controller(4242)
+        assert await sim.has_controller(4242)
 
     @pytest.mark.asyncio
     async def test_create_allocates_an_id_when_none_is_given(
         self, client: httpx.AsyncClient, deps: dict,
     ) -> None:
-        adapter = deps["simulator_adapter"]
+        sim = deps["simulator_client"]
         resp = await client.post(
             "/simulator/loops",
             json={"controller_id": None, "pv_min": 0.0, "pv_max": 100.0},
             headers=deps["headers"],
         )
         assert resp.status_code == 200, resp.text
-        assert any(adapter.has_controller(i) for i in range(1, 50))
+        found = False
+        for i in range(1, 50):
+            if await sim.has_controller(i):
+                found = True
+                break
+        assert found
 
     @pytest.mark.asyncio
     async def test_creating_an_existing_loop_is_a_conflict(
@@ -247,15 +270,15 @@ class TestSimulatorLoopsAreIndependentOfControllers:
     async def test_delete_drops_the_loop_and_routes_stop_answering(
         self, client: httpx.AsyncClient, deps: dict,
     ) -> None:
-        adapter = deps["simulator_adapter"]
+        sim = deps["simulator_client"]
         cid = await _create(client, deps)
-        assert adapter.has_controller(cid)
+        assert await sim.has_controller(cid)
 
         resp = await client.delete(
             f"/simulator/loops/{cid}", headers=deps["headers"],
         )
         assert resp.status_code == 204, resp.text
-        assert not adapter.has_controller(cid)
+        assert not await sim.has_controller(cid)
 
         ghost = await client.post(
             "/simulator/preset",
@@ -348,7 +371,7 @@ class TestUnknownIdIsAnHonest404:
 
 
 class TestSimulatorDisabled:
-    """``simulator_adapter is None`` must not affect controller CRUD."""
+    """``simulator_client is None`` must not affect controller CRUD."""
 
     @pytest.mark.asyncio
     async def test_create_and_delete_still_succeed(

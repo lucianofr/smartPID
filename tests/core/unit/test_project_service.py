@@ -359,25 +359,27 @@ async def test_import_project_saves_daemon_state(
 
 
 class _FakeTwin:
-    """Simulator stand-in that records start/stop and mints node ids."""
+    """SimulatorClient stand-in that records start/stop and mints node ids."""
 
     def __init__(self) -> None:
         self.running = False
         self.registered: list[int] = []
 
-    def start(self) -> None:
+    async def start(self) -> None:
         self.running = True
 
-    def stop(self) -> None:
+    async def stop(self) -> None:
         self.running = False
 
-    def register_controller(self, cid: int, pv_min: float = 0.0, pv_max: float = 100.0):
+    async def register_controller(
+        self, cid: int, pv_min: float = 0.0, pv_max: float = 100.0,
+    ) -> None:
         self.registered.append(cid)
 
-    def load_sim_config(self, cfg: dict) -> None:  # pragma: no cover - unused here
+    async def load_sim_config(self, cfg: dict) -> None:  # pragma: no cover - unused here
         pass
 
-    def opcua_node_ids(self, cid: int) -> dict[str, str]:
+    async def opcua_node_ids(self, cid: int) -> dict[str, str]:
         return {k: f"ns=2;s=CTRL_{cid}.{k}" for k in ("pv", "sp", "co", "kp", "ti", "td", "mode")}
 
 
@@ -408,7 +410,7 @@ def simulator_service(repo, loop_manager, projects_dir):
         repo=repo,
         loop_manager=loop_manager,
         projects_dir=projects_dir,
-        simulator_adapter=twin,
+        simulator_client=twin,
         opcua_adapter=client,
     )
     return svc, twin, client
