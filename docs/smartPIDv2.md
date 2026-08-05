@@ -21,7 +21,7 @@ Para garantir resiliência extrema e escalabilidade, o sistema abandona a topolo
   * `httpx` ou `requests` (Cliente para API HTTP).
 * **Backend (Core Engine):** 
   * `asyncua` (Comunicação OPC-UA assíncrona).
-  * `stable-baselines3` (RL), `scikit-fuzzy`, `numpy`.
+  * Busca extremum-seeking guiada por recompensa (RL), `scikit-fuzzy`, `numpy`.
   * `control`, `scipy.signal` (Simulador de Processos).
   * `sqlite3` (Banco de Dados em modo WAL).
 * **Middleware (Ponte de Comunicação):** 
@@ -153,11 +153,12 @@ $$T_{ciclo} = L \times 3$$
 ---
 
 ### **4.4. Motor de Aprendizado por Reforço (RL)**
-Caso o usuário selecione a IA do tipo RL (`stable-baselines3` - SAC/PPO):
-* O agente usa **Online Learning** contínuo.
+Caso o usuário selecione a IA do tipo RL:
+* O motor é uma **busca extremum-seeking guiada por recompensa**: sonda o $T_i$ com passo adaptativo e julga cada sonda pela recompensa calculada dos KPIs janelados do StatsWorker (IAE/MAE, score de oscilação, TV).
 * **Funções de Recompensa (Reward Functions)** atreladas ao Objetivo:
   * *SP Tracking/Rejection:* Recompensa positiva por minimizar IAE/ITAE, punindo oscilações da válvula (TV).
   * *Surge Level:* Recompensa positiva por manter a Válvula parada. Só pune o IAE se a PV sair da banda morta.
+* **Parada automática no ótimo (hold):** quando as sondas param de melhorar a recompensa o motor congela ($\gamma = 0$) e só rearma a busca se os KPIs degradarem de forma sustentada ou a oscilação ultrapassar o limiar de emergência.
 * Sujeito aos mesmos Guardrails (limites de $T_i$) e cadência ($T_{ciclo}$).
 
 ### **4.5. Explicabilidade da IA (Log de Raciocínio)**

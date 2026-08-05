@@ -41,11 +41,6 @@ dev = [
     "httpx>=0.28",
 ]
 
-ai = [
-    "stable-baselines3[extra]>=2.3",
-    "gymnasium>=0.29",
-]
-
 [project.scripts]
 smart-pid-core = "smart_pid_core.main:main"
 

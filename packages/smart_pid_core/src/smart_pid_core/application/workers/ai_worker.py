@@ -216,13 +216,7 @@ class AIWorker:
         elif self._ai_config.engine == AIEngine.RL:
             from smart_pid_core.domain.services.rl_engine import RLEngine
 
-            return RLEngine(
-                algorithm="SAC",
-                learning_rate=self._ai_config.rl_learning_rate,
-                fallback_kp=self._ai_config.rl_fallback_kp,
-                fallback_kd=self._ai_config.rl_fallback_kd,
-                train_interval=self._ai_config.rl_train_interval,
-            )
+            return RLEngine()
         return None
 
     def start(self) -> None:
@@ -846,6 +840,18 @@ class AIWorker:
                 error = self._last_sp - self._last_pv
                 delta_error = error - self._prev_error
 
+                # The auto-apply gate: the per-loop `tuning_write_mode`.
+                # IOWorker (SUPERVISORY) and PIDWorker (DDC) both consume
+                # ACTION.AI and used to write `new_ki` to the process
+                # unconditionally, so the faceplate's "auto-apply tuning"
+                # switch governed nothing and every suggestion landed in the
+                # plant. The suggestion is still published either way — the
+                # HMI has to show what the optimizer would do — but only an
+                # `auto_apply` loop lets a consumer act on it.
+                auto_apply = (
+                    self._controller.tuning_write_mode == TuningWriteMode.AUTO_APPLY
+                )
+
                 if self._ai_config.engine == AIEngine.FUZZY:
                     # Both SP_TRACKING and DR consume the StatsWorker
                     # snapshot when available: SP derives its three
@@ -887,7 +893,8 @@ class AIWorker:
                     gamma_value = decision.delta_ti
                     reasoning = decision.reasoning
                 else:
-                    # RL engine (unchanged V1 interface)
+                    # RL engine: pass the gate state so un-applied
+                    # suggestions never arm a judgment.
                     decision = self._engine.compute_gamma(
                         error=error,
                         delta_error=delta_error,
@@ -901,6 +908,7 @@ class AIWorker:
                         limit_max=self._ai_config.limit_max,
                         integral_type=self._integral_type,
                         stats=self._latest_stats,
+                        applied=auto_apply,
                     )
                     new_ki = decision.new_ki
                     gamma_value = decision.gamma
@@ -909,17 +917,6 @@ class AIWorker:
                 old_ki = self._ki_current
                 self._prev_error = error
 
-                # The auto-apply gate: the per-loop `tuning_write_mode`.
-                # IOWorker (SUPERVISORY) and PIDWorker (DDC) both consume
-                # ACTION.AI and used to write `new_ki` to the process
-                # unconditionally, so the faceplate's "auto-apply tuning"
-                # switch governed nothing and every suggestion landed in the
-                # plant. The suggestion is still published either way — the
-                # HMI has to show what the optimizer would do — but only an
-                # `auto_apply` loop lets a consumer act on it.
-                auto_apply = (
-                    self._controller.tuning_write_mode == TuningWriteMode.AUTO_APPLY
-                )
                 # Only advance the engine's working Ti when the value was
                 # actually applied. Compounding un-applied suggestions would
                 # walk `_ki_current` away from the Ti the process is really
@@ -971,10 +968,9 @@ class AIWorker:
                     f"LOG.AI.{self.controller_id}".encode(),
                     msgpack.packb(log_data),
                 )
-
-                # Persist RL state periodically -- it's an I/O-heavy JSON
-                # dump of the replay buffer + model weights, not needed
-                # every cycle. stop() still saves unconditionally.
+                # Persist RL state periodically -- a small JSON dump of
+                # the seek state, not needed every cycle. stop() still
+                # saves unconditionally.
                 self._cycles_since_save += 1
                 if self._cycles_since_save >= 10:
                     self._cycles_since_save = 0
@@ -1023,7 +1019,7 @@ class AIWorker:
         return self._model_dir / f"rl_state_{self.controller_id}.json"
 
     def _save_rl_state(self) -> None:
-        """Persist RL engine state (model weights + replay buffer) to disk."""
+        """Persist RL engine state (seek state) to disk."""
         from smart_pid_core.domain.services.rl_engine import RLEngine
 
         if not isinstance(self._engine, RLEngine) or self._model_dir is None:
@@ -1034,16 +1030,15 @@ class AIWorker:
             if state_path is not None:
                 state_path.write_text(json.dumps(state), encoding="utf-8")
                 logger.info(
-                    "rl_state_saved cid=%d steps=%d buffer=%d",
+                    "rl_state_saved cid=%d steps=%d",
                     self.controller_id,
                     state.get("step_count", 0),
-                    len(state.get("replay_buffer", [])),
                 )
         except Exception:
             logger.warning("rl_state_save_failed cid=%d", self.controller_id, exc_info=True)
 
     def _load_rl_state(self) -> None:
-        """Restore RL engine state from disk (if available)."""
+        """Restore RL engine state (seek state) from disk (if available)."""
         from smart_pid_core.domain.services.rl_engine import RLEngine
 
         if not isinstance(self._engine, RLEngine) or self._model_dir is None:

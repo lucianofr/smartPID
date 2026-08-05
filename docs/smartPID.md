@@ -11,7 +11,7 @@ A ferramenta funciona tanto como um Otimizador de Borda (Edge Optimizer) acoplad
 * **Gráficos em Tempo Real:** `pyqtgraph`. Muito mais rápido que o Matplotlib (essencial para renderizar a 30~60 FPS sem travar a UI).
 * **Comunicação:** `asyncua`. A biblioteca Python mais moderna para OPC UA, suportando operações assíncronas vitais para não travar a interface.
 * **Barramento de Mensageria:** `pyzmq` (ZeroMQ).
-* **IA e Matemática:** `stable-baselines3` (RL), `scikit-fuzzy`, `numpy`, `scipy.signal` e `control`.
+* **IA e Matemática:** busca extremum-seeking guiada por recompensa (RL), `scikit-fuzzy`, `numpy`, `scipy.signal` e `control`.
 * **Banco de Dados:** `sqlite3`.
 
 ---
@@ -144,11 +144,12 @@ $$T_{ciclo} = L \times 3$$
 ---
 
 ### **4.4. Motor de Aprendizado por Reforço (RL)**
-Caso o usuário selecione a IA do tipo RL (Agente Autônomo com `stable-baselines3` - SAC/PPO):
-* O agente usa **Online Learning** contínuo.
+Caso o usuário selecione a IA do tipo RL:
+* O motor é uma **busca extremum-seeking guiada por recompensa**: sonda o $T_i$ com passo adaptativo e julga cada sonda pela recompensa calculada dos KPIs janelados do StatsWorker (IAE/MAE, score de oscilação, Total Variation - TV).
 * **Funções de Recompensa (Reward Functions)** atreladas ao Objetivo (Seção 4.1):
   * *SP Tracking/Rejection:* Recompensa positiva pela minimização de IAE (Erro) / ITAE, punindo severamente oscilações (Total Variation - TV).
   * *Surge Level:* Recompensa positiva por manter a Válvula (CO) parada. Só pune o Erro (IAE) se a PV sair da banda morta configurada.
+* **Parada automática no ótimo (hold):** quando as sondas param de melhorar a recompensa o motor congela ($\gamma = 0$) e só rearma a busca se os KPIs degradarem de forma sustentada ou a oscilação ultrapassar o limiar de emergência.
 * Sujeito aos mesmos Guardrails (limites de $T_i$ Min/Max) e à mesma cadência ($T_{ciclo}$) da lógica Fuzzy.
 
 ### **4.5. Explicabilidade da IA (Log de Raciocínio)**
