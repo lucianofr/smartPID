@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import aiosqlite
 
-from smart_pid_core.adapters.outbound.simulator_client import bind_opcua_client
+from smart_pid_core.adapters.inbound.simulator_adapter import bind_opcua_client
 from smart_pid_domain.dtos.project import (
     ProjectListItem,
     ProjectResponse,
@@ -16,7 +16,6 @@ from smart_pid_domain.dtos.project import (
 )
 
 if TYPE_CHECKING:
-    from smart_pid_core.adapters.outbound.simulator_client import SimulatorClient
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
     from smart_pid_core.application.daemon_state import DaemonState
     from smart_pid_core.application.loop_manager import LoopManager
@@ -49,7 +48,7 @@ class ProjectService:
         repo: SQLiteRepository,
         loop_manager: LoopManager,
         projects_dir: Path,
-        simulator_client: SimulatorClient | None = None,
+        simulator_adapter: object | None = None,
         daemon_state: DaemonState | None = None,
         opcua_adapter: object | None = None,
         db_worker: DBWorker | None = None,
@@ -59,7 +58,7 @@ class ProjectService:
         self._repo = repo
         self._loop_manager = loop_manager
         self._projects_dir = projects_dir
-        self._simulator_client = simulator_client
+        self._simulator_adapter = simulator_adapter
         self._daemon_state = daemon_state
         self._opcua_adapter = opcua_adapter
         self._db_worker = db_worker
@@ -122,7 +121,7 @@ class ProjectService:
         dest = self._safe_project_path(name)
         if dest.exists():
             raise FileExistsError(f"Project '{name}' already exists")
-        await self._stop_simulator()
+        self._stop_simulator()
         self._stop_opcua()
         await self._stop_db_worker()
         await self._repo.reopen(dest)
@@ -143,7 +142,7 @@ class ProjectService:
         path = self._safe_project_path(name)
         if not path.exists():
             raise FileNotFoundError(f"Project '{name}' not found")
-        await self._stop_simulator()
+        self._stop_simulator()
         await self._stop_db_worker()
         await self._repo.reopen(path)
         await self._load_simulator_configs()
@@ -170,7 +169,7 @@ class ProjectService:
             raise FileExistsError(f"Project '{name}' already exists")
         await self._assert_valid_archive(source)
         os.replace(source, dest)
-        await self._stop_simulator()
+        self._stop_simulator()
         await self._stop_db_worker()
         await self._repo.reopen(dest)
         # The archive still carries the name it was exported under, but the
@@ -263,20 +262,22 @@ class ProjectService:
 
     async def _load_simulator_configs(self) -> None:
         """Register controllers and restore simulator state after project switch."""
-        if self._simulator_client is None:
+        if self._simulator_adapter is None:
             return
         # Register all controllers so OPC-UA nodes are created
-        controllers = await self._repo.list_all()
-        for ctrl in controllers:
-            await self._simulator_client.register_controller(
-                ctrl.id,
-                pv_min=ctrl.pv_scale.eu_min,
-                pv_max=ctrl.pv_scale.eu_max,
-            )
+        if hasattr(self._simulator_adapter, "register_controller"):
+            controllers = await self._repo.list_all()
+            for ctrl in controllers:
+                self._simulator_adapter.register_controller(
+                    ctrl.id,
+                    pv_min=ctrl.pv_scale.eu_min,
+                    pv_max=ctrl.pv_scale.eu_max,
+                )
         # Restore simulator preset/PID state
-        configs = await self._repo.list_sim_configs()
-        for cfg in configs:
-            await self._simulator_client.load_sim_config(cfg)
+        if hasattr(self._simulator_adapter, "load_sim_config"):
+            configs = await self._repo.list_sim_configs()
+            for cfg in configs:
+                self._simulator_adapter.load_sim_config(cfg)
 
     async def _start_control_loops(self) -> None:
         """Start PID/Monitor loops for all controllers in the active project.
@@ -314,10 +315,12 @@ class ProjectService:
             active = []
         self._alarm_worker.reload_project(configs, controllers, active)
 
-    async def _stop_simulator(self) -> None:
-        """Stop the twin (via its client) if present."""
-        if self._simulator_client is not None:
-            await self._simulator_client.stop()
+    def _stop_simulator(self) -> None:
+        """Stop the simulator adapter if present."""
+        if self._simulator_adapter is not None and hasattr(
+            self._simulator_adapter, "stop"
+        ):
+            self._simulator_adapter.stop()
 
     async def _resync_simulator_link(self) -> None:
         """Bring the twin and its OPC-UA client back up after a project switch.
@@ -333,21 +336,22 @@ class ProjectService:
         No-op without a simulator: against a real DCS the endpoint comes from
         the project (``_load_opcua_endpoint``), not from us.
         """
-        sim = self._simulator_client
+        sim = self._simulator_adapter
         if sim is None:
             return
-        await sim.start()
-        if self._opcua_adapter is None:
+        if hasattr(sim, "start"):
+            sim.start()
+        if self._opcua_adapter is None or not hasattr(sim, "opcua_node_ids"):
             return
         controllers = await self._repo.list_all()
-        await bind_opcua_client(self._opcua_adapter, sim, [c.id for c in controllers])
+        bind_opcua_client(self._opcua_adapter, sim, [c.id for c in controllers])
         self._opcua_adapter.start()
 
     async def _load_opcua_endpoint(self) -> None:
         """Read opcua_endpoint from metadata and auto-connect or stop adapter."""
         if self._opcua_adapter is None:
             return
-        if self._simulator_client is not None:
+        if self._simulator_adapter is not None:
             # The twin owns the address space and the endpoint the factory
             # already pointed the client at; a stale real-DCS endpoint saved in
             # the project must not steal the client away from it.

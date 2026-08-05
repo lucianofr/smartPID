@@ -219,7 +219,7 @@ class TestProjectServiceOPCUA:
             repo=mock_repo,
             loop_manager=mock_loop_manager,
             projects_dir=tmp_path / "projects",
-            simulator_client=None,
+            simulator_adapter=None,
             daemon_state=None,
             opcua_adapter=mock_opcua_adapter,
         )
@@ -245,7 +245,7 @@ class TestProjectServiceOPCUA:
             repo=mock_repo,
             loop_manager=mock_loop_manager,
             projects_dir=tmp_path / "projects",
-            simulator_client=None,
+            simulator_adapter=None,
             daemon_state=None,
             opcua_adapter=mock_opcua_adapter,
         )
@@ -264,7 +264,7 @@ class TestProjectServiceOPCUA:
             repo=mock_repo,
             loop_manager=mock_loop_manager,
             projects_dir=tmp_path / "projects",
-            simulator_client=None,
+            simulator_adapter=None,
             daemon_state=None,
             opcua_adapter=mock_opcua_adapter,
         )

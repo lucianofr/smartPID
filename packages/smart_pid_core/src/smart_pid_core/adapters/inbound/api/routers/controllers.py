@@ -17,9 +17,9 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
     require_admin,
     require_user,
 )
+from smart_pid_core.adapters.inbound.simulator_adapter import bind_opcua_client
 from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository  # noqa: TC001
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
-from smart_pid_core.adapters.outbound.simulator_client import bind_opcua_client
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.application.loop_manager import LoopManager  # noqa: TC001
 from smart_pid_core.application.workers.alarm_worker import AlarmWorker  # noqa: TC001
@@ -70,35 +70,35 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _sync_simulator_registration(
+def _sync_simulator_registration(
     request: Request, controller: Controller | None, controller_id: int,
 ) -> None:
     """Add or drop a controller's simulator state to match the database.
 
     Pass ``controller`` to register it, or ``None`` to unregister
     ``controller_id``. No-op when the simulator is disabled
-    (``SPID_SIMULATOR_ENABLED=false`` leaves ``app.state.simulator_client``
+    (``SPID_SIMULATOR_ENABLED=false`` leaves ``app.state.simulator_adapter``
     as ``None``), so controller CRUD is unaffected in that deployment.
 
     Registration used to happen only at daemon startup and project open, so a
     controller created through ``POST /controllers`` was invisible to the
     simulator until the daemon restarted and every ``/simulator/*`` call for
     it failed. Deregistration is the mirror: a deleted loop that stays
-    registered keeps being integrated by the twin and keeps answering
+    registered keeps being integrated by the tick loop and keeps answering
     ``/simulator/*``.
 
     Failures are logged, never raised: the controller row is already
-    committed by the time this runs, so turning a twin hiccup into a 5xx
+    committed by the time this runs, so turning an adapter hiccup into a 5xx
     would report failure for a create that actually succeeded.
     """
-    client = getattr(request.app.state, "simulator_client", None)
-    if client is None:
+    adapter = getattr(request.app.state, "simulator_adapter", None)
+    if adapter is None:
         return
     try:
         if controller is None:
-            await client.unregister_controller(controller_id)
+            adapter.unregister_controller(controller_id)
         else:
-            await client.register_controller(
+            adapter.register_controller(
                 controller.id,
                 pv_min=controller.pv_scale.eu_min,
                 pv_max=controller.pv_scale.eu_max,
@@ -454,10 +454,10 @@ async def create_controller(
     saved = await repo.save(controller)
     # The simulator only learned about controllers at startup / project open,
     # so without this the new loop is a ghost to /simulator/* until restart.
-    await _sync_simulator_registration(request, saved, saved.id)
+    _sync_simulator_registration(request, saved, saved.id)
     # Must follow the simulator sync: in simulator mode that call is what
     # mints the OPC-UA nodes this registration points the client adapter at.
-    await _sync_opcua_registration(request, saved)
+    _sync_opcua_registration(request, saved)
     # Same "startup / project open only" gap as the simulator: without
     # this, a controller created here has no PIDWorker/AIWorker/StatsWorker
     # (commands 404 with ControllerNotFoundError) and, even once started,
@@ -596,7 +596,7 @@ async def update_controller(
     return _to_response(controller)
 
 
-async def _sync_opcua_registration(request: Request, controller: Controller) -> None:
+def _sync_opcua_registration(request: Request, controller: Controller) -> None:
     """Point the OPC-UA client adapter at a controller created at runtime.
 
     ``run_daemon`` does this for every controller it finds at boot and is
@@ -617,10 +617,10 @@ async def _sync_opcua_registration(request: Request, controller: Controller) -> 
     adapter = getattr(request.app.state, "opcua_adapter", None)
     if adapter is None:
         return
-    sim = getattr(request.app.state, "simulator_client", None)
+    sim = getattr(request.app.state, "simulator_adapter", None)
     try:
         if sim is not None:
-            await bind_opcua_client(adapter, sim, [controller.id])
+            bind_opcua_client(adapter, sim, [controller.id])
         else:
             _reregister_opcua(request, controller)
     except Exception:

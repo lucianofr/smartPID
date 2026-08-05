@@ -1,47 +1,17 @@
 services:
-  # Digital-twin simulator: a standalone process exposing only an OPC-UA server
-  # (the virtual plant) plus a loopback/docker-network REST control surface.
-  # No host ports are published — the daemon reaches it over the compose
-  # network by service name. The twin owns its own lifecycle; the daemon never
-  # stops it.
-  smartpid-sim:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: smartpid:latest
-    container_name: smartpid-sim
-    command: smart-pid-sim
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      # Advertised OPC-UA host must be resolvable by the daemon container;
-      # asyncua clients rewrite their connection URL to whatever the server
-      # advertises, so advertising "localhost" would point the daemon at
-      # itself. Bind stays 0.0.0.0 (set inside the twin via socket_address).
-      - SPID_SIMULATOR_ADVERTISED_HOST=smartpid-sim
-
   smartpid:
     build:
       context: .
       dockerfile: Dockerfile
     image: smartpid:latest
     container_name: smartpid
-    command: smart-pid-core
     restart: unless-stopped
-    depends_on:
-      - smartpid-sim
     ports:
       - "8032:8000"
     env_file:
       - .env
     volumes:
       - smartpid-data:/data
-    environment:
-      # Point the daemon at the standalone twin over the compose network.
-      - SPID_SIMULATOR_ENABLED=true
-      - SPID_SIMULATOR_URL=http://smartpid-sim:8049
-      - SPID_SIMULATOR_OPCUA_ENDPOINT=opc.tcp://smartpid-sim:4849
 
 volumes:
   smartpid-data:

@@ -42,7 +42,7 @@ from smart_pid_core.application.tuning_store import TuningRecommendationStore
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
 
-    from smart_pid_core.adapters.outbound.simulator_client import SimulatorClient
+    from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
     from smart_pid_core.adapters.outbound.ai_repo import AIRepository
     from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
     from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
@@ -110,7 +110,7 @@ def create_app(
     user_repo: UserRepository,
     loop_manager: LoopManager,
     settings: CoreSettings,
-    simulator_client: SimulatorClient | None = None,
+    simulator_adapter: SimulatorAdapter | None = None,
     opcua_adapter: OPCUAAdapter | None = None,
     stats_workers: dict[int, StatsWorker] | None = None,
     ai_workers: dict[int, object] | None = None,
@@ -141,7 +141,7 @@ def create_app(
     app.state.loop_manager = loop_manager
     app.state.settings = settings
     app.state.project_service = project_service
-    app.state.simulator_client = simulator_client
+    app.state.simulator_adapter = simulator_adapter
     app.state.opcua_adapter = opcua_adapter
     app.state.stats_workers = stats_workers or {}
     app.state.ai_workers = ai_workers or {}

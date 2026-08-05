@@ -13,7 +13,6 @@ from smart_pid_core.adapters.inbound.api.auth import create_access_token, hash_p
 from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
-from smart_pid_core.adapters.outbound.simulator_client import SimulatorClient
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
@@ -21,7 +20,6 @@ from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.application.project_service import ProjectService
 from smart_pid_core.config import CoreSettings
-from smart_pid_core.simulator_service import app as twin_app
 from smart_pid_domain.models.controller import PIDParams
 
 
@@ -187,13 +185,7 @@ async def supervisor_headers(api_deps) -> dict[str, str]:
 
 @pytest.fixture
 async def sim_api_deps(tmp_path):
-    """Create all dependencies for API testing with simulator enabled.
-
-    Backed by a real digital twin (SimulatorAdapter + real OPC-UA server —
-    the same process the daemon talks to in production) reached over
-    SimulatorClient via an in-process ASGI transport rather than a mock: the
-    daemon has zero simulator dynamics of its own to fall back on now.
-    """
+    """Create all dependencies for API testing with simulator enabled."""
     db_path = tmp_path / "test.spid"
     repo = SQLiteRepository(db_path)
     await repo.initialize()
@@ -213,23 +205,20 @@ async def sim_api_deps(tmp_path):
 
     await user_repo.create("admin", _cached_hash("admin"), "admin")
 
-    twin_app.state.settings = settings
-    async with twin_app.router.lifespan_context(twin_app):
-        transport = httpx.ASGITransport(app=twin_app)
-        simulator_client = SimulatorClient(base_url="http://simulator", transport=transport)
-        await simulator_client.register_controller(1)
+    from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
+    simulator_adapter = SimulatorAdapter(settings=settings)
+    simulator_adapter.register_controller(1)
 
-        yield {
-            "repo": repo,
-            "historian": historian,
-            "user_repo": user_repo,
-            "loop_manager": loop_manager,
-            "settings": settings,
-            "bus": bus,
-            "simulator_client": simulator_client,
-            "twin_app": twin_app,
-        }
-        await simulator_client.aclose()
+    yield {
+        "repo": repo,
+        "historian": historian,
+        "user_repo": user_repo,
+        "loop_manager": loop_manager,
+        "settings": settings,
+        "bus": bus,
+        "simulator_adapter": simulator_adapter,
+    }
+    simulator_adapter.stop()
     loop_manager.stop_all()
     bus.stop()
     await user_repo.close()
@@ -245,7 +234,7 @@ async def app_with_simulator(sim_api_deps):
         user_repo=sim_api_deps["user_repo"],
         loop_manager=sim_api_deps["loop_manager"],
         settings=sim_api_deps["settings"],
-        simulator_client=sim_api_deps["simulator_client"],
+        simulator_adapter=sim_api_deps["simulator_adapter"],
     )
 
 

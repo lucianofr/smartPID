@@ -179,10 +179,7 @@ class SimulatorAdapter:
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._pid_engine = PIDEngine()
-        self._opcua_server = OPCUAServer(
-            port=settings.simulator_port,
-            advertised_host=settings.simulator_advertised_host,
-        )
+        self._opcua_server = OPCUAServer(port=settings.simulator_port)
         self._opcua_server.set_on_write(self._on_opcua_write)
         # Controllers whose persistable config changed via OPC-UA since the
         # last flush. Drained by the main-loop flusher through consume_dirty_cids().
@@ -654,29 +651,11 @@ class SimulatorAdapter:
         interval_s = self._settings.simulator_interval_ms / 1000.0
         while not self._stop_event.is_set():
             start = time.monotonic()
-            self._reseed_if_empty()
             self._tick(interval_s)
             elapsed = time.monotonic() - start
             sleep_time = interval_s - elapsed
             if sleep_time > 0:
                 self._stop_event.wait(timeout=sleep_time)
-
-    def _reseed_if_empty(self) -> None:
-        """Guarantee at least one loop for the life of the twin process.
-
-        ``start()`` only seeds the default controller (id=0) once, at boot.
-        ``DELETE /loops/{id}`` (via ``unregister_controller``) can empty
-        ``_controllers`` again afterwards, and nothing else re-seeds it — the
-        twin is meant to always have something to tune, so the tick loop
-        checks on every pass and recreates the default loop the instant it
-        finds none left.
-        """
-        with self._lock:
-            if self._controllers:
-                return
-            self._controllers[0] = _ControllerSim(controller_id=0)
-            self._opcua_server.register_controller(0)
-        logger.info("simulator_loop_reseeded controller_id=0")
 
     def _tick(self, dt: float) -> None:
         with self._lock:

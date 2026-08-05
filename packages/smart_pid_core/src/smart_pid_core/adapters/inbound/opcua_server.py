@@ -31,16 +31,8 @@ class OPCUAServer:
     each containing Float variables PV, SP, CO and Int variables Mode, Status.
     """
 
-    def __init__(self, port: int = 4849, advertised_host: str = "localhost") -> None:
+    def __init__(self, port: int = 4849) -> None:
         self._port = port
-        # The EndpointUrl advertised to clients via GetEndpoints — NOT the
-        # bind address (see _setup_and_serve, which always binds 0.0.0.0).
-        # A client that dials this server, then reconnects to whatever
-        # EndpointUrl the server hands back, ends up at *this* host — which
-        # is unreachable if the client sits in a different container/network
-        # namespace than the twin and the two only share a Docker network
-        # under a service name, not the twin's own hostname.
-        self._advertised_host = advertised_host
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
@@ -61,7 +53,7 @@ class OPCUAServer:
 
     @property
     def endpoint(self) -> str:
-        return f"opc.tcp://{self._advertised_host}:{self._port}"
+        return f"opc.tcp://0.0.0.0:{self._port}"
 
     @property
     def is_running(self) -> bool:
@@ -156,13 +148,6 @@ class OPCUAServer:
         self._server = Server()
         await self._server.init()
         self._server.set_endpoint(self.endpoint)
-        # asyncua binds to self.endpoint's own host by default (see
-        # Server._get_bind_socket_info), which would refuse to listen at all
-        # for a non-local advertised_host. socket_address overrides just the
-        # bind target, independent of what's advertised above — the standard
-        # asyncua knob for "server behind NAT / in a container" (its
-        # docstring names this exact scenario).
-        self._server.socket_address = ("0.0.0.0", self._port)  # noqa: S104
         self._server.set_server_name("SmartPID Simulator")
         self._ns_idx = await self._server.register_namespace(NAMESPACE_URI)
 

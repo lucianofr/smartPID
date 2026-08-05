@@ -1,8 +1,8 @@
-"""Shared helper to persist a SimulatorClient's controller state to the repo.
+"""Shared helper to persist a SimulatorAdapter's controller state to the repo.
 
 Used by:
 - REST router /simulator/... endpoints (explicit user actions).
-- Main-loop background flusher that drains the twin's dirty set after
+- Main-loop background flusher that drains the adapter's dirty set after
   OPC-UA-initiated mutations (e.g. fuzzy-tuned Ti).
 
 Failure policy
@@ -39,13 +39,12 @@ import time
 from typing import TYPE_CHECKING
 
 import structlog
-from fastapi import HTTPException
 from sqlalchemy.exc import OperationalError
 
 from smart_pid_core.adapters.outbound.db_engine import SQLITE_BUSY_TIMEOUT_MS
 
 if TYPE_CHECKING:
-    from smart_pid_core.adapters.outbound.simulator_client import SimulatorClient
+    from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
     from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 
 _log = structlog.get_logger()
@@ -69,22 +68,20 @@ def _is_lock_error(exc: OperationalError) -> bool:
 
 
 async def persist_sim_config(
-    client: SimulatorClient,
+    adapter: SimulatorAdapter,
     repo: SQLiteRepository,
     controller_id: int,
 ) -> bool:
-    """Read current sim state from *client* and persist it via *repo*.
+    """Read current sim state from *adapter* and persist it via *repo*.
 
     Returns ``True`` when the row was written, ``False`` when the controller is
-    unknown to the twin or the write could not be completed. Never raises on
+    unknown to the adapter or the write could not be completed. Never raises on
     lock contention.
     """
     try:
-        cfg = await client.get_config_dict(controller_id)
-    except HTTPException as exc:
-        if exc.status_code == 404:
-            return False
-        raise
+        cfg = adapter.get_config_dict(controller_id)
+    except KeyError:
+        return False
 
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         started = time.monotonic()

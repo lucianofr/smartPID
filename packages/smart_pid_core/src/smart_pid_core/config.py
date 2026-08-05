@@ -78,21 +78,6 @@ class CoreSettings(BaseSettings):
     simulator_enabled: bool = False
     simulator_port: int = 4849
     simulator_interval_ms: int = 100
-    # REST control-plane port for the standalone twin process (smart-pid-sim).
-    simulator_rest_port: int = 8049
-    # Hostname the twin's OPC-UA server advertises in GetEndpoints — NOT the
-    # bind address (always 0.0.0.0). Override with the twin's reachable
-    # hostname (e.g. a Docker service name) when the daemon and twin run in
-    # different containers/network namespaces.
-    simulator_advertised_host: str = "localhost"
-    # Base URL of the standalone simulator twin service (smart-pid-sim). The
-    # daemon never runs simulator dynamics itself; when simulator_enabled it
-    # talks to this over SimulatorClient/OPC-UA instead.
-    simulator_url: str = "http://localhost:8049"
-    # OPC-UA endpoint the twin advertises. None derives it from simulator_url's
-    # host and simulator_port (same-host default); set explicitly when the
-    # twin runs in its own container so the daemon reaches the right host.
-    simulator_opcua_endpoint: str | None = None
 
     # Logging
     log_level: str = "INFO"

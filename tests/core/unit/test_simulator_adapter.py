@@ -40,7 +40,7 @@ def _mock_opcua_server(port: int = 4849) -> MagicMock:
     mock.is_running = False
     mock.controller_node_ids = {}
     mock.port = port
-    mock.endpoint = f"opc.tcp://localhost:{port}"
+    mock.endpoint = f"opc.tcp://0.0.0.0:{port}"
 
     def _start() -> None:
         mock.is_running = True
@@ -546,7 +546,7 @@ class TestSimulatorAdapterDecoupledLifecycle:
 
     def test_opcua_endpoint_property(self, adapter: SimulatorAdapter) -> None:
         port = adapter._settings.simulator_port
-        assert adapter.opcua_endpoint == f"opc.tcp://localhost:{port}"
+        assert adapter.opcua_endpoint == f"opc.tcp://0.0.0.0:{port}"
 
 
 class TestSimulatorAdapterRegistrationLifecycle:

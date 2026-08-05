@@ -1,12 +1,26 @@
 """Tests for AdapterFactory — conditional dependency injection."""
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from smart_pid_core.adapters.factory import AdapterFactory
+from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
 from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
-from smart_pid_core.adapters.outbound.simulator_client import SimulatorClient
 from smart_pid_core.config import CoreSettings
+
+_MOCK_OPCUA = "smart_pid_core.adapters.inbound.simulator_adapter.OPCUAServer"
+
+
+def _patch_opcua_server():
+    """Patch OPCUAServer to avoid real port binding in tests."""
+    from unittest.mock import MagicMock
+
+    mock = MagicMock()
+    mock.is_running = False
+    mock.controller_node_ids = {}
+    return patch(_MOCK_OPCUA, return_value=mock)
 
 
 @pytest.fixture
@@ -28,47 +42,43 @@ def prod_settings() -> CoreSettings:
 
 class TestAdapterFactorySimulator:
     def test_telemetry_source_is_opcua(self, sim_settings: CoreSettings) -> None:
-        factory = AdapterFactory(sim_settings)
-        assert isinstance(factory.telemetry_source, OPCUAAdapter)
+        with _patch_opcua_server():
+            factory = AdapterFactory(sim_settings)
+            assert isinstance(factory.telemetry_source, OPCUAAdapter)
 
     def test_control_writer_is_opcua(self, sim_settings: CoreSettings) -> None:
-        factory = AdapterFactory(sim_settings)
-        assert isinstance(factory.control_writer, OPCUAAdapter)
+        with _patch_opcua_server():
+            factory = AdapterFactory(sim_settings)
+            assert isinstance(factory.control_writer, OPCUAAdapter)
 
     def test_telemetry_and_control_same_instance(self, sim_settings: CoreSettings) -> None:
-        factory = AdapterFactory(sim_settings)
-        assert factory.telemetry_source is factory.control_writer
+        with _patch_opcua_server():
+            factory = AdapterFactory(sim_settings)
+            assert factory.telemetry_source is factory.control_writer
 
-    def test_simulator_client_property(self, sim_settings: CoreSettings) -> None:
-        factory = AdapterFactory(sim_settings)
-        assert factory.simulator_client is not None
-        assert isinstance(factory.simulator_client, SimulatorClient)
+    def test_simulator_adapter_property(self, sim_settings: CoreSettings) -> None:
+        with _patch_opcua_server():
+            factory = AdapterFactory(sim_settings)
+            assert factory.simulator_adapter is not None
+            assert isinstance(factory.simulator_adapter, SimulatorAdapter)
 
     def test_opcua_adapter_always_available(self, sim_settings: CoreSettings) -> None:
-        factory = AdapterFactory(sim_settings)
-        assert factory.opcua_adapter is not None
-        assert isinstance(factory.opcua_adapter, OPCUAAdapter)
+        with _patch_opcua_server():
+            factory = AdapterFactory(sim_settings)
+            assert factory.opcua_adapter is not None
+            assert isinstance(factory.opcua_adapter, OPCUAAdapter)
 
     def test_opcua_connects_to_simulator_port(self, sim_settings: CoreSettings) -> None:
-        factory = AdapterFactory(sim_settings)
-        expected = f"opc.tcp://localhost:{sim_settings.simulator_port}"
-        assert factory.opcua_adapter._endpoint == expected
-
-    def test_opcua_connects_to_explicit_advertised_endpoint(
-        self, sim_settings: CoreSettings,
-    ) -> None:
-        """simulator_opcua_endpoint, when set, wins over the localhost derivation
-        (the twin running in its own container)."""
-        settings = sim_settings.model_copy(
-            update={"simulator_opcua_endpoint": "opc.tcp://twin-host:4849"}
-        )
-        factory = AdapterFactory(settings)
-        assert factory.opcua_adapter._endpoint == "opc.tcp://twin-host:4849"
+        with _patch_opcua_server():
+            factory = AdapterFactory(sim_settings)
+            expected = f"opc.tcp://localhost:{sim_settings.simulator_port}"
+            assert factory.opcua_adapter._endpoint == expected
 
     def test_tag_browser_raises_when_simulator(self, sim_settings: CoreSettings) -> None:
-        factory = AdapterFactory(sim_settings)
-        with pytest.raises(RuntimeError, match="TagBrowser"):
-            _ = factory.tag_browser
+        with _patch_opcua_server():
+            factory = AdapterFactory(sim_settings)
+            with pytest.raises(RuntimeError, match="TagBrowser"):
+                _ = factory.tag_browser
 
 
 class TestAdapterFactoryOPCUA:
@@ -88,9 +98,9 @@ class TestAdapterFactoryOPCUA:
         factory = AdapterFactory(prod_settings)
         assert factory.telemetry_source is factory.control_writer
 
-    def test_simulator_client_is_none(self, prod_settings: CoreSettings) -> None:
+    def test_simulator_adapter_is_none(self, prod_settings: CoreSettings) -> None:
         factory = AdapterFactory(prod_settings)
-        assert factory.simulator_client is None
+        assert factory.simulator_adapter is None
 
     def test_opcua_adapter_property(self, prod_settings: CoreSettings) -> None:
         factory = AdapterFactory(prod_settings)

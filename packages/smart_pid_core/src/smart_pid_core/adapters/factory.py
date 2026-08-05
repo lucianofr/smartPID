@@ -4,36 +4,30 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from smart_pid_core.adapters.outbound.simulator_client import SimulatorClient
     from smart_pid_core.config import CoreSettings
 
 
 class AdapterFactory:
     """Creates and caches adapter instances based on configuration.
 
-    When simulator is enabled, creates a SimulatorClient (async RPC to the
-    standalone twin process — see ``smart_pid_core.simulator_service``) AND
-    an OPCUAAdapter pointed at the twin's OPC-UA endpoint. OPCUAAdapter is
-    the unified I/O path for all modes; the twin itself never runs
-    in-process, so simulator mode differs from real-DCS mode only in where
-    OPCUAAdapter connects and in the presence of SimulatorClient.
+    When simulator is enabled, creates BOTH SimulatorAdapter (process plant + embedded
+    OPC-UA server) AND OPCUAAdapter (client connecting to localhost simulator port).
+    OPCUAAdapter is the unified I/O path for all modes.
     """
 
     def __init__(self, settings: CoreSettings) -> None:
         self._settings = settings
-        self._simulator_client: SimulatorClient | None = None
+        self._simulator_adapter = None
 
         from smart_pid_core.adapters.outbound.opcua_adapter import OPCUAAdapter
 
         if settings.simulator_enabled:
-            from smart_pid_core.adapters.outbound.simulator_client import SimulatorClient
+            from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
 
-            self._simulator_client = SimulatorClient(settings.simulator_url)
-            opcua_endpoint = (
-                settings.simulator_opcua_endpoint
-                or f"opc.tcp://localhost:{settings.simulator_port}"
+            self._simulator_adapter = SimulatorAdapter(settings=settings)
+            sim_settings = settings.model_copy(
+                update={"opcua_endpoint": f"opc.tcp://localhost:{settings.simulator_port}"},
             )
-            sim_settings = settings.model_copy(update={"opcua_endpoint": opcua_endpoint})
             self._opcua_adapter = OPCUAAdapter(settings=sim_settings)
         else:
             self._opcua_adapter = OPCUAAdapter(settings=settings)
@@ -58,9 +52,9 @@ class AdapterFactory:
         return self._opcua_adapter
 
     @property
-    def simulator_client(self):
-        """Return the SimulatorClient if simulator is enabled, else None."""
-        return self._simulator_client
+    def simulator_adapter(self):
+        """Return the SimulatorAdapter if simulator is enabled, else None."""
+        return self._simulator_adapter
 
     @property
     def opcua_adapter(self):

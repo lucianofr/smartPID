@@ -256,17 +256,6 @@ that a single bugfix pass cannot take unilaterally.
     on the VPS link matters.
   - **Source:** `.claude/reports/sre/sre-vps-deploy-20260805.md`
   - **Created:** 2026-08-05
-
-- [ ] **TD-031**: Simulator page keeps a stale loop selection after the last loop is deleted
-  - **Impact:** Low
-  - **Detail:** Deleting every loop via the UI, the watchdog reseeds loop 0 in
-    the twin within one tick, but the page's selected-loop state (chip
-    header, telemetry readouts) does not re-sync until the next status poll
-    lands on an existing id — transient blank header observed in E2E.
-    Cosmetic; data path is correct. Fix: SimulatorPage re-selects the first
-    available loop when its selection disappears from /simulator/status.
-  - **Source:** browser E2E, simulator independence work 2026-08-05
-  - **Created:** 2026-08-05
 ---
 
 # Histórico — registro anterior (TD-000..TD-007, web HMI 2026-06)

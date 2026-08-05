@@ -1,20 +1,21 @@
 """Simulator control router."""
 
 import logging
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_repo,
-    get_simulator_client,
+    get_simulator_adapter,
     require_admin,
     require_user,
 )
 from smart_pid_core.adapters.inbound.sim_persistence import persist_sim_config
-from smart_pid_core.adapters.outbound.simulator_client import (
-    SimulatorClient,
+from smart_pid_core.adapters.inbound.simulator_adapter import (  # noqa: TC001
+    SimulatorAdapter,
     bind_opcua_client,
 )
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository  # noqa: TC001
@@ -47,67 +48,72 @@ def _not_registered(controller_id: int) -> HTTPException:
     )
 
 
-@asynccontextmanager
-async def _sim_controller(client: SimulatorClient, controller_id: int) -> AsyncIterator[None]:
+@contextmanager
+def _sim_controller(adapter: SimulatorAdapter, controller_id: int) -> Iterator[None]:
     """Scope a simulator operation to a controller the simulator actually has.
 
-    Pre-checks membership (one ``GET /controllers`` round trip) so an unknown
-    id is a 404 on *every* route instead of a per-route obligation. The
-    ``except`` guards the race window after that check: SimulatorClient
-    itself already turns any twin 404 into ``HTTPException(404, ...)`` (see
-    ``SimulatorClient._request``), so this just normalizes the detail text to
-    match the pre-check's message instead of whatever the twin worded it.
+    Every mutating adapter method addresses its state as
+    ``self._controllers[controller_id]``, i.e. it signals "not registered"
+    with a bare ``KeyError`` — the same contract as ``SQLiteRepository.get``
+    and ``OPCUAAdapter``. Translating that once, here, is what keeps an
+    unknown id a 404 on *every* route instead of a per-route obligation that
+    three of them silently forgot (``/preset``, ``/parameters``,
+    ``/disturbance`` all answered 500 for a controller the simulator had
+    never heard of).
+
+    The membership check runs first because a few adapter methods
+    (``write_output``) look their controller up with ``dict.get`` and no-op
+    on a miss, which would otherwise report success for a loop that does not
+    exist. The ``except`` still guards the window after the check.
 
     404 rather than a domain ``ControllerNotFoundError``: the controller may
     well exist in the project database and merely be absent *here*, so this
     is an API-boundary fact about the simulator, not a domain fact about
     the controller.
     """
-    if not await client.has_controller(controller_id):
+    if not adapter.has_controller(controller_id):
         raise _not_registered(controller_id)
     try:
         yield
-    except HTTPException as exc:
-        if exc.status_code == 404:
-            raise _not_registered(controller_id) from exc
-        raise
+    except KeyError as exc:
+        raise _not_registered(controller_id) from exc
 
 
 @router.post("/start", response_model=CommandResponse)
 async def start_simulator(
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
     # Sync project controllers (if any) so they are available in simulator
     controllers = await repo.list_all()
     for ctrl in controllers:
-        await client.register_controller(
+        adapter.register_controller(
             ctrl.id,
             pv_min=ctrl.pv_scale.eu_min,
             pv_max=ctrl.pv_scale.eu_max,
         )
-    # start() creates a default controller (id=0) if none registered (twin-side)
-    await client.start()
+    # start() creates a default controller (id=0) if none registered
+    adapter.start()
     return CommandResponse(ok=True, detail="Simulator started")
 
 
 @router.post("/stop", response_model=CommandResponse)
 async def stop_simulator(
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
-    await client.stop()
+    adapter.stop()
     return CommandResponse(ok=True, detail="Simulator stopped")
 
 
 @router.get("/status", response_model=SimulatorStatusResponse)
 async def get_status(
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> SimulatorStatusResponse:
     return SimulatorStatusResponse(
-        enabled=True, running=await client.is_running(), controllers=await client.get_status(),
+        enabled=True, running=adapter.is_running, controllers=adapter.get_status(),
     )
 
 
@@ -120,35 +126,38 @@ async def get_status(
 
 @router.post("/loops", response_model=ControllerSimStatus)
 async def create_simulator_loop(
+    request: Request,
     body: SimulatorLoopCreateRequest,
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
-    request: Request,
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> ControllerSimStatus:
-    cid = await client.create_loop(
-        controller_id=body.controller_id,
-        pv_min=body.pv_min,
-        pv_max=body.pv_max,
-    )
-    # Point the OPC-UA client at the twin's freshly-minted nodes for this loop,
-    # otherwise every telemetry read raises KeyError until the daemon restarts
-    # (same rule run_daemon and POST /controllers apply — see bind_opcua_client).
-    adapter = getattr(request.app.state, "opcua_adapter", None)
-    if adapter is not None:
+    try:
+        cid = adapter.create_loop(
+            controller_id=body.controller_id,
+            pv_min=body.pv_min,
+            pv_max=body.pv_max,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    # Point the OPC-UA client at the freshly-minted nodes for this loop,
+    # otherwise every telemetry read raises KeyError until a daemon restart
+    # (same rule POST /controllers applies — see _sync_opcua_registration).
+    opcua = getattr(request.app.state, "opcua_adapter", None)
+    if opcua is not None:
         try:
-            await bind_opcua_client(adapter, client, [cid])
+            bind_opcua_client(opcua, adapter, [cid])
         except Exception:
             logger.exception("opcua_registration_sync_failed controller_id=%d", cid)
-    return await client.get_controller_status(cid)
+    return adapter.get_controller_status(cid)
 
 
 @router.delete("/loops/{controller_id}", status_code=204)
 async def delete_simulator_loop(
     controller_id: int,
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> Response:
-    if not await client.unregister_controller(controller_id):
+    if not adapter.unregister_controller(controller_id):
         raise _not_registered(controller_id)
     return Response(status_code=204)
 
@@ -156,30 +165,30 @@ async def delete_simulator_loop(
 @router.get("/opcua/status", response_model=OPCUAServerStatus)
 async def get_opcua_status(
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> OPCUAServerStatus:
     return OPCUAServerStatus(
-        running=await client.opcua_running(),
-        port=await client.opcua_port(),
-        endpoint=await client.opcua_endpoint(),
+        running=adapter.opcua_running,
+        port=adapter.opcua_port,
+        endpoint=adapter.opcua_endpoint,
     )
 
 
 @router.post("/opcua/start", response_model=CommandResponse)
 async def start_opcua_server(
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
-    await client.start_opcua()
+    adapter.start_opcua()
     return CommandResponse(ok=True, detail="OPC-UA server started")
 
 
 @router.post("/opcua/stop", response_model=CommandResponse)
 async def stop_opcua_server(
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
-    await client.stop_opcua()
+    adapter.stop_opcua()
     return CommandResponse(ok=True, detail="OPC-UA server stopped")
 
 
@@ -187,12 +196,12 @@ async def stop_opcua_server(
 async def set_preset(
     body: SimulatorPresetRequest,
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
-    async with _sim_controller(client, body.controller_id):
-        await client.set_preset(body.controller_id, body.preset)
-    await persist_sim_config(client, repo, body.controller_id)
+    with _sim_controller(adapter, body.controller_id):
+        adapter.set_preset(body.controller_id, body.preset)
+    await persist_sim_config(adapter, repo, body.controller_id)
     return CommandResponse(ok=True, controller_id=body.controller_id, detail="Preset applied")
 
 
@@ -200,14 +209,14 @@ async def set_preset(
 async def set_parameters(
     body: SimulatorParametersRequest,
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
-    async with _sim_controller(client, body.controller_id):
-        await client.set_parameters(
+    with _sim_controller(adapter, body.controller_id):
+        adapter.set_parameters(
             body.controller_id, body.gain, body.tau1, body.tau2, body.dead_time,
         )
-    await persist_sim_config(client, repo, body.controller_id)
+    await persist_sim_config(adapter, repo, body.controller_id)
     return CommandResponse(ok=True, controller_id=body.controller_id, detail="Parameters updated")
 
 
@@ -215,13 +224,13 @@ async def set_parameters(
 async def inject_disturbance(
     body: SimulatorDisturbanceRequest,
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
-    async with _sim_controller(client, body.controller_id):
+    with _sim_controller(adapter, body.controller_id):
         if body.type == "step":
-            await client.inject_step(body.controller_id, body.amplitude)
+            adapter.inject_step(body.controller_id, body.amplitude)
         else:
-            await client.inject_noise(body.controller_id, body.amplitude)
+            adapter.inject_noise(body.controller_id, body.amplitude)
     return CommandResponse(
         ok=True, controller_id=body.controller_id, detail=f"{body.type} disturbance injected"
     )
@@ -231,10 +240,10 @@ async def inject_disturbance(
 async def clear_disturbance(
     controller_id: int,
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> CommandResponse:
-    async with _sim_controller(client, controller_id):
-        await client.clear_disturbance(controller_id)
+    with _sim_controller(adapter, controller_id):
+        adapter.clear_disturbance(controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail="Disturbances cleared")
 
 
@@ -243,12 +252,12 @@ async def set_pid_params(
     controller_id: int,
     body: SimulatorPIDParamsRequest,
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
-    async with _sim_controller(client, controller_id):
-        await client.set_pid_params(controller_id, body.kp, body.ti, body.td)
-    await persist_sim_config(client, repo, controller_id)
+    with _sim_controller(adapter, controller_id):
+        adapter.set_pid_params(controller_id, body.kp, body.ti, body.td)
+    await persist_sim_config(adapter, repo, controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail="PID params updated")
 
 
@@ -257,12 +266,12 @@ async def set_pid_sp(
     controller_id: int,
     body: SimulatorPIDSPRequest,
     _user: Annotated[UserClaims, Depends(require_user)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
-    async with _sim_controller(client, controller_id):
-        await client.set_pid_sp(controller_id, body.sp)
-    await persist_sim_config(client, repo, controller_id)
+    with _sim_controller(adapter, controller_id):
+        adapter.set_pid_sp(controller_id, body.sp)
+    await persist_sim_config(adapter, repo, controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID SP={body.sp}")
 
 
@@ -271,12 +280,12 @@ async def set_co(
     controller_id: int,
     body: SimulatorPIDSPRequest,  # reuse — same shape (float 0-100)
     _user: Annotated[UserClaims, Depends(require_user)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
-    async with _sim_controller(client, controller_id):
-        await client.write_output(controller_id, body.sp)
-    await persist_sim_config(client, repo, controller_id)
+    with _sim_controller(adapter, controller_id):
+        adapter.write_output(controller_id, body.sp)
+    await persist_sim_config(adapter, repo, controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail=f"CO={body.sp}")
 
 
@@ -285,13 +294,13 @@ async def set_pid_mode(
     controller_id: int,
     body: SimulatorPIDModeRequest,
     _user: Annotated[UserClaims, Depends(require_user)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> CommandResponse:
     mode_int = 1 if body.mode == "AUTO" else 0
-    async with _sim_controller(client, controller_id):
-        await client.set_pid_mode(controller_id, mode_int)
-    await persist_sim_config(client, repo, controller_id)
+    with _sim_controller(adapter, controller_id):
+        adapter.set_pid_mode(controller_id, mode_int)
+    await persist_sim_config(adapter, repo, controller_id)
     return CommandResponse(ok=True, controller_id=controller_id, detail=f"PID mode={body.mode}")
 
 
@@ -299,10 +308,10 @@ async def set_pid_mode(
 async def get_pid_status(
     controller_id: int,
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
 ) -> SimulatorPIDStatusResponse:
-    async with _sim_controller(client, controller_id):
-        status = await client.get_pid_status(controller_id)
+    with _sim_controller(adapter, controller_id):
+        status = adapter.get_pid_status(controller_id)
     return SimulatorPIDStatusResponse(**status)
 
 
@@ -311,13 +320,13 @@ async def set_auto_sp(
     controller_id: int,
     body: AutoSPRequest,
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> ControllerSimStatus:
-    async with _sim_controller(client, controller_id):
-        await client.set_auto_sp(controller_id, body)
-        await persist_sim_config(client, repo, controller_id)
-        return await client.get_controller_status(controller_id)
+    with _sim_controller(adapter, controller_id):
+        adapter.set_auto_sp(controller_id, body)
+        await persist_sim_config(adapter, repo, controller_id)
+        return adapter.get_controller_status(controller_id)
 
 
 @router.put("/{controller_id}/auto-disturbance", response_model=ControllerSimStatus)
@@ -325,10 +334,10 @@ async def set_auto_disturbance(
     controller_id: int,
     body: AutoDisturbanceRequest,
     _user: Annotated[UserClaims, Depends(require_admin)],
-    client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
     repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> ControllerSimStatus:
-    async with _sim_controller(client, controller_id):
-        await client.set_auto_disturbance(controller_id, body)
-        await persist_sim_config(client, repo, controller_id)
-        return await client.get_controller_status(controller_id)
+    with _sim_controller(adapter, controller_id):
+        adapter.set_auto_disturbance(controller_id, body)
+        await persist_sim_config(adapter, repo, controller_id)
+        return adapter.get_controller_status(controller_id)

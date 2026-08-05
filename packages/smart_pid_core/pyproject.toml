@@ -28,9 +28,6 @@ dependencies = [
     "python-multipart>=0.0.9",
     "pyjwt>=2.9",
     "bcrypt>=4.2",
-    # Runtime client for the daemon's SimulatorClient, talking to the
-    # standalone twin process (smart-pid-sim) over REST.
-    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
@@ -47,7 +44,6 @@ dev = [
 
 [project.scripts]
 smart-pid-core = "smart_pid_core.main:main"
-smart-pid-sim = "smart_pid_core.simulator_service:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/smart_pid_core"]

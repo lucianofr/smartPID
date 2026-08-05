@@ -1,6 +1,8 @@
 """Integration test for main.py adapter wiring."""
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from smart_pid_core.config import CoreSettings
 
 
@@ -13,11 +15,14 @@ class TestMainAdapterWiring:
             simulator_port=48460,
         )  # type: ignore[call-arg]
 
-        from smart_pid_core.adapters.factory import AdapterFactory
+        with patch(
+            "smart_pid_core.adapters.inbound.simulator_adapter.OPCUAServer",
+        ):
+            from smart_pid_core.adapters.factory import AdapterFactory
 
-        factory = AdapterFactory(settings)
-        assert factory.simulator_client is not None
-        assert factory.opcua_adapter is not None
+            factory = AdapterFactory(settings)
+            assert factory.simulator_adapter is not None
+            assert factory.opcua_adapter is not None
 
     def test_non_simulator_mode_no_simulator(self) -> None:
         """Verify that without simulator, only OPCUAAdapter is created."""
@@ -29,7 +34,7 @@ class TestMainAdapterWiring:
         from smart_pid_core.adapters.factory import AdapterFactory
 
         factory = AdapterFactory(settings)
-        assert factory.simulator_client is None
+        assert factory.simulator_adapter is None
         assert factory.opcua_adapter is not None
 
     def test_simulator_mode_opcua_endpoint_points_to_simulator(self) -> None:
@@ -40,7 +45,10 @@ class TestMainAdapterWiring:
             simulator_port=48461,
         )  # type: ignore[call-arg]
 
-        from smart_pid_core.adapters.factory import AdapterFactory
+        with patch(
+            "smart_pid_core.adapters.inbound.simulator_adapter.OPCUAServer",
+        ):
+            from smart_pid_core.adapters.factory import AdapterFactory
 
-        factory = AdapterFactory(settings)
-        assert "48461" in factory.opcua_adapter.endpoint
+            factory = AdapterFactory(settings)
+            assert "48461" in factory.opcua_adapter.endpoint
