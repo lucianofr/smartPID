@@ -70,7 +70,14 @@ export function setAuthHooks(next: AuthHooks): void {
   hooks = next;
 }
 
-const BASE = '/api';
+// The dev server reaches the daemon through vite's `/api` proxy, which strips
+// the prefix before forwarding (vite.config.ts). The backend itself mounts every
+// router at the root (`/auth`, `/controllers`, ...), so a single-origin
+// deployment — where the daemon serves this bundle via StaticFiles — has nothing
+// to strip the prefix and answered every call with the SPA's 404. Container
+// builds set VITE_API_BASE to an empty string; dev and `vite preview` keep the
+// proxy default.
+const BASE = import.meta.env.VITE_API_BASE ?? '/api';
 
 function isValidationIssue(v: unknown): v is ValidationIssue {
   if (typeof v !== 'object' || v === null) return false;
