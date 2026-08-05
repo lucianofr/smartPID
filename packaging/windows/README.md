@@ -55,7 +55,7 @@ After a build, run the installer on a fresh VM and confirm:
 - [ ] Backend installer runs without errors (accept UAC).
 - [ ] `services.msc` → **Smart PID Backend** is *Running*, Startup Type
       *Automatic (Delayed Start)*.
-- [ ] `curl http://localhost:8000/health` returns HTTP 200.
+- [ ] `curl http://localhost:8000/system/status` returns HTTP 200 (JSON body).
 - [ ] `C:\ProgramData\SmartPID\logs\backend.out.log` contains `daemon_ready`.
 - [ ] `C:\ProgramData\SmartPID\.env` exists; `SPID_JWT_SECRET` is a
       64-character hex string.
