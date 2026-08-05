@@ -1,85 +1,73 @@
-# Web HMI Fatia 2 — Commands + Loop Config (Enable PID Optimization)
+# Design — Fatia 2: Comandos + Configuração por Loop (Web HMI Smart PID v2)
 
-**Date:** 2026-06-18
-**Scope:** REST mechanism to enable/disable the per-loop PID online tuning optimizer, exposed through the commands router and consumed by the web HMI Fatia 2 controls.
+**Data:** 2026-06-18 · **Status:** Proposto
+**Parte de:** [guarda-chuva](2026-06-18-web-hmi-react-migration-design.md). Arquitetura, ponte WS, contrato JSON e stack: ver §2–3 do guarda-chuva.
+**Autoridade de UI/design:** [design-system](2026-06-18-web-frontend-design-system-design.md).
 
----
+## Escopo
+Ações de operação e configuração por loop: diálogo de config (PID/fuzzy/RL), comandos SP/modo/CO, toggle de otimização (enable/disable do optimizer), apply-tuning, controle do worker de IA.
 
-## 1. Problem Statement
+## Auth (single-admin / no-RBAC)
+O sistema é **single-user (um administrador), sem RBAC (mono-usuário)** — ver decisão de
+produto no [guarda-chuva §1](2026-06-18-web-hmi-react-migration-design.md). Todas as ações
+desta fatia exigem o **administrador autenticado** (rota pública só o login). **Não há tiers
+de papel** (operator/supervisor/admin) nem 403 por papel: o gate é binário — 401 sem auth vs
+200 admin. As ações de **write-back** (apply-tuning, tuning cru, toggle de otimização)
+continuam exigindo **confirmação explícita no cliente + auditoria** no backend.
 
-The web HMI spec (Fatia 2) references an "enable PID" control on each loop, but no
-`commands` endpoint existed to back it. The only enable-style endpoint was the
-simulator's `POST /simulator/{id}/pid/enable`, which controls the *simulated*
-internal PID — not the real SmartPID online tuning optimizer that monitors an
-external loop and writes tuning back to the DCS.
+## Backend
+- apply-tuning e os comandos de SP/modo/CO escrevem no controlador via OPC — fluxo já implementado.
+- **Toggle de otimização — endpoint implementado** (branch `feat/pid-optimization-enable-toggle`):
+  `POST /commands/optimization {controller_id, enabled}` persiste o master switch por loop
+  `Controller.optimization_enabled` (conceito `ENABLE_OPTIMIZER` de `docs/bloco_pid.md`).
+  Quando **desabilitado**, o SmartPID continua monitorando/publicando telemetria/stats mas o
+  AI worker **não** computa sintonia nem publica `ACTION.AI` (nada é escrito de volta no
+  controlador). Quando **habilitado**, o optimizer roda normalmente (ainda gated por
+  mode = AUTO/CAS/RCAS e `ai_config.engine != NONE`). Persistido em `Controladores`
+  (`optimization_enabled INTEGER NOT NULL DEFAULT 1`, com migração); o `AIWorker._enabled` é
+  seedado a partir do flag na construção.
 
-The AI worker already had a transient in-memory `_enabled` flag toggled via the
-ZMQ `CMD.AI` channel (`POST /controllers/{id}/ai/start|stop`), but that state was
-**not persisted**, **not reported** in controller config, and was lost on restart.
+## Frontend
+- Diálogo de configuração do loop: params PID (Kp, Ti, Td, estruturas, ARW, filtros), seleção NONE/FUZZY/RL e params correspondentes.
+- Controles inline no card/faceplate: SP, modo (8 modos), CO (manual), toggle de otimização (enable/disable do optimizer).
+- Botão apply-tuning com **confirmação explícita** antes de escrever no controlador.
+- Painel de IA: start/stop/pause + status atual.
 
-## 2. Gap Resolution — Implemented Endpoint
+## REST/WS usados
+- REST `routers/commands` (comandos reais — `controller_id` no **BODY**):
+  - `POST /commands/mode`, `POST /commands/setpoint`, `POST /commands/output`.
+  - apply-tuning: `POST /commands/apply-tuning/{controller_id}` (clampa params).
+  - **Params PID:** NÃO existe `/commands/pid/params` → usar `POST /commands/tuning`.
+    `POST /commands/tuning` agora aplica guardrails (`TuningCommand` tipado + clamp por
+    `max_tuning_change_pct`) — corrigido no backend (TD-003, branch
+    `fix/backend-security-hardening`, ver `_tech-debt.md`).
+  - tuning-recommendations: `GET /commands/tuning-recommendations/{controller_id}`.
+  - **Toggle de otimização (enable/disable do optimizer):** `POST /commands/optimization`
+    Body `{ "controller_id": int, "enabled": bool }` → resposta `CommandResponse`
+    (`{ ok, controller_id, enabled, detail }`). Persiste `Controller.optimization_enabled`.
+    Erros: `401` sem JWT, `404` controlador desconhecido.
+- REST `routers/ai`: `/controllers/{controller_id}/ai/start|stop|pause|status|history`.
+- REST `routers/controllers` (CRUD: register/put/delete).
+- WS: `status` (reflexo das ações), `ai` (`ACTION.AI.{id}`, estado de sintonia).
 
-"Optimization enabled" maps to a new **persisted per-loop boolean** on the
-`Controller` domain model: `optimization_enabled` (the platform's
-`ENABLE_OPTIMIZER` concept from `docs/bloco_pid.md`). It is the master switch for
-the online tuning optimizer (Fuzzy / RL) on that loop.
+## Aceitação
+- Alterar SP/modo/params reflete no backend e no quadro `status` ao vivo.
+- apply-tuning só escreve após confirmação; resultado visível.
+- Toggle de otimização persiste (`Controller.optimization_enabled`) e reflete no AI worker
+  (desabilitado → sem `ACTION.AI`/write-back).
+- IA start/stop/pause altera estado reportado.
 
-When **disabled**, SmartPID keeps monitoring and publishing telemetry/stats, but
-the AI worker does **not** compute tuning or publish `ACTION.AI` — so no
-tuning is written back to the controller. When **enabled**, the optimizer runs
-as normal (still gated by mode = AUTO/CAS/RCAS and `ai_config.engine != NONE`).
+## Páginas PySide6 (paridade)
+`controller_dialog`, parte de `dashboard_page` (controles do card).
 
-### Endpoint
+## Testes
+- Vitest: validação de formulários de params, guarda de confirmação do apply-tuning, toggle de otimização.
+- Playwright: mudar SP/modo → telemetria muda; apply-tuning com confirmação; toggle de otimização persiste.
+- Auth: rota restrita retorna `401` sem JWT vs `200` com o admin autenticado (sem 403 por papel).
 
-```
-POST /commands/optimization
-Body: { "controller_id": int, "enabled": bool }
-Auth: require_operator   (same risk level as setpoint/mode/output and ai/start|stop)
-```
+## Riscos
+- Escrita indevida no controlador → confirmação obrigatória + auditoria; gate do admin autenticado no backend.
+- Validação de params divergente do backend → validar client-side + tratar erro REST.
 
-Response (`CommandResponse`):
-
-```json
-{ "ok": true, "controller_id": 7, "enabled": false, "detail": "Optimization disabled" }
-```
-
-Errors:
-- `401` — missing/invalid JWT
-- `403` — role below operator
-- `404` — unknown controller
-
-### Behavior
-
-1. Loads the controller, persists `optimization_enabled` via the repo
-   (survives restart, surfaced by `GET` controller).
-2. Updates the in-memory `LoopContext.controller` and calls
-   `AIWorker.set_enabled(...)` for immediate effect on the running worker.
-3. Publishes `CMD.AI.{id}` start/stop on the bus (reuses the existing command
-   channel) so a thread draining commands also reacts.
-4. Audits the action (`AuditAction.CONFIG_AI`) and broadcasts a system event.
-
-The `AIWorker._enabled` flag is now **seeded from**
-`controller.optimization_enabled` at construction (previously hardcoded `True`),
-so a loop that boots with the optimizer disabled stays disabled.
-
-## 3. Persistence
-
-New column on `Controladores`: `optimization_enabled INTEGER NOT NULL DEFAULT 1`
-(added to DDL and to `_apply_migrations` for existing databases). Mapped in
-`_controller_to_params` and `_row_to_controller`.
-
-## 4. Files Changed
-
-- `packages/smart_pid_domain/src/smart_pid_domain/models/controller.py` — new `optimization_enabled: bool = True` field.
-- `packages/smart_pid_domain/src/smart_pid_domain/dtos/commands.py` — `OptimizationCommand` DTO; `enabled` field on `CommandResponse`.
-- `packages/smart_pid_core/src/smart_pid_core/application/workers/ai_worker.py` — seed `_enabled` from the flag; add `set_enabled()`.
-- `packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/routers/commands.py` — `POST /commands/optimization`.
-- `packages/smart_pid_core/src/smart_pid_core/adapters/outbound/sqlite_repo.py` — DDL column, migration, save/load mapping.
-
-## 5. Tests
-
-`tests/core/integration/test_api_optimization_toggle.py`:
-- enable/disable persists to repo and reports state in the response
-- live AI worker reflects the new state
-- `401` without auth, `404` for unknown controller
-- `AIWorker` seeds `_enabled` from `optimization_enabled`
+## Dependências
+Fatia 0+1 (shell, auth, WS, cards).
