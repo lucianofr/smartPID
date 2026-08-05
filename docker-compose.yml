@@ -25,6 +25,10 @@ services:
     environment:
       # Secret is REQUIRED — compose refuses to start without it.
       SPID_JWT_SECRET: ${SPID_JWT_SECRET:?Set SPID_JWT_SECRET in Dokploy environment (openssl rand -hex 32)}
+      # Optional bootstrap admin password. When set, the daemon seeds the
+      # admin account with this password on first boot (never logged). When
+      # unset/empty it generates a random one and logs it once at WARNING.
+      SPID_BOOTSTRAP_ADMIN_PASSWORD: ${SPID_BOOTSTRAP_ADMIN_PASSWORD:-}
       SPID_API_HOST: 0.0.0.0
       SPID_API_PORT: "8032"
       # Host-header allow-list and browser origins for the public domain.
