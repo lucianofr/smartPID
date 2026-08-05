@@ -574,8 +574,22 @@ async def run_daemon(settings: CoreSettings) -> None:
         stop_event.set()
 
     loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, handle_signal)
+    try:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, handle_signal)
+    except NotImplementedError:
+        # asyncio.add_signal_handler is POSIX-only. On Windows (and in
+        # frozen Windows services wrapped by NSSM) fall back to the
+        # standard signal module; NSSM sends SIGINT/SIGBREAK on stop
+        # and Ctrl+C forwards SIGINT the same way.
+        def _sync_handle(_signum: int, _frame: object) -> None:
+            loop.call_soon_threadsafe(handle_signal)
+
+        for sig_name in ("SIGINT", "SIGTERM", "SIGBREAK"):
+            sig_obj = getattr(signal, sig_name, None)
+            if sig_obj is not None:
+                with contextlib.suppress(ValueError, OSError):
+                    signal.signal(sig_obj, _sync_handle)
 
     # Data retention cleanup (daily)
     cleanup_task = asyncio.create_task(_retention_cleanup(repo.session_factory))

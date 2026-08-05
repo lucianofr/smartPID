@@ -63,3 +63,6 @@ packages/smart_pid_web/dist/
 /.serena/
 
 testsprite_tests/tmp/config.json
+
+# Windows installers
+/dist/windows/

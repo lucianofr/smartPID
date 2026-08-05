@@ -1,0 +1,209 @@
+# Windows Installers — Backend Service + HMI Desktop
+
+**Date:** 2026-04-21
+**Status:** Design approved, pending implementation plan
+**Scope:** Two standalone Windows installers (`.exe`) — one installs the backend as a Windows service, the other installs the PySide6 HMI desktop client. Internal-use distribution model.
+
+## 1. Context and goals
+
+The Smart PID platform is a distributed client-server system:
+
+- `smart_pid_core` — headless backend daemon (FastAPI + ZeroMQ + SQLite + OPC-UA)
+- `smart_pid_hmi` — PySide6 desktop client
+
+Today both are run from source via `uv run python -m ...`. This spec defines the packaging and installation workflow for shipping them to internal Windows machines (engineers, test benches, pilot deployments), **not** to end customers. External distribution (code signing, MSI for GPO, silent-install profiles) is out of scope.
+
+**Goals**
+- Operator can install the backend on a Windows machine by running a single `.exe` and clicking through standard wizard pages. Backend starts automatically at boot, runs as a Windows service with restart-on-failure.
+- Operator can install the HMI on the same machine or on a separate workstation. Installer prompts once for the backend host/ports.
+- Both installers produced from source on a Windows VM using scripted builds (no manual steps beyond running the PowerShell script and accepting UAC prompts).
+- Re-running an installer upgrades cleanly without destroying user data (`.spid` projects, `users.db`, `hmi.env`).
+
+**Non-goals**
+- Code signing (no Authenticode certificate for internal use).
+- Silent/unattended installation parameters beyond what Inno Setup gives by default.
+- MSI packaging or Microsoft Store distribution.
+- Self-update mechanism.
+- macOS/Linux packaging.
+
+## 2. Tooling stack
+
+| Concern                  | Choice                  | Reason                                                               |
+|--------------------------|-------------------------|----------------------------------------------------------------------|
+| Python bundling          | PyInstaller `onedir`    | Required for PySide6 Qt plugins; `onefile` has known tempfile issues |
+| Installer                | Inno Setup 6            | Free, scriptable (Pascal), de facto standard, minimal syntax         |
+| Service wrapper          | NSSM 2.24               | ~300 KB binary; wraps any `.exe` as a Windows service with restart and log rotation; no code refactor needed |
+| Build script             | PowerShell              | Native on the Windows VM; no extra runtime                           |
+
+Alternatives considered and rejected: NSIS (more powerful but opaque syntax, no real gain), WiX/MSI (overkill for internal use), `pywin32` ServiceFramework (requires restructuring `main.py`; friction with `asyncio.run()`).
+
+## 3. Repository layout
+
+New top-level directory `packaging/windows/`:
+
+```
+packaging/windows/
+├── backend/
+│   ├── build_backend.ps1          # Orchestrates: uv sync -> PyInstaller -> Inno Setup
+│   ├── smart_pid_core.spec        # PyInstaller spec (onedir)
+│   ├── installer.iss              # Inno Setup script
+│   ├── env.template               # Template for ProgramData\SmartPID\.env
+│   └── assets/
+│       ├── nssm.exe               # NSSM 2.24 binary, committed to repo
+│       └── icon.ico
+├── hmi/
+│   ├── build_hmi.ps1
+│   ├── smart_pid_hmi.spec
+│   ├── installer.iss
+│   └── assets/
+│       └── icon.ico
+├── common/
+│   └── version.ps1                # Extracts version from pyproject.toml
+└── README.md                      # Build prerequisites, commands, troubleshooting
+```
+
+Build output lands in `dist/windows/` (git-ignored):
+
+- `SmartPID-Backend-Setup-X.Y.Z.exe`
+- `SmartPID-HMI-Setup-X.Y.Z.exe`
+
+## 4. Backend installer
+
+### 4.1 Directories on the target machine
+
+| Path                                         | Contents                                                           |
+|----------------------------------------------|--------------------------------------------------------------------|
+| `C:\Program Files\SmartPID\Backend\`         | PyInstaller onedir output + `nssm.exe`                             |
+| `C:\ProgramData\SmartPID\`                   | `.env`, `users.db`, `project.spid`, `projects/`, `exports/`, `models/` |
+| `C:\ProgramData\SmartPID\logs\`              | `backend.out.log`, `backend.err.log` (NSSM-managed, 10 MB rotation) |
+
+The service runs under `LocalSystem` with its working directory set to `C:\ProgramData\SmartPID\` so that relative paths in the app resolve into the data tree.
+
+### 4.2 Installer flow (UAC-elevated, no custom pages)
+
+1. Welcome / License / Directory / Ready pages (standard Inno Setup sequence).
+2. File copy: `Program Files\SmartPID\Backend\` ← PyInstaller dist.
+3. Create `ProgramData\SmartPID\` and `ProgramData\SmartPID\logs\` if missing.
+4. If `ProgramData\SmartPID\.env` does **not** exist:
+   - Render `env.template`: set `SPID_JWT_SECRET` = `secrets.token_hex(32)` generated by the installer (Inno Setup Pascal script invokes PowerShell `[System.Security.Cryptography.RandomNumberGenerator]::GetBytes(...)`).
+   - All other `SPID_*` variables are emitted as commented-out lines with their default values, so the admin can uncomment and edit as needed.
+5. Register the service via NSSM:
+   ```
+   nssm install SmartPIDBackend "C:\Program Files\SmartPID\Backend\smart-pid-core.exe"
+   nssm set    SmartPIDBackend DisplayName "Smart PID Backend"
+   nssm set    SmartPIDBackend Description "Smart PID Edge Platform - Core Engine"
+   nssm set    SmartPIDBackend AppDirectory "C:\ProgramData\SmartPID"
+   nssm set    SmartPIDBackend Start SERVICE_DELAYED_AUTO_START
+   nssm set    SmartPIDBackend AppStdout "C:\ProgramData\SmartPID\logs\backend.out.log"
+   nssm set    SmartPIDBackend AppStderr "C:\ProgramData\SmartPID\logs\backend.err.log"
+   nssm set    SmartPIDBackend AppRotateFiles 1
+   nssm set    SmartPIDBackend AppRotateBytes 10485760
+   nssm set    SmartPIDBackend AppExit Default Restart
+   ```
+6. Add inbound firewall rules for TCP 8000 (FastAPI) and TCP 5555 (ZMQ telemetry) — `netsh advfirewall firewall add rule ...`.
+7. Start the service (`nssm start SmartPIDBackend`).
+
+### 4.3 Uninstall flow
+
+1. `nssm stop SmartPIDBackend` then `nssm remove SmartPIDBackend confirm`.
+2. Remove firewall rules (match by rule name).
+3. Remove `Program Files\SmartPID\Backend\`.
+4. **Preserve** `ProgramData\SmartPID\` by default.
+5. Final page shows a checkbox **"Also remove data and configuration (not reversible)"**, default unchecked. When checked, recursively deletes `ProgramData\SmartPID\`.
+
+### 4.4 Upgrade flow
+
+Re-running the installer over an existing install:
+- Stops the service, replaces `Program Files\SmartPID\Backend\`, starts the service.
+- Never touches `ProgramData\SmartPID\` — `.env`, databases, and projects are preserved.
+- Firewall rules are idempotent (add-or-update by name).
+
+## 5. HMI installer
+
+### 5.1 Directories on the target machine
+
+| Path                              | Contents                                                                |
+|-----------------------------------|-------------------------------------------------------------------------|
+| `C:\Program Files\SmartPID\HMI\`  | PyInstaller onedir output (PySide6 + Qt plugins)                        |
+| `%APPDATA%\SmartPID\hmi.env`      | Per-user config (backend host/URL). User-writable, no UAC needed.       |
+| `%APPDATA%\SmartPID\logs\hmi.log` | Client logs                                                             |
+
+### 5.2 Installer flow (UAC-elevated, one custom page)
+
+1. Welcome page.
+2. **Custom page "Backend connection"** (one Inno Setup custom page):
+   - `Backend host` text field, placeholder `localhost`. Blank = `localhost`. Accepts hostname or IP.
+   - `API port` numeric, default `8000`.
+   - `Telemetry port (ZMQ)` numeric, default `5555` (the installer composes the full ZMQ URL `tcp://<host>:<port>` and writes it as `SPID_HMI_ZMQ_URL`).
+3. Destination directory page (default `C:\Program Files\SmartPID\HMI\`).
+4. Optional desktop shortcut checkbox (default unchecked; Start Menu shortcut is always created).
+5. File copy.
+6. Write `%APPDATA%\SmartPID\hmi.env` **only if it does not already exist** — preserves customizations on upgrade. Contents match the env var names already defined in `packages/smart_pid_hmi/src/smart_pid_hmi/config.py`:
+   ```
+   SPID_HMI_SERVER_HOST=<value or "localhost">
+   SPID_HMI_SERVER_PORT=<value or 8000>
+   SPID_HMI_ZMQ_URL=tcp://<host>:<zmq port>   # default tcp://localhost:5555
+   ```
+   The HMI client reads these via pydantic-settings (prefix `SPID_HMI_`). The config module must be taught to look at `%APPDATA%\SmartPID\hmi.env` in addition to the packaged `hmi.env`, with the user-level file taking precedence (see task plan).
+7. Create Start Menu shortcut `Smart PID HMI` → `smart-pid-hmi.exe`. Create desktop shortcut if requested.
+
+### 5.3 Uninstall flow
+
+1. Remove `Program Files\SmartPID\HMI\`.
+2. Remove Start Menu + desktop shortcuts.
+3. **Preserve** `%APPDATA%\SmartPID\hmi.env` and `logs\` (user config and history).
+
+### 5.4 Upgrade flow
+
+- Replaces `Program Files\SmartPID\HMI\`.
+- Custom page pre-fills fields from existing `hmi.env` if present, but does **not** overwrite `hmi.env` at the end (step 6 skip).
+
+## 6. Build workflow
+
+Manual invocation on the Windows build VM:
+
+```powershell
+# One-time prerequisites
+winget install Python.Python.3.13
+python -m pip install uv
+choco install innosetup     # provides iscc.exe
+
+# From repo root
+cd packaging\windows\backend
+.\build_backend.ps1
+
+cd ..\hmi
+.\build_hmi.ps1
+```
+
+Each `build_*.ps1` script performs:
+
+1. Invoke `common/version.ps1` to extract the package version from its `pyproject.toml`.
+2. `uv sync --all-packages --extra dev` — ensures PyInstaller is available.
+3. `uv run pyinstaller <package>.spec --clean --noconfirm` — produces `dist/<package>/` onedir.
+4. `iscc.exe installer.iss /DAppVersion=<version> /DDistDir=<absolute path>` — emits the installer into `dist/windows/`.
+5. Print a summary (artifact path, size, SHA-256).
+
+PyInstaller is added as a dev dependency of the repo (or as a workspace-level dep) so `uv sync` provides it.
+
+## 7. Verification checklist
+
+Run on a clean Windows 10/11 VM after each build:
+
+1. Run `SmartPID-Backend-Setup-X.Y.Z.exe` → finishes without errors.
+2. `services.msc` → `Smart PID Backend` is **Running**, Startup Type **Automatic (Delayed Start)**.
+3. `curl http://localhost:8000/health` → HTTP 200.
+4. Tail `C:\ProgramData\SmartPID\logs\backend.out.log` → contains `daemon_ready`.
+5. Run `SmartPID-HMI-Setup-X.Y.Z.exe`, default localhost connection → HMI opens from Start Menu, login with `admin`/`admin` succeeds.
+6. Stop the service via `services.msc` → HMI loses connection gracefully (no crash).
+7. Start the service → HMI reconnects.
+8. Uninstall Backend (keep data) → service is removed, `ProgramData\SmartPID\` remains.
+9. Reinstall Backend → same `.env` / `JWT_SECRET` is reused; existing `admin` login still works (proves upgrade does not reseed).
+10. Remote HMI: on a second VM, install HMI with `Backend host = <first VM IP>` → connects successfully.
+
+## 8. Open items deferred
+
+- **`.spid` file association** (double-click opens HMI). Skipped for simplicity; can be added in a follow-up without touching the installer structure.
+- **Code signing.** Needed before external distribution.
+- **Silent/unattended install profiles** beyond Inno Setup defaults.
+- **Automated CI build** (GitHub Actions `windows-latest`). All current scope is manual on the VM.
