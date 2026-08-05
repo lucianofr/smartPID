@@ -1,18 +1,69 @@
+# Dokploy deployment for smartpid.lfrautomacao.eng.br
+#
+# Single container: the backend daemon serves the built SPA and the REST/WS
+# API on the SAME port (8032) — that is the "web" port Traefik routes to.
+# No separate frontend service exists; do not add one (see Dockerfile and
+# .claude/reports/sre/sre-vps-deploy-20260805.md).
+#
+# Dokploy setup: create a Docker Compose application pointing at this file.
+# Either let Dokploy's Domains tab inject the Traefik labels, or keep the
+# manual labels below and set SPID_JWT_SECRET in the app's Environment tab
+# (generate with: openssl rand -hex 32). Never commit the secret.
+#
+# First boot seeds the admin user and logs its one-time password at
+# WARNING level: dokploy logs | grep bootstrap_admin_password
 services:
   smartpid:
     build:
       context: .
       dockerfile: Dockerfile
     image: smartpid:latest
-    container_name: smartpid
     restart: unless-stopped
-    ports:
-      - "8032:8000"
-    env_file:
-      - .env
+    # No published ports: Traefik reaches the container over dokploy-network.
+    # All runtime env is explicit below; the secret arrives via Dokploy's
+    # Environment tab (there is no .env file in the deployed tree).
+    environment:
+      # Secret is REQUIRED — compose refuses to start without it.
+      SPID_JWT_SECRET: ${SPID_JWT_SECRET:?Set SPID_JWT_SECRET in Dokploy environment (openssl rand -hex 32)}
+      SPID_API_HOST: 0.0.0.0
+      SPID_API_PORT: "8032"
+      # Host-header allow-list and browser origins for the public domain.
+      SPID_TRUSTED_HOSTS: '["smartpid.lfrautomacao.eng.br","localhost","127.0.0.1"]'
+      SPID_CORS_ALLOW_ORIGINS: '["https://smartpid.lfrautomacao.eng.br"]'
+      SPID_ALLOWED_WS_ORIGINS: '["https://smartpid.lfrautomacao.eng.br"]'
+      # The workstation deployment runs with the simulator on; keep parity.
+      SPID_SIMULATOR_ENABLED: "true"
+      # All persisted state on the named volume.
+      SPID_DB_PATH: /data/project.spid
+      SPID_USERS_DB_PATH: /data/users.db
+      SPID_PROJECTS_DIR: /data/projects
+      SPID_WEB_DIST_DIR: /app/web/dist
+      SPID_LOG_LEVEL: INFO
     volumes:
       - smartpid-data:/data
+    healthcheck:
+      # /system/status is the unauthenticated health endpoint (/health does
+      # not exist). Traefik 404s services whose healthcheck fails, so keep
+      # this aligned with the real route.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8032/system/status',timeout=3).status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # First boot restores simulator configs and mints OPC-UA nodes before
+      # the API answers; give it room without counting failures.
+      start_period: 120s
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.smartpid.rule=Host(`smartpid.lfrautomacao.eng.br`)
+      - traefik.http.routers.smartpid.entrypoints=websecure
+      - traefik.http.routers.smartpid.tls=true
+      - traefik.http.routers.smartpid.tls.certresolver=letsencrypt
+      - traefik.http.services.smartpid.loadbalancer.server.port=8032
+
+networks:
+  dokploy-network:
+    external: true
 
 volumes:
   smartpid-data:
-    name: smartpid-data

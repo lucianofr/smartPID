@@ -1,0 +1,18 @@
+services:
+  smartpid:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: smartpid:latest
+    container_name: smartpid
+    restart: unless-stopped
+    ports:
+      - "8032:8000"
+    env_file:
+      - .env
+    volumes:
+      - smartpid-data:/data
+
+volumes:
+  smartpid-data:
+    name: smartpid-data

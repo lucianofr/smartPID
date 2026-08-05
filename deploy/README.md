@@ -1,9 +1,9 @@
 # smartPID VPS deployment
 
 Single Docker container on `76.13.172.133`, published on host port `8032`,
-built and run via `docker-compose.yml` at the repo root. The image is built
-directly on the VPS from a synced copy of this working tree — there is no
-registry push and no `git clone` on the VPS (no deploy key there).
+built and run via `docker-compose.vps.yml` at the repo root. The image is
+built directly on the VPS from a synced copy of this working tree — there is
+no registry push and no `git clone` on the VPS (no deploy key there).
 
 ## Layout on the VPS
 
@@ -32,8 +32,8 @@ rsync -az --delete \
 ssh root@76.13.172.133
 cd /opt/smartpid
 # .env is authored separately (see "Runtime .env" below) — never rsynced.
-docker compose build
-docker compose up -d
+docker compose -f docker-compose.vps.yml build
+docker compose -f docker-compose.vps.yml up -d
 docker compose logs --tail=50 smartpid
 ```
 
@@ -47,7 +47,7 @@ rsync -az --delete \
   ./ root@76.13.172.133:/opt/smartpid/
 
 # VPS:
-ssh root@76.13.172.133 'cd /opt/smartpid && docker compose build && docker compose up -d'
+ssh root@76.13.172.133 'cd /opt/smartpid && docker compose -f docker-compose.vps.yml build && docker compose -f docker-compose.vps.yml up -d'
 ```
 
 `docker compose up -d` recreates the `smartpid` container against the new
@@ -86,7 +86,7 @@ under `WORKDIR /app`).
 ```bash
 ssh root@76.13.172.133 "openssl rand -hex 32"
 # paste the result into SPID_JWT_SECRET in /opt/smartpid/.env, then:
-ssh root@76.13.172.133 'cd /opt/smartpid && docker compose up -d'
+ssh root@76.13.172.133 'cd /opt/smartpid && docker compose -f docker-compose.vps.yml up -d'
 ```
 
 All existing sessions are invalidated (tokens are HMAC-signed with the old
@@ -113,6 +113,7 @@ git -C /path/to/local/checkout ... # N/A — /opt/smartpid is not a git checkout
 
 Because `/opt/smartpid` is a plain rsynced copy (not a git checkout — no
 deploy key on the VPS), rollback is: from the local working tree, `git
-checkout <previous-good-sha>`, rsync as above, then `docker compose build &&
-docker compose up -d` on the VPS. The `smartpid-data` volume is untouched by
+checkout <previous-good-sha>`, rsync as above, then `docker compose -f
+docker-compose.vps.yml build && docker compose -f docker-compose.vps.yml up -d`
+on the VPS. The `smartpid-data` volume is untouched by
 any of this, so rollback does not lose users or projects.
