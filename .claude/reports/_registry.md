@@ -47,6 +47,15 @@ what was deliberately deferred.
 
 ---
 
+## 2026-08-05
+
+- sre/sre-vps-deploy-20260805 | Completed | smartPID deployed on VPS 76.13.172.133 as container `smartpid` at `0.0.0.0:8032->8000/tcp`, non-root uid 1000, named volume `smartpid-data:/data`, env via `/opt/smartpid/.env` (mode 0600, fresh 64-hex JWT secret). Multi-stage Dockerfile (node:20 web build with `VITE_API_BASE=""`, python:3.13 + uv frozen). Verified end-to-end from the workstation: SPA 200, assets 200, bundle has no `/api/` prefix, login 200 with the generated bootstrap password, old admin/admin 401, /docs·/openapi.json 404, restart durability 200.
+- security/security-vps-exposure-20260805 | Completed | Read-only audit of the public-8032 exposure. All four unauthenticated reachability questions answer NO (only GET /system/status public, no process values); every one flips to YES with seeded creds. TD-010 verified fixed, TD-011 verified open at audit time.
+- security/security-bootstrap-admin-20260805 | Completed | `_seed_default_admin` no longer hard-codes `admin`: explicit `SPID_BOOTSTRAP_ADMIN_PASSWORD` (never logged) or `secrets.token_urlsafe(12)` logged once as `bootstrap_admin_password`. Resolves TD-011. 7/7 green.
+- security/security-login-hardening-20260805 | Completed | `LoginRateLimiter` (5/60 s sliding window, per-IP by design) on `/auth/login`; `LoginRequest` capped username ≤254 / password ≤200. Bcrypt compare already constant-time. 50/50 green.
+- security/security-openapi-shadow-20260805 | Completed | /docs, /redoc, /openapi.json 404 by default behind `SPID_API_EXPOSE_OPENAPI` (default false). `dump_openapi.py` unaffected. 2/2 green.
+- docs/docs-readme-health-endpoint-20260805 | Completed | Windows installer README verification corrected from nonexistent `/health` to `GET /system/status`.
+
 ## 2026-06-18
 
 <!-- Format: - report-name | Status | One-line summary -->

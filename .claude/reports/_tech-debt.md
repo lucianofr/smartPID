@@ -23,18 +23,15 @@ that a single bugfix pass cannot take unilaterally.
   - **Source:** bugfix pass 2026-07-30
   - **Created:** 2026-07-30
 
-- [ ] **TD-011**: Default admin account ships with password `admin`
+- [x] **TD-011**: Default admin account ships with password `admin` — **RESOLVED 2026-08-05**
   - **Impact:** High
-  - **Detail:** `smart_pid_core/main.py::_seed_default_admin` creates the `admin`
-    user with the password `admin` and logs
-    `SECURITY: Default admin account created with password 'admin'`. The warning
-    is deliberate and correct, but nothing forces a change: the account stays
-    usable with the default indefinitely. Confirmed live — `admin`/`admin`
-    authenticates against the running daemon today.
-  - **Options to weigh:** force a password change on first login; refuse to seed
-    unless an explicit bootstrap env var is set; or generate a random password
-    and print it once at seed time.
-  - **Source:** bugfix pass 2026-07-30
+  - **Resolution:** `_seed_default_admin` no longer hard-codes `admin`. When
+    users.db is empty at boot it uses `SPID_BOOTSTRAP_ADMIN_PASSWORD` if set
+    (never logged), otherwise generates `secrets.token_urlsafe(12)` and logs it
+    once at WARNING as event `bootstrap_admin_password`. Covered by
+    `tests/core/integration/test_user_role_migration.py::TestSeedDefaultAdmin`.
+  - **Source:** bugfix pass 2026-07-30; resolved by
+    `.claude/reports/security/security-bootstrap-admin-20260805.md`
   - **Created:** 2026-07-30
 
 - [ ] **TD-012**: Trend column starves below 1024x768 — the loop-card strip is
@@ -171,6 +168,94 @@ that a single bugfix pass cannot take unilaterally.
   - **Source:** `.claude/reports/security/L3-security-20260731.md`
   - **Created:** 2026-07-31
 
+- [ ] **TD-022**: Login rate limiter is in-memory and per-process
+  - **Impact:** Low
+  - **Detail:** `LoginRateLimiter` (routers/auth.py) keeps its budget in a
+    dict. A daemon restart resets every IP's budget, and a future multi-worker
+    uvicorn deploy would keep N independent budgets. Acceptable for this
+    single-process control-plane daemon; move to a shared store (Redis) only
+    if the deployment ever scales past one process.
+  - **Source:** `.claude/reports/security/security-login-hardening-20260805.md`
+  - **Created:** 2026-08-05
+
+- [ ] **TD-023**: No per-username login lockout (intentional)
+  - **Impact:** Low
+  - **Detail:** The rate limit is keyed by client IP, deliberately not by
+    username — per-username lockouts let a caller enumerate which usernames
+    exist. Consequence: a single-IP credential spray is the only brute-force
+    coverage this layer provides; a rotating-IP attacker gets 5 tries per IP.
+  - **Source:** `.claude/reports/security/security-login-hardening-20260805.md`
+  - **Created:** 2026-08-05
+
+- [ ] **TD-024**: Login timing side channel still open (audit finding F5)
+  - **Impact:** Low
+  - **Detail:** `GET /auth/login` short-circuits when the user is not found,
+    so a caller can time-distinguish "no such user" from "wrong password"
+    and enumerate usernames. bcrypt's per-hash cost makes the signal small
+    but nonzero. Fix: run a dummy bcrypt against a stored hash in the
+    user-not-found branch to equalize the path. Touches a file outside this
+    round's ownership, deferred deliberately.
+  - **Source:** `.claude/reports/security/security-vps-exposure-20260805.md` (F5)
+  - **Created:** 2026-08-05
+
+- [ ] **TD-025**: Explicit weak bootstrap password is still honoured
+  - **Impact:** Low
+  - **Detail:** Setting `SPID_BOOTSTRAP_ADMIN_PASSWORD=admin` (or any weak
+    value) seeds a weak admin by operator choice. The env-var path never logs
+    the value and cannot tell a generated secret from a typed one. Optional
+    defense-in-depth: deny-list common weak values or enforce a minimum
+    length on the explicit path.
+  - **Source:** `.claude/reports/security/security-bootstrap-admin-20260805.md`
+  - **Created:** 2026-08-05
+
+- [ ] **TD-026**: OpenAPI exposure is one global knob, no per-route policy
+  - **Impact:** Low
+  - **Detail:** `SPID_API_EXPOSE_OPENAPI` toggles /docs, /redoc and
+    /openapi.json together and globally. There is no way to publish a
+    curated, auth-gated subset (e.g. hide /docs but keep a documented
+    openapi.json behind admin auth). Single boolean is enough today.
+  - **Source:** `.claude/reports/security/security-openapi-shadow-20260805.md`
+  - **Created:** 2026-08-05
+
+
+- [ ] **TD-027**: `/health` referenced by ops tooling but absent from the API
+  - **Impact:** Low
+  - **Detail:** `packaging/windows/README.md` was corrected to
+    `GET /system/status`, but external monitoring, uptime checks, or LB
+    probes configured against `/health` will 404. Either add a trivial
+    `GET /health` alias or standardize all documentation on `/system/status`.
+  - **Source:** `.claude/reports/sre/sre-vps-deploy-20260805.md`
+  - **Created:** 2026-08-05
+
+- [ ] **TD-028**: Bootstrap admin has no forced password rotation
+  - **Impact:** Medium
+  - **Detail:** The random-password fix makes the credential unguessable, but
+    it stays a plaintext line in `docker logs` (log retention, history, any
+    log-shipping pipeline) until an operator changes it. No "must change on
+    first login" flow, no expiry. Single shared `admin` account.
+  - **Source:** `.claude/reports/sre/sre-vps-deploy-20260805.md`
+  - **Created:** 2026-08-05
+
+- [ ] **TD-029**: No TLS on the public deployment
+  - **Impact:** High
+  - **Detail:** `http://76.13.172.133:8032/` serves the login form and JWT
+    over plaintext — password and bearer token visible to anyone on-path.
+    Explicitly a non-goal of the deploy task; compounds TD-028 (a
+    network-sniffable admin credential, not just a log-sniffable one).
+    Fix: terminate TLS (Caddy/nginx + ACME) in front of 8032, or an
+    origin certificate.
+  - **Source:** `.claude/reports/security/security-vps-exposure-20260805.md` (F2),
+    `.claude/reports/sre/sre-vps-deploy-20260805.md`
+  - **Created:** 2026-08-05
+
+- [ ] **TD-030**: Oversized SPA entry chunk (~600 KB)
+  - **Impact:** Low
+  - **Detail:** `vite build` warns "Some chunks are larger than 500 kB" —
+    the 600+ KB `index-*.js` entry chunk. Candidate for
+    `manualChunks`/dynamic `import()` code-splitting once initial load time
+    on the VPS link matters.
+  - **Source:** `.claude/reports/sre/sre-vps-deploy-20260805.md`
+  - **Created:** 2026-08-05
 ---
 
 # Histórico — registro anterior (TD-000..TD-007, web HMI 2026-06)
