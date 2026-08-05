@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
+import secrets
 import signal
 import sys
 from datetime import UTC, datetime, timedelta
@@ -97,16 +99,33 @@ async def _migrate_user_roles(user_repo: UserRepository) -> None:
 
 
 async def _seed_default_admin(user_repo: UserRepository) -> None:
-    """Create the default admin account when users.db has no rows."""
+    """Create the default admin account when users.db has no rows.
+
+    Password source, in order: ``SPID_BOOTSTRAP_ADMIN_PASSWORD`` env var if
+    set (operator's explicit choice, never logged), else a fresh
+    ``secrets.token_urlsafe(12)`` value logged once at WARNING so an
+    operator can recover it from `docker logs smartpid`.
+    """
     if await user_repo.list_all():
         return
-    admin_hash = hash_password("admin")
+    env_password = os.environ.get("SPID_BOOTSTRAP_ADMIN_PASSWORD")
+    if env_password:
+        admin_password = env_password
+        logger.warning(
+            "seeded_default_admin",
+            msg="Bootstrap admin password set via SPID_BOOTSTRAP_ADMIN_PASSWORD "
+            "env var. Change it after first login if it was not generated "
+            "specifically for this deployment.",
+        )
+    else:
+        admin_password = secrets.token_urlsafe(12)
+        logger.warning(
+            "bootstrap_admin_password",
+            msg=f"Generated one-time admin password: {admin_password}. "
+            "Read it from: docker logs smartpid | grep bootstrap_admin_password",
+        )
+    admin_hash = hash_password(admin_password)
     await user_repo.create("admin", admin_hash, UserRole.ADMIN.value)
-    logger.warning(
-        "seeded_default_admin",
-        msg="SECURITY: Default admin account created with password 'admin'. "
-        "Change it immediately.",
-    )
 
 
 async def _sim_persist_flusher(

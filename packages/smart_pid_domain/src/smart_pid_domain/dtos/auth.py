@@ -7,8 +7,8 @@ from smart_pid_domain.enums import UserRole  # noqa: TC001
 
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=254)
+    password: str = Field(min_length=1, max_length=200)
 
 
 class TokenResponse(BaseModel):

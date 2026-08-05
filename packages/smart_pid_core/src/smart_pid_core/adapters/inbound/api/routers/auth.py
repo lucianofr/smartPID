@@ -1,8 +1,12 @@
 """Auth router — login and token refresh (single-admin deployment)."""
 
-from typing import Annotated
+from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import time
+from typing import TYPE_CHECKING, Annotated
+
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from smart_pid_core.adapters.inbound.api.auth import (
     create_access_token,
@@ -24,22 +28,84 @@ from smart_pid_domain.dtos.auth import (
 )
 from smart_pid_domain.enums import AuditAction
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+logger = structlog.get_logger()
+
 router = APIRouter()
+
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_WINDOW_SECONDS = 60.0
+
+
+class LoginRateLimiter:
+    """In-memory sliding-window login throttle, keyed by client IP.
+
+    5 attempts per 60s per IP; a successful login clears that IP's budget
+    so legitimate repeated logins (multiple tabs, a retried client) never
+    get penalized. Deliberately per-IP, not per-username — counting by
+    username would let a caller learn which usernames exist by watching
+    which ones lock out.
+
+    ponytail: single-process dict, no cross-worker/cross-restart state —
+    a daemon restart or a second uvicorn worker resets/duplicates the
+    budget. Acceptable for this single-process control-plane daemon; move
+    to a shared store (Redis) only if the deployment ever scales past one
+    process.
+    """
+
+    def __init__(
+        self,
+        *,
+        max_attempts: int = _LOGIN_MAX_ATTEMPTS,
+        window_seconds: float = _LOGIN_WINDOW_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._max_attempts = max_attempts
+        self._window_seconds = window_seconds
+        self._clock = clock
+        self._attempts: dict[str, list[float]] = {}
+
+    def check(self, ip: str) -> None:
+        """Record this attempt; raise 429 once `ip` is over budget."""
+        now = self._clock()
+        cutoff = now - self._window_seconds
+        recent = [t for t in self._attempts.get(ip, []) if t > cutoff]
+        recent.append(now)
+        self._attempts[ip] = recent
+        if len(recent) > self._max_attempts:
+            logger.warning("login_rate_limited", client_ip=ip)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many login attempts, try again later",
+            )
+
+    def record_success(self, ip: str) -> None:
+        """Clear the budget for `ip` after a successful login."""
+        self._attempts.pop(ip, None)
 
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
+    request: Request,
     body: LoginRequest,
     user_repo: Annotated[UserRepository, Depends(get_user_repo)],
     settings: Annotated[CoreSettings, Depends(get_settings)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
 ) -> TokenResponse:
+    # No reverse proxy sits in front of this deployment: trusting a caller-
+    # supplied X-Forwarded-For here would let the rate limit be spoofed away.
+    client_ip = request.client.host if request.client else "unknown"
+    limiter = request.app.state.login_rate_limiter
+    limiter.check(client_ip)
     user = await user_repo.get_by_username(body.username)
     if user is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
         )
+    limiter.record_success(client_ip)
     token = create_access_token(
         user_id=user.id,
         username=user.username,

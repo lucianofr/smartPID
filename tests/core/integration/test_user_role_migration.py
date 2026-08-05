@@ -104,7 +104,10 @@ class TestDDLDefault:
 
 class TestSeedDefaultAdmin:
     @pytest.mark.asyncio
-    async def test_seeds_admin_role_admin_on_empty_db(self, tmp_path: Path) -> None:
+    async def test_generated_password_is_not_admin_and_is_logged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.delenv("SPID_BOOTSTRAP_ADMIN_PASSWORD", raising=False)
         repo = UserRepository(tmp_path / "users.db")
         await repo.initialize()
         await _seed_default_admin(repo)
@@ -113,11 +116,30 @@ class TestSeedDefaultAdmin:
         assert users[0].username == "admin"
         assert users[0].role == "admin"
         assert users[0].active is True
-        assert verify_password("admin", users[0].password_hash)
+        assert not verify_password("admin", users[0].password_hash), (
+            "the literal admin/admin password must never be seeded"
+        )
+        assert "bootstrap_admin_password" in capsys.readouterr().out
         await repo.close()
 
     @pytest.mark.asyncio
-    async def test_noop_when_users_exist(self, tmp_path: Path) -> None:
+    async def test_env_var_password_used_verbatim_and_not_logged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setenv("SPID_BOOTSTRAP_ADMIN_PASSWORD", "correct-horse-battery-staple")
+        repo = UserRepository(tmp_path / "users.db")
+        await repo.initialize()
+        await _seed_default_admin(repo)
+        users = await repo.list_all()
+        assert verify_password("correct-horse-battery-staple", users[0].password_hash)
+        assert "correct-horse-battery-staple" not in capsys.readouterr().out
+        await repo.close()
+
+    @pytest.mark.asyncio
+    async def test_noop_when_users_exist(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("SPID_BOOTSTRAP_ADMIN_PASSWORD", raising=False)
         repo = UserRepository(tmp_path / "users.db")
         await repo.initialize()
         await repo.create("existing", hash_password("x"), "user")

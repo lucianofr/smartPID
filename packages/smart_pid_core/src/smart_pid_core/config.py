@@ -23,6 +23,10 @@ class CoreSettings(BaseSettings):
     # Loopback by default: a control-plane daemon should not be reachable off-host
     # unless explicitly opted in via SPID_API_HOST=0.0.0.0.
     api_host: str = "127.0.0.1"
+    # OpenAPI schema and docs UI (/docs, /redoc, /openapi.json) are disabled by
+    # default: unauthenticated recon surface with no reason to be public on a
+    # production deployment. Opt in for local dev / TestSprite MCP workflows.
+    expose_openapi: bool = False
 
     # Network hardening (TD-004). Env vars accept a JSON array, e.g.
     # SPID_CORS_ALLOW_ORIGINS='["http://127.0.0.1:5173"]'.

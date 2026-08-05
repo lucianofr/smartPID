@@ -104,7 +104,14 @@ def create_app(
     trend_buffer: TrendBuffer | None = None,
 ) -> FastAPI:
     """Build and configure the FastAPI application."""
-    app = FastAPI(title="Smart PID API", version="2.0.0", lifespan=_lifespan)
+    app = FastAPI(
+        title="Smart PID API",
+        version="2.0.0",
+        lifespan=_lifespan,
+        docs_url="/docs" if settings.expose_openapi else None,
+        redoc_url="/redoc" if settings.expose_openapi else None,
+        openapi_url="/openapi.json" if settings.expose_openapi else None,
+    )
 
     # Store dependencies on app.state for injection
     app.state.repo = repo
@@ -121,6 +128,7 @@ def create_app(
     app.state.alarm_repo = alarm_repo
     app.state.alarm_worker = alarm_worker
     app.state.audit_repo = audit_repo
+    app.state.login_rate_limiter = auth.LoginRateLimiter()
     app.state.system_event_repo = system_event_repo
     app.state.event_bus = event_bus
     app.state.execution_mode = settings.execution_mode

@@ -440,6 +440,7 @@ async def test_create_app_registers_ws_route_and_openapi(tmp_path) -> None:
     settings = CoreSettings(
         _env_file=None,
         jwt_secret="test-secret-key-minimum-32-bytes!",
+        expose_openapi=True,
     )  # type: ignore[call-arg]
 
     app = create_app(
