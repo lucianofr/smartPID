@@ -4,8 +4,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
-
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from smart_pid_core.adapters.inbound.api.dependencies import (
     get_repo,
@@ -14,7 +13,10 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
     require_user,
 )
 from smart_pid_core.adapters.inbound.sim_persistence import persist_sim_config
-from smart_pid_core.adapters.outbound.simulator_client import SimulatorClient  # noqa: TC001
+from smart_pid_core.adapters.outbound.simulator_client import (
+    SimulatorClient,
+    bind_opcua_client,
+)
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository  # noqa: TC001
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
 from smart_pid_domain.dtos.commands import CommandResponse
@@ -121,12 +123,22 @@ async def create_simulator_loop(
     body: SimulatorLoopCreateRequest,
     _user: Annotated[UserClaims, Depends(require_admin)],
     client: Annotated[SimulatorClient, Depends(get_simulator_client)],
+    request: Request,
 ) -> ControllerSimStatus:
     cid = await client.create_loop(
         controller_id=body.controller_id,
         pv_min=body.pv_min,
         pv_max=body.pv_max,
     )
+    # Point the OPC-UA client at the twin's freshly-minted nodes for this loop,
+    # otherwise every telemetry read raises KeyError until the daemon restarts
+    # (same rule run_daemon and POST /controllers apply — see bind_opcua_client).
+    adapter = getattr(request.app.state, "opcua_adapter", None)
+    if adapter is not None:
+        try:
+            await bind_opcua_client(adapter, client, [cid])
+        except Exception:
+            logger.exception("opcua_registration_sync_failed controller_id=%d", cid)
     return await client.get_controller_status(cid)
 
 

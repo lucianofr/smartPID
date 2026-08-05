@@ -296,6 +296,49 @@ class TestSimulatorLoopsAreIndependentOfControllers:
         )
         assert resp.status_code == 404, resp.text
 
+    @pytest.mark.asyncio
+    async def test_new_loop_binds_its_opcua_nodes_to_the_client_adapter(
+        self, deps: dict,
+    ) -> None:
+        """A loop minted at runtime must reach the OPC-UA client immediately.
+
+        The twin mints OPC-UA nodes for the new loop, but the daemon's
+        OPCUAAdapter (the only telemetry path) only answers for controllers
+        it has been registered against — without this binding every read for
+        the new loop raised KeyError and its trend chart stayed empty until
+        a daemon restart.
+        """
+        sim = deps["simulator_client"]
+        registered: list[dict] = []
+
+        class _FakeOpcuaAdapter:
+            def register_controller(self, **kwargs) -> None:
+                registered.append(kwargs)
+
+        app = create_app(
+            repo=deps["repo"],
+            historian=deps["historian"],
+            user_repo=deps["user_repo"],
+            loop_manager=deps["loop_manager"],
+            settings=deps["settings"],
+            audit_repo=deps["audit_repo"],
+            simulator_client=sim,
+            opcua_adapter=_FakeOpcuaAdapter(),
+        )
+        before = set(await sim.controller_ids())
+        async with await _client(app) as client:
+            resp = await client.post(
+                "/simulator/loops",
+                json={"controller_id": None, "pv_min": 0.0, "pv_max": 100.0},
+                headers=deps["headers"],
+            )
+            assert resp.status_code == 200, resp.text
+        new_ids = set(await sim.controller_ids()) - before
+        assert len(new_ids) == 1, f"expected one new loop, got {new_ids}"
+        cid = new_ids.pop()
+        bound_ids = [r["controller_id"] for r in registered]
+        assert cid in bound_ids, f"loop {cid} never registered on the OPC-UA client"
+
 
 class TestUnknownIdIsAnHonest404:
     """No ``/simulator/*`` route may leak a bare KeyError as an opaque 500.
