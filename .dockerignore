@@ -1,0 +1,61 @@
+# Version control
+.git/
+.worktrees/
+.tokensave/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+build/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+pytest-of-*/
+
+# Node
+node_modules/
+packages/smart_pid_web/dist/
+packages/smart_pid_web/node_modules/
+
+# Project runtime data (never belongs in an image)
+*.spid
+*.spid-wal
+*.spid-shm
+/projects/
+/models/
+/exports/
+
+# Docs, plans, test evidence, tooling artifacts — irrelevant to the runtime
+# image and often large.
+docs/
+plans/
+testsprite_tests/
+test-evidence/
+graphify-out/
+.serena/
+.superpowers/
+.sdd/
+.claude/
+.cursor/
+.windsurf/
+.opencode/
+.clinerules/
+.omp/
+*.md
+!deploy/README.md
+
+# Local secrets — never baked into the image; runtime config comes from the
+# deployment .env passed via compose env_file.
+.env
+.env.*
+!.env.example
+
+# Windows packaging (unrelated deliverable, not part of this container)
+packaging/
+
+# Misc scratch
+testes_e2e-*.md
+IMPROVE-TESTS-E2E.md
