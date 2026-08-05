@@ -55,6 +55,7 @@ what was deliberately deferred.
 - security/security-login-hardening-20260805 | Completed | `LoginRateLimiter` (5/60 s sliding window, per-IP by design) on `/auth/login`; `LoginRequest` capped username ≤254 / password ≤200. Bcrypt compare already constant-time. 50/50 green.
 - security/security-openapi-shadow-20260805 | Completed | /docs, /redoc, /openapi.json 404 by default behind `SPID_API_EXPOSE_OPENAPI` (default false). `dump_openapi.py` unaffected. 2/2 green.
 - docs/docs-readme-health-endpoint-20260805 | Completed | Windows installer README verification corrected from nonexistent `/health` to `GET /system/status`.
+- sre/simulator-independent-twin-20260805 | Completed | Simulator extracted to a standalone `smart-pid-sim` process (own entrypoint, OPC-UA virtual plant + REST control surface, unpublished ports). Daemon holds zero simulator dynamics: every former in-process call goes through the async SimulatorClient RPC; telemetry flows purely over OPC-UA with node ids discovered via REST instead of a private attribute read. A tick-loop watchdog reseeds a default loop whenever the registry empties — >=1 loop always running (proven live: both loops deleted via UI, twin reseeded id 0 in one tick, log `simulator_loop_reseeded`). Also fixed SPA deep-link 404s (`_SPAStaticFiles` history-API fallback) and deployed both compose services to 76.13.172.133:8032; browser E2E proved live PV tracking SP=65 through the real UI.
 
 ## 2026-06-18
 
