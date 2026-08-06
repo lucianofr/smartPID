@@ -6,7 +6,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from smart_pid_core.adapters.inbound.sim_persistence import persist_sim_config
 from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
+from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.config import CoreSettings
 from smart_pid_domain.enums import ProcessPresetName
 
@@ -390,11 +392,45 @@ class TestSimulatorAdapterConfigPersistence:
         with pytest.raises(KeyError):
             adapter.get_config_dict(999)
 
-    def test_load_sim_config_unknown_controller_ignored(
+    def test_load_sim_config_restores_unregistered_loop(
         self, adapter: SimulatorAdapter,
     ) -> None:
-        adapter.load_sim_config({"controlador_id": 999, "preset": "X", "gain": 1.0,
-                                  "tau1": 1.0, "tau2": 0.0, "dead_time": 1.0})
+        """A standalone loop's row must rebuild the loop, not be discarded.
+
+        Boot registers only ids that have a Controladores row, so a loop
+        made by ``create_loop`` is never registered before its config is
+        replayed. Dropping it here is what made every restart look like
+        the simulator had been wiped.
+        """
+        assert not adapter.has_controller(999)
+        adapter.load_sim_config({
+            "controlador_id": 999, "preset": "PRESSURE", "gain": 0.5,
+            "tau1": 30.0, "tau2": 10.0, "dead_time": 5.0,
+            "pid_kp": 3.0, "pid_ti": 15.0, "pid_td": 1.0, "pid_mode": 1,
+            "pv_min": -50.0, "pv_max": 250.0,
+        })
+        assert adapter.has_controller(999)
+        cfg = adapter.get_config_dict(999)
+        assert cfg["preset"] == "PRESSURE"
+        assert cfg["gain"] == 0.5
+        assert cfg["pid_kp"] == 3.0
+        # The span drives auto-excitation and PV clamping, so a wrong one
+        # silently changes what the twin simulates.
+        assert cfg["pv_min"] == -50.0
+        assert cfg["pv_max"] == 250.0
+
+    def test_load_sim_config_keeps_registered_pv_scale(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        """Controladores.pv_scale wins for a loop a project controller owns."""
+        adapter.register_controller(1, pv_min=0.0, pv_max=500.0)
+        adapter.load_sim_config({
+            "controlador_id": 1, "preset": "X", "gain": 1.0,
+            "tau1": 1.0, "tau2": 0.0, "dead_time": 1.0,
+            "pv_min": -50.0, "pv_max": 250.0,
+        })
+        cfg = adapter.get_config_dict(1)
+        assert (cfg["pv_min"], cfg["pv_max"]) == (0.0, 500.0)
 
 
 class TestSimulatorPIDInternal:
@@ -615,3 +651,73 @@ class TestSimulatorAdapterRegistrationLifecycle:
         adapter.register_controller(2)
         adapter.unregister_controller(1)
         assert adapter.has_controller(2) is True
+
+
+
+class TestStandaloneLoopSurvivesRestart:
+    """The reported defect: a redeploy wiped the operator's simulator loops.
+
+    The SQLite row was always intact on the persistent volume -- boot read
+    it back and dropped it, because nothing had registered the id first.
+    Composes the real repo with the real adapter: the fault lives exactly
+    where the two meet, so neither alone reproduces it.
+    """
+
+    @staticmethod
+    def _restart(settings: CoreSettings) -> SimulatorAdapter:
+        """A fresh adapter, as a redeploy would build: empty, nothing known."""
+        with patch(
+            "smart_pid_core.adapters.inbound.simulator_adapter.OPCUAServer",
+            side_effect=lambda port=4849, **_k: _mock_opcua_server(port=port),
+        ):
+            return SimulatorAdapter(settings=settings)
+
+    async def test_loop_and_its_tuning_come_back(
+        self, tmp_path, settings: CoreSettings, adapter: SimulatorAdapter,
+    ) -> None:
+        repo = SQLiteRepository(tmp_path / "restart.spid")
+        await repo.initialize()
+        fresh = None
+        try:
+            # No Controladores row is created: this is a loop no malha owns.
+            cid = adapter.create_loop(pv_min=-50.0, pv_max=250.0)
+            adapter.set_pid_params(cid, kp=3.0, ti=15.0, td=1.0)
+            assert await persist_sim_config(adapter, repo, cid)
+
+            fresh = self._restart(settings)
+            assert not fresh.has_controller(cid), "restart must start empty"
+            for cfg in await repo.list_sim_configs():
+                fresh.load_sim_config(cfg)
+
+            assert fresh.has_controller(cid), "the loop was erased by the restart"
+            got = fresh.get_config_dict(cid)
+            assert got["pid_kp"] == 3.0
+            assert got["pid_ti"] == 15.0
+            assert (got["pv_min"], got["pv_max"]) == (-50.0, 250.0)
+        finally:
+            if fresh is not None:
+                fresh.stop()
+            await repo.close()
+
+    async def test_deleted_loop_does_not_return(
+        self, tmp_path, settings: CoreSettings, adapter: SimulatorAdapter,
+    ) -> None:
+        """Deleting must reach the file, or restore resurrects the loop."""
+        repo = SQLiteRepository(tmp_path / "deleted.spid")
+        await repo.initialize()
+        fresh = None
+        try:
+            cid = adapter.create_loop()
+            assert await persist_sim_config(adapter, repo, cid)
+
+            adapter.unregister_controller(cid)
+            await repo.delete_sim_config(cid)
+
+            fresh = self._restart(settings)
+            for cfg in await repo.list_sim_configs():
+                fresh.load_sim_config(cfg)
+            assert not fresh.has_controller(cid)
+        finally:
+            if fresh is not None:
+                fresh.stop()
+            await repo.close()

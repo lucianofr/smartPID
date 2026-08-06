@@ -130,6 +130,7 @@ async def create_simulator_loop(
     body: SimulatorLoopCreateRequest,
     _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> ControllerSimStatus:
     try:
         cid = adapter.create_loop(
@@ -139,6 +140,10 @@ async def create_simulator_loop(
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    # Write the row now. Every other /simulator route persists on mutation,
+    # so a loop created and then left alone was the one case with nothing on
+    # disk to restore from, and it disappeared on the next restart.
+    await persist_sim_config(adapter, repo, cid)
     # Point the OPC-UA client at the freshly-minted nodes for this loop,
     # otherwise every telemetry read raises KeyError until a daemon restart
     # (same rule POST /controllers applies — see _sync_opcua_registration).
@@ -156,9 +161,13 @@ async def delete_simulator_loop(
     controller_id: int,
     _user: Annotated[UserClaims, Depends(require_admin)],
     adapter: Annotated[SimulatorAdapter, Depends(get_simulator_adapter)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
 ) -> Response:
     if not adapter.unregister_controller(controller_id):
         raise _not_registered(controller_id)
+    # Has to reach the file: load_sim_config recreates any loop whose config
+    # is still there, so dropping it only in memory brings it back on restart.
+    await repo.delete_sim_config(controller_id)
     return Response(status_code=204)
 
 

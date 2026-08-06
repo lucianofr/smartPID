@@ -10,6 +10,11 @@ services:
       - "8032:8000"
     env_file:
       - .env
+    # Persistence comes from the image's SPID_*_PATH defaults (see Dockerfile),
+    # which all point under /data. This file previously set none of them, so
+    # despite the volume below every write landed in the container's writable
+    # layer and a redeploy threw it away. Do not override them with paths
+    # outside /data, and do not let .env do it either.
     volumes:
       - smartpid-data:/data
 

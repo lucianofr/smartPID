@@ -41,6 +41,10 @@ class OPCUAServer:
         self._ns_idx: int = 0
         self._controller_node_ids: dict[int, dict[str, str]] = {}
         self._controller_nodes: dict[int, dict] = {}
+        # Values pushed while the server loop was down. The address space
+        # does not exist yet, so they cannot be written; they are replayed
+        # in _setup_and_serve once the nodes exist. See update_values.
+        self._pending_values: dict[int, dict[str, float | int | str | bool]] = {}
         self._on_write: Callable[[int, str, float], None] | None = None
         self._subscription = None
         self._write_handler = None
@@ -121,6 +125,12 @@ class OPCUAServer:
         ``values`` is a dict of node_key -> value for all nodes to update.
         """
         if self._loop is None or not self._loop.is_running():
+            # Pre-start: buffer instead of dropping. Nodes are minted with
+            # hardcoded defaults (Kp=1.0, Ti=10.0, Td=0.0), so discarding a
+            # config pushed before start left those defaults in the address
+            # space -- and the initial data-change notification then fed them
+            # straight back into the twin, overwriting restored tuning.
+            self._pending_values.setdefault(controller_id, {}).update(values)
             return
         asyncio.run_coroutine_threadsafe(
             self._async_update_values(controller_id, values),
@@ -160,6 +170,16 @@ class OPCUAServer:
         # Create nodes for any pre-registered controllers
         for controller_id in list(self._controller_node_ids.keys()):
             await self._async_register_controller(controller_id)
+
+        # Replay values buffered before the loop existed, while nothing is
+        # subscribed yet. Order matters: subscribe_data_change delivers an
+        # initial notification carrying whatever the node holds, and
+        # _on_write feeds that back into the twin. Applying these after the
+        # subscription would race that notification and could hand the twin
+        # the creation-time defaults instead of the restored config.
+        for controller_id, values in self._pending_values.items():
+            await self._async_update_values(controller_id, values)
+        self._pending_values.clear()
 
         # Subscribe to write events
         handler = _WriteHandler(self._on_write, self._controller_nodes)

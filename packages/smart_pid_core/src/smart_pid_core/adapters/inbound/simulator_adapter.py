@@ -307,7 +307,7 @@ class SimulatorAdapter:
         self._sync_pid_config_to_opcua(controller_id)
 
     def _sync_pid_config_to_opcua(self, controller_id: int) -> None:
-        """Push PID configuration (kp/ti/td/structure/enabled) to OPC-UA once.
+        """Push the twin's writable state (gains, structure, SP, mode) to OPC-UA.
 
         Called on config changes (preset load, set_pid_params, register) so the
         OPC-UA nodes reflect the current config without racing with external
@@ -323,6 +323,14 @@ class SimulatorAdapter:
                 "td": ctrl.pid_params.rate,
                 "pid_structure": ctrl.pid_structure,
                 "pid_enabled": True,
+                # SP and mode belong here too, not just the gains. Every
+                # writable node is subscribed, and subscribe_data_change
+                # replays each one's value back through _on_write -- so a
+                # node left at its creation default (SP=50, Mode=MAN)
+                # overwrites restored state the moment the server starts.
+                "sp": ctrl.sp,
+                "pid_sp": ctrl.sp,
+                "mode": ctrl.pid_mode,
             }
         self._opcua_server.update_values(controller_id=controller_id, values=values)
 
@@ -547,12 +555,30 @@ class SimulatorAdapter:
                 ctrl.auto_dist_elapsed_s = 0.0
 
     def load_sim_config(self, cfg: dict) -> None:
-        """Restore a controller's simulator state from a persisted config dict."""
+        """Restore a controller's simulator state from a persisted config dict.
+
+        Creates the loop when nothing has registered it yet. Boot mints
+        loops only for rows of the Controladores table, but a standalone
+        loop (``create_loop``) deliberately has no such row -- so its
+        config was read back out of Configuracao_Simulador and then
+        silently dropped here, and every restart looked like the
+        simulator had been wiped even though the file was intact.
+        """
         cid = cfg["controlador_id"]
         with self._lock:
             ctrl = self._controllers.get(cid)
             if ctrl is None:
-                return
+                # Standalone loop: the persisted row is the only record of
+                # its span. A project controller keeps the scale that
+                # register_controller already gave it from Controladores.
+                ctrl = _ControllerSim(
+                    controller_id=cid,
+                    pv_min=cfg.get("pv_min", 0.0),
+                    pv_max=cfg.get("pv_max", 100.0),
+                )
+                self._controllers[cid] = ctrl
+                self._opcua_server.register_controller(cid)
+                logger.info("Simulator: restored standalone loop (id=%d)", cid)
             ctrl.preset_name = cfg["preset"]
             ctrl.gain = cfg["gain"]
             ctrl.tau1 = cfg["tau1"]
@@ -639,6 +665,8 @@ class SimulatorAdapter:
                 "auto_dist_max_pct": ctrl.auto_dist_max_pct,
                 "auto_dist_period_s": ctrl.auto_dist_period_s,
                 "pid_sp": ctrl.sp,
+                "pv_min": ctrl.pv_min,
+                "pv_max": ctrl.pv_max,
             }
 
     def get_controller_status(self, controller_id: int) -> ControllerSimStatus:

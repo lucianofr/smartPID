@@ -109,6 +109,36 @@ class TestOPCUAServerRegisterController:
         finally:
             server.stop()
 
+    def test_values_pushed_before_start_survive_node_creation(self) -> None:
+        """A config pushed before the loop exists must reach the nodes.
+
+        Nodes are minted with hardcoded defaults (Kp=1.0, Mode=0), and
+        update_values used to return early while the loop was down. The
+        defaults therefore stayed in the address space, and the initial
+        subscribe_data_change notification fed them straight back into the
+        twin -- wiping restored tuning on every daemon start.
+        """
+        import asyncio
+
+        from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
+
+        server = OPCUAServer(port=_get_free_port())
+        server.register_controller(1)
+        server.update_values(controller_id=1, values={"kp": 3.25, "mode": 1})
+        server.start()
+        try:
+            nodes = server._controller_nodes[1]
+
+            def _read(key: str) -> float | int:
+                return asyncio.run_coroutine_threadsafe(
+                    nodes[key].read_value(), server._loop,
+                ).result(timeout=5.0)
+
+            assert _read("kp") == pytest.approx(3.25)
+            assert _read("mode") == 1
+        finally:
+            server.stop()
+
     def test_reregistration_keeps_the_client_reading_live_values(self) -> None:
         """A re-registered controller must keep its node ids.
 

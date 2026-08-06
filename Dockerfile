@@ -69,6 +69,19 @@ RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin appuser \
     && mkdir -p /data \
     && chown -R appuser:appuser /app /data
 
+# Persistence contract of the image: every mutable path lives under /data,
+# the volume mount point above. Unset, these default to $HOME/.smart-pid
+# and ./project.spid — both inside the container's writable layer, which a
+# redeploy discards. Declaring them here means any compose/k8s/`docker run`
+# that mounts a volume at /data keeps its data, instead of each deployment
+# file having to remember all five (docker-compose.vps.yml remembered none).
+# A compose `environment:` block still overrides these.
+ENV SPID_DB_PATH=/data/project.spid \
+    SPID_USERS_DB_PATH=/data/users.db \
+    SPID_PROJECTS_DIR=/data/projects \
+    SPID_DAEMON_STATE_PATH=/data/daemon_state.json \
+    SPID_LOG_DIR=/data/logs
+
 USER appuser
 
 EXPOSE 8000

@@ -267,7 +267,12 @@ CREATE TABLE IF NOT EXISTS Configuracao_Simulador (
     auto_dist_max_pct REAL NOT NULL DEFAULT 10.0,
     pid_sp            REAL NOT NULL DEFAULT 50.0,
     auto_sp_period_s   REAL NOT NULL DEFAULT 30.0,
-    auto_dist_period_s REAL NOT NULL DEFAULT 30.0
+    auto_dist_period_s REAL NOT NULL DEFAULT 30.0,
+    -- PV span. Only a project controller gets its scale back from
+    -- Controladores.pv_scale; a standalone loop has no such row, so
+    -- without these its span silently reverted to 0-100 on restart.
+    pv_min             REAL NOT NULL DEFAULT 0.0,
+    pv_max             REAL NOT NULL DEFAULT 100.0
 );
 """
 
@@ -328,8 +333,9 @@ _ALARMES_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("delay_off_s", "REAL NOT NULL DEFAULT 0.0"),
 )
 
-# Configuracao_Simulador shipped in four generations: 6 columns, then +pid_*
-# (11), then +auto_*/pid_sp (17), then the two auto-excitation PERIODS (19).
+# Configuracao_Simulador shipped in five generations: 6 columns, then +pid_*
+# (11), then +auto_*/pid_sp (17), then the two auto-excitation PERIODS (19),
+# then the PV span (21).
 # The pid_* group was added to _DDL without a matching back-fill, so gen1 files
 # hit "no column named pid_enabled" on the save_sim_config INSERT. The periods
 # were worse than missing a column: get_config_dict emitted them, nothing stored
@@ -350,6 +356,8 @@ _SIM_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("pid_sp", "REAL NOT NULL DEFAULT 50.0"),
     ("auto_sp_period_s", "REAL NOT NULL DEFAULT 30.0"),
     ("auto_dist_period_s", "REAL NOT NULL DEFAULT 30.0"),
+    ("pv_min", "REAL NOT NULL DEFAULT 0.0"),
+    ("pv_max", "REAL NOT NULL DEFAULT 100.0"),
 )
 
 
@@ -537,6 +545,12 @@ class SQLiteRepository:
         loop silently picked up the dead loop's alarm limits, firing
         alarms nobody had configured for it.
 
+        The simulator row goes with it. ``ON DELETE CASCADE`` is declared
+        on it but inert, because the engine opens with
+        ``PRAGMA foreign_keys=OFF``; leaving it behind now resurrects the
+        dead loop, since load_sim_config recreates any loop it finds a
+        config for.
+
         Alarm HISTORY is deliberately kept (it is a record of something
         that really happened), but any still-open row is closed: an
         un-cleared alarm belonging to a deleted loop would be re-seeded
@@ -553,6 +567,10 @@ class SQLiteRepository:
                 raise KeyError(controller_id)
             await session.execute(
                 text("DELETE FROM Configuracao_Alarmes WHERE controlador_id = :cid"),
+                {"cid": controller_id},
+            )
+            await session.execute(
+                text("DELETE FROM Configuracao_Simulador WHERE controlador_id = :cid"),
                 {"cid": controller_id},
             )
             await session.execute(
@@ -888,6 +906,8 @@ class SQLiteRepository:
         pid_sp: float = 50.0,
         auto_sp_period_s: float = 30.0,
         auto_dist_period_s: float = 30.0,
+        pv_min: float = 0.0,
+        pv_max: float = 100.0,
     ) -> None:
         """Insert or replace a simulator configuration for *controller_id*."""
         async with self.session_factory() as session:
@@ -898,12 +918,12 @@ class SQLiteRepository:
                     "  pid_enabled, pid_kp, pid_ti, pid_td, pid_mode,"
                     "  auto_sp_enabled, auto_sp_min_pct, auto_sp_max_pct,"
                     "  auto_dist_enabled, auto_dist_max_pct, pid_sp,"
-                    "  auto_sp_period_s, auto_dist_period_s)"
+                    "  auto_sp_period_s, auto_dist_period_s, pv_min, pv_max)"
                     " VALUES (:cid, :preset, :gain, :tau1, :tau2, :dead_time,"
                     "  :pid_enabled, :pid_kp, :pid_ti, :pid_td, :pid_mode,"
                     "  :auto_sp_enabled, :auto_sp_min_pct, :auto_sp_max_pct,"
                     "  :auto_dist_enabled, :auto_dist_max_pct, :pid_sp,"
-                    "  :auto_sp_period_s, :auto_dist_period_s)"
+                    "  :auto_sp_period_s, :auto_dist_period_s, :pv_min, :pv_max)"
                 ),
                 {
                     "cid": controller_id, "preset": preset, "gain": gain,
@@ -918,6 +938,8 @@ class SQLiteRepository:
                     "pid_sp": pid_sp,
                     "auto_sp_period_s": auto_sp_period_s,
                     "auto_dist_period_s": auto_dist_period_s,
+                    "pv_min": pv_min,
+                    "pv_max": pv_max,
                 },
             )
             await session.commit()
@@ -943,6 +965,20 @@ class SQLiteRepository:
             rows = result.mappings().all()
         return [self._sim_row_to_dict(r) for r in rows]
 
+    async def delete_sim_config(self, controller_id: int) -> None:
+        """Drop a loop's simulator row. A no-op when there is none.
+
+        Deleting a standalone loop has to reach the file: load_sim_config
+        recreates any loop it still finds a config for, so an in-memory
+        unregister alone would let it return on the next restart.
+        """
+        async with self.session_factory() as session:
+            await session.execute(
+                text("DELETE FROM Configuracao_Simulador WHERE controlador_id = :cid"),
+                {"cid": controller_id},
+            )
+            await session.commit()
+
     @staticmethod
     def _sim_row_to_dict(row: Mapping) -> dict:
         return {
@@ -967,6 +1003,8 @@ class SQLiteRepository:
             # _apply_migrations adding the column, same as pid_sp above.
             "auto_sp_period_s": row.get("auto_sp_period_s", 30.0),
             "auto_dist_period_s": row.get("auto_dist_period_s", 30.0),
+            "pv_min": row.get("pv_min", 0.0),
+            "pv_max": row.get("pv_max", 100.0),
         }
 
     # ------------------------------------------------------------------

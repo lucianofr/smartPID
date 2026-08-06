@@ -106,6 +106,8 @@ async def persist_sim_config(
                 pid_sp=cfg.get("pid_sp", 50.0),
                 auto_sp_period_s=cfg["auto_sp_period_s"],
                 auto_dist_period_s=cfg["auto_dist_period_s"],
+                pv_min=cfg["pv_min"],
+                pv_max=cfg["pv_max"],
             )
         except OperationalError as exc:
             waited_ms = (time.monotonic() - started) * 1000

@@ -264,6 +264,8 @@ class ConfiguracaoSimulador(SpidBase):
     pid_sp: Mapped[float]
     auto_sp_period_s: Mapped[float]
     auto_dist_period_s: Mapped[float]
+    pv_min: Mapped[float]
+    pv_max: Mapped[float]
 
 
 class Usuarios(UsersBase):
