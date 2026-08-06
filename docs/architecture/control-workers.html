@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 2.12.0">
-  <title>Smart PID — Arquitetura do Sistema Diagram</title>
+  <title>Smart PID — Workers do Motor de Controle Diagram</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -4496,13 +4496,13 @@
     <div class="header">
       <div class="header-row">
         <div class="pulse-dot"></div>
-        <h1>Smart PID — Arquitetura do Sistema</h1>
+        <h1>Smart PID — Workers do Motor de Controle</h1>
       </div>
-      <p class="subtitle">Digital twin com servidor OPC-UA embarcado, cliente OPC-UA unificado, barramento ZMQ e workers (smart_pid_core)</p>
+      <p class="subtitle">Detalhe do bloco colapsado: 8 workers em duas classes (por malha e singleton), acoplados só pelo EventBus</p>
     </div>
 
-    <script id="archify-guided-views-data" type="application/json">[{"id":"planta-intercambiavel","label":"Planta intercambiável","focus":["dcs","opcua_server","opcua_adapter","io_worker"],"note":"O twin e o DCS real ocupam o mesmo lugar: o cliente OPC-UA é a única via de I/O nos dois modos."},{"id":"malha-do-twin","label":"Malha interna do twin","focus":["twin_pid","twin","process_model","opcua_server"],"note":"SimulatorAdapter integra o modelo a 100 ms; o PID interno amostra a 1 s com ZOH no CO."},{"id":"fechamento-opcua","label":"Fechamento pelo OPC-UA","focus":["opcua_server","opcua_adapter","io_worker","twin"],"note":"CO sai do IOWorker, é escrito num nó e volta ao twin por _on_opcua_write — a malha fecha na rede."},{"id":"loops-sem-malha","label":"Loops do twin sem malha","focus":["twin","twin_telemetry","io_worker","event_bus"],"note":"TwinTelemetry anexa IO scan e MonitorWorker aos loops que nenhum controlador de projeto possui."},{"id":"motor-e-hmi","label":"Motor de controle e HMI","focus":["event_bus","pid_worker","aux_workers","api","web"],"note":"Barramento ZMQ in-proc distribui TELEMETRY/STATUS; a API é o segundo consumidor e faz fan-out por WS."}]</script>
-    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"https://github.com/lucianofr/smartPID","revision":"d8b72e5da9356ea4046d2a7690790e11b5d9192f","shortRevision":"d8b72e5"},"referenceCount":17,"nodes":{"process_model":[{"path":"packages/smart_pid_core/src/smart_pid_core/domain/services/process_models.py","line":54,"label":"class ProcessModel","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/domain/services/process_models.py#L54"}],"twin_pid":[{"path":"packages/smart_pid_core/src/smart_pid_core/domain/services/pid_engine.py","line":60,"label":"class PIDEngine","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/domain/services/pid_engine.py#L60"}],"twin":[{"path":"packages/smart_pid_core/src/smart_pid_core/adapters/inbound/simulator_adapter.py","line":172,"label":"class SimulatorAdapter","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/simulator_adapter.py#L172"}],"opcua_server":[{"path":"packages/smart_pid_core/src/smart_pid_core/adapters/inbound/opcua_server.py","line":26,"label":"class OPCUAServer","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/opcua_server.py#L26"}],"opcua_adapter":[{"path":"packages/smart_pid_core/src/smart_pid_core/adapters/outbound/opcua_adapter.py","line":23,"label":"class OPCUAAdapter","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/adapters/outbound/opcua_adapter.py#L23"},{"path":"packages/smart_pid_core/src/smart_pid_core/adapters/inbound/simulator_adapter.py","line":86,"label":"bind_opcua_client()","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/simulator_adapter.py#L86"},{"path":"packages/smart_pid_core/src/smart_pid_core/adapters/factory.py","line":10,"label":"class AdapterFactory","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/adapters/factory.py#L10"}],"twin_telemetry":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/twin_telemetry.py","line":52,"label":"class TwinTelemetry","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/twin_telemetry.py#L52"}],"io_worker":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/workers/io_worker.py","line":26,"label":"class IOWorker","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/workers/io_worker.py#L26"}],"event_bus":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/event_bus.py","line":68,"label":"class EventBus","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/event_bus.py#L68"}],"pid_worker":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/workers/pid_worker.py","line":108,"label":"class PIDWorker","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/workers/pid_worker.py#L108"}],"aux_workers":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/workers/monitor_worker.py","line":34,"label":"class MonitorWorker","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/workers/monitor_worker.py#L34"}],"sqlite":[{"path":"packages/smart_pid_core/src/smart_pid_core/adapters/outbound/sqlite_repo.py","line":356,"label":"class SQLiteRepository","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/adapters/outbound/sqlite_repo.py#L356"}],"api":[{"path":"packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/app.py","line":107,"label":"create_app()","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/app.py#L107"},{"path":"packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/routers/simulator.py","line":41,"label":"router /simulator","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/routers/simulator.py#L41"}],"web":[{"path":"packages/smart_pid_web/src/pages/SimulatorPage.tsx","line":1,"label":"SimulatorPage","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_web/src/pages/SimulatorPage.tsx#L1"}],"telemetry_pub":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/telemetry_publisher.py","line":21,"label":"class TelemetryPublisher","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/telemetry_publisher.py#L21"}]}}</script>
+    <script id="archify-guided-views-data" type="application/json">[{"id":"produtor-telemetry","label":"Produtor único de TELEMETRY","focus":["io_worker","event_bus","db_worker","trend_buffer_worker"],"note":"IOWorker é o único que publica TELEMETRY; todo o resto do sistema deriva desse tópico."},{"id":"por-malha","label":"Conjunto por malha","focus":["pid_worker","monitor_worker","stats_worker","ai_worker","event_bus"],"note":"LoopManager sobe e derruba esses quatro por controlador; os tópicos levam o sufixo .{id}."},{"id":"singletons","label":"Consumidores singleton","focus":["db_worker","alarm_worker","trend_buffer_worker","event_bus"],"note":"Uma instância cada, assinando por prefixo de tópico — um só worker atende todas as malhas."},{"id":"persistencia","label":"Escritores do .spid","focus":["db_worker","alarm_worker","system_event_worker","sqlite"],"note":"Três escritores distintos no mesmo arquivo: historian em lote, alarmes e eventos de sistema."},{"id":"fora-do-barramento","label":"Fora do barramento","focus":["system_event_worker","export_worker","api"],"note":"SystemEventWorker não tem thread; ExportWorker não tem thread nem assinatura — roda sob REST."}]</script>
+    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"https://github.com/lucianofr/smartPID","revision":"d8b72e5da9356ea4046d2a7690790e11b5d9192f","shortRevision":"d8b72e5"},"referenceCount":14,"nodes":{"io_worker":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/workers/io_worker.py","line":26,"label":"class IOWorker","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/workers/io_worker.py#L26"}],"event_bus":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/event_bus.py","line":68,"label":"class EventBus","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/event_bus.py#L68"}],"pid_worker":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/workers/pid_worker.py","line":108,"label":"class PIDWorker","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/workers/pid_worker.py#L108"}],"monitor_worker":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/workers/monitor_worker.py","line":34,"label":"class MonitorWorker","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/workers/monitor_worker.py#L34"}],"stats_worker":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/workers/stats_worker.py","line":26,"label":"class StatsWorker","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/workers/stats_worker.py#L26"}],"ai_worker":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/workers/ai_worker.py","line":104,"label":"class AIWorker","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/workers/ai_worker.py#L104"}],"db_worker":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/workers/db_worker.py","line":27,"label":"class DBWorker","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/workers/db_worker.py#L27"}],"alarm_worker":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/workers/alarm_worker.py","line":147,"label":"class AlarmWorker","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/workers/alarm_worker.py#L147"}],"system_event_worker":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/workers/system_event_worker.py","line":17,"label":"class SystemEventWorker","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/workers/system_event_worker.py#L17"}],"trend_buffer_worker":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/workers/trend_buffer_worker.py","line":17,"label":"class TrendBufferWorker","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/workers/trend_buffer_worker.py#L17"},{"path":"packages/smart_pid_core/src/smart_pid_core/application/trend_buffer.py","line":45,"label":"class TrendBuffer","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/trend_buffer.py#L45"}],"sqlite":[{"path":"packages/smart_pid_core/src/smart_pid_core/adapters/outbound/sqlite_repo.py","line":356,"label":"class SQLiteRepository","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/adapters/outbound/sqlite_repo.py#L356"}],"api":[{"path":"packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/app.py","line":107,"label":"create_app()","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/app.py#L107"}],"export_worker":[{"path":"packages/smart_pid_core/src/smart_pid_core/application/export_worker.py","line":17,"label":"class ExportWorker","href":"https://github.com/lucianofr/smartPID/blob/d8b72e5da9356ea4046d2a7690790e11b5d9192f/packages/smart_pid_core/src/smart_pid_core/application/export_worker.py#L17"}]}}</script>
     <div class="guided-views no-print" id="guided-views" hidden aria-label="Guided diagram views">
       <button id="guided-view-prev" type="button" aria-label="Previous guided view" title="Previous guided view ([)">&#8592;</button>
       <div class="guided-view-copy">
@@ -4544,9 +4544,9 @@
 
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read">
-      <svg viewBox="0 0 3050 974" role="img" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase">
-        <title id="archify-diagram-title">Smart PID — Arquitetura do Sistema</title>
-        <desc id="archify-diagram-description">Digital twin com servidor OPC-UA embarcado, cliente OPC-UA unificado, barramento ZMQ e workers (smart_pid_core)</desc>
+      <svg viewBox="0 0 1960 1484" role="img" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase">
+        <title id="archify-diagram-title">Smart PID — Workers do Motor de Controle</title>
+        <desc id="archify-diagram-description">Detalhe do bloco colapsado: 8 workers em duas classes (por malha e singleton), acoplados só pelo EventBus</desc>
         <!-- Definitions -->
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -4570,322 +4570,259 @@
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Boundaries (behind everything) -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" x="110" y="200" width="2625" height="706" rx="12" class="c-region" stroke-width="1"/>
-        <text x="118" y="218" class="t-cloud" font-size="9" font-weight="600">smart_pid_core — daemon único (main.py)</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" x="670" y="270" width="320" height="532" rx="12" class="c-region" stroke-width="1"/>
+        <text x="678" y="288" class="t-cloud" font-size="9" font-weight="600">Por malha — LoopManager</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="1" x="110" y="200" width="910" height="350" rx="8" class="c-security-group" stroke-width="1"/>
-        <text x="118" y="218" class="t-security" font-size="9" font-weight="600">Simulador — digital twin in-process (SPID_SIMULATOR_ENABLED)</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="1" x="670" y="850" width="320" height="566" rx="12" class="c-region" stroke-width="1"/>
+        <text x="678" y="868" class="t-cloud" font-size="9" font-weight="600">Singleton — main.py</text>
 
         <!-- Connection paths (before components for correct z-order) -->
-        <path data-edge-from="twin_pid" data-edge-to="twin" data-edge-label="CO em AUTO · 1 s" data-edge-key="0" data-edge-id="twinpid-twin" data-composition-points="540,310;540,425" d="M 540 310 L 540 425" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="twin" data-edge-to="process_model" data-edge-label="CO % aplicado" data-edge-key="1" data-edge-id="twin-plant" data-composition-points="440,482;340,482" d="M 440 482 L 340 482" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="process_model" data-edge-to="twin" data-edge-label="PV + distúrbio" data-edge-key="2" data-edge-id="plant-twin" data-composition-points="340,468;440,468" d="M 340 468 L 440 468" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="twin" data-edge-to="opcua_server" data-edge-label="update_values · 100 ms" data-edge-key="3" data-edge-id="twin-nodes" data-composition-points="640,475;664,475;664,498;756,498;756,482;780,482" d="M 640 475 L 656 475 Q 664 475 664 483 L 664 490 Q 664 498 672 498 L 748 498 Q 756 498 756 490 L 756 490 Q 756 482 764 482 L 780 482" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="opcua_server" data-edge-to="twin" data-edge-label="_on_opcua_write" data-edge-key="4" data-edge-id="nodes-twin" data-composition-points="780,468;756,468;756,484;664,484;664,461;640,461" d="M 780 468 L 764 468 Q 756 468 756 476 L 756 476 Q 756 484 748 484 L 672 484 Q 664 484 664 476 L 664 469 Q 664 461 656 461 L 640 461" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="opcua_server" data-edge-to="opcua_adapter" data-edge-label="SIM · opc.tcp://localhost:4849" data-edge-key="5" data-edge-id="sim-client" data-composition-points="990,482;1180,482" d="M 990 482 L 1180 482" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="opcua_adapter" data-edge-to="opcua_server" data-edge-label="write CO · SP · Kp/Ti/Td" data-edge-key="6" data-edge-id="client-sim" data-composition-points="1180,468;990,468" d="M 1180 468 L 990 468" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="dcs" data-edge-to="opcua_adapter" data-edge-label="CAMPO · tag_bindings" data-edge-key="7" data-edge-id="dcs-client" data-composition-points="820,95;1280,95;1280,430" d="M 820 95 L 1272 95 Q 1280 95 1280 103 L 1280 430" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="opcua_adapter" data-edge-to="io_worker" data-edge-label="async" data-edge-key="8" data-edge-id="client-io" data-composition-points="1380,475;1404,475;1404,491;1556,491;1556,470;1580,470" d="M 1380 475 L 1396 475 Q 1404 475 1404 483 L 1404 483 Q 1404 491 1412 491 L 1548 491 Q 1556 491 1556 483 L 1556 478 Q 1556 470 1564 470 L 1580 470" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="io_worker" data-edge-to="event_bus" data-edge-label="TELEMETRY.{id}" data-edge-key="9" data-edge-id="io-bus" data-composition-points="1760,477;1784,477;1784,498.5;1876,498.5;1876,482.5;1900,482.5" d="M 1760 477 L 1776 477 Q 1784 477 1784 485 L 1784 490.5 Q 1784 498.5 1792 498.5 L 1868 498.5 Q 1876 498.5 1876 490.5 L 1876 490.5 Q 1876 482.5 1884 482.5 L 1900 482.5" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="event_bus" data-edge-to="pid_worker" data-edge-label="ACTION.CO" data-edge-key="10" data-edge-id="bus-pid" data-composition-points="2065,468.5;2132.5,468.5;2132.5,319;2200,319" d="M 2065 468.5 L 2124.5 468.5 Q 2132.5 468.5 2132.5 460.5 L 2132.5 327 Q 2132.5 319 2140.5 319 L 2200 319" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="event_bus" data-edge-to="aux_workers" data-edge-label="STATUS · alarmes" data-edge-key="11" data-edge-id="bus-aux" data-composition-points="2065,496.5;2132.5,496.5;2132.5,548;2200,548" d="M 2065 496.5 L 2124.5 496.5 Q 2132.5 496.5 2132.5 504.5 L 2132.5 540 Q 2132.5 548 2140.5 548 L 2200 548" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="event_bus" data-edge-to="telemetry_pub" data-edge-label="todos os tópicos" data-edge-key="12" data-edge-id="bus-telemetrypub" data-composition-points="1982.5,580;1982.5,700" d="M 1982.5 580 L 1982.5 700" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="twin" data-edge-to="twin_telemetry" data-edge-label="loops sem malha" data-edge-key="13" data-edge-id="twin-twintel" data-composition-points="640,489;664,489;664,752;1020,752" d="M 640 489 L 656 489 Q 664 489 664 497 L 664 744 Q 664 752 672 752 L 1020 752" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="twin_telemetry" data-edge-to="io_worker" data-edge-label="attach IO scan" data-edge-key="14" data-edge-id="twintel-io" data-composition-points="1230,752;1405,752;1405,484;1580,484" d="M 1230 752 L 1397 752 Q 1405 752 1405 744 L 1405 492 Q 1405 484 1413 484 L 1580 484" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="event_bus" data-edge-to="api" data-edge-label="bus → WS fan-out" data-edge-key="15" data-edge-id="bus-api" data-composition-points="2065,482.5;2292.5,482.5;2292.5,435;2520,435" d="M 2065 482.5 L 2284.5 482.5 Q 2292.5 482.5 2292.5 474.5 L 2292.5 443 Q 2292.5 435 2300.5 435 L 2520 435" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="aux_workers" data-edge-to="sqlite" data-edge-label="persistência" data-edge-key="16" data-edge-id="aux-sqlite" data-composition-points="2300,596;2300,790" d="M 2300 596 L 2300 790" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="api" data-edge-to="sqlite" data-edge-label="REST CRUD" data-edge-key="17" data-edge-id="api-sqlite" data-composition-points="2520,449;2460,449;2460,838;2400,838" d="M 2520 449 L 2468 449 Q 2460 449 2460 457 L 2460 830 Q 2460 838 2452 838 L 2400 838" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="api" data-edge-to="web" data-edge-label="REST + WS" data-edge-key="18" data-edge-id="api-web" data-composition-points="2705,442;2729,442;2729,458;2806,458;2806,439;2830,439" d="M 2705 442 L 2721 442 Q 2729 442 2729 450 L 2729 450 Q 2729 458 2737 458 L 2798 458 Q 2806 458 2806 450 L 2806 447 Q 2806 439 2814 439 L 2830 439" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="io_worker" data-edge-to="event_bus" data-edge-label="TELEMETRY.{id}" data-edge-key="0" data-edge-id="io-bus" data-composition-points="175,192;175,300" d="M 175 192 L 175 300" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="event_bus" data-edge-to="pid_worker" data-edge-label="TELEMETRY.{id} · ACTION.AI.{id}" data-edge-key="1" data-edge-id="bus-pid" data-composition-points="290,799;495,799;495,346;700,346" d="M 290 799 L 487 799 Q 495 799 495 791 L 495 354 Q 495 346 503 346 L 700 346" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="event_bus" data-edge-to="monitor_worker" data-edge-label="TELEMETRY.{id}" data-edge-key="2" data-edge-id="bus-monitor" data-composition-points="290,813;495,813;495,476;700,476" d="M 290 813 L 487 813 Q 495 813 495 805 L 495 484 Q 495 476 503 476 L 700 476" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="event_bus" data-edge-to="stats_worker" data-edge-label="TELEMETRY.{id} · ACTION.CTRL.{id}" data-edge-key="3" data-edge-id="bus-stats" data-composition-points="290,827;495,827;495,606;700,606" d="M 290 827 L 487 827 Q 495 827 495 819 L 495 614 Q 495 606 503 606 L 700 606" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="event_bus" data-edge-to="ai_worker" data-edge-label="TELEMETRY · STATUS · CMD.AI" data-edge-key="4" data-edge-id="bus-ai" data-composition-points="290,841;495,841;495,736;700,736" d="M 290 841 L 487 841 Q 495 841 495 833 L 495 744 Q 495 736 503 736 L 700 736" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="event_bus" data-edge-to="db_worker" data-edge-label="prefixos TELEMETRY e LOG.AI." data-edge-key="5" data-edge-id="bus-db" data-composition-points="290,855;495,855;495,928;700,928" d="M 290 855 L 487 855 Q 495 855 495 863 L 495 920 Q 495 928 503 928 L 700 928" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="event_bus" data-edge-to="alarm_worker" data-edge-label="prefixo STATUS." data-edge-key="6" data-edge-id="bus-alarm" data-composition-points="290,869;495,869;495,1068;700,1068" d="M 290 869 L 487 869 Q 495 869 495 877 L 495 1060 Q 495 1068 503 1068 L 700 1068" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="system_event_worker" data-edge-to="event_bus" data-edge-label="EVENT.SYSTEM" data-edge-key="7" data-edge-id="sysevent-bus" data-composition-points="700,1208;495,1208;495,883;290,883" d="M 700 1208 L 503 1208 Q 495 1208 495 1200 L 495 891 Q 495 883 487 883 L 290 883" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="event_bus" data-edge-to="trend_buffer_worker" data-edge-label="prefixo TELEMETRY" data-edge-key="8" data-edge-id="bus-trend" data-composition-points="290,897;495,897;495,1348;700,1348" d="M 290 897 L 487 897 Q 495 897 495 905 L 495 1340 Q 495 1348 503 1348 L 700 1348" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="db_worker" data-edge-to="sqlite" data-edge-label="historian" data-edge-key="9" data-edge-id="db-sqlite" data-composition-points="960,928;1100,928;1100,1046;1240,1046" d="M 960 928 L 1092 928 Q 1100 928 1100 936 L 1100 1038 Q 1100 1046 1108 1046 L 1240 1046" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="alarm_worker" data-edge-to="sqlite" data-edge-label="alarm_repo" data-edge-key="10" data-edge-id="alarm-sqlite" data-composition-points="960,1068;984,1068;984,1084;1216,1084;1216,1060;1240,1060" d="M 960 1068 L 976 1068 Q 984 1068 984 1076 L 984 1076 Q 984 1084 992 1084 L 1208 1084 Q 1216 1084 1216 1076 L 1216 1068 Q 1216 1060 1224 1060 L 1240 1060" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="system_event_worker" data-edge-to="sqlite" data-edge-label="system_event_repo" data-edge-key="11" data-edge-id="sysevent-sqlite" data-composition-points="960,1208;1100,1208;1100,1074;1240,1074" d="M 960 1208 L 1092 1208 Q 1100 1208 1100 1200 L 1100 1082 Q 1100 1074 1108 1074 L 1240 1074" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="trend_buffer_worker" data-edge-to="api" data-edge-label="GET /trend" data-edge-key="12" data-edge-id="trend-api" data-composition-points="960,1348;1240,1348" d="M 960 1348 L 1240 1348" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="api" data-edge-to="export_worker" data-edge-label="POST /export" data-edge-key="13" data-edge-id="api-export" data-composition-points="1520,1348;1640,1348" d="M 1520 1348 L 1640 1348" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 
         <!-- Components -->
-        <g id="node-dcs" data-node-id="dcs" data-node-label="DCS / PLC" tabindex="0" role="button" aria-label="Focus DCS / PLC, campo real · tags OPC-UA :4840, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="campo real · tags OPC-UA :4840" data-node-tag="simulator_enabled=false" data-node-context="Architecture component">
-          <title>DCS / PLC · campo real · tags OPC-UA :4840 · Architecture component · simulator_enabled=false</title>
-          <rect x="640" y="60" width="180" height="70" rx="6" class="c-mask"/>
-          <rect x="640" y="60" width="180" height="70" rx="6" class="c-external" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(646 66) scale(0.6875)">
-            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
-            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
-          </g>
-          <text data-detail-anchor x="730" y="93" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">DCS / PLC</text>
-        <text data-detail="context" x="730" y="109" class="t-muted" font-size="9" text-anchor="middle">campo real · tags OPC-UA :4840</text>
-        <text data-detail="fine" x="730" y="122" class="t-external" font-size="7" text-anchor="middle">simulator_enabled=false</text>
-        </g>
-
-        <g id="node-process_model" data-node-id="process_model" data-node-label="ProcessModel" tabindex="0" role="button" aria-label="Focus ProcessModel, FOPTD/SOPTD · Padé 3ª ordem · scipy, smart_pid_core — daemon único (main.py) › Simulador — digital twin in-process (SPID_SIMULATOR_ENABLED)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="FOPTD/SOPTD · Padé 3ª ordem · scipy" data-node-tag="planta simulada" data-node-context="smart_pid_core — daemon único (main.py) › Simulador — digital twin in-process (SPID_SIMULATOR_ENABLED)">
-          <title>ProcessModel · FOPTD/SOPTD · Padé 3ª ordem · scipy · smart_pid_core — daemon único (main.py) › Simulador — digital twin in-process (SPID_SIMULATOR_ENABLED) · planta simulada</title>
-          <rect x="140" y="430" width="200" height="90" rx="6" class="c-mask"/>
-          <rect x="140" y="430" width="200" height="90" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(146 436) scale(0.6875)">
+        <g id="node-io_worker" data-node-id="io_worker" data-node-label="IOWorker" tabindex="0" role="button" aria-label="Focus IOWorker, scan OPC-UA · único produtor de TELEMETRY, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="scan OPC-UA · único produtor de TELEMETRY" data-node-tag="singleton · produtor" data-node-context="Architecture component">
+          <title>IOWorker · scan OPC-UA · único produtor de TELEMETRY · Architecture component · singleton · produtor</title>
+          <rect x="60" y="100" width="230" height="92" rx="6" class="c-mask"/>
+          <rect x="60" y="100" width="230" height="92" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(66 106) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="240" y="473" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ProcessModel</text>
-        <text data-detail="context" x="240" y="489" class="t-muted" font-size="9" text-anchor="middle">FOPTD/SOPTD · Padé 3ª ordem · scipy</text>
-        <text data-detail="fine" x="240" y="512" class="t-backend" font-size="7" text-anchor="middle">planta simulada</text>
+          <text data-detail-anchor x="175" y="144" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">IOWorker</text>
+        <text data-detail="context" x="175" y="160" class="t-muted" font-size="9" text-anchor="middle">scan OPC-UA · único produtor de TELEMETRY</text>
+        <text data-detail="fine" x="175" y="184" class="t-backend" font-size="7" text-anchor="middle">singleton · produtor</text>
         </g>
 
-        <g id="node-twin_pid" data-node-id="twin_pid" data-node-label="PIDEngine interno" tabindex="0" role="button" aria-label="Focus PIDEngine interno, scan fixo 1 s · ZOH no CO · MAN/AUTO, smart_pid_core — daemon único (main.py) › Simulador — digital twin in-process (SPID_SIMULATOR_ENABLED)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="scan fixo 1 s · ZOH no CO · MAN/AUTO" data-node-context="smart_pid_core — daemon único (main.py) › Simulador — digital twin in-process (SPID_SIMULATOR_ENABLED)">
-          <title>PIDEngine interno · scan fixo 1 s · ZOH no CO · MAN/AUTO · smart_pid_core — daemon único (main.py) › Simulador — digital twin in-process (SPID_SIMULATOR_ENABLED)</title>
-          <rect x="440" y="230" width="200" height="80" rx="6" class="c-mask"/>
-          <rect x="440" y="230" width="200" height="80" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(446 236) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-detail-anchor x="540" y="268" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">PIDEngine interno</text>
-        <text data-detail="context" x="540" y="284" class="t-muted" font-size="9" text-anchor="middle">scan fixo 1 s · ZOH no CO · MAN/AUTO</text>
-        </g>
-
-        <g id="node-twin" data-node-id="twin" data-node-label="SimulatorAdapter" tabindex="0" role="button" aria-label="Focus SimulatorAdapter, digital twin · tick 100 ms · distúrbios, smart_pid_core — daemon único (main.py) › Simulador — digital twin in-process (SPID_SIMULATOR_ENABLED)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="digital twin · tick 100 ms · distúrbios" data-node-tag="in-process" data-node-context="smart_pid_core — daemon único (main.py) › Simulador — digital twin in-process (SPID_SIMULATOR_ENABLED)">
-          <title>SimulatorAdapter · digital twin · tick 100 ms · distúrbios · smart_pid_core — daemon único (main.py) › Simulador — digital twin in-process (SPID_SIMULATOR_ENABLED) · in-process</title>
-          <rect x="440" y="425" width="200" height="100" rx="6" class="c-mask"/>
-          <rect x="440" y="425" width="200" height="100" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(446 431) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-detail-anchor x="540" y="473" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SimulatorAdapter</text>
-        <text data-detail="context" x="540" y="489" class="t-muted" font-size="9" text-anchor="middle">digital twin · tick 100 ms · distúrbios</text>
-        <text data-detail="fine" x="540" y="517" class="t-backend" font-size="7" text-anchor="middle">in-process</text>
-        </g>
-
-        <g id="node-opcua_server" data-node-id="opcua_server" data-node-label="OPCUAServer embarcado" tabindex="0" role="button" aria-label="Focus OPCUAServer embarcado, asyncua.Server :4849 · urn:smartpid:sim, smart_pid_core — daemon único (main.py) › Simulador — digital twin in-process (SPID_SIMULATOR_ENABLED)" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="asyncua.Server :4849 · urn:smartpid:sim" data-node-tag="address space CTRL_{id}" data-node-context="smart_pid_core — daemon único (main.py) › Simulador — digital twin in-process (SPID_SIMULATOR_ENABLED)">
-          <title>OPCUAServer embarcado · asyncua.Server :4849 · urn:smartpid:sim · smart_pid_core — daemon único (main.py) › Simulador — digital twin in-process (SPID_SIMULATOR_ENABLED) · address space CTRL_{id}</title>
-          <rect x="780" y="420" width="210" height="110" rx="6" class="c-mask"/>
-          <rect x="780" y="420" width="210" height="110" rx="6" class="c-messagebus" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(786 426) scale(0.6875)">
+        <g id="node-event_bus" data-node-id="event_bus" data-node-label="EventBus" tabindex="0" role="button" aria-label="Focus EventBus, proxy XSUB/XPUB in-proc · assinatura por prefixo, Architecture component" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="proxy XSUB/XPUB in-proc · assinatura por prefixo" data-node-tag="ZMQ" data-node-context="Architecture component">
+          <title>EventBus · proxy XSUB/XPUB in-proc · assinatura por prefixo · Architecture component · ZMQ</title>
+          <rect x="60" y="300" width="230" height="1096" rx="6" class="c-mask"/>
+          <rect x="60" y="300" width="230" height="1096" rx="6" class="c-messagebus" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(66 306) scale(0.6875)">
             <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
             <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
             <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-detail-anchor x="885" y="473" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">OPCUAServer embarcado</text>
-        <text data-detail="context" x="885" y="489" class="t-muted" font-size="9" text-anchor="middle">asyncua.Server :4849 · urn:smartpid:sim</text>
-        <text data-detail="fine" x="885" y="522" class="t-messagebus" font-size="7" text-anchor="middle">address space CTRL_{id}</text>
+          <text data-detail-anchor x="175" y="846" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">EventBus</text>
+        <text data-detail="context" x="175" y="862" class="t-muted" font-size="9" text-anchor="middle">proxy XSUB/XPUB in-proc · assinatura por prefixo</text>
+        <text data-detail="fine" x="175" y="1388" class="t-messagebus" font-size="7" text-anchor="middle">ZMQ</text>
         </g>
 
-        <g id="node-opcua_adapter" data-node-id="opcua_adapter" data-node-label="OPCUAAdapter (cliente)" tabindex="0" role="button" aria-label="Focus OPCUAAdapter (cliente), asyncua.Client · thread daemon com loop próprio, smart_pid_core — daemon único (main.py)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="asyncua.Client · thread daemon com loop próprio" data-node-tag="via única de I/O nos 2 modos" data-node-context="smart_pid_core — daemon único (main.py)">
-          <title>OPCUAAdapter (cliente) · asyncua.Client · thread daemon com loop próprio · smart_pid_core — daemon único (main.py) · via única de I/O nos 2 modos</title>
-          <rect x="1180" y="430" width="200" height="90" rx="6" class="c-mask"/>
-          <rect x="1180" y="430" width="200" height="90" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1186 436) scale(0.6875)">
+        <g id="node-pid_worker" data-node-id="pid_worker" data-node-label="PIDWorker" tabindex="0" role="button" aria-label="Focus PIDWorker, controle PID · MAN/AUTO/CAS, Por malha — LoopManager" aria-pressed="false" data-node-kind="backend" data-node-sublabel="controle PID · MAN/AUTO/CAS" data-node-tag="pub ACTION.CTRL.{id} · STATUS.{id}" data-node-context="Por malha — LoopManager">
+          <title>PIDWorker · controle PID · MAN/AUTO/CAS · Por malha — LoopManager · pub ACTION.CTRL.{id} · STATUS.{id}</title>
+          <rect x="700" y="300" width="260" height="92" rx="6" class="c-mask"/>
+          <rect x="700" y="300" width="260" height="92" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(706 306) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="1280" y="473" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">OPCUAAdapter (cliente)</text>
-        <text data-detail="context" x="1280" y="489" class="t-muted" font-size="9" text-anchor="middle">asyncua.Client · thread daemon com loop próprio</text>
-        <text data-detail="fine" x="1280" y="512" class="t-backend" font-size="7" text-anchor="middle">via única de I/O nos 2 modos</text>
+          <text data-detail-anchor x="830" y="344" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">PIDWorker</text>
+        <text data-detail="context" x="830" y="360" class="t-muted" font-size="9" text-anchor="middle">controle PID · MAN/AUTO/CAS</text>
+        <text data-detail="fine" x="830" y="384" class="t-backend" font-size="7" text-anchor="middle">pub ACTION.CTRL.{id} · STATUS.{id}</text>
         </g>
 
-        <g id="node-twin_telemetry" data-node-id="twin_telemetry" data-node-label="TwinTelemetry" tabindex="0" role="button" aria-label="Focus TwinTelemetry, loop sem malha → IO scan + MonitorWorker, smart_pid_core — daemon único (main.py)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="loop sem malha → IO scan + MonitorWorker" data-node-context="smart_pid_core — daemon único (main.py)">
-          <title>TwinTelemetry · loop sem malha → IO scan + MonitorWorker · smart_pid_core — daemon único (main.py)</title>
-          <rect x="1020" y="710" width="210" height="84" rx="6" class="c-mask"/>
-          <rect x="1020" y="710" width="210" height="84" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1026 716) scale(0.6875)">
+        <g id="node-monitor_worker" data-node-id="monitor_worker" data-node-label="MonitorWorker" tabindex="0" role="button" aria-label="Focus MonitorWorker, enriquece PV/CO quando não há PID, Por malha — LoopManager" aria-pressed="false" data-node-kind="backend" data-node-sublabel="enriquece PV/CO quando não há PID" data-node-tag="pub STATUS.{id}" data-node-context="Por malha — LoopManager">
+          <title>MonitorWorker · enriquece PV/CO quando não há PID · Por malha — LoopManager · pub STATUS.{id}</title>
+          <rect x="700" y="430" width="260" height="92" rx="6" class="c-mask"/>
+          <rect x="700" y="430" width="260" height="92" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(706 436) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="1125" y="750" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">TwinTelemetry</text>
-        <text data-detail="context" x="1125" y="766" class="t-muted" font-size="9" text-anchor="middle">loop sem malha → IO scan + MonitorWorker</text>
+          <text data-detail-anchor x="830" y="474" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">MonitorWorker</text>
+        <text data-detail="context" x="830" y="490" class="t-muted" font-size="9" text-anchor="middle">enriquece PV/CO quando não há PID</text>
+        <text data-detail="fine" x="830" y="514" class="t-backend" font-size="7" text-anchor="middle">pub STATUS.{id}</text>
         </g>
 
-        <g id="node-io_worker" data-node-id="io_worker" data-node-label="IOWorker" tabindex="0" role="button" aria-label="Focus IOWorker, read PV/SP/CO · write CO/BKCAL/AI, smart_pid_core — daemon único (main.py)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="read PV/SP/CO · write CO/BKCAL/AI" data-node-context="smart_pid_core — daemon único (main.py)">
-          <title>IOWorker · read PV/SP/CO · write CO/BKCAL/AI · smart_pid_core — daemon único (main.py)</title>
-          <rect x="1580" y="438" width="180" height="78" rx="6" class="c-mask"/>
-          <rect x="1580" y="438" width="180" height="78" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1586 444) scale(0.6875)">
+        <g id="node-stats_worker" data-node-id="stats_worker" data-node-label="StatsWorker" tabindex="0" role="button" aria-label="Focus StatsWorker, janela de 5×tss · publica a cada ~5 s, Por malha — LoopManager" aria-pressed="false" data-node-kind="backend" data-node-sublabel="janela de 5×tss · publica a cada ~5 s" data-node-tag="pub STATS.{id}" data-node-context="Por malha — LoopManager">
+          <title>StatsWorker · janela de 5×tss · publica a cada ~5 s · Por malha — LoopManager · pub STATS.{id}</title>
+          <rect x="700" y="560" width="260" height="92" rx="6" class="c-mask"/>
+          <rect x="700" y="560" width="260" height="92" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(706 566) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="1670" y="475" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">IOWorker</text>
-        <text data-detail="context" x="1670" y="491" class="t-muted" font-size="9" text-anchor="middle">read PV/SP/CO · write CO/BKCAL/AI</text>
+          <text data-detail-anchor x="830" y="604" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">StatsWorker</text>
+        <text data-detail="context" x="830" y="620" class="t-muted" font-size="9" text-anchor="middle">janela de 5×tss · publica a cada ~5 s</text>
+        <text data-detail="fine" x="830" y="644" class="t-backend" font-size="7" text-anchor="middle">pub STATS.{id}</text>
         </g>
 
-        <g id="node-event_bus" data-node-id="event_bus" data-node-label="EventBus" tabindex="0" role="button" aria-label="Focus EventBus, proxy XSUB/XPUB in-proc, smart_pid_core — daemon único (main.py)" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="proxy XSUB/XPUB in-proc" data-node-tag="ZMQ" data-node-context="smart_pid_core — daemon único (main.py)">
-          <title>EventBus · proxy XSUB/XPUB in-proc · smart_pid_core — daemon único (main.py) · ZMQ</title>
-          <rect x="1900" y="385" width="165" height="195" rx="6" class="c-mask"/>
-          <rect x="1900" y="385" width="165" height="195" rx="6" class="c-messagebus" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(1906 391) scale(0.6875)">
-            <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
-            <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
-            <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
-            <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
-          </g>
-          <text data-detail-anchor x="1982.5" y="480.5" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">EventBus</text>
-        <text data-detail="context" x="1982.5" y="496.5" class="t-muted" font-size="9" text-anchor="middle">proxy XSUB/XPUB in-proc</text>
-        <text data-detail="fine" x="1982.5" y="572" class="t-messagebus" font-size="7" text-anchor="middle">ZMQ</text>
-        </g>
-
-        <g id="node-pid_worker" data-node-id="pid_worker" data-node-label="PIDWorker" tabindex="0" role="button" aria-label="Focus PIDWorker, controle PID em tempo real, smart_pid_core — daemon único (main.py)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="controle PID em tempo real" data-node-context="smart_pid_core — daemon único (main.py)">
-          <title>PIDWorker · controle PID em tempo real · smart_pid_core — daemon único (main.py)</title>
-          <rect x="2200" y="280" width="180" height="78" rx="6" class="c-mask"/>
-          <rect x="2200" y="280" width="180" height="78" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(2206 286) scale(0.6875)">
+        <g id="node-ai_worker" data-node-id="ai_worker" data-node-label="AIWorker" tabindex="0" role="button" aria-label="Focus AIWorker, Fuzzy/RL Ki + retune FOPDT · ciclo 3×tss, Por malha — LoopManager" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Fuzzy/RL Ki + retune FOPDT · ciclo 3×tss" data-node-tag="pub ACTION.AI.{id} · LOG.AI.{id}" data-node-context="Por malha — LoopManager">
+          <title>AIWorker · Fuzzy/RL Ki + retune FOPDT · ciclo 3×tss · Por malha — LoopManager · pub ACTION.AI.{id} · LOG.AI.{id}</title>
+          <rect x="700" y="690" width="260" height="92" rx="6" class="c-mask"/>
+          <rect x="700" y="690" width="260" height="92" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(706 696) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="2290" y="317" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">PIDWorker</text>
-        <text data-detail="context" x="2290" y="333" class="t-muted" font-size="9" text-anchor="middle">controle PID em tempo real</text>
+          <text data-detail-anchor x="830" y="734" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">AIWorker</text>
+        <text data-detail="context" x="830" y="750" class="t-muted" font-size="9" text-anchor="middle">Fuzzy/RL Ki + retune FOPDT · ciclo 3×tss</text>
+        <text data-detail="fine" x="830" y="774" class="t-backend" font-size="7" text-anchor="middle">pub ACTION.AI.{id} · LOG.AI.{id}</text>
         </g>
 
-        <g id="node-aux_workers" data-node-id="aux_workers" data-node-label="Workers auxiliares" tabindex="0" role="button" aria-label="Focus Workers auxiliares, Monitor · Stats · AI · Alarm · DB, smart_pid_core — daemon único (main.py)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Monitor · Stats · AI · Alarm · DB" data-node-tag="métricas · sintonia · persistência" data-node-context="smart_pid_core — daemon único (main.py)">
-          <title>Workers auxiliares · Monitor · Stats · AI · Alarm · DB · smart_pid_core — daemon único (main.py) · métricas · sintonia · persistência</title>
-          <rect x="2200" y="500" width="200" height="96" rx="6" class="c-mask"/>
-          <rect x="2200" y="500" width="200" height="96" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(2206 506) scale(0.6875)">
+        <g id="node-db_worker" data-node-id="db_worker" data-node-label="DBWorker" tabindex="0" role="button" aria-label="Focus DBWorker, lote de 500 · flush a cada 5 s, Singleton — main.py" aria-pressed="false" data-node-kind="backend" data-node-sublabel="lote de 500 · flush a cada 5 s" data-node-tag="engine SQLAlchemy próprio" data-node-context="Singleton — main.py">
+          <title>DBWorker · lote de 500 · flush a cada 5 s · Singleton — main.py · engine SQLAlchemy próprio</title>
+          <rect x="700" y="880" width="260" height="96" rx="6" class="c-mask"/>
+          <rect x="700" y="880" width="260" height="96" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(706 886) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="2300" y="546" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Workers auxiliares</text>
-        <text data-detail="context" x="2300" y="562" class="t-muted" font-size="9" text-anchor="middle">Monitor · Stats · AI · Alarm · DB</text>
-        <text data-detail="fine" x="2300" y="588" class="t-backend" font-size="7" text-anchor="middle">métricas · sintonia · persistência</text>
+          <text data-detail-anchor x="830" y="926" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">DBWorker</text>
+        <text data-detail="context" x="830" y="942" class="t-muted" font-size="9" text-anchor="middle">lote de 500 · flush a cada 5 s</text>
+        <text data-detail="fine" x="830" y="968" class="t-backend" font-size="7" text-anchor="middle">engine SQLAlchemy próprio</text>
         </g>
 
-        <g id="node-sqlite" data-node-id="sqlite" data-node-label="SQLite (project.spid)" tabindex="0" role="button" aria-label="Focus SQLite (project.spid), controllers · historian · sim_configs, smart_pid_core — daemon único (main.py)" aria-pressed="false" data-node-kind="database" data-node-sublabel="controllers · historian · sim_configs" data-node-context="smart_pid_core — daemon único (main.py)">
-          <title>SQLite (project.spid) · controllers · historian · sim_configs · smart_pid_core — daemon único (main.py)</title>
-          <rect x="2200" y="790" width="200" height="96" rx="6" class="c-mask"/>
-          <rect x="2200" y="790" width="200" height="96" rx="6" class="c-database" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(2206 796) scale(0.6875)">
+        <g id="node-alarm_worker" data-node-id="alarm_worker" data-node-label="AlarmWorker" tabindex="0" role="button" aria-label="Focus AlarmWorker, avalia HIHI/HI/LO/LOLO/DV, Singleton — main.py" aria-pressed="false" data-node-kind="backend" data-node-sublabel="avalia HIHI/HI/LO/LOLO/DV" data-node-tag="pub EVENT.ALARM.{cid}" data-node-context="Singleton — main.py">
+          <title>AlarmWorker · avalia HIHI/HI/LO/LOLO/DV · Singleton — main.py · pub EVENT.ALARM.{cid}</title>
+          <rect x="700" y="1020" width="260" height="96" rx="6" class="c-mask"/>
+          <rect x="700" y="1020" width="260" height="96" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(706 1026) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-detail-anchor x="830" y="1066" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">AlarmWorker</text>
+        <text data-detail="context" x="830" y="1082" class="t-muted" font-size="9" text-anchor="middle">avalia HIHI/HI/LO/LOLO/DV</text>
+        <text data-detail="fine" x="830" y="1108" class="t-backend" font-size="7" text-anchor="middle">pub EVENT.ALARM.{cid}</text>
+        </g>
+
+        <g id="node-system_event_worker" data-node-id="system_event_worker" data-node-label="SystemEventWorker" tabindex="0" role="button" aria-label="Focus SystemEventWorker, fachada emit() — sem thread própria, Singleton — main.py" aria-pressed="false" data-node-kind="backend" data-node-sublabel="fachada emit() — sem thread própria" data-node-tag="publica na thread de quem chama" data-node-context="Singleton — main.py">
+          <title>SystemEventWorker · fachada emit() — sem thread própria · Singleton — main.py · publica na thread de quem chama</title>
+          <rect x="700" y="1160" width="260" height="96" rx="6" class="c-mask"/>
+          <rect x="700" y="1160" width="260" height="96" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(706 1166) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-detail-anchor x="830" y="1206" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SystemEventWorker</text>
+        <text data-detail="context" x="830" y="1222" class="t-muted" font-size="9" text-anchor="middle">fachada emit() — sem thread própria</text>
+        <text data-detail="fine" x="830" y="1248" class="t-backend" font-size="7" text-anchor="middle">publica na thread de quem chama</text>
+        </g>
+
+        <g id="node-trend_buffer_worker" data-node-id="trend_buffer_worker" data-node-label="TrendBufferWorker" tabindex="0" role="button" aria-label="Focus TrendBufferWorker, ring de 1 h em memória (TrendBuffer), Singleton — main.py" aria-pressed="false" data-node-kind="backend" data-node-sublabel="ring de 1 h em memória (TrendBuffer)" data-node-tag="semente do gráfico" data-node-context="Singleton — main.py">
+          <title>TrendBufferWorker · ring de 1 h em memória (TrendBuffer) · Singleton — main.py · semente do gráfico</title>
+          <rect x="700" y="1300" width="260" height="96" rx="6" class="c-mask"/>
+          <rect x="700" y="1300" width="260" height="96" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(706 1306) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-detail-anchor x="830" y="1346" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">TrendBufferWorker</text>
+        <text data-detail="context" x="830" y="1362" class="t-muted" font-size="9" text-anchor="middle">ring de 1 h em memória (TrendBuffer)</text>
+        <text data-detail="fine" x="830" y="1388" class="t-backend" font-size="7" text-anchor="middle">semente do gráfico</text>
+        </g>
+
+        <g id="node-sqlite" data-node-id="sqlite" data-node-label="SQLite (project.spid)" tabindex="0" role="button" aria-label="Focus SQLite (project.spid), historian · alarmes · eventos de sistema, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="historian · alarmes · eventos de sistema" data-node-context="Architecture component">
+          <title>SQLite (project.spid) · historian · alarmes · eventos de sistema · Architecture component</title>
+          <rect x="1240" y="980" width="280" height="160" rx="6" class="c-mask"/>
+          <rect x="1240" y="980" width="280" height="160" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1246 986) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-detail-anchor x="2300" y="836" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SQLite (project.spid)</text>
-        <text data-detail="context" x="2300" y="852" class="t-muted" font-size="9" text-anchor="middle">controllers · historian · sim_configs</text>
+          <text data-detail-anchor x="1380" y="1058" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SQLite (project.spid)</text>
+        <text data-detail="context" x="1380" y="1074" class="t-muted" font-size="9" text-anchor="middle">historian · alarmes · eventos de sistema</text>
         </g>
 
-        <g id="node-api" data-node-id="api" data-node-label="FastAPI + Realtime WS" tabindex="0" role="button" aria-label="Focus FastAPI + Realtime WS, 2º consumidor do bus · fan-out WebSocket, smart_pid_core — daemon único (main.py)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="2º consumidor do bus · fan-out WebSocket" data-node-tag="REST /simulator/* comanda o twin" data-node-context="smart_pid_core — daemon único (main.py)">
-          <title>FastAPI + Realtime WS · 2º consumidor do bus · fan-out WebSocket · smart_pid_core — daemon único (main.py) · REST /simulator/* comanda o twin</title>
-          <rect x="2520" y="400" width="185" height="84" rx="6" class="c-mask"/>
-          <rect x="2520" y="400" width="185" height="84" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(2526 406) scale(0.6875)">
+        <g id="node-api" data-node-id="api" data-node-label="FastAPI" tabindex="0" role="button" aria-label="Focus FastAPI, GET /trend · POST /export, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="GET /trend · POST /export" data-node-context="Architecture component">
+          <title>FastAPI · GET /trend · POST /export · Architecture component</title>
+          <rect x="1240" y="1300" width="280" height="96" rx="6" class="c-mask"/>
+          <rect x="1240" y="1300" width="280" height="96" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1246 1306) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="2612.5" y="440" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">FastAPI + Realtime WS</text>
-        <text data-detail="context" x="2612.5" y="456" class="t-muted" font-size="9" text-anchor="middle">2º consumidor do bus · fan-out WebSocket</text>
-        <text data-detail="fine" x="2612.5" y="476" class="t-backend" font-size="7" text-anchor="middle">REST /simulator/* comanda o twin</text>
+          <text data-detail-anchor x="1380" y="1346" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">FastAPI</text>
+        <text data-detail="context" x="1380" y="1362" class="t-muted" font-size="9" text-anchor="middle">GET /trend · POST /export</text>
         </g>
 
-        <g id="node-web" data-node-id="web" data-node-label="smart_pid_web" tabindex="0" role="button" aria-label="Focus smart_pid_web, React · SimulatorPage / TwinTrend, Architecture component" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="React · SimulatorPage / TwinTrend" data-node-context="Architecture component">
-          <title>smart_pid_web · React · SimulatorPage / TwinTrend · Architecture component</title>
-          <rect x="2830" y="400" width="180" height="78" rx="6" class="c-mask"/>
-          <rect x="2830" y="400" width="180" height="78" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(2836 406) scale(0.6875)">
-            <rect x="2" y="3" width="12" height="10" rx="2"/>
-            <path d="M2 6.5h12"/>
-            <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
-            <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
+        <g id="node-export_worker" data-node-id="export_worker" data-node-label="ExportWorker" tabindex="0" role="button" aria-label="Focus ExportWorker, job async CSV/JSON sobre o historian, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="job async CSV/JSON sobre o historian" data-node-tag="sem thread e sem barramento" data-node-context="Architecture component">
+          <title>ExportWorker · job async CSV/JSON sobre o historian · Architecture component · sem thread e sem barramento</title>
+          <rect x="1640" y="1300" width="280" height="96" rx="6" class="c-mask"/>
+          <rect x="1640" y="1300" width="280" height="96" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1646 1306) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="2920" y="437" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">smart_pid_web</text>
-        <text data-detail="context" x="2920" y="453" class="t-muted" font-size="9" text-anchor="middle">React · SimulatorPage / TwinTrend</text>
-        </g>
-
-        <g id="node-telemetry_pub" data-node-id="telemetry_pub" data-node-label="TelemetryPublisher" tabindex="0" role="button" aria-label="Focus TelemetryPublisher, ponte unidirecional para ZMQ PUB tcp::5555, smart_pid_core — daemon único (main.py)" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="ponte unidirecional para ZMQ PUB tcp::5555" data-node-tag="ZMQ externo" data-node-context="smart_pid_core — daemon único (main.py)">
-          <title>TelemetryPublisher · ponte unidirecional para ZMQ PUB tcp::5555 · smart_pid_core — daemon único (main.py) · ZMQ externo</title>
-          <rect x="1880" y="700" width="205" height="84" rx="6" class="c-mask"/>
-          <rect x="1880" y="700" width="205" height="84" rx="6" class="c-messagebus" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(1886 706) scale(0.6875)">
-            <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
-            <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
-            <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
-            <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
-          </g>
-          <text data-detail-anchor x="1982.5" y="740" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">TelemetryPublisher</text>
-        <text data-detail="context" x="1982.5" y="756" class="t-muted" font-size="9" text-anchor="middle">ponte unidirecional para ZMQ PUB tcp::5555</text>
-        <text data-detail="fine" x="1982.5" y="776" class="t-messagebus" font-size="7" text-anchor="middle">ZMQ externo</text>
+          <text data-detail-anchor x="1780" y="1346" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">ExportWorker</text>
+        <text data-detail="context" x="1780" y="1362" class="t-muted" font-size="9" text-anchor="middle">job async CSV/JSON sobre o historian</text>
+        <text data-detail="fine" x="1780" y="1388" class="t-backend" font-size="7" text-anchor="middle">sem thread e sem barramento</text>
         </g>
 
         <!-- Connection labels -->
-        <g data-detail="context" data-edge-from="twin_pid" data-edge-to="twin" data-edge-label="CO em AUTO · 1 s" data-edge-key="0" data-edge-id="twinpid-twin">
-          <rect x="496.6" y="357" width="86.8" height="14" rx="3" class="c-mask"/>
-          <text x="540" y="367" class="t-muted" font-size="8" text-anchor="middle">CO em AUTO · 1 s</text>
+        <g data-detail="context" data-edge-from="io_worker" data-edge-to="event_bus" data-edge-label="TELEMETRY.{id}" data-edge-key="0" data-edge-id="io-bus">
+          <rect x="136.4" y="236" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="175" y="246" class="t-backend" font-size="8" text-anchor="middle">TELEMETRY.{id}</text>
         </g>
-        <g data-detail="context" data-edge-from="twin" data-edge-to="process_model" data-edge-label="CO % aplicado" data-edge-key="1" data-edge-id="twin-plant">
-          <rect x="353.8" y="387" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="390" y="397" class="t-muted" font-size="8" text-anchor="middle">CO % aplicado</text>
+        <g data-detail="context" data-edge-from="event_bus" data-edge-to="pid_worker" data-edge-label="TELEMETRY.{id} · ACTION.AI.{id}" data-edge-key="1" data-edge-id="bus-pid">
+          <rect x="515.6" y="552.5" width="158.79999999999998" height="14" rx="3" class="c-mask"/>
+          <text x="595" y="562.5" class="t-backend" font-size="8" text-anchor="middle">TELEMETRY.{id} · ACTION.AI.{id}</text>
         </g>
-        <g data-detail="context" data-edge-from="process_model" data-edge-to="twin" data-edge-label="PV + distúrbio" data-edge-key="2" data-edge-id="plant-twin">
-          <rect x="351.4" y="523" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="390" y="533" class="t-muted" font-size="8" text-anchor="middle">PV + distúrbio</text>
+        <g data-detail="context" data-edge-from="event_bus" data-edge-to="monitor_worker" data-edge-label="TELEMETRY.{id}" data-edge-key="2" data-edge-id="bus-monitor">
+          <rect x="556.4" y="624.5" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="595" y="634.5" class="t-muted" font-size="8" text-anchor="middle">TELEMETRY.{id}</text>
         </g>
-        <g data-detail="context" data-edge-from="twin" data-edge-to="opcua_server" data-edge-label="update_values · 100 ms" data-edge-key="3" data-edge-id="twin-nodes">
-          <rect x="606.2" y="391.5" width="115.6" height="14" rx="3" class="c-mask"/>
-          <text x="664" y="401.5" class="t-backend" font-size="8" text-anchor="middle">update_values · 100 ms</text>
+        <g data-detail="context" data-edge-from="event_bus" data-edge-to="stats_worker" data-edge-label="TELEMETRY.{id} · ACTION.CTRL.{id}" data-edge-key="3" data-edge-id="bus-stats">
+          <rect x="510.8" y="696.5" width="168.4" height="14" rx="3" class="c-mask"/>
+          <text x="595" y="706.5" class="t-muted" font-size="8" text-anchor="middle">TELEMETRY.{id} · ACTION.CTRL.{id}</text>
         </g>
-        <g data-detail="context" data-edge-from="opcua_server" data-edge-to="twin" data-edge-label="_on_opcua_write" data-edge-key="4" data-edge-id="nodes-twin">
-          <rect x="715" y="531" width="82" height="14" rx="3" class="c-mask"/>
-          <text x="756" y="541" class="t-muted" font-size="8" text-anchor="middle">_on_opcua_write</text>
+        <g data-detail="context" data-edge-from="event_bus" data-edge-to="ai_worker" data-edge-label="TELEMETRY · STATUS · CMD.AI" data-edge-key="4" data-edge-id="bus-ai">
+          <rect x="525.2" y="768.5" width="139.6" height="14" rx="3" class="c-mask"/>
+          <text x="595" y="778.5" class="t-muted" font-size="8" text-anchor="middle">TELEMETRY · STATUS · CMD.AI</text>
         </g>
-        <g data-detail="context" data-edge-from="opcua_server" data-edge-to="opcua_adapter" data-edge-label="SIM · opc.tcp://localhost:4849" data-edge-key="5" data-edge-id="sim-client">
-          <rect x="1008" y="387" width="154" height="14" rx="3" class="c-mask"/>
-          <text x="1085" y="397" class="t-backend" font-size="8" text-anchor="middle">SIM · opc.tcp://localhost:4849</text>
+        <g data-detail="context" data-edge-from="event_bus" data-edge-to="db_worker" data-edge-label="prefixos TELEMETRY e LOG.AI." data-edge-key="5" data-edge-id="bus-db">
+          <rect x="522.8" y="871.5" width="144.4" height="14" rx="3" class="c-mask"/>
+          <text x="595" y="881.5" class="t-backend" font-size="8" text-anchor="middle">prefixos TELEMETRY e LOG.AI.</text>
         </g>
-        <g data-detail="context" data-edge-from="opcua_adapter" data-edge-to="opcua_server" data-edge-label="write CO · SP · Kp/Ti/Td" data-edge-key="6" data-edge-id="client-sim">
-          <rect x="1022.4" y="528" width="125.19999999999999" height="14" rx="3" class="c-mask"/>
-          <text x="1085" y="538" class="t-muted" font-size="8" text-anchor="middle">write CO · SP · Kp/Ti/Td</text>
+        <g data-detail="context" data-edge-from="event_bus" data-edge-to="alarm_worker" data-edge-label="prefixo STATUS." data-edge-key="6" data-edge-id="bus-alarm">
+          <rect x="554" y="948.5" width="82" height="14" rx="3" class="c-mask"/>
+          <text x="595" y="958.5" class="t-muted" font-size="8" text-anchor="middle">prefixo STATUS.</text>
         </g>
-        <g data-detail="context" data-edge-from="dcs" data-edge-to="opcua_adapter" data-edge-label="CAMPO · tag_bindings" data-edge-key="7" data-edge-id="dcs-client">
-          <rect x="1227" y="242.5" width="106" height="14" rx="3" class="c-mask"/>
-          <text x="1280" y="252.5" class="t-messagebus" font-size="8" text-anchor="middle">CAMPO · tag_bindings</text>
+        <g data-detail="context" data-edge-from="system_event_worker" data-edge-to="event_bus" data-edge-label="EVENT.SYSTEM" data-edge-key="7" data-edge-id="sysevent-bus">
+          <rect x="561.2" y="1025.5" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="595" y="1035.5" class="t-messagebus" font-size="8" text-anchor="middle">EVENT.SYSTEM</text>
         </g>
-        <g data-detail="context" data-edge-from="opcua_adapter" data-edge-to="io_worker" data-edge-label="async" data-edge-key="8" data-edge-id="client-io">
-          <rect x="1387" y="463" width="34" height="14" rx="3" class="c-mask"/>
-          <text x="1404" y="473" class="t-backend" font-size="8" text-anchor="middle">async</text>
+        <g data-detail="context" data-edge-from="event_bus" data-edge-to="trend_buffer_worker" data-edge-label="prefixo TELEMETRY" data-edge-key="8" data-edge-id="bus-trend">
+          <rect x="549.2" y="1102.5" width="91.6" height="14" rx="3" class="c-mask"/>
+          <text x="595" y="1112.5" class="t-muted" font-size="8" text-anchor="middle">prefixo TELEMETRY</text>
         </g>
-        <g data-detail="context" data-edge-from="io_worker" data-edge-to="event_bus" data-edge-label="TELEMETRY.{id}" data-edge-key="9" data-edge-id="io-bus">
-          <rect x="1791.4" y="467.75" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="1830" y="477.75" class="t-backend" font-size="8" text-anchor="middle">TELEMETRY.{id}</text>
+        <g data-detail="context" data-edge-from="db_worker" data-edge-to="sqlite" data-edge-label="historian" data-edge-key="9" data-edge-id="db-sqlite">
+          <rect x="1153.4" y="967" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
+          <text x="1180" y="977" class="t-muted" font-size="8" text-anchor="middle">historian</text>
         </g>
-        <g data-detail="context" data-edge-from="event_bus" data-edge-to="pid_worker" data-edge-label="ACTION.CO" data-edge-key="10" data-edge-id="bus-pid">
-          <rect x="2105.9" y="373.75" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
-          <text x="2132.5" y="383.75" class="t-muted" font-size="8" text-anchor="middle">ACTION.CO</text>
+        <g data-detail="context" data-edge-from="alarm_worker" data-edge-to="sqlite" data-edge-label="alarm_repo" data-edge-key="10" data-edge-id="alarm-sqlite">
+          <rect x="1035" y="1056" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="1064" y="1066" class="t-muted" font-size="8" text-anchor="middle">alarm_repo</text>
         </g>
-        <g data-detail="context" data-edge-from="event_bus" data-edge-to="aux_workers" data-edge-label="STATUS · alarmes" data-edge-key="11" data-edge-id="bus-aux">
-          <rect x="2089.1" y="502.25" width="86.8" height="14" rx="3" class="c-mask"/>
-          <text x="2132.5" y="512.25" class="t-messagebus" font-size="8" text-anchor="middle">STATUS · alarmes</text>
+        <g data-detail="context" data-edge-from="system_event_worker" data-edge-to="sqlite" data-edge-label="system_event_repo" data-edge-key="11" data-edge-id="sysevent-sqlite">
+          <rect x="1134.2" y="1121" width="91.6" height="14" rx="3" class="c-mask"/>
+          <text x="1180" y="1131" class="t-muted" font-size="8" text-anchor="middle">system_event_repo</text>
         </g>
-        <g data-detail="context" data-edge-from="event_bus" data-edge-to="telemetry_pub" data-edge-label="todos os tópicos" data-edge-key="12" data-edge-id="bus-telemetrypub">
-          <rect x="1939.1" y="630" width="86.8" height="14" rx="3" class="c-mask"/>
-          <text x="1982.5" y="640" class="t-muted" font-size="8" text-anchor="middle">todos os tópicos</text>
+        <g data-detail="context" data-edge-from="trend_buffer_worker" data-edge-to="api" data-edge-label="GET /trend" data-edge-key="12" data-edge-id="trend-api">
+          <rect x="1151" y="1328" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="1180" y="1338" class="t-muted" font-size="8" text-anchor="middle">GET /trend</text>
         </g>
-        <g data-detail="context" data-edge-from="twin" data-edge-to="twin_telemetry" data-edge-label="loops sem malha" data-edge-key="13" data-edge-id="twin-twintel">
-          <rect x="623" y="600.5" width="82" height="14" rx="3" class="c-mask"/>
-          <text x="664" y="610.5" class="t-messagebus" font-size="8" text-anchor="middle">loops sem malha</text>
-        </g>
-        <g data-detail="context" data-edge-from="twin_telemetry" data-edge-to="io_worker" data-edge-label="attach IO scan" data-edge-key="14" data-edge-id="twintel-io">
-          <rect x="1366.4" y="598" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="1405" y="608" class="t-muted" font-size="8" text-anchor="middle">attach IO scan</text>
-        </g>
-        <g data-detail="context" data-edge-from="event_bus" data-edge-to="api" data-edge-label="bus → WS fan-out" data-edge-key="15" data-edge-id="bus-api">
-          <rect x="2249.1" y="438.75" width="86.8" height="14" rx="3" class="c-mask"/>
-          <text x="2292.5" y="448.75" class="t-backend" font-size="8" text-anchor="middle">bus → WS fan-out</text>
-        </g>
-        <g data-detail="context" data-edge-from="aux_workers" data-edge-to="sqlite" data-edge-label="persistência" data-edge-key="16" data-edge-id="aux-sqlite">
-          <rect x="2266.2" y="676" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="2300" y="686" class="t-muted" font-size="8" text-anchor="middle">persistência</text>
-        </g>
-        <g data-detail="context" data-edge-from="api" data-edge-to="sqlite" data-edge-label="REST CRUD" data-edge-key="17" data-edge-id="api-sqlite">
-          <rect x="2433.4" y="623.5" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
-          <text x="2460" y="633.5" class="t-muted" font-size="8" text-anchor="middle">REST CRUD</text>
-        </g>
-        <g data-detail="context" data-edge-from="api" data-edge-to="web" data-edge-label="REST + WS" data-edge-key="18" data-edge-id="api-web">
-          <rect x="2736.4" y="430" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
-          <text x="2763" y="440" class="t-muted" font-size="8" text-anchor="middle">REST + WS</text>
+        <g data-detail="context" data-edge-from="api" data-edge-to="export_worker" data-edge-label="POST /export" data-edge-key="13" data-edge-id="api-export">
+          <rect x="1546.2" y="1328" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="1580" y="1338" class="t-muted" font-size="8" text-anchor="middle">POST /export</text>
         </g>
 
         <!-- Legend -->
         <g data-legend-bridge>
-          <text x="40" y="945" class="t-primary" font-size="9" font-weight="600">Legend</text>
-          <g data-legend-kind="external">
-            <rect x="40" y="950" width="14" height="9" rx="2" class="c-external" stroke-width="1"/>
-            <text x="60" y="958" class="t-muted" font-size="8">External</text>
-          </g>
+          <text x="40" y="1455" class="t-primary" font-size="9" font-weight="600">Legend</text>
           <g data-legend-kind="backend">
-            <rect x="144" y="950" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
-            <text x="164" y="958" class="t-muted" font-size="8">Backend</text>
+            <rect x="40" y="1460" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
+            <text x="60" y="1468" class="t-muted" font-size="8">Backend</text>
           </g>
           <g data-legend-kind="messagebus">
-            <rect x="243" y="950" width="14" height="9" rx="2" class="c-messagebus" stroke-width="1"/>
-            <text x="263" y="958" class="t-muted" font-size="8">Message bus</text>
+            <rect x="139" y="1460" width="14" height="9" rx="2" class="c-messagebus" stroke-width="1"/>
+            <text x="159" y="1468" class="t-muted" font-size="8">Message bus</text>
           </g>
           <g data-legend-kind="database">
-            <rect x="362" y="950" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
-            <text x="382" y="958" class="t-muted" font-size="8">Database</text>
-          </g>
-          <g data-legend-kind="frontend">
-            <rect x="466" y="950" width="14" height="9" rx="2" class="c-frontend" stroke-width="1"/>
-            <text x="486" y="958" class="t-muted" font-size="8">Frontend</text>
+            <rect x="258" y="1460" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
+            <text x="278" y="1468" class="t-muted" font-size="8">Database</text>
           </g>
         </g>
       </svg>
@@ -5073,53 +5010,53 @@
     <div class="cards">
       <div class="card">
         <div class="card-header">
-          <div class="card-dot cyan"></div>
-          <h3>Simulador — digital twin</h3>
+          <div class="card-dot amber"></div>
+          <h3>O que o bloco colapsado escondia</h3>
         </div>
         <ul>
-          <li>&bull; SimulatorAdapter integra o modelo a cada 100 ms (simulator_interval_ms)</li>
-          <li>&bull; ProcessModel: FOPTD/SOPTD contínuo com atraso por Padé de 3ª ordem (scipy)</li>
-          <li>&bull; Distúrbios: degrau, ruído gaussiano e auto-excitação de SP/distúrbio por período</li>
-          <li>&bull; PIDEngine interno amostra a 1 s com ZOH no CO, imitando um scan real de PID</li>
+          <li>&bull; São 8 workers, não 5: faltavam TrendBufferWorker, SystemEventWorker e ExportWorker</li>
+          <li>&bull; Duas classes distintas: por malha (N instâncias) e singleton do daemon (1 instância)</li>
+          <li>&bull; SystemEventWorker não tem thread — é fachada que publica na thread de quem chama emit()</li>
+          <li>&bull; ExportWorker não é worker de barramento: sem thread e sem assinatura, roda sob REST</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>Por malha — LoopManager</h3>
+        </div>
+        <ul>
+          <li>&bull; LoopContext guarda pid_worker, stats_worker, ai_worker e monitor_worker por controlador</li>
+          <li>&bull; Todos os tópicos levam sufixo .{id}; start_loop/stop_loop controla o ciclo de vida</li>
+          <li>&bull; StatsWorker: janela de 5×tss, publica STATS a cada ~5 s de processo</li>
+          <li>&bull; AIWorker: ciclo de 3×tss; o retune completo vai ao TuningStore, nunca ao barramento</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot violet"></div>
-          <h3>OPC-UA — mesma via nos dois modos</h3>
+          <h3>Singleton — assinatura por prefixo</h3>
         </div>
         <ul>
-          <li>&bull; OPCUAServer embarcado: asyncua.Server em thread daemon, porta 4849, ns urn:smartpid:sim</li>
-          <li>&bull; AdapterFactory sempre cria OPCUAAdapter; em simulação aponta para opc.tcp://localhost:4849</li>
-          <li>&bull; bind_opcua_client injeta os node ids do twin no cliente no lugar dos tag_bindings do banco</li>
-          <li>&bull; A malha fecha pela rede: IOWorker escreve CO no nó, _WriteHandler chama _on_opcua_write no twin</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div class="card-dot amber"></div>
-          <h3>Loops do twin sem malha</h3>
-        </div>
-        <ul>
-          <li>&bull; O twin cria o loop 0 no start e POST /simulator/loops cria loops avulsos</li>
-          <li>&bull; Sem controlador de projeto, ninguém faria IO scan nem publicaria STATUS</li>
-          <li>&bull; TwinTelemetry anexa o id ao IOWorker e sobe um MonitorWorker a 1 s, revalidado a cada reconcile</li>
+          <li>&bull; DBWorker assina os prefixos TELEMETRY e LOG.AI. — lote de 500, flush a cada 5 s</li>
+          <li>&bull; TrendBufferWorker mantém o ring de 1 h em memória que semeia o gráfico do /trend</li>
+          <li>&bull; AlarmWorker assina o prefixo STATUS. e publica EVENT.ALARM.{cid}</li>
+          <li>&bull; Cada um roda numa única thread daemon e atende todas as malhas do projeto</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot emerald"></div>
-          <h3>Motor de controle e HMI</h3>
+          <h3>Escritores do .spid</h3>
         </div>
         <ul>
-          <li>&bull; EventBus: proxy XSUB/XPUB in-process; PIDWorker consome TELEMETRY e publica ACTION.CO</li>
-          <li>&bull; Workers auxiliares: Monitor, Stats, AI (Fuzzy/RL), Alarm e DB em flush por lote</li>
-          <li>&bull; TelemetryPublisher: ponte unidirecional do bus para um ZMQ PUB externo em tcp::5555</li>
-          <li>&bull; REST /simulator/* comanda start/stop, presets, sintonia e distúrbios do twin (router simulator.py)</li>
-          <li>&bull; FastAPI é o 2º consumidor do bus e republica por WebSocket para o SimulatorPage/TwinTrend</li>
+          <li>&bull; DBWorker: historian, com engine SQLAlchemy próprio criado na thread do worker</li>
+          <li>&bull; AlarmWorker: alarm_repo, agendado no loop principal via call_soon_threadsafe</li>
+          <li>&bull; SystemEventWorker: system_event_repo, pelo mesmo mecanismo</li>
+          <li>&bull; ExportWorker: só leitura — consulta o historian para gerar CSV/JSON</li>
         </ul>
       </div>
     </div>

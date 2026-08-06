@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Smart PID — Workers do Motor de Controle",
+    "subtitle": "Detalhe do bloco colapsado: 8 workers em duas classes (por malha e singleton), acoplados só pelo EventBus",
+    "output": "docs/architecture/control-workers.html",
+    "quality_profile": "showcase",
+    "repository": { "url": "https://github.com/lucianofr/smartPID", "revision": "d8b72e5da9356ea4046d2a7690790e11b5d9192f" },
+    "views": [
+      {
+        "id": "produtor-telemetry",
+        "label": "Produtor único de TELEMETRY",
+        "focus": ["io_worker", "event_bus", "db_worker", "trend_buffer_worker"],
+        "note": "IOWorker é o único que publica TELEMETRY; todo o resto do sistema deriva desse tópico."
+      },
+      {
+        "id": "por-malha",
+        "label": "Conjunto por malha",
+        "focus": ["pid_worker", "monitor_worker", "stats_worker", "ai_worker", "event_bus"],
+        "note": "LoopManager sobe e derruba esses quatro por controlador; os tópicos levam o sufixo .{id}."
+      },
+      {
+        "id": "singletons",
+        "label": "Consumidores singleton",
+        "focus": ["db_worker", "alarm_worker", "trend_buffer_worker", "event_bus"],
+        "note": "Uma instância cada, assinando por prefixo de tópico — um só worker atende todas as malhas."
+      },
+      {
+        "id": "persistencia",
+        "label": "Escritores do .spid",
+        "focus": ["db_worker", "alarm_worker", "system_event_worker", "sqlite"],
+        "note": "Três escritores distintos no mesmo arquivo: historian em lote, alarmes e eventos de sistema."
+      },
+      {
+        "id": "fora-do-barramento",
+        "label": "Fora do barramento",
+        "focus": ["system_event_worker", "export_worker", "api"],
+        "note": "SystemEventWorker não tem thread; ExportWorker não tem thread nem assinatura — roda sob REST."
+      }
+    ]
+  },
+  "components": [
+    { "id": "io_worker", "type": "backend", "label": "IOWorker", "sublabel": "scan OPC-UA · único produtor de TELEMETRY", "tag": "singleton · produtor", "pos": [60, 100], "size": [230, 92],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/io_worker.py", "line": 26, "label": "class IOWorker" }] },
+
+    { "id": "event_bus", "type": "messagebus", "label": "EventBus", "sublabel": "proxy XSUB/XPUB in-proc · assinatura por prefixo", "tag": "ZMQ", "pos": [60, 300], "size": [230, 1096],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/event_bus.py", "line": 68, "label": "class EventBus" }] },
+
+    { "id": "pid_worker", "type": "backend", "label": "PIDWorker", "sublabel": "controle PID · MAN/AUTO/CAS", "tag": "pub ACTION.CTRL.{id} · STATUS.{id}", "pos": [700, 300], "size": [260, 92],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/pid_worker.py", "line": 108, "label": "class PIDWorker" }] },
+    { "id": "monitor_worker", "type": "backend", "label": "MonitorWorker", "sublabel": "enriquece PV/CO quando não há PID", "tag": "pub STATUS.{id}", "pos": [700, 430], "size": [260, 92],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/monitor_worker.py", "line": 34, "label": "class MonitorWorker" }] },
+    { "id": "stats_worker", "type": "backend", "label": "StatsWorker", "sublabel": "janela de 5×tss · publica a cada ~5 s", "tag": "pub STATS.{id}", "pos": [700, 560], "size": [260, 92],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/stats_worker.py", "line": 26, "label": "class StatsWorker" }] },
+    { "id": "ai_worker", "type": "backend", "label": "AIWorker", "sublabel": "Fuzzy/RL Ki + retune FOPDT · ciclo 3×tss", "tag": "pub ACTION.AI.{id} · LOG.AI.{id}", "pos": [700, 690], "size": [260, 92],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/ai_worker.py", "line": 104, "label": "class AIWorker" }] },
+
+    { "id": "db_worker", "type": "backend", "label": "DBWorker", "sublabel": "lote de 500 · flush a cada 5 s", "tag": "engine SQLAlchemy próprio", "pos": [700, 880], "size": [260, 96],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/db_worker.py", "line": 27, "label": "class DBWorker" }] },
+    { "id": "alarm_worker", "type": "backend", "label": "AlarmWorker", "sublabel": "avalia HIHI/HI/LO/LOLO/DV", "tag": "pub EVENT.ALARM.{cid}", "pos": [700, 1020], "size": [260, 96],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/alarm_worker.py", "line": 147, "label": "class AlarmWorker" }] },
+    { "id": "system_event_worker", "type": "backend", "label": "SystemEventWorker", "sublabel": "fachada emit() — sem thread própria", "tag": "publica na thread de quem chama", "pos": [700, 1160], "size": [260, 96],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/system_event_worker.py", "line": 17, "label": "class SystemEventWorker" }] },
+    { "id": "trend_buffer_worker", "type": "backend", "label": "TrendBufferWorker", "sublabel": "ring de 1 h em memória (TrendBuffer)", "tag": "semente do gráfico", "pos": [700, 1300], "size": [260, 96],
+      "sources": [
+        { "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/trend_buffer_worker.py", "line": 17, "label": "class TrendBufferWorker" },
+        { "path": "packages/smart_pid_core/src/smart_pid_core/application/trend_buffer.py", "line": 45, "label": "class TrendBuffer" }
+      ] },
+
+    { "id": "sqlite", "type": "database", "label": "SQLite (project.spid)", "sublabel": "historian · alarmes · eventos de sistema", "pos": [1240, 980], "size": [280, 160],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/adapters/outbound/sqlite_repo.py", "line": 356, "label": "class SQLiteRepository" }] },
+    { "id": "api", "type": "backend", "label": "FastAPI", "sublabel": "GET /trend · POST /export", "pos": [1240, 1300], "size": [280, 96],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/app.py", "line": 107, "label": "create_app()" }] },
+    { "id": "export_worker", "type": "backend", "label": "ExportWorker", "sublabel": "job async CSV/JSON sobre o historian", "tag": "sem thread e sem barramento", "pos": [1640, 1300], "size": [280, 96],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/export_worker.py", "line": 17, "label": "class ExportWorker" }] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Por malha — LoopManager", "wraps": ["pid_worker", "monitor_worker", "stats_worker", "ai_worker"] },
+    { "kind": "region", "label": "Singleton — main.py", "wraps": ["db_worker", "alarm_worker", "system_event_worker", "trend_buffer_worker"] }
+  ],
+  "connections": [
+    { "id": "io-bus", "from": "io_worker", "to": "event_bus", "label": "TELEMETRY.{id}", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "labelDy": 64 },
+    { "id": "bus-pid", "from": "event_bus", "to": "pid_worker", "label": "TELEMETRY.{id} · ACTION.AI.{id}", "variant": "emphasis", "fromSide": "right", "toSide": "left", "labelDx": 100 },
+    { "id": "bus-monitor", "from": "event_bus", "to": "monitor_worker", "label": "TELEMETRY.{id}", "fromSide": "right", "toSide": "left", "labelDx": 100 },
+    { "id": "bus-stats", "from": "event_bus", "to": "stats_worker", "label": "TELEMETRY.{id} · ACTION.CTRL.{id}", "fromSide": "right", "toSide": "left", "labelDx": 100 },
+    { "id": "bus-ai", "from": "event_bus", "to": "ai_worker", "label": "TELEMETRY · STATUS · CMD.AI", "fromSide": "right", "toSide": "left", "labelDx": 100 },
+    { "id": "bus-db", "from": "event_bus", "to": "db_worker", "label": "prefixos TELEMETRY e LOG.AI.", "variant": "emphasis", "fromSide": "right", "toSide": "left", "labelDx": 100 },
+    { "id": "bus-alarm", "from": "event_bus", "to": "alarm_worker", "label": "prefixo STATUS.", "fromSide": "right", "toSide": "left", "labelDx": 100 },
+    { "id": "sysevent-bus", "from": "system_event_worker", "to": "event_bus", "label": "EVENT.SYSTEM", "variant": "dashed", "fromSide": "left", "toSide": "right", "labelDx": 100 },
+    { "id": "bus-trend", "from": "event_bus", "to": "trend_buffer_worker", "label": "prefixo TELEMETRY", "fromSide": "right", "toSide": "left", "labelDx": 100 },
+    { "id": "db-sqlite", "from": "db_worker", "to": "sqlite", "label": "historian", "fromSide": "right", "toSide": "left", "labelDx": 80 },
+    { "id": "alarm-sqlite", "from": "alarm_worker", "to": "sqlite", "label": "alarm_repo", "fromSide": "right", "toSide": "left", "labelDx": 80 },
+    { "id": "sysevent-sqlite", "from": "system_event_worker", "to": "sqlite", "label": "system_event_repo", "fromSide": "right", "toSide": "left", "labelDx": 80 },
+    { "id": "trend-api", "from": "trend_buffer_worker", "to": "api", "label": "GET /trend", "fromSide": "right", "toSide": "left", "labelDx": 80 },
+    { "id": "api-export", "from": "api", "to": "export_worker", "label": "POST /export", "fromSide": "right", "toSide": "left" }
+  ],
+  "cards": [
+    { "dot": "amber", "title": "O que o bloco colapsado escondia", "items": [
+      "São 8 workers, não 5: faltavam TrendBufferWorker, SystemEventWorker e ExportWorker",
+      "Duas classes distintas: por malha (N instâncias) e singleton do daemon (1 instância)",
+      "SystemEventWorker não tem thread — é fachada que publica na thread de quem chama emit()",
+      "ExportWorker não é worker de barramento: sem thread e sem assinatura, roda sob REST"
+    ] },
+    { "dot": "cyan", "title": "Por malha — LoopManager", "items": [
+      "LoopContext guarda pid_worker, stats_worker, ai_worker e monitor_worker por controlador",
+      "Todos os tópicos levam sufixo .{id}; start_loop/stop_loop controla o ciclo de vida",
+      "StatsWorker: janela de 5×tss, publica STATS a cada ~5 s de processo",
+      "AIWorker: ciclo de 3×tss; o retune completo vai ao TuningStore, nunca ao barramento"
+    ] },
+    { "dot": "violet", "title": "Singleton — assinatura por prefixo", "items": [
+      "DBWorker assina os prefixos TELEMETRY e LOG.AI. — lote de 500, flush a cada 5 s",
+      "TrendBufferWorker mantém o ring de 1 h em memória que semeia o gráfico do /trend",
+      "AlarmWorker assina o prefixo STATUS. e publica EVENT.ALARM.{cid}",
+      "Cada um roda numa única thread daemon e atende todas as malhas do projeto"
+    ] },
+    { "dot": "emerald", "title": "Escritores do .spid", "items": [
+      "DBWorker: historian, com engine SQLAlchemy próprio criado na thread do worker",
+      "AlarmWorker: alarm_repo, agendado no loop principal via call_soon_threadsafe",
+      "SystemEventWorker: system_event_repo, pelo mesmo mecanismo",
+      "ExportWorker: só leitura — consulta o historian para gerar CSV/JSON"
+    ] }
+  ]
+}

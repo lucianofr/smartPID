@@ -2,110 +2,134 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Smart PID — Core Engine Architecture",
-    "subtitle": "Workers, barramento ZMQ e leitura assíncrona OPC-UA (smart_pid_core daemon)",
+    "title": "Smart PID — Arquitetura do Sistema",
+    "subtitle": "Digital twin com servidor OPC-UA embarcado, cliente OPC-UA unificado, barramento ZMQ e workers (smart_pid_core)",
     "output": "docs/architecture/core-engine-architecture.html",
     "quality_profile": "showcase",
-    "repository": { "url": "https://github.com/lucianofr/smartPID", "revision": "e456cd00887345434a27cee55f102b049346743b" },
+    "repository": { "url": "https://github.com/lucianofr/smartPID", "revision": "d8b72e5da9356ea4046d2a7690790e11b5d9192f" },
     "views": [
       {
-        "id": "workers",
-        "label": "Workers do motor de controle",
-        "focus": ["io_worker", "pid_worker", "monitor_worker", "stats_worker", "ai_worker", "db_worker", "alarm_worker", "system_event_worker"],
-        "note": "Threads daemon orquestradas por LoopManager, um conjunto por malha PID."
+        "id": "planta-intercambiavel",
+        "label": "Planta intercambiável",
+        "focus": ["dcs", "opcua_server", "opcua_adapter", "io_worker"],
+        "note": "O twin e o DCS real ocupam o mesmo lugar: o cliente OPC-UA é a única via de I/O nos dois modos."
       },
       {
-        "id": "zmq-bus",
-        "label": "Barramento ZMQ",
-        "focus": ["event_bus", "io_worker", "pid_worker", "telemetry_pub", "api"],
-        "note": "Proxy XSUB/XPUB in-proc + ponte PUB externa na porta 5555."
+        "id": "malha-do-twin",
+        "label": "Malha interna do twin",
+        "focus": ["twin_pid", "twin", "process_model", "opcua_server"],
+        "note": "SimulatorAdapter integra o modelo a 100 ms; o PID interno amostra a 1 s com ZOH no CO."
       },
       {
-        "id": "opcua-async",
-        "label": "Leitura assíncrona OPC-UA",
-        "focus": ["dcs", "opcua_adapter", "io_worker", "event_bus"],
-        "note": "asyncua.Client roda em thread daemon dedicada com loop asyncio próprio."
+        "id": "fechamento-opcua",
+        "label": "Fechamento pelo OPC-UA",
+        "focus": ["opcua_server", "opcua_adapter", "io_worker", "twin"],
+        "note": "CO sai do IOWorker, é escrito num nó e volta ao twin por _on_opcua_write — a malha fecha na rede."
       },
       {
-        "id": "extraction-candidates",
-        "label": "Candidatos a serviços standalone",
-        "focus": ["monitor_worker", "stats_worker", "ai_worker"],
-        "note": "Monitoramento e otimização podem escalar fora do laço de controle crítico."
+        "id": "loops-sem-malha",
+        "label": "Loops do twin sem malha",
+        "focus": ["twin", "twin_telemetry", "io_worker", "event_bus"],
+        "note": "TwinTelemetry anexa IO scan e MonitorWorker aos loops que nenhum controlador de projeto possui."
+      },
+      {
+        "id": "motor-e-hmi",
+        "label": "Motor de controle e HMI",
+        "focus": ["event_bus", "pid_worker", "aux_workers", "api", "web"],
+        "note": "Barramento ZMQ in-proc distribui TELEMETRY/STATUS; a API é o segundo consumidor e faz fan-out por WS."
       }
     ]
   },
   "components": [
-    { "id": "dcs", "type": "external", "label": "DCS / PLC", "sublabel": "tags via OPC-UA", "pos": [40, 300], "size": [130, 64] },
-    { "id": "opcua_adapter", "type": "backend", "label": "OPCUAAdapter", "sublabel": "asyncua.Client · asyncio loop próprio", "tag": "async (thread daemon)", "pos": [270, 300], "size": [170, 64],
-      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/adapters/outbound/opcua_adapter.py", "line": 23, "label": "class OPCUAAdapter" }] },
-    { "id": "io_worker", "type": "backend", "label": "IOWorker", "sublabel": "read TELEMETRY + write BKCAL/AI · 1s", "tag": "async I/O bridge", "pos": [560, 300], "size": [160, 64],
-      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/io_worker.py", "line": 21, "label": "class IOWorker" }] },
-    { "id": "event_bus", "type": "messagebus", "label": "EventBus", "sublabel": "proxy XSUB/XPUB in-proc", "tag": "ZMQ", "pos": [930, 265], "size": [150, 130],
-      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/event_bus.py", "line": 44, "label": "class EventBus" }] },
-    { "id": "pid_worker", "type": "backend", "label": "PIDWorker", "sublabel": "controle PID tempo real", "pos": [1280, 90], "size": [150, 64],
-      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/pid_worker.py", "line": 99, "label": "class PIDWorker" }] },
-    { "id": "monitor_worker", "type": "backend", "label": "MonitorWorker", "sublabel": "PV/CO enrich · modo monitor", "tag": "extrair → monitoramento", "pos": [1280, 220], "size": [150, 64],
-      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/monitor_worker.py", "line": 33, "label": "class MonitorWorker" }] },
-    { "id": "stats_worker", "type": "backend", "label": "StatsWorker", "sublabel": "métricas de desempenho (5×TSS)", "tag": "extrair → monitoramento", "pos": [1280, 350], "size": [150, 64],
-      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/stats_worker.py", "line": 21, "label": "class StatsWorker" }] },
-    { "id": "ai_worker", "type": "backend", "label": "AIWorker", "sublabel": "Fuzzy/RL Ki tuning + retune FOPDT", "tag": "extrair → otimização", "pos": [1280, 480], "size": [150, 64],
-      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/ai_worker.py", "line": 85, "label": "class AIWorker" }] },
-    { "id": "db_worker", "type": "backend", "label": "DBWorker", "sublabel": "flush em lote → SQLite", "pos": [1280, 640], "size": [150, 64],
-      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/db_worker.py", "line": 27, "label": "class DBWorker" }] },
-    { "id": "alarm_worker", "type": "backend", "label": "AlarmWorker", "sublabel": "avaliação HIHI/HI/LO/LOLO/DV", "pos": [1280, 770], "size": [150, 64],
-      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/alarm_worker.py", "line": 23, "label": "class AlarmWorker" }] },
-    { "id": "system_event_worker", "type": "backend", "label": "SystemEventWorker", "sublabel": "fachada de eventos de sistema", "pos": [1280, 900], "size": [150, 64],
-      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/system_event_worker.py", "line": 17, "label": "class SystemEventWorker" }] },
-    { "id": "telemetry_pub", "type": "messagebus", "label": "TelemetryPublisher", "sublabel": "ZMQ PUB externo tcp::5555", "tag": "ZMQ externo", "pos": [930, 470], "size": [150, 64],
-      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/telemetry_publisher.py", "line": 21, "label": "class TelemetryPublisher" }] },
-    { "id": "api", "type": "backend", "label": "FastAPI + Realtime WS", "sublabel": "REST · 2º consumidor do bus", "pos": [1630, 300], "size": [150, 64],
-      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/app.py", "line": 83, "label": "create_app()" }] },
-    { "id": "sqlite", "type": "database", "label": "SQLite (project.spid)", "sublabel": "controllers · historian · alarmes · users", "pos": [1500, 1050], "size": [140, 90],
-      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/adapters/outbound/sqlite_repo.py", "line": 299, "label": "class SQLiteRepository" }] },
-    { "id": "web", "type": "frontend", "label": "smart_pid_web", "sublabel": "React · LOOPS/Simulator/Dashboard", "pos": [1980, 300], "size": [150, 64],
-      "sources": [{ "path": "packages/smart_pid_web/src/App.tsx", "line": 50, "label": "export function App()" }] }
+    { "id": "dcs", "type": "external", "label": "DCS / PLC", "sublabel": "campo real · tags OPC-UA :4840", "tag": "simulator_enabled=false", "pos": [640, 60], "size": [180, 70] },
+
+    { "id": "process_model", "type": "backend", "label": "ProcessModel", "sublabel": "FOPTD/SOPTD · Padé 3ª ordem · scipy", "tag": "planta simulada", "pos": [140, 430], "size": [200, 90],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/domain/services/process_models.py", "line": 54, "label": "class ProcessModel" }] },
+    { "id": "twin_pid", "type": "backend", "label": "PIDEngine interno", "sublabel": "scan fixo 1 s · ZOH no CO · MAN/AUTO", "pos": [440, 230], "size": [200, 80],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/domain/services/pid_engine.py", "line": 60, "label": "class PIDEngine" }] },
+    { "id": "twin", "type": "backend", "label": "SimulatorAdapter", "sublabel": "digital twin · tick 100 ms · distúrbios", "tag": "in-process", "pos": [440, 425], "size": [200, 100],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/adapters/inbound/simulator_adapter.py", "line": 172, "label": "class SimulatorAdapter" }] },
+    { "id": "opcua_server", "type": "messagebus", "label": "OPCUAServer embarcado", "sublabel": "asyncua.Server :4849 · urn:smartpid:sim", "tag": "address space CTRL_{id}", "pos": [780, 420], "size": [210, 110],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/adapters/inbound/opcua_server.py", "line": 26, "label": "class OPCUAServer" }] },
+
+    { "id": "opcua_adapter", "type": "backend", "label": "OPCUAAdapter (cliente)", "sublabel": "asyncua.Client · thread daemon com loop próprio", "tag": "via única de I/O nos 2 modos", "pos": [1180, 430], "size": [200, 90],
+      "sources": [
+        { "path": "packages/smart_pid_core/src/smart_pid_core/adapters/outbound/opcua_adapter.py", "line": 23, "label": "class OPCUAAdapter" },
+        { "path": "packages/smart_pid_core/src/smart_pid_core/adapters/inbound/simulator_adapter.py", "line": 86, "label": "bind_opcua_client()" },
+        { "path": "packages/smart_pid_core/src/smart_pid_core/adapters/factory.py", "line": 10, "label": "class AdapterFactory" }
+      ] },
+    { "id": "twin_telemetry", "type": "backend", "label": "TwinTelemetry", "sublabel": "loop sem malha → IO scan + MonitorWorker", "pos": [1020, 710], "size": [210, 84],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/twin_telemetry.py", "line": 52, "label": "class TwinTelemetry" }] },
+    { "id": "io_worker", "type": "backend", "label": "IOWorker", "sublabel": "read PV/SP/CO · write CO/BKCAL/AI", "pos": [1580, 438], "size": [180, 78],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/io_worker.py", "line": 26, "label": "class IOWorker" }] },
+    { "id": "event_bus", "type": "messagebus", "label": "EventBus", "sublabel": "proxy XSUB/XPUB in-proc", "tag": "ZMQ", "pos": [1900, 385], "size": [165, 195],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/event_bus.py", "line": 68, "label": "class EventBus" }] },
+    { "id": "pid_worker", "type": "backend", "label": "PIDWorker", "sublabel": "controle PID em tempo real", "pos": [2200, 280], "size": [180, 78],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/pid_worker.py", "line": 108, "label": "class PIDWorker" }] },
+    { "id": "aux_workers", "type": "backend", "label": "Workers auxiliares", "sublabel": "Monitor · Stats · AI · Alarm · DB", "tag": "métricas · sintonia · persistência", "pos": [2200, 500], "size": [200, 96],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/monitor_worker.py", "line": 34, "label": "class MonitorWorker" }] },
+    { "id": "sqlite", "type": "database", "label": "SQLite (project.spid)", "sublabel": "controllers · historian · sim_configs", "pos": [2200, 790], "size": [200, 96],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/adapters/outbound/sqlite_repo.py", "line": 356, "label": "class SQLiteRepository" }] },
+    { "id": "api", "type": "backend", "label": "FastAPI + Realtime WS", "sublabel": "2º consumidor do bus · fan-out WebSocket", "tag": "REST /simulator/* comanda o twin", "pos": [2520, 400], "size": [185, 84],
+      "sources": [
+        { "path": "packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/app.py", "line": 107, "label": "create_app()" },
+        { "path": "packages/smart_pid_core/src/smart_pid_core/adapters/inbound/api/routers/simulator.py", "line": 41, "label": "router /simulator" }
+      ] },
+    { "id": "web", "type": "frontend", "label": "smart_pid_web", "sublabel": "React · SimulatorPage / TwinTrend", "pos": [2830, 400], "size": [180, 78],
+      "sources": [{ "path": "packages/smart_pid_web/src/pages/SimulatorPage.tsx", "line": 1, "label": "SimulatorPage" }] }
+    ,
+    { "id": "telemetry_pub", "type": "messagebus", "label": "TelemetryPublisher", "sublabel": "ponte unidirecional para ZMQ PUB tcp::5555", "tag": "ZMQ externo", "pos": [1880, 700], "size": [205, 84],
+      "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/telemetry_publisher.py", "line": 21, "label": "class TelemetryPublisher" }] }
   ],
   "boundaries": [
-    { "kind": "region", "label": "smart_pid_core — daemon único (main.py)", "wraps": ["opcua_adapter", "io_worker", "event_bus", "pid_worker", "monitor_worker", "stats_worker", "ai_worker", "db_worker", "alarm_worker", "system_event_worker", "telemetry_pub", "api"] },
-    { "kind": "security-group", "label": "Monitoramento & Otimização — candidatos a serviço próprio", "wraps": ["monitor_worker", "stats_worker", "ai_worker"] }
+    { "kind": "region", "label": "smart_pid_core — daemon único (main.py)", "wraps": ["process_model", "twin_pid", "twin", "opcua_server", "opcua_adapter", "twin_telemetry", "io_worker", "event_bus", "pid_worker", "aux_workers", "telemetry_pub", "sqlite", "api"] },
+    { "kind": "security-group", "label": "Simulador — digital twin in-process (SPID_SIMULATOR_ENABLED)", "wraps": ["process_model", "twin_pid", "twin", "opcua_server"] }
   ],
   "connections": [
-    { "id": "dcs-opcua", "from": "dcs", "to": "opcua_adapter", "variant": "emphasis" },
-    { "id": "opcua-io", "from": "opcua_adapter", "to": "io_worker", "label": "async", "variant": "emphasis" },
-    { "id": "io-bus", "from": "io_worker", "to": "event_bus", "label": "TELEMETRY ⇄ ACTION.*", "variant": "emphasis", "labelDx": 60 },
-    { "id": "bus-pid", "from": "event_bus", "to": "pid_worker", "fromSide": "right", "toSide": "left" },
-    { "id": "bus-monitor", "from": "event_bus", "to": "monitor_worker", "variant": "dashed", "fromSide": "right", "toSide": "left" },
-    { "id": "bus-stats", "from": "event_bus", "to": "stats_worker", "variant": "dashed", "fromSide": "right", "toSide": "left" },
-    { "id": "bus-ai", "from": "event_bus", "to": "ai_worker", "variant": "dashed", "fromSide": "right", "toSide": "left" },
-    { "id": "bus-db", "from": "event_bus", "to": "db_worker", "fromSide": "right", "toSide": "left" },
-    { "id": "bus-alarm", "from": "event_bus", "to": "alarm_worker", "fromSide": "right", "toSide": "left" },
-    { "id": "sysevent-bus", "from": "system_event_worker", "to": "event_bus", "fromSide": "left", "toSide": "right" },
-    { "id": "bus-telemetrypub", "from": "event_bus", "to": "telemetry_pub", "label": "all topics", "fromSide": "bottom", "toSide": "top", "labelDy": 45 },
-    { "id": "bus-api", "from": "event_bus", "to": "api", "label": "bus → WS fan-out", "variant": "emphasis", "fromSide": "top", "toSide": "top", "via": [[1005, 20], [1705, 20]] },
-    { "id": "db-sqlite", "from": "db_worker", "to": "sqlite" },
-    { "id": "alarm-sqlite", "from": "alarm_worker", "to": "sqlite" },
-    { "id": "sysevent-sqlite", "from": "system_event_worker", "to": "sqlite" },
-    { "id": "api-sqlite", "from": "api", "to": "sqlite", "label": "REST CRUD", "fromSide": "bottom", "toSide": "top", "via": [[1705, 700], [1570, 700]] },
-    { "id": "api-web", "from": "api", "to": "web", "label": "REST + WS" }
+    { "id": "twinpid-twin", "from": "twin_pid", "to": "twin", "label": "CO em AUTO · 1 s", "labelDy": 67 },
+    { "id": "twin-plant", "from": "twin", "to": "process_model", "label": "CO % aplicado", "labelDy": -75 },
+    { "id": "plant-twin", "from": "process_model", "to": "twin", "label": "PV + distúrbio", "labelDy": 75 },
+    { "id": "twin-nodes", "from": "twin", "to": "opcua_server", "label": "update_values · 100 ms", "variant": "emphasis", "labelDy": -75 },
+    { "id": "nodes-twin", "from": "opcua_server", "to": "twin", "label": "_on_opcua_write", "labelDy": 75 },
+    { "id": "sim-client", "from": "opcua_server", "to": "opcua_adapter", "label": "SIM · opc.tcp://localhost:4849", "variant": "emphasis", "labelDy": -75 },
+    { "id": "client-sim", "from": "opcua_adapter", "to": "opcua_server", "label": "write CO · SP · Kp/Ti/Td", "labelDy": 80 },
+    { "id": "dcs-client", "from": "dcs", "to": "opcua_adapter", "label": "CAMPO · tag_bindings", "variant": "dashed", "fromSide": "right", "toSide": "top" },
+    { "id": "client-io", "from": "opcua_adapter", "to": "io_worker", "label": "async", "variant": "emphasis" },
+    { "id": "io-bus", "from": "io_worker", "to": "event_bus", "label": "TELEMETRY.{id}", "variant": "emphasis", "labelDx": 46 },
+    { "id": "bus-pid", "from": "event_bus", "to": "pid_worker", "label": "ACTION.CO" },
+    { "id": "bus-aux", "from": "event_bus", "to": "aux_workers", "label": "STATUS · alarmes", "variant": "dashed" },
+    { "id": "bus-telemetrypub", "from": "event_bus", "to": "telemetry_pub", "label": "todos os tópicos", "fromSide": "bottom", "toSide": "top", "labelDy": 70 },
+    { "id": "twin-twintel", "from": "twin", "to": "twin_telemetry", "label": "loops sem malha", "variant": "dashed" },
+    { "id": "twintel-io", "from": "twin_telemetry", "to": "io_worker", "label": "attach IO scan" },
+    { "id": "bus-api", "from": "event_bus", "to": "api", "label": "bus → WS fan-out", "variant": "emphasis" },
+    { "id": "aux-sqlite", "from": "aux_workers", "to": "sqlite", "label": "persistência", "labelDy": 100 },
+    { "id": "api-sqlite", "from": "api", "to": "sqlite", "label": "REST CRUD" },
+    { "id": "api-web", "from": "api", "to": "web", "label": "REST + WS", "labelDx": 34 }
   ],
   "cards": [
-    { "dot": "cyan", "title": "Workers (LoopManager)", "items": [
-      "IOWorker: leitura OPC-UA assíncrona + write-back BKCAL/AI",
-      "PIDWorker: controle PID em tempo real",
-      "MonitorWorker: TELEMETRY→STATUS quando não há PID (modo monitor)",
-      "StatsWorker: métricas de desempenho da malha (janela 5×TSS)",
-      "AIWorker: sintonia Ki via Fuzzy/RL + retune completo (FOPDT)",
-      "DBWorker/AlarmWorker/SystemEventWorker: persistência e alarmes"
+    { "dot": "cyan", "title": "Simulador — digital twin", "items": [
+      "SimulatorAdapter integra o modelo a cada 100 ms (simulator_interval_ms)",
+      "ProcessModel: FOPTD/SOPTD contínuo com atraso por Padé de 3ª ordem (scipy)",
+      "Distúrbios: degrau, ruído gaussiano e auto-excitação de SP/distúrbio por período",
+      "PIDEngine interno amostra a 1 s com ZOH no CO, imitando um scan real de PID"
     ] },
-    { "dot": "violet", "title": "Barramento ZMQ", "items": [
-      "EventBus: proxy XSUB/XPUB in-process (inproc://smartpid)",
-      "TelemetryPublisher: ponte unidirecional para ZMQ PUB externo (tcp::5555)",
-      "Realtime WS: 2º consumidor do bus, drena e republica via WebSocket"
+    { "dot": "violet", "title": "OPC-UA — mesma via nos dois modos", "items": [
+      "OPCUAServer embarcado: asyncua.Server em thread daemon, porta 4849, ns urn:smartpid:sim",
+      "AdapterFactory sempre cria OPCUAAdapter; em simulação aponta para opc.tcp://localhost:4849",
+      "bind_opcua_client injeta os node ids do twin no cliente no lugar dos tag_bindings do banco",
+      "A malha fecha pela rede: IOWorker escreve CO no nó, _WriteHandler chama _on_opcua_write no twin"
     ] },
-    { "dot": "amber", "title": "Candidatos a extração (monitoramento/otimização)", "items": [
-      "MonitorWorker/StatsWorker: cálculo de métricas sem exigência de latência de controle",
-      "AIWorker: engines Fuzzy/RL (34KB+48KB) — carga computacional isolável",
-      "Extrair para processo/serviço próprio desacopla otimização do laço crítico de PID"
+    { "dot": "amber", "title": "Loops do twin sem malha", "items": [
+      "O twin cria o loop 0 no start e POST /simulator/loops cria loops avulsos",
+      "Sem controlador de projeto, ninguém faria IO scan nem publicaria STATUS",
+      "TwinTelemetry anexa o id ao IOWorker e sobe um MonitorWorker a 1 s, revalidado a cada reconcile"
+    ] },
+    { "dot": "emerald", "title": "Motor de controle e HMI", "items": [
+      "EventBus: proxy XSUB/XPUB in-process; PIDWorker consome TELEMETRY e publica ACTION.CO",
+      "Workers auxiliares: Monitor, Stats, AI (Fuzzy/RL), Alarm e DB em flush por lote",
+      "TelemetryPublisher: ponte unidirecional do bus para um ZMQ PUB externo em tcp::5555",
+      "REST /simulator/* comanda start/stop, presets, sintonia e distúrbios do twin (router simulator.py)",
+      "FastAPI é o 2º consumidor do bus e republica por WebSocket para o SimulatorPage/TwinTrend"
     ] }
   ]
 }
