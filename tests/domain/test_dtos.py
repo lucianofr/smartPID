@@ -4,11 +4,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-
 from pydantic import ValidationError
 
 from smart_pid_domain.dtos.auth import LoginRequest, TokenResponse, UserClaims, UserCreate
-from smart_pid_domain.enums import UserRole
 from smart_pid_domain.dtos.commands import (
     CommandResponse,
     ModeCommand,
@@ -22,7 +20,7 @@ from smart_pid_domain.dtos.controllers import (
 )
 from smart_pid_domain.dtos.history import HistoryResponse, TelemetryFrameDTO
 from smart_pid_domain.dtos.system import SystemStatusResponse
-from smart_pid_domain.enums import ControllerMode
+from smart_pid_domain.enums import ControllerMode, UserRole
 
 
 class TestAuthDTOs:

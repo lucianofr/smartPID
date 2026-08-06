@@ -72,11 +72,12 @@ class TestReopenDrain:
         saved = await service._repo.save(Controller(id=0, name="FIC-201"))
         await service.new_project("delta")
         gamma = projects_dir / "gamma.spid"
-        async with aiosqlite.connect(gamma) as db:  # the bare file, no live engine
-            async with db.execute(
-                "SELECT nome FROM Controladores WHERE id = ?", (saved.id,)
-            ) as cur:
-                row = await cur.fetchone()
+        # the bare file, no live engine
+        async with (
+            aiosqlite.connect(gamma) as db,
+            db.execute("SELECT nome FROM Controladores WHERE id = ?", (saved.id,)) as cur,
+        ):
+            row = await cur.fetchone()
         assert row is not None and row[0] == "FIC-201"
 
 
@@ -100,9 +101,11 @@ class TestDownloadCheckpoint:
         path = await service.prepare_download()
         copy = tmp_path / "downloaded.spid"
         copy.write_bytes(path.read_bytes())  # what FileResponse streams: the file ALONE
-        async with aiosqlite.connect(copy) as db:
-            async with db.execute("SELECT COUNT(*) FROM Controladores") as cur:
-                row = await cur.fetchone()
+        async with (
+            aiosqlite.connect(copy) as db,
+            db.execute("SELECT COUNT(*) FROM Controladores") as cur,
+        ):
+            row = await cur.fetchone()
         assert row[0] == 20
 
 

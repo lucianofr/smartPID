@@ -18,15 +18,29 @@ import json
 from pathlib import Path
 from typing import Any
 
-# Pre-import every router so route signatures are loaded.
-from smart_pid_core.adapters.inbound.api.routers import (  # noqa: F401
-    ai, alarms, audit, auth, commands, controllers, export, history,
-    opcua, project, simulator, stats, system, system_events, trend, users,
-)
-
 from pydantic import BaseModel
 
 from smart_pid_core.adapters.inbound.api.app import create_app
+
+# Pre-import every router so route signatures are loaded.
+from smart_pid_core.adapters.inbound.api.routers import (  # noqa: F401
+    ai,
+    alarms,
+    audit,
+    auth,
+    commands,
+    controllers,
+    export,
+    history,
+    opcua,
+    project,
+    simulator,
+    stats,
+    system,
+    system_events,
+    trend,
+    users,
+)
 from smart_pid_core.config import CoreSettings
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -43,9 +57,15 @@ def _patch_adapter_types() -> None:
     generator without touching the real runtime semantics.
     """
     import sys
-    from smart_pid_core.adapters.outbound import ai_repo, alarm_repo, audit_repo
-    from smart_pid_core.adapters.outbound import historian, opcua_adapter
-    from smart_pid_core.adapters.outbound import sqlite_repo
+
+    from smart_pid_core.adapters.outbound import (
+        ai_repo,
+        alarm_repo,
+        audit_repo,
+        historian,
+        opcua_adapter,
+        sqlite_repo,
+    )
 
     class _AIRepository(BaseModel):
         model_config = {'arbitrary_types_allowed': True}

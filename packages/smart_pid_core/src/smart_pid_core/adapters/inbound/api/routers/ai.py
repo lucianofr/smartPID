@@ -5,33 +5,26 @@ from typing import TYPE_CHECKING, Annotated
 
 import msgpack
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.security import OAuth2PasswordBearer
 
-from smart_pid_core.adapters.inbound.api.auth import create_access_token  # noqa: TC001
 from smart_pid_core.adapters.inbound.api.dependencies import (
-    controller_label,
     get_ai_repo,
     get_ai_workers,
     get_audit_repo,
-    get_current_user,
     get_event_bus,
     get_settings,
-    get_user_repo,
     require_admin,
     require_user,
 )
-from smart_pid_core.adapters.outbound.audit_repo import AuditRepository  # noqa: TC001
 from smart_pid_core.adapters.outbound.ai_repo import AIRepository  # noqa: TC001
-from smart_pid_core.adapters.outbound.user_repo import User  # noqa: TC001
+from smart_pid_core.adapters.outbound.audit_repo import AuditRepository  # noqa: TC001
 from smart_pid_core.application.event_bus import EventBus  # noqa: TC001
-from smart_pid_core.application.loop_manager import LoopManager  # noqa: TC001
-from smart_pid_core.application.workers.system_event_worker import (  # noqa: TC001
-    SystemEventWorker,
-)
 from smart_pid_core.config import CoreSettings
 from smart_pid_domain.dtos.ai import AIHistoryResponse, AIStatusResponse, AITuningLogEntry
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
 from smart_pid_domain.enums import AuditAction
+
+if TYPE_CHECKING:
+    from smart_pid_core.application.workers.ai_worker import AIWorker
 
 router = APIRouter()
 

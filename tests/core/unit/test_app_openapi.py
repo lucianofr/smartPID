@@ -9,7 +9,6 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

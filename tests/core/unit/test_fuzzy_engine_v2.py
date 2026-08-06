@@ -314,6 +314,7 @@ class TestConfigurableWindow:
         base had no entry for OSC + SMOOTH, so Δ_Ti stayed at 0 for cycles.
         """
         import math
+
         from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
         engine = FuzzyEngineV2(window_samples=40)
         # PV oscillates 10% of span around SP; CO nearly constant (small Kp).
@@ -549,8 +550,13 @@ class TestDisturbanceRejectionStateMachine:
         recovery beyond the plateau is still definitively SLOW.
         """
         from smart_pid_core.domain.services.fuzzy_engine_v2 import (
-            MF_E_MAX_DR, MF_T_REC_DR, MF_OSC_DR, RULES_DR, OUTPUT_CENTERS_DR,
-            _fuzzify, _run_rules,
+            MF_E_MAX_DR,
+            MF_OSC_DR,
+            MF_T_REC_DR,
+            OUTPUT_CENTERS_DR,
+            RULES_DR,
+            _fuzzify,
+            _run_rules,
         )
         mfs = {
             "e_max": _fuzzify(1.50, MF_E_MAX_DR),
@@ -604,8 +610,13 @@ class TestDisturbanceRejectionStateMachine:
         at least MED oscillation signal (rule R1' HIGH/SLOW/MED → R).
         """
         from smart_pid_core.domain.services.fuzzy_engine_v2 import (
-            MF_E_MAX_DR, MF_T_REC_DR, MF_OSC_DR, RULES_DR, OUTPUT_CENTERS_DR,
-            _fuzzify, _run_rules,
+            MF_E_MAX_DR,
+            MF_OSC_DR,
+            MF_T_REC_DR,
+            OUTPUT_CENTERS_DR,
+            RULES_DR,
+            _fuzzify,
+            _run_rules,
         )
 
         # Strongest reducing case today: R1' (HIGH / SLOW / MED → R)
@@ -806,7 +817,7 @@ class TestDisturbanceRejectionStateMachine:
         # SETTLING completed → state IDLE, decision_inputs from _finalise_event
         # Consume decision (would be Δ=0 via rule R1 → M) to clear the slot.
         assert engine.decision_ready
-        d1 = engine.compute_adjustment(
+        engine.compute_adjustment(
             ti_current=8.90, limit_min=0.1, limit_max=100.0,
         )
 

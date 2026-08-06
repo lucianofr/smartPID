@@ -33,9 +33,11 @@ class TestModelSchemaParity:
         urepo = UserRepository(db_path)
         await urepo.initialize()
         await urepo.close()
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute("PRAGMA table_info(Usuarios)") as cur:
-                db_cols = {r[1] for r in await cur.fetchall()}
+        async with (
+            aiosqlite.connect(db_path) as db,
+            db.execute("PRAGMA table_info(Usuarios)") as cur,
+        ):
+            db_cols = {r[1] for r in await cur.fetchall()}
         table = UsersBase.metadata.tables["Usuarios"]
         assert {c.name for c in table.columns} == db_cols
 

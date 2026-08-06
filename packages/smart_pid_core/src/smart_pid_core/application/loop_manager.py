@@ -7,8 +7,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from smart_pid_core.application.workers.ai_worker import AIWorker
-
-logger = logging.getLogger(__name__)
 from smart_pid_core.application.workers.monitor_worker import MonitorWorker
 from smart_pid_core.application.workers.pid_worker import PIDWorker
 from smart_pid_core.application.workers.stats_worker import StatsWorker
@@ -16,6 +14,8 @@ from smart_pid_core.domain.services.pid_engine import PIDEngine
 from smart_pid_core.domain.services.pid_mode_manager import ModeManager
 from smart_pid_domain.enums import ControllerMode
 from smart_pid_domain.exceptions import ControllerNotFoundError, DomainError
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import EventBus
