@@ -66,5 +66,30 @@ testsprite_tests/tmp/config.json
 
 # Windows installers
 /dist/windows/
-# Added by code-review-graph
+
+# code-review-graph: generated index plus the per-harness scaffolding its
+# installer drops. The tracked half of that install is committed (this file,
+# CLAUDE.md, AGENTS.md, .claude/settings.json); everything below is local
+# tooling for editors this project does not carry.
 .code-review-graph/
+
+# Harnesses with nothing versioned under them: ignore whole.
+.codebuddy/
+.gemini/
+.kiro/
+.qoder/
+
+# These DO hold tracked files, so name the entries rather than the directory.
+.claude/settings.json.bak
+.claude/skills/
+.cursor/mcp.json
+.github/code-review-graph.instruction.md
+.omp/hooks/
+
+.cursorrules
+.windsurfrules
+.mcp.json
+CODEBUDDY.md
+GEMINI.md
+QODER.md
+opencode.jsonc
