@@ -66,3 +66,5 @@ testsprite_tests/tmp/config.json
 
 # Windows installers
 /dist/windows/
+# Added by code-review-graph
+.code-review-graph/
