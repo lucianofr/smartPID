@@ -10,6 +10,7 @@ import pytest
 from smart_pid_core.application.daemon_state import DaemonState
 from smart_pid_core.application.log_control import (
     LOG_LEVEL_NAMES,
+    LevelSetFilter,
     LogLevelController,
     levels_at_or_above,
 )
@@ -34,11 +35,21 @@ def _emit_all_levels(handler: logging.Handler) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _restore_root_logger_level() -> Iterator[None]:
+def _restore_root_logger_state() -> Iterator[None]:
+    """Undo the global logging state a controller mutates.
+
+    A controller adopts the root handlers so no sink can ignore the
+    selection — including pytest's own ``caplog`` handler. Left attached, a
+    stale filter silences records in unrelated tests later in the session.
+    """
     root = logging.getLogger()
     original = root.level
     yield
     root.setLevel(original)
+    for handler in root.handlers:
+        for leaked in [f for f in handler.filters if isinstance(f, LevelSetFilter)]:
+            handler.removeFilter(leaked)
+    logging.getLogger("asyncua").setLevel(logging.NOTSET)
 
 
 def test_skips_a_middle_level(tmp_path: Path) -> None:

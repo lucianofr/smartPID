@@ -142,6 +142,31 @@ class LogLevelController:
         self._levels = levels
         logging.getLogger().setLevel(_root_level_for(levels))
         clamp_noisy_loggers(levels, self._noisy_loggers)
+        self._adopt_root_handlers()
+
+    def _adopt_root_handlers(self) -> None:
+        """Filter any root handler installed after this controller was built.
+
+        A library that reconfigures logging mid-run (uvicorn's default
+        ``log_config`` used to) can add a sink the constructor never saw,
+        which would then emit every level regardless of the selection.
+        ``addFilter`` is idempotent, so re-adopting on each change is cheap.
+        """
+        for handler in logging.getLogger().handlers:
+            if self._filter not in handler.filters:
+                handler.addFilter(self._filter)
+
+    def detach(self) -> None:
+        """Remove this controller's filter from every handler it reached.
+
+        Adoption deliberately touches handlers the controller did not create,
+        so it needs a way to let go again: without this, anything that
+        inspects root handlers afterwards (pytest's ``caplog``, a second
+        controller) inherits a stale selection and silently loses records.
+        """
+        for handler in {*self._handlers, *logging.getLogger().handlers}:
+            if self._filter in handler.filters:
+                handler.removeFilter(self._filter)
 
     def set_levels(self, names: Iterable[str]) -> tuple[str, ...]:
         """Replace the enabled set. Raises ``ValueError`` and leaves the

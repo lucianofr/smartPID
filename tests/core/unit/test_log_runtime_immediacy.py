@@ -56,6 +56,10 @@ class _Boot:
         return self.path.read_text(encoding="utf-8")
 
     def close(self) -> None:
+        # detach() first: the controller adopts root handlers (pytest's
+        # caplog among them), and a filter left behind silences unrelated
+        # tests later in the session.
+        self.controller.detach()
         self.handler.close()
         logging.getLogger().removeHandler(self.handler)
         logging.getLogger("asyncua").setLevel(logging.NOTSET)
@@ -167,4 +171,92 @@ def test_stdlib_module_loggers_follow_the_selection_too(tmp_path: Path) -> None:
         assert "worker_info_after" not in emitted
         assert "worker_error_after" in emitted
     finally:
+        boot.close()
+
+
+
+def _reset_uvicorn_loggers() -> None:
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "uvicorn.asgi"):
+        lg = logging.getLogger(name)
+        for handler in list(lg.handlers):
+            lg.removeHandler(handler)
+        lg.propagate = True
+        lg.setLevel(logging.NOTSET)
+
+
+def test_uvicorn_does_not_get_its_own_unfiltered_handlers(tmp_path: Path) -> None:
+    """The access log is the highest-volume INFO source in the whole daemon.
+
+    uvicorn's DEFAULT log_config runs dictConfig and gives `uvicorn` and
+    `uvicorn.access` their own handler with propagate=False, so their records
+    never reach the root handlers the controller filters. An operator who
+    unchecked INFO still saw a line per HTTP request. `run_daemon` therefore
+    builds uvicorn.Config with log_config=None and no log_level.
+    """
+    import uvicorn
+
+    boot = _Boot(tmp_path, logging.INFO)
+    try:
+        _reset_uvicorn_loggers()
+
+        async def _app(scope: object, receive: object, send: object) -> None:  # pragma: no cover
+            return None
+
+        uvicorn.Config(
+            app=_app, host="127.0.0.1", port=0, log_config=None
+        ).configure_logging()
+
+        for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+            lg = logging.getLogger(name)
+            assert lg.propagate, f"{name} must reach the root handlers"
+            assert lg.handlers == [], f"{name} must not own an unfiltered sink"
+            assert lg.level == logging.NOTSET, (
+                f"{name} pinned to a boot-time level - the Settings page "
+                "could never change it without a redeploy"
+            )
+    finally:
+        _reset_uvicorn_loggers()
+        boot.close()
+
+
+def test_access_log_obeys_the_selection(tmp_path: Path) -> None:
+    """An unchecked INFO must silence 'GET /simulator/status' too."""
+    boot = _Boot(tmp_path, logging.INFO)
+    try:
+        _reset_uvicorn_loggers()
+        access = logging.getLogger("uvicorn.access")
+
+        access.info('%s - "%s %s HTTP/%s" %d', "10.0.1.141", "GET", "/simulator/status", "1.1", 200)
+        assert "/simulator/status" in boot.emitted(), "access log never reached the sink"
+
+        boot.controller.set_levels(["WARNING", "ERROR", "CRITICAL"])
+        mark = len(boot.emitted())
+        access.info('%s - "%s %s HTTP/%s" %d', "10.0.1.141", "GET", "/controllers", "1.1", 200)
+        assert "/controllers" not in boot.emitted()[mark:], (
+            "access log still emitted after INFO was unchecked"
+        )
+    finally:
+        _reset_uvicorn_loggers()
+        boot.close()
+
+
+def test_handler_added_after_construction_is_still_filtered(tmp_path: Path) -> None:
+    """A library reconfiguring logging mid-run must not open an unfiltered sink."""
+    boot = _Boot(tmp_path, logging.INFO)
+    late = tmp_path / "late.log"
+    late_handler = logging.FileHandler(late, encoding="utf-8")
+    try:
+        logging.getLogger().addHandler(late_handler)
+        boot.controller.set_levels(["WARNING", "ERROR", "CRITICAL"])
+
+        logging.getLogger("smart_pid_core.late").info("late_info")
+        logging.getLogger("smart_pid_core.late").warning("late_warning")
+        late_handler.flush()
+
+        written = late.read_text(encoding="utf-8")
+        assert "late_info" not in written, "late handler bypassed the selection"
+        assert "late_warning" in written
+    finally:
+        logging.getLogger().removeHandler(late_handler)
+        late_handler.close()
         boot.close()

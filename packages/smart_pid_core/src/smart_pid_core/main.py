@@ -611,12 +611,25 @@ async def run_daemon(
     telemetry_pub = TelemetryPublisher(bus=bus, publish_port=settings.zmq_publish_port)
     await telemetry_pub.start()
 
-    # Embedded uvicorn
+    # Embedded uvicorn.
+    #
+    # log_config=None is load-bearing, not tidying: uvicorn's DEFAULT config
+    # runs dictConfig and hands `uvicorn` and `uvicorn.access` their own
+    # StreamHandler with propagate=False. Their records then never reach the
+    # root handlers, so the Settings page's level filter never saw a single
+    # access log — an operator who unchecked INFO still got a line per
+    # request ("GET /simulator/status" once a second, forever).
+    #
+    # log_level is deliberately left unset too: passing it makes uvicorn call
+    # setLevel on uvicorn.error/access/asgi, pinning them to the boot value
+    # and re-freezing exactly what this control exists to change at runtime.
+    # Unset leaves them NOTSET so they inherit the root level the
+    # LogLevelController drives.
     uv_config = uvicorn.Config(
         app=app,
         host=settings.api_host,
         port=settings.api_port,
-        log_level=settings.log_level.lower(),
+        log_config=None,
     )
     server = uvicorn.Server(uv_config)
 
