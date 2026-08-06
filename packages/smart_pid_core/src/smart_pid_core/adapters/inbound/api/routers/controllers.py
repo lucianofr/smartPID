@@ -17,7 +17,10 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
     require_admin,
     require_user,
 )
-from smart_pid_core.adapters.inbound.simulator_adapter import bind_opcua_client
+from smart_pid_core.adapters.inbound.simulator_adapter import (
+    bind_opcua_client,
+    register_from_tag_bindings,
+)
 from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository  # noqa: TC001
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
@@ -605,10 +608,9 @@ def _sync_opcua_registration(request: Request, controller: Controller) -> None:
     every command raised ``KeyError("Controller N not registered")`` from the
     adapter until the daemon was restarted.
 
-    Which node ids to use mirrors ``run_daemon``: in simulator mode the twin
-    owns the address space and has just minted nodes for this controller
-    (``tag_bindings`` is empty for simulator loops), while against a real DCS
-    the configured ``tag_bindings`` are authoritative.
+    Which node ids to use mirrors ``run_daemon``: the configured
+    ``tag_bindings`` are authoritative whenever the loop has them, and the twin
+    owns the address space only for simulator loops (whose bindings are empty).
 
     Failures are logged, never raised: the controller row is already
     committed, so an adapter hiccup must not report a create that succeeded
@@ -620,7 +622,10 @@ def _sync_opcua_registration(request: Request, controller: Controller) -> None:
     sim = getattr(request.app.state, "simulator_adapter", None)
     try:
         if sim is not None:
-            bind_opcua_client(adapter, sim, [controller.id])
+            bind_opcua_client(
+                adapter, sim, [controller.id],
+                {controller.id: controller.tag_bindings},
+            )
         else:
             _reregister_opcua(request, controller)
     except Exception:
@@ -637,22 +642,7 @@ def _reregister_opcua(request: Request, controller: Controller) -> None:
     tb = controller.tag_bindings
     if not tb.node_id_pv:
         return
-    adapter.register_controller(
-        controller_id=controller.id,
-        node_id_pv=tb.node_id_pv,
-        node_id_sp=tb.node_id_sp,
-        node_id_co=tb.node_id_co,
-        node_id_integral=tb.node_id_integral,
-        node_id_bkcal_in=tb.node_id_bkcal_in,
-        node_id_bkcal_out=tb.node_id_bkcal_out,
-        node_id_kp=tb.node_id_kp,
-        node_id_ti=tb.node_id_ti,
-        node_id_td=tb.node_id_td,
-        node_id_mode_target=tb.node_id_mode_target,
-        node_id_mode_actual=tb.node_id_mode_actual,
-        node_id_enabled=tb.node_id_enabled,
-        mode_int_map=tb.mode_int_map,
-    )
+    register_from_tag_bindings(adapter, controller.id, tb)
 
 
 @router.delete("/{controller_id}", status_code=status.HTTP_204_NO_CONTENT)

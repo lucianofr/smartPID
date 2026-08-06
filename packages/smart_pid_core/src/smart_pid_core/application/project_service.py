@@ -344,7 +344,10 @@ class ProjectService:
         if self._opcua_adapter is None or not hasattr(sim, "opcua_node_ids"):
             return
         controllers = await self._repo.list_all()
-        bind_opcua_client(self._opcua_adapter, sim, [c.id for c in controllers])
+        bindings = {c.id: c.tag_bindings for c in controllers}
+        bind_opcua_client(
+            self._opcua_adapter, sim, [c.id for c in controllers], bindings,
+        )
         self._opcua_adapter.start()
 
     async def _load_opcua_endpoint(self) -> None:

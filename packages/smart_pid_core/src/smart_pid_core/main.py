@@ -20,7 +20,10 @@ from smart_pid_core.adapters.factory import AdapterFactory
 from smart_pid_core.adapters.inbound.api.app import create_app
 from smart_pid_core.adapters.inbound.api.auth import hash_password
 from smart_pid_core.adapters.inbound.sim_persistence import persist_sim_config
-from smart_pid_core.adapters.inbound.simulator_adapter import bind_opcua_client
+from smart_pid_core.adapters.inbound.simulator_adapter import (
+    bind_opcua_client,
+    register_from_tag_bindings,
+)
 from smart_pid_core.adapters.outbound.historian import SQLiteHistorian
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
@@ -385,39 +388,34 @@ async def run_daemon(
     # Phase 3b: OPC-UA adapter lifecycle
     opcua_adapter = adapter_factory.opcua_adapter
     if opcua_adapter is not None:
+        controllers = await repo.list_all()
+        bindings = {c.id: c.tag_bindings for c in controllers}
         if simulator_adapter is not None:
-            # The twin owns the address space, so both the node ids and the
-            # Mode encoding come from it and not from the project's
-            # tag_bindings (empty for every simulator-registered controller).
-            # Same binding is applied on POST /controllers and on project
-            # open — see bind_opcua_client.
+            # The twin owns the address space only for the loops it created.
+            # A loop that carries a real project mapping is registered from it
+            # — see bind_opcua_client. Same binding is applied on
+            # POST /controllers and on project open.
             bound = bind_opcua_client(
                 opcua_adapter,
                 simulator_adapter,
                 list(simulator_adapter._opcua_server.controller_node_ids),
+                bindings,
             )
             logger.info("opcua_adapter_registered_from_simulator", controllers=bound)
+            # Mapped controllers the twin never minted a folder for still need
+            # registering: bind_opcua_client only walks the twin's own ids.
+            twin_ids = set(simulator_adapter._opcua_server.controller_node_ids)
+            for ctrl in controllers:
+                if ctrl.id not in twin_ids and ctrl.tag_bindings.node_id_pv:
+                    register_from_tag_bindings(
+                        opcua_adapter, ctrl.id, ctrl.tag_bindings,
+                    )
         else:
             # Real OPC-UA: use database tag_bindings
-            controllers = await repo.list_all()
             for ctrl in controllers:
-                tb = ctrl.tag_bindings
-                if tb.node_id_pv:
-                    opcua_adapter.register_controller(
-                        controller_id=ctrl.id,
-                        node_id_pv=tb.node_id_pv,
-                        node_id_sp=tb.node_id_sp,
-                        node_id_co=tb.node_id_co,
-                        node_id_integral=tb.node_id_integral,
-                        node_id_bkcal_in=tb.node_id_bkcal_in,
-                        node_id_bkcal_out=tb.node_id_bkcal_out,
-                        node_id_kp=tb.node_id_kp,
-                        node_id_ti=tb.node_id_ti,
-                        node_id_td=tb.node_id_td,
-                        node_id_mode_target=tb.node_id_mode_target,
-                        node_id_mode_actual=tb.node_id_mode_actual,
-                        node_id_enabled=tb.node_id_enabled,
-                        mode_int_map=tb.mode_int_map,
+                if ctrl.tag_bindings.node_id_pv:
+                    register_from_tag_bindings(
+                        opcua_adapter, ctrl.id, ctrl.tag_bindings,
                     )
         opcua_adapter.start()
         logger.info("opcua_adapter_started", endpoint=opcua_adapter.endpoint)

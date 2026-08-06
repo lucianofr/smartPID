@@ -7,10 +7,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from smart_pid_core.adapters.inbound.sim_persistence import persist_sim_config
-from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
+from smart_pid_core.adapters.inbound.simulator_adapter import (
+    SimulatorAdapter,
+    bind_opcua_client,
+)
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.config import CoreSettings
 from smart_pid_domain.enums import ProcessPresetName
+from smart_pid_domain.models.controller import TagBindings
 
 
 @pytest.fixture
@@ -298,6 +302,63 @@ class TestSimulatorAdapterOPCUA:
         ):
             mock_adapter._on_opcua_write(1, param, value)
         assert mock_adapter.consume_dirty_cids() == [1]
+
+
+class TestBindOpcuaClientPrecedence:
+    """A configured project tag mapping outranks the twin's minted nodes.
+
+    The twin owns the address space only for loops it created itself. A loop
+    imported from a real project carries its own ``tag_bindings``, and which
+    ``CTRL_n`` folder the twin happens to mint for that id shifts between
+    boots — so letting the twin win silently pointed the faceplate at another
+    loop's tags.
+    """
+
+    @staticmethod
+    def _sim(nodes: dict[int, dict[str, str]]) -> MagicMock:
+        sim = MagicMock()
+        sim.opcua_node_ids.side_effect = lambda cid: nodes.get(cid, {})
+        return sim
+
+    def test_mapped_controller_registers_from_its_tag_bindings(self) -> None:
+        opcua = MagicMock()
+        sim = self._sim({1: {"pv": "twin;pv", "kp": "twin;kp"}})
+        tb = TagBindings(node_id_pv="proj;pv", node_id_kp="proj;kp")
+
+        bound = bind_opcua_client(opcua, sim, [1], {1: tb})
+
+        assert bound == [], "a mapped loop must not be bound to the twin"
+        kwargs = opcua.register_controller.call_args.kwargs
+        assert kwargs["node_id_pv"] == "proj;pv"
+        assert kwargs["node_id_kp"] == "proj;kp"
+
+    def test_unmapped_controller_still_falls_through_to_the_twin(self) -> None:
+        opcua = MagicMock()
+        sim = self._sim({1: {"pv": "twin;pv", "kp": "twin;kp"}})
+
+        bound = bind_opcua_client(opcua, sim, [1], {1: TagBindings()})
+
+        assert bound == [1]
+        kwargs = opcua.register_controller.call_args.kwargs
+        assert kwargs["node_id_pv"] == "twin;pv"
+        assert kwargs["node_id_kp"] == "twin;kp"
+
+    def test_twin_only_loop_binds_when_no_bindings_are_supplied(self) -> None:
+        """POST /simulator/loops has no project controller behind the id."""
+        opcua = MagicMock()
+        sim = self._sim({7: {"pv": "twin;pv"}})
+
+        assert bind_opcua_client(opcua, sim, [7]) == [7]
+
+    def test_an_unmapped_kp_is_left_unmapped_rather_than_borrowed(self) -> None:
+        """The faceplate must show "sem dados", not another loop's gain."""
+        opcua = MagicMock()
+        sim = self._sim({1: {"pv": "twin;pv", "kp": "twin;kp"}})
+        tb = TagBindings(node_id_pv="proj;pv", node_id_kp="")
+
+        bind_opcua_client(opcua, sim, [1], {1: tb})
+
+        assert opcua.register_controller.call_args.kwargs["node_id_kp"] == ""
 
 
 class TestSimulatorAdapterConfigPersistence:

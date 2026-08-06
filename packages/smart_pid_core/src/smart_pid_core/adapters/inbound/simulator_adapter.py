@@ -21,10 +21,11 @@ from smart_pid_domain.models.process_preset import PRESETS
 from smart_pid_domain.models.signal import FFSignal
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
 
     from smart_pid_core.config import CoreSettings
     from smart_pid_domain.enums import ProcessPresetName
+    from smart_pid_domain.models.controller import TagBindings
 
 logger = logging.getLogger(__name__)
 
@@ -87,20 +88,34 @@ def bind_opcua_client(
     opcua_adapter: object,
     simulator_adapter: SimulatorAdapter,
     controller_ids: Iterable[int],
+    bindings: Mapping[int, TagBindings] | None = None,
 ) -> list[int]:
     """Point the OPC-UA *client* adapter at the twin's nodes for these ids.
 
-    In simulator mode the twin owns the address space, so a controller's
-    ``tag_bindings`` are empty and the client adapter has to be registered
-    against the node ids the simulator minted. That rule was being spelled out
-    at every wiring site (daemon boot, ``POST /controllers``, project switch);
-    keeping it here means the three cannot drift — and a project opened after
-    boot is exactly the case that had been missed.
+    In simulator mode the twin owns the address space for the loops *it*
+    created: their ``tag_bindings`` are empty, so the client adapter has to be
+    registered against the node ids the simulator minted. That rule was being
+    spelled out at every wiring site (daemon boot, ``POST /controllers``,
+    project switch); keeping it here means the three cannot drift — and a
+    project opened after boot is exactly the case that had been missed.
 
-    Returns the ids that were bound (ones the twin does not know are skipped).
+    ``bindings`` supplies the project's configured mapping per controller. A
+    controller that has a real one (``node_id_pv`` set) is registered from it
+    and skipped here: the operator's mapping is authoritative, so the faceplate
+    shows the tags the loop was configured with rather than whichever twin
+    folder happens to occupy that slot this boot. Only unmapped loops fall
+    through to the twin. Omit ``bindings`` when the id has no project
+    controller behind it at all (a twin-only loop from ``POST /simulator/loops``).
+
+    Returns the ids that were bound to the twin (ones the twin does not know,
+    and ones the project already maps, are skipped).
     """
     bound: list[int] = []
     for cid in controller_ids:
+        tb = bindings.get(cid) if bindings is not None else None
+        if tb is not None and tb.node_id_pv:
+            register_from_tag_bindings(opcua_adapter, cid, tb)
+            continue
         nodes = simulator_adapter.opcua_node_ids(cid)
         if not nodes:
             continue
@@ -119,6 +134,28 @@ def bind_opcua_client(
         )
         bound.append(cid)
     return bound
+
+
+def register_from_tag_bindings(
+    opcua_adapter: object, controller_id: int, tb: TagBindings,
+) -> None:
+    """Register one controller against its configured project tag mapping."""
+    opcua_adapter.register_controller(  # type: ignore[attr-defined]
+        controller_id=controller_id,
+        node_id_pv=tb.node_id_pv,
+        node_id_sp=tb.node_id_sp,
+        node_id_co=tb.node_id_co,
+        node_id_integral=tb.node_id_integral,
+        node_id_bkcal_in=tb.node_id_bkcal_in,
+        node_id_bkcal_out=tb.node_id_bkcal_out,
+        node_id_kp=tb.node_id_kp,
+        node_id_ti=tb.node_id_ti,
+        node_id_td=tb.node_id_td,
+        node_id_mode_target=tb.node_id_mode_target,
+        node_id_mode_actual=tb.node_id_mode_actual,
+        node_id_enabled=tb.node_id_enabled,
+        mode_int_map=tb.mode_int_map,
+    )
 
 
 # The twin's internal PID runs on a fixed 1 s scan, decoupled from the faster
