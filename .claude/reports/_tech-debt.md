@@ -41,6 +41,45 @@ that a single bugfix pass cannot take unilaterally.
   - **Created:** 2026-08-06
   - **Source:** implementation-opcua-tuning-tag-mapping-20260806
 
+- [ ] **TD-033**: `test_opcua_start_stop` flakes under full-suite load —
+      `_free_port()` allocates a port it then releases before the server binds
+  - **Impact:** Medium
+  - **Symptom:** `RuntimeError: OPCUAServer failed to start within 10s`
+    (`opcua_server.py:85-86`) from
+    `tests/core/integration/test_api_simulator.py::TestOPCUAEndpoints::test_opcua_start_stop`.
+    Observed once in a full run (1 failed / 1742 passed), then passed both in
+    isolation and on a clean full re-run, with nothing listening on 4849/8537
+    at the time.
+  - **Detail:** `_free_port()` (`tests/conftest.py:32-43`) is a
+    time-of-check/time-of-use race: it binds port 0, reads the assigned port
+    via `getsockname()`, then *closes the socket* and returns the number. The
+    port is free again on return, and `OPCUAServer` only binds it later — after
+    a thread start plus asyncua init on a background loop. Anything may claim
+    it inside that window, including one of the suite's other 27 `_free_port()`
+    / `_get_free_port()` call sites, since Linux readily reuses just-released
+    ephemeral ports. Under full-suite load the window widens, which is exactly
+    why it reproduces there and not in isolation.
+  - **Why it reads as a mystery:** `_run` (`opcua_server.py:142-152`) catches
+    the bind failure, logs `opcua_server_error`, and never sets `_ready`, so
+    the caller only ever sees the generic 10 s timeout. The real
+    `OSError: Address already in use` is swallowed into a message that names
+    neither the port nor the cause.
+  - **Not the old 4849 problem:** `_free_port`'s own docstring records an
+    earlier incarnation where the port came from `.env` (4849) and collided
+    with a developer's running daemon. That was fixed; this is a distinct,
+    narrower race in the replacement. Worth noting the same test has now failed
+    for two different port-related reasons.
+  - **Contributing factor from this pass:** the two new determinism tests in
+    `tests/core/unit/test_opcua_server.py` start four additional real servers,
+    marginally increasing allocation pressure.
+  - **Options (need a decision):** hold the socket open with `SO_REUSEADDR` and
+    hand the bound socket to the server instead of a bare number; or retry the
+    bind on `OSError` with a fresh port; or at minimum propagate the underlying
+    exception through `_ready` so the failure names itself instead of timing
+    out. The last one is cheap and worth doing regardless of the others.
+  - **Created:** 2026-08-06
+  - **Source:** bugs-opcua-nodeid-determinism-20260806
+
 - [ ] **TD-010**: Rotate `SPID_JWT_SECRET` — the key in active use is the one that
       was committed to `.env.example`
   - **Impact:** Critical
