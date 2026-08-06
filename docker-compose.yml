@@ -35,6 +35,13 @@ services:
       SPID_TRUSTED_HOSTS: '["smartpid.lfrautomacao.eng.br","localhost","127.0.0.1"]'
       SPID_CORS_ALLOW_ORIGINS: '["https://smartpid.lfrautomacao.eng.br"]'
       SPID_ALLOWED_WS_ORIGINS: '["https://smartpid.lfrautomacao.eng.br"]'
+      # Traefik terminates TLS and is the ONLY route to this container (no
+      # published ports below), so its X-Forwarded-For is the only source of
+      # the operator's real address. Without this, every session and every
+      # access-log row reads as the proxy's own address and the per-IP login
+      # throttle becomes a platform-wide lockout. Dokploy assigns the bridge
+      # address dynamically, hence the private ranges rather than one host.
+      SPID_TRUSTED_PROXIES: '["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]'
       # The workstation deployment runs with the simulator on; keep parity.
       SPID_SIMULATOR_ENABLED: "true"
       # All persisted state on the named volume: it lives outside the
