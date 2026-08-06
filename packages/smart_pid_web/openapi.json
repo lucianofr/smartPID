@@ -6163,14 +6163,14 @@
             }
           },
           {
-            "description": "Window length; capped at the 1 h ring",
+            "description": "Window length in seconds; capped at the 72 h ring",
             "in": "query",
             "name": "seconds",
             "required": false,
             "schema": {
               "default": 3600,
-              "description": "Window length; capped at the 1 h ring",
-              "maximum": 3600,
+              "description": "Window length in seconds; capped at the 72 h ring",
+              "maximum": 259200,
               "minimum": 1,
               "title": "Seconds",
               "type": "integer"

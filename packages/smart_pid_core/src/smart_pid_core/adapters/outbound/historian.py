@@ -88,6 +88,57 @@ class SQLiteHistorian:
             )
         return results
 
+    async def query_decimated(
+        self,
+        controller_id: int,
+        start: datetime,
+        end: datetime,
+        interval_s: float,
+    ) -> list[tuple[float, float, float, float]]:
+        """One row per ``interval_s`` bucket as ``(epoch, pv, sp, co)``, ascending.
+
+        Backs the trend ring's lazy fill. ``Log_Processo`` holds every frame of
+        the 10 Hz scan while the ring keeps one per second, so a raw range read
+        would materialise ~10x the rows the ring can store — and as
+        ``TelemetryFrame`` objects with four ``FFSignal`` each. SQLite does the
+        thinning instead: one bucket per ``interval_s``, and SQLite's documented
+        bare-column rule pairs ``pv``/``sp``/``co`` with the ``MIN(timestamp)``
+        row of each bucket. Plain tuples, because the caller feeds them straight
+        into the ring's float columns.
+
+        Bucketing is NOT a spacing guarantee: ``strftime('%s')`` truncates to
+        whole seconds, so the last frame of one bucket and the first of the next
+        can be ~0.1 s apart. Enforcing the ring's minimum spacing stays with
+        ``TrendBuffer.backfill``.
+        """
+        bucket = max(1, int(interval_s))
+        async with self._session_factory() as session:
+            result = await session.execute(
+                text(
+                    "SELECT MIN(timestamp) AS ts, pv, sp, co "
+                    "FROM Log_Processo "
+                    "WHERE controlador_id = :cid "
+                    "AND timestamp >= :start AND timestamp <= :end "
+                    "GROUP BY CAST(strftime('%s', timestamp) AS INTEGER) / :bucket "
+                    "ORDER BY ts"
+                ),
+                {
+                    "cid": controller_id,
+                    "start": start.isoformat(),
+                    "end": end.isoformat(),
+                    "bucket": bucket,
+                },
+            )
+            rows = result.all()
+
+        samples: list[tuple[float, float, float, float]] = []
+        for row in rows:
+            ts = datetime.fromisoformat(row[0])
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=UTC)
+            samples.append((ts.timestamp(), row[1], row[2], row[3]))
+        return samples
+
     async def write_ai_log(self, entry: dict) -> None:
         """Insert a single AI tuning log entry into Log_Sintonia_IA."""
         async with self._session_factory() as session:

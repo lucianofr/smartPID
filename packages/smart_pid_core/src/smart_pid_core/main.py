@@ -474,8 +474,9 @@ async def run_daemon(
     db_worker.start()
     logger.info("db_worker_started")
 
-    # In-memory 1-hour ring behind GET /trend — the chart seed path. Same
-    # TELEMETRY feed as DBWorker (real and simulator loops alike).
+    # In-memory 72-hour ring behind GET /trend — the chart seed path. Same
+    # TELEMETRY feed as DBWorker (real and simulator loops alike), thinned to
+    # one sample per second on the way in.
     from smart_pid_core.application.trend_buffer import TrendBuffer
     from smart_pid_core.application.workers.trend_buffer_worker import TrendBufferWorker
 
@@ -490,19 +491,31 @@ async def run_daemon(
     all_controllers = await repo.list_all()
     io_controller_ids = [c.id for c in all_controllers]
 
-    # Hydrate the ring with the last hour already in Log_Processo, so a daemon
-    # restart does not blank every trend chart while the ring refills live.
-    # Appends are idempotent against live frames (non-increasing ts is dropped).
-    from smart_pid_core.application.trend_buffer import RETENTION_S
+    # Pre-fill the ring with the last HYDRATE_S already in Log_Processo, so a
+    # daemon restart does not blank every trend chart while the ring refills
+    # live. Anything deeper than this window is filled lazily by GET /trend the
+    # first time an operator asks for it.
+    #
+    # HYDRATE_S, not RETENTION_S: this runs BEFORE IOWorker and the PID loops
+    # start, and a 72 h historian scan costs ~0.5 s per loop per 12 h — tens of
+    # seconds between boot and control on a plant-sized project.
+    #
+    # Decimated, not raw: the ring keeps one sample per second while
+    # Log_Processo holds every 10 Hz frame, so a raw read would build ten
+    # TelemetryFrame objects for every one the ring stores — on the very path
+    # that delays control starting.
+    from smart_pid_core.application.trend_buffer import HYDRATE_S, TREND_INTERVAL_S
 
-    hydrate_start = datetime.now(tz=UTC) - timedelta(seconds=RETENTION_S)
+    hydrate_end = datetime.now(tz=UTC)
+    hydrate_start = hydrate_end - timedelta(seconds=HYDRATE_S)
     for ctrl in all_controllers:
         with contextlib.suppress(Exception):
-            frames = await historian.query(ctrl.id, hydrate_start, datetime.now(tz=UTC))
-            for f in frames:
-                trend_buffer.append(
-                    ctrl.id, f.timestamp.timestamp(), f.pv.value, f.sp.value, f.co.value
-                )
+            trend_buffer.backfill(
+                ctrl.id,
+                await historian.query_decimated(
+                    ctrl.id, hydrate_start, hydrate_end, TREND_INTERVAL_S
+                ),
+            )
     logger.info("trend_buffer_hydrated", loops=len(all_controllers))
 
     io_worker = IOWorker(

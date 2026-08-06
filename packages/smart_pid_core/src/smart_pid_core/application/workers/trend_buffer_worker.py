@@ -1,4 +1,4 @@
-"""Trend-buffer worker — fills the in-memory 1-hour ring from the TELEMETRY bus."""
+"""Trend-buffer worker — fills the in-memory 72-hour ring from the TELEMETRY bus."""
 from __future__ import annotations
 
 import contextlib
@@ -15,8 +15,9 @@ if TYPE_CHECKING:
 
 
 class TrendBufferWorker:
-    """Daemon thread that subscribes to ``TELEMETRY.*`` and appends every frame
-    to the shared :class:`TrendBuffer`.
+    """Daemon thread that subscribes to ``TELEMETRY.*`` and offers every frame
+    to the shared :class:`TrendBuffer`, which thins the 10 Hz scan to one
+    sample per second.
 
     Same subscription and payload contract as ``DBWorker`` (msgpack dict with
     ``controller_id``, ``pv``/``sp``/``co`` signal dicts, ISO ``timestamp``) —

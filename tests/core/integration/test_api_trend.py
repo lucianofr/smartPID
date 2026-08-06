@@ -1,14 +1,16 @@
 """Integration tests for GET /trend/{controller_id} and the TrendBufferWorker parse path."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import msgpack
 import pytest
 
-from smart_pid_core.application.trend_buffer import TrendBuffer
+from smart_pid_core.application.trend_buffer import RETENTION_S, TrendBuffer
 from smart_pid_core.application.workers.trend_buffer_worker import TrendBufferWorker
+from smart_pid_domain.models.signal import FFSignal
+from smart_pid_domain.models.telemetry import TelemetryFrame
 
 if TYPE_CHECKING:
     from httpx import AsyncClient
@@ -101,10 +103,12 @@ class TestTrendEndpoint:
         assert resp.json()["count"] == 4
 
     @pytest.mark.asyncio
-    async def test_seconds_over_one_hour_is_rejected(
+    async def test_seconds_over_retention_is_rejected(
         self, client: AsyncClient, user_headers: dict[str, str]
     ) -> None:
-        resp = await client.get("/trend/4", params={"seconds": 3601}, headers=user_headers)
+        resp = await client.get(
+            "/trend/4", params={"seconds": int(RETENTION_S) + 1}, headers=user_headers
+        )
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
@@ -120,3 +124,111 @@ class TestTrendEndpoint:
     async def test_no_auth_fails(self, client: AsyncClient) -> None:
         resp = await client.get("/trend/1")
         assert resp.status_code == 401
+
+
+_BASE = datetime(2026, 8, 3, 12, 0, tzinfo=UTC)
+
+
+def _history_frame(controller_id: int, pv: float, ts: datetime) -> TelemetryFrame:
+    return TelemetryFrame(
+        controller_id=controller_id,
+        pv=FFSignal.good(pv),
+        sp=FFSignal.good(50.0),
+        co=FFSignal.good(25.0),
+        bkcal_in=FFSignal.good(0.0),
+        integral_val=0.0,
+        timestamp=ts,
+    )
+
+
+async def _seed(app, api_deps, controller_id: int) -> None:
+    """Ring holds the newest 60 s; Log_Processo holds the 300 s before that.
+
+    The state a daemon is in shortly after a restart: only HYDRATE_S was
+    pre-loaded, so a wider window has to come off disk.
+    """
+    for i in range(60):
+        app.state.trend_buffer.append(
+            controller_id, (_BASE - timedelta(seconds=59 - i)).timestamp(), float(i), 50.0, 25.0
+        )
+    await api_deps["historian"].write_batch(
+        [
+            _history_frame(controller_id, pv=1000.0 + i, ts=_BASE - timedelta(seconds=300 - i))
+            for i in range(241)
+        ]
+    )
+
+
+class TestTrendLazyFill:
+    @pytest.mark.asyncio
+    async def test_window_wider_than_the_ring_is_filled_from_the_historian(
+        self, client: AsyncClient, app, api_deps, user_headers: dict[str, str]
+    ) -> None:
+        await _seed(app, api_deps, 21)
+
+        # The ring alone can only answer 60 s of this.
+        resp = await client.get("/trend/21", params={"seconds": 300}, headers=user_headers)
+
+        assert resp.status_code == 200
+        frames = resp.json()["frames"]
+        assert len(frames) == 301  # 241 backfilled + 60 already held
+        stamps = [f["timestamp"] for f in frames]
+        assert stamps == sorted(stamps)
+        # Oldest frame came off disk, newest from the live end.
+        assert frames[0]["pv"] == 1000.0
+        assert frames[-1]["pv"] == 59.0
+
+    @pytest.mark.asyncio
+    async def test_a_narrow_window_never_touches_the_database(
+        self, client: AsyncClient, app, api_deps, user_headers: dict[str, str]
+    ) -> None:
+        await _seed(app, api_deps, 22)
+        calls = _count_fills(app, api_deps)
+
+        resp = await client.get("/trend/22", params={"seconds": 30}, headers=user_headers)
+
+        assert resp.status_code == 200
+        assert calls == []
+
+    @pytest.mark.asyncio
+    async def test_the_fill_happens_once_not_on_every_request(
+        self, client: AsyncClient, app, api_deps, user_headers: dict[str, str]
+    ) -> None:
+        """The slow path is the point of the design; paying it twice is not."""
+        await _seed(app, api_deps, 23)
+        calls = _count_fills(app, api_deps)
+
+        first = await client.get("/trend/23", params={"seconds": 300}, headers=user_headers)
+        second = await client.get("/trend/23", params={"seconds": 300}, headers=user_headers)
+
+        assert first.json()["count"] == second.json()["count"] == 301
+        assert len(calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_failed_fill_still_serves_what_the_ring_holds(
+        self, client: AsyncClient, app, api_deps, user_headers: dict[str, str]
+    ) -> None:
+        await _seed(app, api_deps, 24)
+
+        async def broken(*_args, **_kwargs):
+            raise RuntimeError("historian unavailable")
+
+        app.state.historian.query_decimated = broken
+
+        resp = await client.get("/trend/24", params={"seconds": 300}, headers=user_headers)
+
+        assert resp.status_code == 200
+        assert resp.json()["count"] == 60  # exactly what the ring had
+
+
+def _count_fills(app, api_deps) -> list[tuple]:
+    """Record every historian read the route performs."""
+    calls: list[tuple] = []
+    original = api_deps["historian"].query_decimated
+
+    async def counting(*args, **kwargs):
+        calls.append(args)
+        return await original(*args, **kwargs)
+
+    app.state.historian.query_decimated = counting
+    return calls
