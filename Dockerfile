@@ -4,7 +4,7 @@
 # Stage 1: build the React/Vite SPA (packages/smart_pid_web).
 # Node 20 matches .github/workflows/ci.yml's pinned toolchain.
 # ---------------------------------------------------------------------------
-FROM node:20-slim AS web-builder
+FROM node:25-slim AS web-builder
 
 WORKDIR /web
 
