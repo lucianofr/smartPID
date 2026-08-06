@@ -37,12 +37,25 @@ services:
       SPID_ALLOWED_WS_ORIGINS: '["https://smartpid.lfrautomacao.eng.br"]'
       # The workstation deployment runs with the simulator on; keep parity.
       SPID_SIMULATOR_ENABLED: "true"
-      # All persisted state on the named volume.
+      # All persisted state on the named volume: it lives outside the
+      # container (/var/lib/docker/volumes/...), so image rebuilds and
+      # redeploys recreate the container around the same data.
+      #   project.spid  -> config + Log_Processo history (7d) + alarms (30d)
+      #   users.db      -> accounts
+      #   projects/     -> saved .spid projects, exports/ -> generated files
+      #   models/       -> AI tuning artefacts (db_path.parent / "models")
       SPID_DB_PATH: /data/project.spid
       SPID_USERS_DB_PATH: /data/users.db
       SPID_PROJECTS_DIR: /data/projects
+      # Last active project. Without this it defaults to $HOME inside the
+      # container's writable layer and every redeploy reopens the blank
+      # default project instead of the one the operator left running.
+      SPID_DAEMON_STATE_PATH: /data/daemon_state.json
       SPID_WEB_DIST_DIR: /app/web/dist
       SPID_LOG_LEVEL: INFO
+      # Mirror stdout to /data/logs/smartpid.log (10 MB x 5 rotation).
+      # Docker's own stdout log is deleted with the container on redeploy.
+      SPID_LOG_DIR: /data/logs
     volumes:
       - smartpid-data:/data
     healthcheck:

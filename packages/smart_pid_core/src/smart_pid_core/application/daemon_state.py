@@ -6,7 +6,12 @@ from pathlib import Path
 
 
 class DaemonState:
-    """Persists daemon state to ~/.smart-pid/daemon_state.json."""
+    """Persists daemon state to ``path`` (default ``~/.smart-pid/daemon_state.json``).
+
+    Deployments MUST pass a path on durable storage: the default lands in a
+    container's writable layer, where a redeploy silently discards it and the
+    daemon boots having forgotten which project was open.
+    """
 
     def __init__(self, path: Path | None = None) -> None:
         self._path = path or (Path.home() / ".smart-pid" / "daemon_state.json")

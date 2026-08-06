@@ -56,6 +56,13 @@ class CoreSettings(BaseSettings):
     # Project files directory (backend-managed)
     projects_dir: Path = Path.home() / ".smart-pid" / "projects"
 
+    # Daemon-level state (currently the last active project), reloaded on
+    # boot. Defaults beside the user DB for a workstation install; in a
+    # container it MUST be pointed at the persistent volume, otherwise it
+    # lands in the container's writable layer and every redeploy forgets
+    # which project was open.
+    daemon_state_path: Path = Path.home() / ".smart-pid" / "daemon_state.json"
+
     # Maximum size (bytes) accepted for a .spid project import upload.
     #
     # This is an abuse ceiling, NOT a memory guard. The upload is streamed into
@@ -81,6 +88,11 @@ class CoreSettings(BaseSettings):
 
     # Logging
     log_level: str = "INFO"
+    # When set, records also go to a rotating file under this directory
+    # (in addition to stdout). Container stdout dies with the container, so
+    # this is the only way log history survives a redeploy — point it at the
+    # persistent volume.
+    log_dir: Path | None = None
 
     # Execution
     execution_mode: str = "monitor"

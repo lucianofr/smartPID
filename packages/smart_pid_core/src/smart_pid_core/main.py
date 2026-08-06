@@ -9,6 +9,7 @@ import secrets
 import signal
 import sys
 from datetime import UTC, datetime, timedelta
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -306,7 +307,7 @@ async def run_daemon(settings: CoreSettings) -> None:
 
     # Restore last active project BEFORE registering controllers so that
     # simulator / OPC-UA adapters see the correct controller set.
-    daemon_state = DaemonState()
+    daemon_state = DaemonState(settings.daemon_state_path)
     last_project = daemon_state.active_project
     if last_project and repo._db_path.name == "project.spid":
         restore_path = settings.projects_dir / f"{last_project}.spid"
@@ -690,6 +691,47 @@ async def run_daemon(settings: CoreSettings) -> None:
     logger.info("daemon_stopped")
 
 
+# Rotation caps for the persisted log file. Logs share the data volume with
+# the project DB and its history, so they get a hard ceiling (60 MB total)
+# rather than being allowed to grow until an import fails for lack of space.
+LOG_MAX_BYTES = 10 * 1024 * 1024
+LOG_BACKUP_COUNT = 5
+
+
+def build_log_handlers(settings: CoreSettings) -> list[logging.Handler]:
+    """stdout, plus a rotating file under ``log_dir`` when one is configured.
+
+    A container's stdout is discarded along with the container, so every
+    redeploy loses the log history. Pointing ``SPID_LOG_DIR`` at the mounted
+    volume keeps the same records on durable storage across deploys.
+    """
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    if settings.log_dir is not None:
+        settings.log_dir.mkdir(parents=True, exist_ok=True)
+        handlers.append(
+            RotatingFileHandler(
+                settings.log_dir / "smartpid.log",
+                maxBytes=LOG_MAX_BYTES,
+                backupCount=LOG_BACKUP_COUNT,
+                encoding="utf-8",
+            )
+        )
+    return handlers
+
+
+def quiet_third_party_loggers(log_level: int) -> None:
+    """Clamp asyncua's per-request chatter unless the daemon itself is on DEBUG.
+
+    asyncua emits an INFO record for every OPC-UA read: 3565 of 3646 lines
+    (98%) in a 45 s container run. Left alone it rotates the daemon's own
+    lines out of the persisted log within minutes and makes stdout
+    unreadable. WARNING and above still pass, so connection and session
+    failures are never hidden.
+    """
+    if log_level > logging.DEBUG:
+        logging.getLogger("asyncua").setLevel(logging.WARNING)
+
+
 def main() -> None:
     """CLI entry point."""
     try:
@@ -708,9 +750,26 @@ def main() -> None:
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        handlers=build_log_handlers(settings),
     )
+    quiet_third_party_loggers(log_level)
+    # Route structlog through stdlib logging. Its default PrintLoggerFactory
+    # writes straight to stdout, bypassing every handler above — which left
+    # the persisted file holding third-party chatter and not one of the
+    # daemon's own events. Sharing the stdlib handlers is what makes
+    # SPID_LOG_DIR actually capture the log that matters.
     structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.StackInfoRenderer(),
+            structlog.dev.set_exc_info,
+            # No timestamp/level processor: the stdlib format string above
+            # already emits both, and structlog would print each line twice.
+            # colors=False keeps ANSI escapes out of the log file.
+            structlog.dev.ConsoleRenderer(colors=False),
+        ],
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
+        logger_factory=structlog.stdlib.LoggerFactory(),
     )
     asyncio.run(run_daemon(settings))
 if __name__ == "__main__":
