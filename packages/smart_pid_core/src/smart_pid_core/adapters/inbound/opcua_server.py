@@ -207,6 +207,16 @@ class OPCUAServer:
                              PID_Enabled, PID_CV, Error
               Process/     — Input (CO fed to process model), Output (raw model output)
               Disturbance/ — Output (combined disturbance contribution)
+
+        Every node id is minted explicitly as ``ns={idx};s=CTRL_{id}.{Folder}.{Name}``.
+        Left to asyncua these would be numeric and drawn from a per-namespace
+        counter (``address_space.generate_nodeid``), i.e. assigned in *creation*
+        order — so registering the same loops in a different order, or dropping
+        one, shifted every later id by a whole 20-node block and silently
+        retargeted any tag mapping saved against the twin. Deriving the id from
+        the controller id instead makes it stable across restarts and across
+        loops coming and going. The path strings below are therefore a wire
+        contract: renaming one invalidates saved mappings that reference it.
         """
         # Idempotent per controller id. Re-registration happens on every
         # DELETE+POST /simulator/loops, on project open and on
@@ -221,66 +231,48 @@ class OPCUAServer:
         from asyncua import ua
 
         tag = f"CTRL_{controller_id}"
-        ctrl_folder = await self._controllers_folder.add_folder(self._ns_idx, tag)
 
-        # --- PID sub-folder (13 nodes) ---
-        pid_folder = await ctrl_folder.add_folder(self._ns_idx, "PID")
+        def nid(path: str) -> ua.NodeId:
+            return ua.NodeId(f"{tag}.{path}", self._ns_idx)
+
+        def qn(name: str) -> ua.QualifiedName:
+            return ua.QualifiedName(name, self._ns_idx)
+
+        ctrl_folder = await self._controllers_folder.add_folder(
+            ua.NodeId(tag, self._ns_idx), qn(tag),
+        )
+
+        # (sub-folder, browse name, node key, default, variant type). One table
+        # drives both the node id and the browse name so the two cannot drift.
+        specs: tuple[tuple[str, str, str, object, ua.VariantType], ...] = (
+            ("PID", "PV", "pv", 0.0, ua.VariantType.Float),
+            ("PID", "SP", "sp", 50.0, ua.VariantType.Float),
+            ("PID", "CO", "co", 0.0, ua.VariantType.Float),
+            ("PID", "Mode", "mode", 0, ua.VariantType.Int32),
+            ("PID", "Status", "status", 0, ua.VariantType.Int32),
+            ("PID", "Kp", "kp", 1.0, ua.VariantType.Float),
+            ("PID", "Ti", "ti", 10.0, ua.VariantType.Float),
+            ("PID", "Td", "td", 0.0, ua.VariantType.Float),
+            ("PID", "PID_Structure", "pid_structure", 0, ua.VariantType.Int32),
+            ("PID", "PID_SP", "pid_sp", 50.0, ua.VariantType.Float),
+            ("PID", "PID_Enabled", "pid_enabled", False, ua.VariantType.Boolean),
+            ("PID", "PID_CV", "pid_cv", 0.0, ua.VariantType.Float),
+            ("PID", "Error", "error", 0.0, ua.VariantType.Float),
+            ("Process", "Input", "process_input", 0.0, ua.VariantType.Float),
+            ("Process", "Output", "process_output", 0.0, ua.VariantType.Float),
+            ("Disturbance", "Output", "disturbance_output", 0.0, ua.VariantType.Float),
+        )
+
+        folders = {
+            name: await ctrl_folder.add_folder(nid(name), qn(name))
+            for name in ("PID", "Process", "Disturbance")
+        }
+
         nodes: dict[str, object] = {}
-
-        nodes["pv"] = await pid_folder.add_variable(
-            self._ns_idx, "PV", 0.0, ua.VariantType.Float,
-        )
-        nodes["sp"] = await pid_folder.add_variable(
-            self._ns_idx, "SP", 50.0, ua.VariantType.Float,
-        )
-        nodes["co"] = await pid_folder.add_variable(
-            self._ns_idx, "CO", 0.0, ua.VariantType.Float,
-        )
-        nodes["mode"] = await pid_folder.add_variable(
-            self._ns_idx, "Mode", 0, ua.VariantType.Int32,
-        )
-        nodes["status"] = await pid_folder.add_variable(
-            self._ns_idx, "Status", 0, ua.VariantType.Int32,
-        )
-        nodes["kp"] = await pid_folder.add_variable(
-            self._ns_idx, "Kp", 1.0, ua.VariantType.Float,
-        )
-        nodes["ti"] = await pid_folder.add_variable(
-            self._ns_idx, "Ti", 10.0, ua.VariantType.Float,
-        )
-        nodes["td"] = await pid_folder.add_variable(
-            self._ns_idx, "Td", 0.0, ua.VariantType.Float,
-        )
-        nodes["pid_structure"] = await pid_folder.add_variable(
-            self._ns_idx, "PID_Structure", 0, ua.VariantType.Int32,
-        )
-        nodes["pid_sp"] = await pid_folder.add_variable(
-            self._ns_idx, "PID_SP", 50.0, ua.VariantType.Float,
-        )
-        nodes["pid_enabled"] = await pid_folder.add_variable(
-            self._ns_idx, "PID_Enabled", False, ua.VariantType.Boolean,
-        )
-        nodes["pid_cv"] = await pid_folder.add_variable(
-            self._ns_idx, "PID_CV", 0.0, ua.VariantType.Float,
-        )
-        nodes["error"] = await pid_folder.add_variable(
-            self._ns_idx, "Error", 0.0, ua.VariantType.Float,
-        )
-
-        # --- Process sub-folder (2 nodes) ---
-        proc_folder = await ctrl_folder.add_folder(self._ns_idx, "Process")
-        nodes["process_input"] = await proc_folder.add_variable(
-            self._ns_idx, "Input", 0.0, ua.VariantType.Float,
-        )
-        nodes["process_output"] = await proc_folder.add_variable(
-            self._ns_idx, "Output", 0.0, ua.VariantType.Float,
-        )
-
-        # --- Disturbance sub-folder (1 node) ---
-        dist_folder = await ctrl_folder.add_folder(self._ns_idx, "Disturbance")
-        nodes["disturbance_output"] = await dist_folder.add_variable(
-            self._ns_idx, "Output", 0.0, ua.VariantType.Float,
-        )
+        for folder_name, bname, key, default, vtype in specs:
+            nodes[key] = await folders[folder_name].add_variable(
+                nid(f"{folder_name}.{bname}"), qn(bname), default, vtype,
+            )
 
         # Make writable params accessible to external clients
         for param in _WRITABLE_PARAMS:

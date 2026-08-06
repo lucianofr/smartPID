@@ -109,6 +109,53 @@ class TestOPCUAServerRegisterController:
         finally:
             server.stop()
 
+    def test_node_ids_do_not_depend_on_registration_order(self) -> None:
+        """Node ids must derive from the controller id, not the creation order.
+
+        asyncua hands out numeric identifiers from a per-namespace counter
+        (``address_space.generate_nodeid``), so registering the same loops in a
+        different order used to shift every id by one 20-node block. A tag
+        mapping saved against the twin then silently pointed at whichever loop
+        landed in that slot on the next boot.
+        """
+        from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
+
+        first = OPCUAServer(port=_get_free_port())
+        first.start()
+        try:
+            forward = {cid: first.register_controller(cid) for cid in (1, 2, 3)}
+        finally:
+            first.stop()
+
+        second = OPCUAServer(port=_get_free_port())
+        second.start()
+        try:
+            reverse = {cid: second.register_controller(cid) for cid in (3, 2, 1)}
+        finally:
+            second.stop()
+
+        assert forward == reverse
+
+    def test_node_ids_survive_a_controller_disappearing(self) -> None:
+        """Removing a loop must not retarget the loops registered after it."""
+        from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
+
+        full = OPCUAServer(port=_get_free_port())
+        full.start()
+        try:
+            with_two = {cid: full.register_controller(cid) for cid in (1, 2)}
+        finally:
+            full.stop()
+
+        gapped = OPCUAServer(port=_get_free_port())
+        gapped.start()
+        try:
+            without_one = gapped.register_controller(2)
+        finally:
+            gapped.stop()
+
+        assert without_one == with_two[2]
+
     def test_values_pushed_before_start_survive_node_creation(self) -> None:
         """A config pushed before the loop exists must reach the nodes.
 
