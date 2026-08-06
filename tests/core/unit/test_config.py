@@ -56,3 +56,25 @@ class TestExecutionMode:
     def test_set_execute(self) -> None:
         s = CoreSettings(_env_file=None)
         assert s.execution_mode == "execute"
+
+
+class TestTrustedProxies:
+    """A malformed entry must fail at boot, not silently match nothing."""
+
+    @patch.dict(os.environ, {"SPID_JWT_SECRET": "test-secret"}, clear=True)
+    def test_defaults_to_trusting_nobody(self) -> None:
+        assert CoreSettings(_env_file=None).trusted_proxies == []
+
+    @patch.dict(os.environ, {"SPID_JWT_SECRET": "test-secret"}, clear=True)
+    def test_accepts_a_bare_address_and_a_cidr(self) -> None:
+        s = CoreSettings(_env_file=None, trusted_proxies=["10.0.0.5", "172.16.0.0/12"])
+        assert s.trusted_proxies == ["10.0.0.5", "172.16.0.0/12"]
+
+    @patch.dict(os.environ, {"SPID_JWT_SECRET": "test-secret"}, clear=True)
+    def test_rejects_a_typo(self) -> None:
+        from pydantic import ValidationError
+
+        # Accepting this would leave the daemon running while attributing every
+        # session to the proxy's own address, with nothing to explain why.
+        with pytest.raises(ValidationError):
+            CoreSettings(_env_file=None, trusted_proxies=["traefik"])

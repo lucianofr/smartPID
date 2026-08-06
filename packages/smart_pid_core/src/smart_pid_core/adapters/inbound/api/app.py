@@ -36,6 +36,7 @@ from smart_pid_core.adapters.inbound.api.ws.realtime import (
     RealtimeBridge,
     register_realtime_ws,
 )
+from smart_pid_core.application.session_registry import SessionRegistry
 from smart_pid_core.application.trend_buffer import TrendBuffer
 from smart_pid_core.application.tuning_store import TuningRecommendationStore
 
@@ -152,6 +153,9 @@ def create_app(
     app.state.alarm_worker = alarm_worker
     app.state.audit_repo = audit_repo
     app.state.login_rate_limiter = auth.LoginRateLimiter()
+    # Live "who is signed in" view. Process-local by design: it tracks open
+    # sockets and recent requests, both of which die with this process.
+    app.state.session_registry = SessionRegistry()
     app.state.system_event_repo = system_event_repo
     app.state.event_bus = event_bus
     app.state.log_level_controller = log_level_controller

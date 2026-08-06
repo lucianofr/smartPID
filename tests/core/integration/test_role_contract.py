@@ -67,11 +67,14 @@ ADMIN_ONLY_ROUTES: list[tuple[str, str, dict | None]] = [
     ("post", "/users", {"username": "rbac-new", "password": "pw", "role": "user"}),
     ("patch", "/users/9999", {"role": "user"}),
     ("delete", "/users/9999", None),
+    ("get", "/auth/sessions", None),
+    ("get", "/auth/access-log", None),
 ]
 
 USER_ALLOWED_ROUTES: list[tuple[str, str, dict | None]] = [
     ("get", "/auth/me", None),
     ("post", "/auth/refresh", None),
+    ("post", "/auth/logout", None),
     ("get", "/controllers", None),
     ("get", "/controllers/9999", None),
     ("get", "/controllers/9999/alarm-config", None),
@@ -129,10 +132,10 @@ async def _request(
 
 class TestRouteInventory:
     def test_admin_only_route_count(self) -> None:
-        assert len(ADMIN_ONLY_ROUTES) == 39
+        assert len(ADMIN_ONLY_ROUTES) == 41
 
     def test_user_allowed_route_count(self) -> None:
-        assert len(USER_ALLOWED_ROUTES) == 28
+        assert len(USER_ALLOWED_ROUTES) == 29
 
 
 class TestAdminOnlyRoutes:

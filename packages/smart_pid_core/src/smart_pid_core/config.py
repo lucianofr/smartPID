@@ -1,8 +1,10 @@
 """Backend daemon settings loaded from environment / .env file."""
 from __future__ import annotations
 
+from ipaddress import ip_network
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +33,22 @@ class CoreSettings(BaseSettings):
     # Network hardening (TD-004). Env vars accept a JSON array, e.g.
     # SPID_CORS_ALLOW_ORIGINS='["http://127.0.0.1:5173"]'.
     cors_allow_origins: list[str] = ["http://127.0.0.1:5173", "http://localhost:5173"]
+    # Reverse proxies whose X-Forwarded-For may be believed — bare addresses or
+    # CIDRs, e.g. SPID_TRUSTED_PROXIES='["10.0.0.0/8"]'.
+    #
+    # EMPTY (default) trusts nobody: with no proxy in front, that header is
+    # caller-supplied text, and honouring it would let the login throttle be
+    # spoofed away (a fresh 5-attempt budget per forged address) and fake
+    # addresses be written into the access log the operator audits.
+    #
+    # Naming the proxy is REQUIRED rather than a boolean switch, because the
+    # two are not equally safe: a deployment that publishes the API port
+    # directly (docker-compose.vps.yml) would accept the header from ANY
+    # caller. Behind the Dokploy/Traefik compose the opposite problem applies —
+    # request.client.host is the proxy's own address, identical for every
+    # operator, which hides the real source IP and turns the per-IP login
+    # throttle into a platform-wide lockout.
+    trusted_proxies: list[str] = []
     trusted_hosts: list[str] = ["127.0.0.1", "localhost"]
 
     # Web HMI (single-origin SPA served by the backend). When set and the path
@@ -101,3 +119,16 @@ class CoreSettings(BaseSettings):
     # while |PV - SP| stays inside it the optimizer skips the loop instead of
     # moving Ki/Ti. A loop with its own Controller.stability_band_pct wins.
     stability_band_pct: float = 2.0
+
+    @field_validator("trusted_proxies")
+    @classmethod
+    def _reject_malformed_proxies(cls, value: list[str]) -> list[str]:
+        """Fail at boot, not per request, on a proxy address that will not parse.
+
+        A typo'd entry matches nothing, so the daemon would keep running and
+        keep attributing every session to the proxy's own address — the exact
+        symptom the setting exists to fix, with no error anywhere to explain it.
+        """
+        for entry in value:
+            ip_network(entry, strict=False)
+        return value

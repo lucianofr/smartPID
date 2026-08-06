@@ -1,6 +1,8 @@
 """Auth-related DTOs for login, registration, and JWT claims."""
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from smart_pid_domain.enums import UserRole  # noqa: TC001
@@ -38,3 +40,36 @@ class UserClaims(BaseModel):
     # operator can change palette at any point in the session, so carrying
     # it in the claims would serve a stale value until the next login.
     theme: str | None = None
+
+
+class ActiveSessionResponse(BaseModel):
+    """One live session in ``GET /auth/sessions`` (admin-only).
+
+    A row is one (user, source IP) pair, so an operator with three tabs open
+    appears once. ``online`` means at least one realtime socket is open right
+    now; a row without it is still within the idle window of its last request.
+    """
+
+    user_id: int
+    username: str
+    role: UserRole
+    ip: str
+    since: datetime
+    last_seen: datetime
+    online: bool
+
+
+class AccessLogEntry(BaseModel):
+    """One row of ``GET /auth/access-log`` (admin-only).
+
+    ``event`` is an ``AuditAction`` value (``LOGIN`` / ``LOGOUT``) but stays a
+    plain string: the log is append-only history, and a row written by an
+    older build must never fail to deserialize because the enum moved on.
+    """
+
+    id: int
+    user_id: int
+    username: str
+    event: str
+    ip: str
+    timestamp: datetime

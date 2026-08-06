@@ -1,4 +1,4 @@
-"""Auth router — login and token refresh (single-admin deployment)."""
+"""Auth router — login, token refresh, and the live session view."""
 
 from __future__ import annotations
 
@@ -6,27 +6,33 @@ import time
 from typing import TYPE_CHECKING, Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from smart_pid_core.adapters.inbound.api.auth import (
     create_access_token,
     verify_password,
 )
 from smart_pid_core.adapters.inbound.api.dependencies import (
+    client_ip,
     get_audit_repo,
+    get_session_registry,
     get_settings,
     get_user_repo,
+    require_admin,
     require_user,
 )
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
+from smart_pid_core.application.session_registry import SessionRegistry
 from smart_pid_core.config import CoreSettings
 from smart_pid_domain.dtos.auth import (
+    AccessLogEntry,
+    ActiveSessionResponse,
     LoginRequest,
     TokenResponse,
     UserClaims,
 )
-from smart_pid_domain.enums import AuditAction
+from smart_pid_domain.enums import AuditAction, UserRole
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -93,19 +99,18 @@ async def login(
     user_repo: Annotated[UserRepository, Depends(get_user_repo)],
     settings: Annotated[CoreSettings, Depends(get_settings)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+    registry: Annotated[SessionRegistry, Depends(get_session_registry)],
 ) -> TokenResponse:
-    # No reverse proxy sits in front of this deployment: trusting a caller-
-    # supplied X-Forwarded-For here would let the rate limit be spoofed away.
-    client_ip = request.client.host if request.client else "unknown"
+    source_ip = client_ip(request, trusted_proxies=settings.trusted_proxies)
     limiter = request.app.state.login_rate_limiter
-    limiter.check(client_ip)
+    limiter.check(source_ip)
     user = await user_repo.get_by_username(body.username)
     if user is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
         )
-    limiter.record_success(client_ip)
+    limiter.record_success(source_ip)
     token = create_access_token(
         user_id=user.id,
         username=user.username,
@@ -113,8 +118,83 @@ async def login(
         secret=settings.jwt_secret,
         expiry_hours=settings.jwt_expiry_hours,
     )
+    registry.record_login(
+        user_id=user.id, username=user.username, role=user.role, ip=source_ip,
+    )
+    await user_repo.record_access(
+        user_id=user.id,
+        username=user.username,
+        event=str(AuditAction.LOGIN),
+        ip=source_ip,
+    )
     await audit_repo.record(user.id, user.username, AuditAction.LOGIN, None, None)
     return TokenResponse(access_token=token)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    request: Request,
+    current_user: Annotated[UserClaims, Depends(require_user)],
+    user_repo: Annotated[UserRepository, Depends(get_user_repo)],
+    audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
+    settings: Annotated[CoreSettings, Depends(get_settings)],
+    registry: Annotated[SessionRegistry, Depends(get_session_registry)],
+) -> None:
+    """End the caller's session in the live view and log the sign-out.
+
+    The token is NOT revoked — it stays valid until it expires, exactly as
+    before this route existed. What it ends is the *session listing*: without
+    it, a browser that pressed Sair kept showing as connected until its idle
+    window closed, which is a claim the security panel must not make.
+    """
+    source_ip = client_ip(request, trusted_proxies=settings.trusted_proxies)
+    registry.drop(user_id=current_user.user_id, ip=source_ip)
+    await user_repo.record_access(
+        user_id=current_user.user_id,
+        username=current_user.username,
+        event=str(AuditAction.LOGOUT),
+        ip=source_ip,
+    )
+    await audit_repo.record(
+        current_user.user_id, current_user.username, AuditAction.LOGOUT, None, None,
+    )
+
+
+@router.get("/sessions")
+async def list_sessions(
+    _admin: Annotated[UserClaims, Depends(require_admin)],
+    registry: Annotated[SessionRegistry, Depends(get_session_registry)],
+) -> list[ActiveSessionResponse]:
+    """Who is signed in right now, and from which source IP (admin-only).
+
+    Read from process memory, not from a table: see ``SessionRegistry``.
+    """
+    return [
+        ActiveSessionResponse(
+            user_id=session.user_id,
+            username=session.username,
+            role=UserRole(session.role),
+            ip=session.ip,
+            since=session.since,
+            last_seen=session.last_seen,
+            online=session.sockets > 0,
+        )
+        for session in registry.list_active()
+    ]
+
+
+@router.get("/access-log")
+async def access_log(
+    _admin: Annotated[UserClaims, Depends(require_admin)],
+    user_repo: Annotated[UserRepository, Depends(get_user_repo)],
+    limit: int = Query(50, ge=1, le=500),
+) -> list[AccessLogEntry]:
+    """Recent sign-ins / sign-outs of every account, newest first (admin-only).
+
+    Sourced from ``users.db``, so it survives a project switch and is not
+    carried off the platform by a ``.spid`` export.
+    """
+    return [AccessLogEntry(**row) for row in await user_repo.list_access(limit)]
 
 
 @router.post("/refresh", response_model=TokenResponse)

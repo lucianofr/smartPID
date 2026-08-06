@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from smart_pid_core.adapters.inbound.api.auth import create_access_token
 from smart_pid_core.adapters.inbound.api.dependencies import require_admin, require_user
 from smart_pid_core.adapters.outbound.user_repo import User
+from smart_pid_core.application.session_registry import SessionRegistry
 from smart_pid_domain.dtos.auth import UserClaims
 
 _SECRET = "unit-test-secret"
@@ -38,8 +39,12 @@ def _make_app(
 
     class _Settings:
         jwt_secret = _SECRET
+        trusted_proxies: tuple[str, ...] = ()
 
     app.state.settings = _Settings()
+    # The gates record every resolved principal in the live session view, so a
+    # bare gate test needs the registry the same way it needs a user store.
+    app.state.session_registry = SessionRegistry()
     app.state.user_repo = _StubUserRepo(
         None
         if stored_role is None

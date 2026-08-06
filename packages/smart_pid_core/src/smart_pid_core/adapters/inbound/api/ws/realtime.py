@@ -18,10 +18,14 @@ import msgpack  # type: ignore[import-untyped]
 from fastapi import FastAPI, WebSocket
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
-from smart_pid_core.adapters.inbound.api.dependencies import resolve_token_principal
+from smart_pid_core.adapters.inbound.api.dependencies import (
+    client_ip,
+    resolve_token_principal,
+)
 
 if TYPE_CHECKING:
     from smart_pid_core.application.event_bus import BusSubscriber, EventBus
+    from smart_pid_core.application.session_registry import SessionRegistry
 
 _ALLOWED_ORIGIN_DEFAULT = "http://127.0.0.1:5173"
 _WS_CLOSE_AUTH = 4401
@@ -237,9 +241,26 @@ def register_realtime_ws(app: FastAPI) -> None:
             await _reject()
             return
 
+        # An open socket is what makes a session "connected" in the settings
+        # panel: the client sends no heartbeat, so this refcount — not a
+        # timestamp — is the signal that a browser tab is still on screen.
+        # Resolved BEFORE the socket is registered, so a failure here cannot
+        # leave a connection in the manager with no path to disconnect it.
+        registry: SessionRegistry = websocket.app.state.session_registry
+        source_ip = client_ip(websocket, trusted_proxies=settings.trusted_proxies)
+
         await websocket.send_json({"type": "auth_ok"})
         manager: ConnectionManager = websocket.app.state.realtime_manager
         await manager.connect(websocket)
+        # Outside the `try` so `session` is always bound for the `finally`;
+        # everything that could realistically fail (state lookup, header
+        # parsing) already ran above, before the socket was registered.
+        session = registry.attach(
+            user_id=principal.user_id,
+            username=principal.username,
+            role=str(principal.role),
+            ip=source_ip,
+        )
         try:
             # The bridge drives outbound traffic via manager.broadcast(); this
             # loop only watches for client close. No per-client bus recv.
@@ -248,4 +269,5 @@ def register_realtime_ws(app: FastAPI) -> None:
         except WebSocketDisconnect:
             pass
         finally:
+            registry.detach(session)
             await manager.disconnect(websocket)

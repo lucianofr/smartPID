@@ -247,6 +247,91 @@
         "title": "AITuningLogEntry",
         "type": "object"
       },
+      "AccessLogEntry": {
+        "description": "One row of ``GET /auth/access-log`` (admin-only).\n\n``event`` is an ``AuditAction`` value (``LOGIN`` / ``LOGOUT``) but stays a\nplain string: the log is append-only history, and a row written by an\nolder build must never fail to deserialize because the enum moved on.",
+        "properties": {
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ip": {
+            "title": "Ip",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "username",
+          "event",
+          "ip",
+          "timestamp"
+        ],
+        "title": "AccessLogEntry",
+        "type": "object"
+      },
+      "ActiveSessionResponse": {
+        "description": "One live session in ``GET /auth/sessions`` (admin-only).\n\nA row is one (user, source IP) pair, so an operator with three tabs open\nappears once. ``online`` means at least one realtime socket is open right\nnow; a row without it is still within the idle window of its last request.",
+        "properties": {
+          "ip": {
+            "title": "Ip",
+            "type": "string"
+          },
+          "last_seen": {
+            "format": "date-time",
+            "title": "Last Seen",
+            "type": "string"
+          },
+          "online": {
+            "title": "Online",
+            "type": "boolean"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "username",
+          "role",
+          "ip",
+          "since",
+          "last_seen",
+          "online"
+        ],
+        "title": "ActiveSessionResponse",
+        "type": "object"
+      },
       "AlarmConfigResponse": {
         "description": "Full alarm configuration for a controller.",
         "properties": {
@@ -1796,13 +1881,78 @@
         "title": "IOOptsDTO",
         "type": "object"
       },
+      "LogLevelsResponse": {
+        "properties": {
+          "available": {
+            "items": {
+              "enum": [
+                "DEBUG",
+                "INFO",
+                "WARNING",
+                "ERROR",
+                "CRITICAL"
+              ],
+              "type": "string"
+            },
+            "title": "Available",
+            "type": "array"
+          },
+          "levels": {
+            "items": {
+              "enum": [
+                "DEBUG",
+                "INFO",
+                "WARNING",
+                "ERROR",
+                "CRITICAL"
+              ],
+              "type": "string"
+            },
+            "title": "Levels",
+            "type": "array"
+          }
+        },
+        "required": [
+          "levels",
+          "available"
+        ],
+        "title": "LogLevelsResponse",
+        "type": "object"
+      },
+      "LogLevelsUpdate": {
+        "properties": {
+          "levels": {
+            "items": {
+              "enum": [
+                "DEBUG",
+                "INFO",
+                "WARNING",
+                "ERROR",
+                "CRITICAL"
+              ],
+              "type": "string"
+            },
+            "title": "Levels",
+            "type": "array"
+          }
+        },
+        "required": [
+          "levels"
+        ],
+        "title": "LogLevelsUpdate",
+        "type": "object"
+      },
       "LoginRequest": {
         "properties": {
           "password": {
+            "maxLength": 200,
+            "minLength": 1,
             "title": "Password",
             "type": "string"
           },
           "username": {
+            "maxLength": 254,
+            "minLength": 1,
             "title": "Username",
             "type": "string"
           }
@@ -3393,6 +3543,56 @@
         ]
       }
     },
+    "/auth/access-log": {
+      "get": {
+        "description": "Recent sign-ins / sign-outs of every account, newest first (admin-only).\n\nSourced from ``users.db``, so it survives a project switch and is not\ncarried off the platform by a ``.spid`` export.",
+        "operationId": "access_log_auth_access_log_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccessLogEntry"
+                  },
+                  "title": "Response Access Log Auth Access Log Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Access Log",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/auth/login": {
       "post": {
         "operationId": "login_auth_login_post",
@@ -3429,6 +3629,21 @@
           }
         },
         "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "description": "End the caller's session in the live view and log the sign-out.\n\nThe token is NOT revoked \u2014 it stays valid until it expires, exactly as\nbefore this route existed. What it ends is the *session listing*: without\nit, a browser that pressed Sair kept showing as connected until its idle\nwindow closed, which is a claim the security panel must not make.",
+        "operationId": "logout_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
         "tags": [
           "auth"
         ]
@@ -3473,6 +3688,32 @@
           }
         },
         "summary": "Refresh Token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/sessions": {
+      "get": {
+        "description": "Who is signed in right now, and from which source IP (admin-only).\n\nRead from process memory, not from a table: see ``SessionRegistry``.",
+        "operationId": "list_sessions_auth_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ActiveSessionResponse"
+                  },
+                  "title": "Response List Sessions Auth Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Sessions",
         "tags": [
           "auth"
         ]
@@ -5830,6 +6071,59 @@
         "summary": "Get System Events",
         "tags": [
           "system-events"
+        ]
+      }
+    },
+    "/system/log-levels": {
+      "get": {
+        "operationId": "get_log_levels_system_log_levels_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogLevelsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Log Levels",
+        "tags": [
+          "system"
+        ]
+      },
+      "put": {
+        "operationId": "set_log_levels_system_log_levels_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogLevelsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Log Levels",
+        "tags": [
+          "system"
         ]
       }
     },

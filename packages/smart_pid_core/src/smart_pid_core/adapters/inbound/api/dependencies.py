@@ -1,6 +1,7 @@
 """FastAPI dependency injection functions."""
 from __future__ import annotations
 
+from ipaddress import ip_address, ip_network
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -10,6 +11,10 @@ from smart_pid_domain.dtos.auth import UserClaims
 from smart_pid_domain.enums import UserRole
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from starlette.requests import HTTPConnection
+
     from smart_pid_core.adapters.inbound.simulator_adapter import SimulatorAdapter
     from smart_pid_core.adapters.outbound.ai_repo import AIRepository
     from smart_pid_core.adapters.outbound.alarm_repo import AlarmRepository
@@ -21,6 +26,7 @@ if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.user_repo import UserRepository
     from smart_pid_core.application.event_bus import EventBus
     from smart_pid_core.application.loop_manager import LoopManager
+    from smart_pid_core.application.session_registry import SessionRegistry
     from smart_pid_core.application.trend_buffer import TrendBuffer
     from smart_pid_core.application.workers.alarm_worker import AlarmWorker
     from smart_pid_core.application.workers.io_worker import IOWorker
@@ -53,6 +59,65 @@ def get_loop_manager(request: Request) -> LoopManager:
 
 def get_settings(request: Request) -> CoreSettings:
     return request.app.state.settings
+
+
+def get_session_registry(request: Request) -> SessionRegistry:
+    return request.app.state.session_registry
+
+
+def _peer_is_trusted_proxy(peer: str, trusted_proxies: Sequence[str]) -> bool:
+    """Is the transport peer one of the configured proxies?
+
+    Entries are pre-validated by ``CoreSettings``, so parsing cannot fail here.
+    A peer that is not an IP at all ("unknown", a UNIX socket) is never
+    trusted.
+    """
+    try:
+        address = ip_address(peer)
+    except ValueError:
+        return False
+    return any(address in ip_network(net, strict=False) for net in trusted_proxies)
+
+
+def client_ip(conn: HTTPConnection, *, trusted_proxies: Sequence[str]) -> str:
+    """Source address of the caller — for the login throttle and the session panel.
+
+    ``conn`` is a ``Request`` or a ``WebSocket``; both carry the peer address
+    and the headers, and both need the SAME answer or the throttle and the
+    panel would disagree about who is calling.
+
+    ``X-Forwarded-For`` is believed ONLY when the transport peer is itself a
+    configured proxy. Without that check, enabling forwarding on a deployment
+    that publishes the API port would let any caller mint a fresh login-throttle
+    budget per forged address and write fake addresses into the access log.
+
+    Of the forwarded chain the RIGHTMOST hop wins: everything to its left is
+    whatever the caller wrote, while the last element is the one appended by
+    the proxy we trust — the peer it actually saw. It must also parse as an
+    address, so nothing arbitrary reaches a registry key or an audit row.
+
+    ponytail: assumes ONE trusted hop (Traefik). Behind a second proxy
+    (Cloudflare -> Traefik) the rightmost hop is Traefik itself; that needs a
+    hop count, not another header.
+    """
+    peer = conn.client.host if conn.client else "unknown"
+    if not _peer_is_trusted_proxy(peer, trusted_proxies):
+        return peer
+    # Every physical header line, in order. ``headers.get`` returns only the
+    # FIRST of duplicated lines, so a proxy that appends its own line instead
+    # of coalescing would otherwise leave the caller's line deciding.
+    hops = [
+        hop.strip()
+        for line in conn.headers.getlist("x-forwarded-for")
+        for hop in line.split(",")
+        if hop.strip()
+    ]
+    if not hops:
+        return peer
+    try:
+        return str(ip_address(hops[-1]))
+    except ValueError:
+        return peer
 
 
 async def resolve_token_principal(
@@ -126,6 +191,12 @@ async def get_current_user(request: Request) -> UserClaims:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         )
+    request.app.state.session_registry.touch(
+        user_id=principal.user_id,
+        username=principal.username,
+        role=str(principal.role),
+        ip=client_ip(request, trusted_proxies=request.app.state.settings.trusted_proxies),
+    )
     return principal
 
 

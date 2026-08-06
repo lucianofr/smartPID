@@ -106,6 +106,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/access-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Access Log
+         * @description Recent sign-ins / sign-outs of every account, newest first (admin-only).
+         *
+         *     Sourced from ``users.db``, so it survives a project switch and is not
+         *     carried off the platform by a ``.spid`` export.
+         */
+        get: operations["access_log_auth_access_log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -117,6 +140,31 @@ export interface paths {
         put?: never;
         /** Login */
         post: operations["login_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Logout
+         * @description End the caller's session in the live view and log the sign-out.
+         *
+         *     The token is NOT revoked — it stays valid until it expires, exactly as
+         *     before this route existed. What it ends is the *session listing*: without
+         *     it, a browser that pressed Sair kept showing as connected until its idle
+         *     window closed, which is a claim the security panel must not make.
+         */
+        post: operations["logout_auth_logout_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -165,6 +213,28 @@ export interface paths {
          * @description Issue a fresh access token for an authenticated user.
          */
         post: operations["refresh_token_auth_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sessions
+         * @description Who is signed in right now, and from which source IP (admin-only).
+         *
+         *     Read from process memory, not from a table: see ``SessionRegistry``.
+         */
+        get: operations["list_sessions_auth_sessions_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1167,6 +1237,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/system/log-levels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Log Levels */
+        get: operations["get_log_levels_system_log_levels_get"];
+        /** Set Log Levels */
+        put: operations["set_log_levels_system_log_levels_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/system/status": {
         parameters: {
             query?: never;
@@ -1389,6 +1477,60 @@ export interface components {
             objective: string | null;
             /** Timestamp */
             timestamp: string;
+        };
+        /**
+         * AccessLogEntry
+         * @description One row of ``GET /auth/access-log`` (admin-only).
+         *
+         *     ``event`` is an ``AuditAction`` value (``LOGIN`` / ``LOGOUT``) but stays a
+         *     plain string: the log is append-only history, and a row written by an
+         *     older build must never fail to deserialize because the enum moved on.
+         */
+        AccessLogEntry: {
+            /** Event */
+            event: string;
+            /** Id */
+            id: number;
+            /** Ip */
+            ip: string;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+            /** User Id */
+            user_id: number;
+            /** Username */
+            username: string;
+        };
+        /**
+         * ActiveSessionResponse
+         * @description One live session in ``GET /auth/sessions`` (admin-only).
+         *
+         *     A row is one (user, source IP) pair, so an operator with three tabs open
+         *     appears once. ``online`` means at least one realtime socket is open right
+         *     now; a row without it is still within the idle window of its last request.
+         */
+        ActiveSessionResponse: {
+            /** Ip */
+            ip: string;
+            /**
+             * Last Seen
+             * Format: date-time
+             */
+            last_seen: string;
+            /** Online */
+            online: boolean;
+            role: components["schemas"]["UserRole"];
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /** User Id */
+            user_id: number;
+            /** Username */
+            username: string;
         };
         /**
          * AlarmConfigResponse
@@ -2302,6 +2444,18 @@ export interface components {
              */
             target_to_man_if_fault: boolean;
         };
+        /** LogLevelsResponse */
+        LogLevelsResponse: {
+            /** Available */
+            available: ("DEBUG" | "INFO" | "WARNING" | "ERROR" | "CRITICAL")[];
+            /** Levels */
+            levels: ("DEBUG" | "INFO" | "WARNING" | "ERROR" | "CRITICAL")[];
+        };
+        /** LogLevelsUpdate */
+        LogLevelsUpdate: {
+            /** Levels */
+            levels: ("DEBUG" | "INFO" | "WARNING" | "ERROR" | "CRITICAL")[];
+        };
         /** LoginRequest */
         LoginRequest: {
             /** Password */
@@ -3113,6 +3267,37 @@ export interface operations {
             };
         };
     };
+    access_log_auth_access_log_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessLogEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     login_auth_login_post: {
         parameters: {
             query?: never;
@@ -3143,6 +3328,24 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    logout_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -3182,6 +3385,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+        };
+    };
+    list_sessions_auth_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveSessionResponse"][];
                 };
             };
         };
@@ -4908,6 +5131,57 @@ export interface operations {
                         [key: string]: unknown;
                     }[];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_log_levels_system_log_levels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogLevelsResponse"];
+                };
+            };
+        };
+    };
+    set_log_levels_system_log_levels_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LogLevelsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

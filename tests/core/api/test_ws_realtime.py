@@ -19,6 +19,7 @@ from smart_pid_core.adapters.inbound.api.ws.realtime import (
     register_realtime_ws,
 )
 from smart_pid_core.adapters.outbound.user_repo import User
+from smart_pid_core.application.session_registry import SessionRegistry
 
 
 class FakeSocket:
@@ -269,9 +270,11 @@ def _make_app(users: dict[int, User] | None = None) -> FastAPI:
     class _Settings:
         jwt_secret = _SECRET
         allowed_ws_origins = (_ALLOWED_ORIGIN,)
+        trusted_proxies: tuple[str, ...] = ()
 
     app.state.settings = _Settings()
     app.state.realtime_manager = ConnectionManager()
+    app.state.session_registry = SessionRegistry()
     app.state.user_repo = _StubUserRepo(
         {1: _stored(1, "admin", "admin")} if users is None else users
     )

@@ -1,7 +1,15 @@
-"""User repository backed by a standalone SQLite database."""
+"""User repository backed by a standalone SQLite database.
+
+Also owns the platform access log (``Log_Acessos``). It lives here, beside the
+accounts, and NOT in ``Log_Auditoria``: that table is inside the active
+``.spid``, so a project switch would swap the login history and an export
+would carry it off the platform. Who signed in to the deployment is a
+property of the deployment.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import aiosqlite
@@ -35,6 +43,15 @@ CREATE TABLE IF NOT EXISTS Usuarios (
     criado_em   TEXT    NOT NULL DEFAULT (datetime('now')),
     tema        TEXT
 );
+
+CREATE TABLE IF NOT EXISTS Log_Acessos (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL,
+    nome       TEXT    NOT NULL,
+    evento     TEXT    NOT NULL,
+    ip         TEXT    NOT NULL,
+    timestamp  TEXT    NOT NULL
+);
 """
 
 # Added after the table shipped, so an existing users.db needs it back-filled.
@@ -43,8 +60,14 @@ _USERS_MIGRATIONS: tuple[tuple[str, str], ...] = (
 )
 
 
+# How long a sign-in event is kept. Not a CoreSettings field: unlike the
+# telemetry/alarm windows, which are tuned per plant for volume, this one is a
+# retention floor for an audit surface and nobody has a reason to shorten it.
+_ACCESS_LOG_RETENTION = timedelta(days=90)
+
+
 class UserRepository:
-    """CRUD operations on the Usuarios table using its own SQLite database."""
+    """CRUD on the Usuarios table plus the access log, on its own SQLite database."""
 
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
@@ -59,7 +82,7 @@ class UserRepository:
         return self._db
 
     async def initialize(self) -> None:
-        """Open the database, enable WAL mode, create the Usuarios table."""
+        """Open the database, enable WAL mode, create the tables."""
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db = await aiosqlite.connect(self._db_path)
         self._db.row_factory = aiosqlite.Row
@@ -193,3 +216,43 @@ class UserRepository:
         )
         await self.db.commit()
         return await self.get_by_id(user_id)
+
+    # ----- access log (Log_Acessos) ---------------------------------------
+
+    async def record_access(
+        self, *, user_id: int, username: str, event: str, ip: str,
+    ) -> None:
+        """Append one sign-in / sign-out event, then drop anything expired.
+
+        ``nome`` is stored alongside ``usuario_id`` on purpose: the log has to
+        stay readable after the account is renamed or deleted, which a join
+        against Usuarios could not do.
+
+        Retention runs here rather than in ``main._retention_cleanup``, which
+        sweeps the ``.spid`` tables and cannot reach this database. Sign-ins are
+        rare, so one bounded DELETE per event costs nothing and keeps the table
+        from being the one ``Log_*`` in the codebase that grows forever.
+        """
+        now = datetime.now(tz=UTC)
+        await self.db.execute(
+            "INSERT INTO Log_Acessos (usuario_id, nome, evento, ip, timestamp)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (user_id, username, event, ip, now.isoformat()),
+        )
+        await self.db.execute(
+            "DELETE FROM Log_Acessos WHERE timestamp < ?",
+            ((now - _ACCESS_LOG_RETENTION).isoformat(),),
+        )
+        await self.db.commit()
+
+    async def list_access(self, limit: int = 50) -> list[dict]:
+        """Newest events first. Ordered by ``id`` — monotonic, so it needs no
+        index on ``timestamp`` and never ties on a same-second pair.
+        """
+        async with self.db.execute(
+            "SELECT id, usuario_id AS user_id, nome AS username, evento AS event,"
+            " ip, timestamp FROM Log_Acessos ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [dict(row) for row in rows]
