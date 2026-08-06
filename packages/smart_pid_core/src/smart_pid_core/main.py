@@ -536,7 +536,6 @@ async def run_daemon(settings: CoreSettings) -> None:
             io_worker=io_worker,
             loop_manager=loop_manager,
             simulator_adapter=simulator_adapter,
-            scan_rate_s=settings.simulator_interval_ms / 1000.0,
         )
         twin_telemetry.reconcile()
         logger.info("twin_telemetry_started", loops=sorted(twin_telemetry.attached_ids))

@@ -40,6 +40,15 @@ class _TwinLoops(Protocol):
     def controller_ids(self) -> list[int]: ...
 
 
+#: STATUS cadence for an attached loop, matching ``Controller.scan_rate_s``'s
+#: own default — the rate a malha's PID/Monitor worker publishes at, and the
+#: rate the HMI is built around. The IO scan underneath still runs at the
+#: simulator interval (10 Hz), so the ``/trend`` ring keeps its resolution;
+#: publishing the pen tip 10x/s only multiplied realtime traffic per loop, and
+#: three twin loops were enough to leave the browser draining a backlog.
+DEFAULT_TWIN_SCAN_RATE_S: float = 1.0
+
+
 class TwinTelemetry:
     """Keeps unowned simulator loops publishing TELEMETRY and STATUS."""
 
@@ -49,7 +58,7 @@ class TwinTelemetry:
         io_worker: IOWorker,
         loop_manager: LoopManager,
         simulator_adapter: _TwinLoops,
-        scan_rate_s: float = 0.1,
+        scan_rate_s: float = DEFAULT_TWIN_SCAN_RATE_S,
     ) -> None:
         self._bus = bus
         self._io = io_worker
