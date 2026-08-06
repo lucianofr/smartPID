@@ -2,10 +2,15 @@
  * Shared seed loader for trend charts.
  *
  * Every trend chart (dashboard panel, simulator twin, multitrend cells) pulls
- * the operator's chosen time window from the backend 1-hour ring on mount, then
- * keeps appending realtime frames. This module is the "pull the window" half:
- * it fetches `/trend/{id}` and maps the wire `TelemetryFrame` list into the
+ * the operator's chosen time window from the backend ring on mount, then keeps
+ * appending realtime frames. This module is the "pull the window" half: it
+ * fetches `/trend/{id}` and maps the wire `TelemetryFrame` list into the
  * `(epoch seconds, [pv, sp, co])` samples `WindowBuffer.push` consumes.
+ *
+ * The ring stores one sample per second over 72 h, so the response is bounded
+ * by the requested window rather than by the ring — a 30 min panel pulls
+ * ~1 800 frames. The request is clamped to `TREND_WINDOW_MAX_S` because that
+ * is the widest window any chart can actually retain.
  *
  * The merge-with-live half lives in each chart hook: the realtime handler keeps
  * pushing to the buffer while the fetch is in flight, and the hook reconciles
@@ -13,6 +18,7 @@
  * that arrives during the fetch is never lost and never duplicated.
  */
 import { endpoints } from '@/api/endpoints';
+import { TREND_WINDOW_MAX_S } from '@/features/settings/settingsTypes';
 import type { WindowBuffer } from '@/lib/windowBuffer';
 
 export interface SeedSample {
@@ -25,7 +31,7 @@ export async function loadTrendSeed(
   controllerId: number,
   seconds: number,
 ): Promise<SeedSample[]> {
-  const res = await endpoints.trend(controllerId, Math.min(seconds, 3600));
+  const res = await endpoints.trend(controllerId, Math.min(seconds, TREND_WINDOW_MAX_S));
   const samples: SeedSample[] = [];
   for (const frame of res.frames) {
     const ms = Date.parse(frame.timestamp);

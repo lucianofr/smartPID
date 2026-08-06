@@ -28,4 +28,10 @@ export const PREFERENCES_KEY = 'spid.preferences';
 export const DECIMALS_MIN = 0;
 export const DECIMALS_MAX = 6;
 export const TREND_WINDOW_MIN_S = 10;
-export const TREND_WINDOW_MAX_S = 3600;
+/**
+ * 12 h. The backend ring holds 72 h, but a window is fetched and retained in
+ * full, so the selectable span is clamped to what a chart can hold without
+ * silently dropping the oldest part of its own axis. Panning into the deeper
+ * backlog is a separate control, not a wider window.
+ */
+export const TREND_WINDOW_MAX_S = 43_200;

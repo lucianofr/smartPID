@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { queryKeys } from '@/api/queryKeys';
 import { makeController } from '@/test/fixtures';
 import { createFakeRealtime, createQueryClient, TestProviders } from '@/test/providers';
+import { TREND_WINDOW_MAX_S } from '@/features/settings/settingsTypes';
 import { TrendPanel, buildTrendCsv, windowSeconds } from './TrendPanel';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -45,6 +46,12 @@ describe('trend signature invariants', () => {
     expect(windowSeconds(30, 'segundo')).toBe(30);
     expect(windowSeconds(30, 'minuto')).toBe(1800);
     expect(windowSeconds(2, 'hora')).toBe(7200);
+  });
+
+  it('clamps the window to the ceiling a chart can retain', () => {
+    expect(windowSeconds(12, 'hora')).toBe(TREND_WINDOW_MAX_S);
+    expect(windowSeconds(99, 'hora')).toBe(TREND_WINDOW_MAX_S);
+    expect(windowSeconds(100_000, 'minuto')).toBe(TREND_WINDOW_MAX_S);
   });
 
   it('serialises exactly the plotted rows to CSV', () => {

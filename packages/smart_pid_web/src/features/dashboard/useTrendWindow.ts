@@ -3,23 +3,31 @@ import type { TrendPenTip, TrendSeriesData } from '@/components/Trend';
 import { statusTimestampToEpoch, type AiData, type StatusData } from '@/lib/envelope';
 import { loadTrendSeed, mergeSeed } from '@/lib/trendSeed';
 import { createWindowBuffer, type WindowBuffer } from '@/lib/windowBuffer';
+import { TREND_WINDOW_MAX_S } from '@/features/settings/settingsTypes';
 import { useRealtime } from '@/realtime/useRealtime';
 
+/** Backend `TREND_INTERVAL_S`: the ring never stores samples closer than this. */
+const RING_INTERVAL_S = 1;
+
 /**
- * Point cap for the retained window, matched to the backend ring's own
- * `MAX_SAMPLES_PER_LOOP` so the buffer keeps everything `GET /trend` can serve.
+ * Point cap for the retained window, DERIVED so it exactly holds the widest
+ * selectable window at the ring's own cadence. Deriving it rather than picking
+ * a number is the point: a seed is never clipped, and the cap cannot drift out
+ * of step with `TREND_WINDOW_MAX_S` in a later edit.
  *
- * The feed is the IO scan, NOT 1 Hz: `scan_interval_s` / `simulator_interval_ms`
- * default to 100 ms, so an hour is ~36 000 samples. The previous 8 000 was sized
- * for 1 Hz and silently clipped every window past ~13 min — asking for 30 min
- * painted 13 min of trace, and the x axis agreed with it, so nothing on screen
- * said the window had been cut.
+ * The live feed is the IO scan, NOT 1 Hz: `scan_interval_s` /
+ * `simulator_interval_ms` default to 100 ms, so 12 h of it would be 432 000
+ * points. The `minStep` below thins it to `maxSeconds / MAX_POINTS` — exactly
+ * `RING_INTERVAL_S` at the 12 h ceiling, so a seed at the ring's spacing still
+ * passes through untouched, and under one frame interval for any window up to
+ * 72 min, so every short window keeps the full 10 Hz it draws today.
  *
- * Cost of the larger cap, measured on a full 40 000-sample buffer: 0.48 ms per
- * push (the window trim) and 4.3 ms per `view(1400)`. At a 10 Hz feed that is
- * ~5 % of one core — the price of a chart whose axis means what it says.
+ * Without that thinning the point cap would drop from the LEFT and erode the
+ * span of an axis still claiming the full window — the same silent clipping
+ * that once made a 30 min window paint 13 min of trace, with nothing on screen
+ * to say so.
  */
-const MAX_POINTS = 40_000;
+export const MAX_POINTS = TREND_WINDOW_MAX_S / RING_INTERVAL_S;
 const SERIES = 3; // pv, sp, co
 
 export interface TrendWindow {
@@ -67,7 +75,11 @@ export function useTrendWindow(
   const [aiTicks, setAiTicks] = useState<number[]>([]);
 
   if (bufferRef.current === null) {
-    bufferRef.current = createWindowBuffer(SERIES, { maxSeconds, maxPoints: MAX_POINTS });
+    bufferRef.current = createWindowBuffer(SERIES, {
+      maxSeconds,
+      maxPoints: MAX_POINTS,
+      minStep: maxSeconds / MAX_POINTS,
+    });
   }
 
   // Loop scope or window changed: rebuild the buffer, then refill it from the
@@ -75,7 +87,11 @@ export function useTrendWindow(
   // must not bleed in); a resize starts from the retained samples so the plot
   // never blanks while the fetch is in flight.
   useEffect(() => {
-    const next = createWindowBuffer(SERIES, { maxSeconds, maxPoints: MAX_POINTS });
+    const next = createWindowBuffer(SERIES, {
+      maxSeconds,
+      maxPoints: MAX_POINTS,
+      minStep: maxSeconds / MAX_POINTS,
+    });
     seed(next, sameLoopRef.current === controllerId ? bufferRef.current : null);
     sameLoopRef.current = controllerId;
     bufferRef.current = next;

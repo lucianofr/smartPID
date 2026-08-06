@@ -13,6 +13,13 @@ export interface WindowBufferConfig {
   maxSeconds: number;
   /** Hard point cap applied after the time window; Infinity disables it. */
   maxPoints: number;
+  /**
+   * Minimum spacing between retained samples, in seconds; omitted disables the
+   * thinning. A long window cannot hold a 10 Hz feed inside `maxPoints`, and
+   * the point cap would drop from the LEFT — eroding the span of an axis that
+   * still claims the full window. Thinning the feed keeps the span honest.
+   */
+  minStep?: number;
 }
 
 export interface WindowSample {
@@ -27,7 +34,12 @@ export interface WindowView {
 }
 
 export interface WindowBuffer {
-  /** Returns false (and drops the sample) for non-finite or non-increasing t. */
+  /**
+   * Returns false (and drops the sample) for a non-finite t, a non-increasing
+   * t, or a t closer than `minStep` to the last retained sample. The last is
+   * routine thinning, not an error — callers that re-render on `true` simply
+   * skip the frame.
+   */
   push(t: number, values: readonly number[]): boolean;
   /** Undecimated head — the §6.7 pen tip. */
   latest(): WindowSample | null;
@@ -73,7 +85,10 @@ export function createWindowBuffer(
       }
       if (!Number.isFinite(t)) return false;
       const last = ts[ts.length - 1];
-      if (last !== undefined && t <= last) return false;
+      if (last !== undefined) {
+        if (t <= last) return false;
+        if (cfg.minStep !== undefined && t - last < cfg.minStep) return false;
+      }
       ts.push(t);
       for (let i = 0; i < seriesCount; i += 1) rows[i].push(values[i]);
       trim();

@@ -16,6 +16,7 @@ import type { StatusData } from '@/lib/envelope';
 import { useRealtime } from '@/realtime/useRealtime';
 import type { Scale } from '@/lib/scale';
 import { cn } from '@/lib/utils';
+import { TREND_WINDOW_MAX_S } from '@/features/settings/settingsTypes';
 import { CO_SCALE, useControllers } from './useControllers';
 import { useTrendWindow } from './useTrendWindow';
 import { readTrendView, writeTrendView, type TrendViewConfig } from './trendViewStore';
@@ -36,8 +37,13 @@ export const UNIT_LABEL: Record<TrendWindowUnit, string> = {
 /** Ruler abbreviations — the well label is mono and has ~10 px of band to live in. */
 export const UNIT_SHORT: Record<TrendWindowUnit, string> = { segundo: 's', minuto: 'min', hora: 'h' };
 
+/**
+ * Window control to seconds, clamped to `TREND_WINDOW_MAX_S`: `count` is a free
+ * numeric input, and a span wider than a chart can retain would paint a shorter
+ * trace than its own axis claims.
+ */
 export function windowSeconds(count: number, unit: TrendWindowUnit): number {
-  return Math.max(1, count) * UNIT_SECONDS[unit];
+  return Math.min(Math.max(1, count) * UNIT_SECONDS[unit], TREND_WINDOW_MAX_S);
 }
 
 /**

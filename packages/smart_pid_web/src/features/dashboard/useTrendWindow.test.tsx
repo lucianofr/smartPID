@@ -5,7 +5,9 @@ import { RealtimeContext } from '@/realtime/RealtimeProvider';
 import { createFakeRealtime } from '@/test/providers';
 import { ff, statusEnvelope } from '@/test/fixtures';
 import type { AiData, RealtimeEnvelope } from '@/lib/envelope';
-import { useTrendWindow } from './useTrendWindow';
+import { createWindowBuffer } from '@/lib/windowBuffer';
+import { TREND_WINDOW_MAX_S } from '@/features/settings/settingsTypes';
+import { MAX_POINTS, useTrendWindow } from './useTrendWindow';
 
 function aiEnvelope(loopId: number, seq: number, timestamp: string): RealtimeEnvelope<AiData> & { type: 'ai' } {
   return {
@@ -125,5 +127,32 @@ describe('useTrendWindow', () => {
       realtime.emit(aiEnvelope(9, 3, '1970-01-01T00:16:51.000Z'));
     });
     expect(result.current.aiTicks).toEqual([1010]);
+  });
+});
+
+describe('window bounds', () => {
+  it('keeps every backend seed sample at the widest selectable window', () => {
+    // The ring guarantees >= 1 s spacing, so nothing a seed contains may be
+    // thinned away — otherwise the widest window paints less than its axis
+    // claims. Fails the moment TREND_WINDOW_MAX_S and MAX_POINTS drift apart.
+    const maxSeconds = TREND_WINDOW_MAX_S;
+    const b = createWindowBuffer(1, {
+      maxSeconds,
+      maxPoints: MAX_POINTS,
+      minStep: maxSeconds / MAX_POINTS,
+    });
+    for (let i = 0; i < 1000; i += 1) b.push(i, [i]);
+    expect(b.length()).toBe(1000);
+  });
+
+  it('leaves a 10 Hz feed untouched on a window operators actually use', () => {
+    const maxSeconds = 1800; // the 30 min panel default
+    const b = createWindowBuffer(1, {
+      maxSeconds,
+      maxPoints: MAX_POINTS,
+      minStep: maxSeconds / MAX_POINTS,
+    });
+    for (let i = 0; i < 600; i += 1) b.push(i / 10, [i]);
+    expect(b.length()).toBe(600);
   });
 });

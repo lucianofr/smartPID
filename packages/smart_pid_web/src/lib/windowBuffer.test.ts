@@ -45,6 +45,27 @@ describe('createWindowBuffer', () => {
     expect(b.view(100).data[0]).toEqual([3, 4, 5]);
   });
 
+  it('thins a feed faster than minStep, keeping the span instead of the tail', () => {
+    const b = createWindowBuffer(1, { maxSeconds: 100, maxPoints: 10, minStep: 1 });
+    // 10 Hz input over 3 s: one sample per second survives.
+    for (let i = 0; i < 30; i += 1) b.push(i / 10, [i]);
+    expect(b.view(100).data[0]).toEqual([0, 1, 2]);
+    expect(b.view(100).data[1]).toEqual([0, 10, 20]);
+  });
+
+  it('reports a thinned push as dropped, so callers skip the re-render', () => {
+    const b = createWindowBuffer(1, { maxSeconds: 100, maxPoints: 10, minStep: 1 });
+    expect(b.push(0, [0])).toBe(true);
+    expect(b.push(0.5, [1])).toBe(false);
+    expect(b.push(1, [2])).toBe(true);
+  });
+
+  it('retains every sample when minStep is omitted', () => {
+    const b = createWindowBuffer(1, WIDE);
+    for (let i = 0; i < 30; i += 1) b.push(i / 10, [i]);
+    expect(b.length()).toBe(30);
+  });
+
   it('latest() returns the undecimated newest sample — the §6.7 pen tip', () => {
     const b = createWindowBuffer(1, WIDE);
     // 400 samples into 100 px: min/max decimation keeps bucket extremes only.
