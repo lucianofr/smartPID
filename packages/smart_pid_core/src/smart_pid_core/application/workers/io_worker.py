@@ -53,7 +53,10 @@ class IOWorker:
         self._thread: threading.Thread | None = None
         self._last_params_read: float = 0.0
         self._cached_params: dict[int, dict] = {}  # cid -> {kp, ti, td}
-        self._last_skip_log: dict[int, float] = {}  # cid -> monotonic ts
+        # (cid, reason) -> monotonic ts. Keyed per failure class so a flapping
+        # link cannot keep resetting the window and starve the rarer, more
+        # actionable permanent errors of their once-a-minute line.
+        self._last_skip_log: dict[tuple[int, str], float] = {}
 
     def add_controller(self, controller_id: int) -> None:
         """Register an additional controller for scanning."""
@@ -193,19 +196,28 @@ class IOWorker:
                         # indistinguishable from a dead process. Log the first
                         # occurrence per controller and then every 60s.
                         now = time.monotonic()
-                        last = self._last_skip_log.get(cid, 0.0)
+                        last = self._last_skip_log.get((cid, "telemetry"), 0.0)
                         if now - last >= 60.0:
-                            self._last_skip_log[cid] = now
+                            self._last_skip_log[(cid, "telemetry")] = now
                             logger.warning(
                                 "io_worker_telemetry_skipped controller_id=%s %s: %s",
                                 cid, type(exc).__name__, exc,
                             )
                     except Exception:
-                        logger.exception(
-                            "io_worker_read_error controller_id=%s", cid,
-                        )
+                        # Same rate limit as above, and for the same reason: a
+                        # mistyped or stale node id is a *permanent* condition,
+                        # so logging it per scan buries every other error under
+                        # a traceback every 100 ms rather than making it
+                        # visible. First occurrence, then once a minute.
+                        now = time.monotonic()
+                        last = self._last_skip_log.get((cid, "read_error"), 0.0)
+                        if now - last >= 60.0:
+                            self._last_skip_log[(cid, "read_error")] = now
+                            logger.exception(
+                                "io_worker_read_error controller_id=%s", cid,
+                            )
 
-                # Read tuning params every 10s and publish PARAMS.{id}
+                # Read tuning params on _PARAMS_READ_INTERVAL_S and publish PARAMS.{id}
                 now = time.monotonic()
                 if now - self._last_params_read >= self._PARAMS_READ_INTERVAL_S:
                     self._last_params_read = now
@@ -296,7 +308,8 @@ class IOWorker:
                 # Same trap as the telemetry path: a permanent failure here
                 # means the loop silently stops actuating. Log it, throttled.
                 now = time.monotonic()
-                key = -int(data.get("controller_id", 0)) if isinstance(data, dict) else -1
+                cid = int(data.get("controller_id", -1)) if isinstance(data, dict) else -1
+                key = (cid, "control_write")
                 if now - self._last_skip_log.get(key, 0.0) >= 60.0:
                     self._last_skip_log[key] = now
                     logger.warning(
