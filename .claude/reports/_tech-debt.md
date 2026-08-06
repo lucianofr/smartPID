@@ -3,6 +3,44 @@
 Tracked improvements to address later. Items here need a decision or a window
 that a single bugfix pass cannot take unilaterally.
 
+- [x] **TD-031**: The twin re-mints `CTRL_n` OPC-UA folders in a shifting order,
+      so a tag mapping authored against twin node ids silently retargets
+  - **Impact:** High
+  - **Detail:** Observed directly while verifying the Kp/Ti/Td mapping work.
+    Folder `CTRL_0` (`ns=2;i=3`, children `ns=2;i=4..22`) hosted one controller
+    before a daemon restart and a different one after: FIC-001's mapping
+    (`ns=2;i=5/7/14`) matched its own data on one boot and an idle loop's on
+    another. The index is a positional slot, not the controller id.
+  - **Root cause:** `add_folder(self._ns_idx, name)` / `add_variable(self._ns_idx, …)`
+    pass an int, which asyncua's `_parse_nodeid_qname` turns into `NodeId(0, ns)`
+    — identifier `0` meaning "auto". The server then draws identifiers from a
+    per-namespace sequential counter (`address_space.generate_nodeid`), i.e. in
+    *creation* order, 20 ids per controller. The browse name `CTRL_{id}` was
+    always stable; only the numeric identifier drifted.
+  - **Resolved 2026-08-06:** every folder and variable is now minted with an
+    explicit `ua.NodeId(f"CTRL_{id}.{Folder}.{Name}", ns)` plus an explicit
+    `QualifiedName`, so ids read `ns=2;s=CTRL_1.PID.Kp` — derived purely from the
+    controller id, stable across restarts and across loops coming and going. One
+    spec table drives both id and browse name so they cannot drift. Proved
+    against a live twin: byte-identical node ids across a daemon restart, and two
+    regression tests (`TestOPCUAServerRegisterController`) that fail on the old
+    creation-order behaviour.
+  - **Accepted consequence (user-approved):** numeric mappings already saved
+    against the simulator no longer resolve. They now fail visibly as "sem dados"
+    rather than silently showing another loop's data; the operator re-picks the
+    tags with the browse button. Real-DCS projects are unaffected — this address
+    space is simulator-only.
+  - **Created:** 2026-08-06
+  - **Source:** implementation-opcua-tuning-tag-mapping-20260806
+
+- [x] **TD-032**: Stale comment — `io_worker.py:208` says tuning params are read
+      "every 10s"; `_PARAMS_READ_INTERVAL_S` is `1.0`
+  - **Impact:** Low
+  - **Resolved 2026-08-06:** the comment now names the constant instead of
+    restating a number that can drift from it.
+  - **Created:** 2026-08-06
+  - **Source:** implementation-opcua-tuning-tag-mapping-20260806
+
 - [ ] **TD-010**: Rotate `SPID_JWT_SECRET` — the key in active use is the one that
       was committed to `.env.example`
   - **Impact:** Critical
