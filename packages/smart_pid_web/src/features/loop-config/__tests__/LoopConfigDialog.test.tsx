@@ -95,7 +95,11 @@ describe('LoopConfigDialog — execution mode gating', () => {
 
   it('keeps identification, scan rate and the OPC-UA bindings in both modes', async () => {
     const view = renderDialog({ execution_mode: 'SUPERVISORY' });
-    const always = ['Nome', 'Descrição', 'Taxa de varredura (s)', 'NodeID PV', 'NodeID SP', 'NodeID CO', 'NodeID Ti'];
+    const always = [
+      'Nome', 'Descrição', 'Taxa de varredura (s)',
+      'NodeID PV', 'NodeID SP', 'NodeID CO',
+      'NodeID Kp', 'NodeID Ki/Ti', 'NodeID Kd/Td',
+    ];
     for (const label of always) expect(await screen.findByLabelText(label)).toBeInTheDocument();
     view.unmount();
 
@@ -252,14 +256,23 @@ const CO_NODE = { node_id: 'ns=2;i=7', display_name: 'CO', node_class: 'Variable
  *  and it is reachable ONLY through search, so clicking it proves the search path ran. */
 const PV_HIT = { node_id: 'ns=2;i=25', display_name: 'PV', node_class: 'Variable' };
 
-const NODE_ID_LABELS = ['NodeID PV', 'NodeID SP', 'NodeID CO', 'NodeID Ti'] as const;
+const NODE_ID_LABELS = [
+  'NodeID PV',
+  'NodeID SP',
+  'NodeID CO',
+  'NodeID Kp',
+  'NodeID Ki/Ti',
+  'NodeID Kd/Td',
+] as const;
 
 /** Distinct per field, so "only the target moved" is an assertion and not a coincidence. */
 const SEEDED = {
   'NodeID PV': 'ns=2;i=900',
   'NodeID SP': 'ns=2;i=901',
   'NodeID CO': 'ns=2;i=902',
-  'NodeID Ti': 'ns=2;i=903',
+  'NodeID Kp': 'ns=2;i=903',
+  'NodeID Ki/Ti': 'ns=2;i=904',
+  'NodeID Kd/Td': 'ns=2;i=905',
 } as const;
 
 function seededController(): Partial<ControllerResponse> {
@@ -270,7 +283,9 @@ function seededController(): Partial<ControllerResponse> {
       node_id_pv: SEEDED['NodeID PV'],
       node_id_sp: SEEDED['NodeID SP'],
       node_id_co: SEEDED['NodeID CO'],
-      node_id_ti: SEEDED['NodeID Ti'],
+      node_id_kp: SEEDED['NodeID Kp'],
+      node_id_ti: SEEDED['NodeID Ki/Ti'],
+      node_id_td: SEEDED['NodeID Kd/Td'],
     },
   };
 }
@@ -363,7 +378,9 @@ describe('LoopConfigDialog — OPC-UA tag picker', () => {
       node_id_co: PV_NODE.node_id,
       node_id_pv: SEEDED['NodeID PV'],
       node_id_sp: SEEDED['NodeID SP'],
-      node_id_ti: SEEDED['NodeID Ti'],
+      node_id_kp: SEEDED['NodeID Kp'],
+      node_id_ti: SEEDED['NodeID Ki/Ti'],
+      node_id_td: SEEDED['NodeID Kd/Td'],
     });
   });
 
@@ -371,7 +388,9 @@ describe('LoopConfigDialog — OPC-UA tag picker', () => {
     const { onClose } = renderDialog({ execution_mode: 'DDC' });
 
     fireEvent.change(await screen.findByLabelText('NodeID PV'), { target: { value: 'ns=2;i=5' } });
-    fireEvent.change(screen.getByLabelText('NodeID Ti'), { target: { value: 'ns=2;i=11' } });
+    fireEvent.change(screen.getByLabelText('NodeID Kp'), { target: { value: 'ns=2;i=10' } });
+    fireEvent.change(screen.getByLabelText('NodeID Ki/Ti'), { target: { value: 'ns=2;i=11' } });
+    fireEvent.change(screen.getByLabelText('NodeID Kd/Td'), { target: { value: 'ns=2;i=12' } });
     expect(screen.getByLabelText('NodeID PV')).toHaveValue('ns=2;i=5');
 
     fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
@@ -379,7 +398,12 @@ describe('LoopConfigDialog — OPC-UA tag picker', () => {
     const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string) as {
       tag_bindings: Record<string, string>;
     };
-    expect(body.tag_bindings).toMatchObject({ node_id_pv: 'ns=2;i=5', node_id_ti: 'ns=2;i=11' });
+    expect(body.tag_bindings).toMatchObject({
+      node_id_pv: 'ns=2;i=5',
+      node_id_kp: 'ns=2;i=10',
+      node_id_ti: 'ns=2;i=11',
+      node_id_td: 'ns=2;i=12',
+    });
   });
 
   it('offers no picker to a user — tag mapping is a write', async () => {

@@ -287,7 +287,9 @@ type Draft = {
     | 'node_id_pv'
     | 'node_id_sp'
     | 'node_id_co'
+    | 'node_id_kp'
     | 'node_id_ti'
+    | 'node_id_td'
     | 'node_id_mode_actual'
     | 'node_id_mode_target'
     | 'node_id_enabled'
@@ -350,7 +352,9 @@ function toDraft(c: ControllerResponse): Draft {
       node_id_pv: tags?.node_id_pv ?? '',
       node_id_sp: tags?.node_id_sp ?? '',
       node_id_co: tags?.node_id_co ?? '',
+      node_id_kp: tags?.node_id_kp ?? '',
       node_id_ti: tags?.node_id_ti ?? '',
+      node_id_td: tags?.node_id_td ?? '',
       node_id_mode_actual: tags?.node_id_mode_actual ?? '',
       node_id_mode_target: tags?.node_id_mode_target ?? '',
       node_id_enabled: tags?.node_id_enabled ?? '',

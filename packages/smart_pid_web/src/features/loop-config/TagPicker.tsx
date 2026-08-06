@@ -39,10 +39,22 @@ export const NODE_ID_FIELDS = [
     tooltip: 'Endereço OPC-UA de onde a Saída de Controle (CO) é lida ou escrita.',
   },
   {
-    key: 'node_id_ti',
-    label: 'NodeID Ti',
+    key: 'node_id_kp',
+    label: 'NodeID Kp',
     tooltip:
-      'Endereço OPC-UA usado para leitura/escrita do parâmetro de tempo integral (Ti), quando aplicável.',
+      'Endereço OPC-UA de onde o ganho proporcional (Kp) do bloco PID é lido no CLP/DCS. Alimenta o faceplate e o otimizador; em branco, o ganho aparece como sem dados.',
+  },
+  {
+    key: 'node_id_ti',
+    label: 'NodeID Ki/Ti',
+    tooltip:
+      'Endereço OPC-UA de onde a ação integral do bloco PID é lida no CLP/DCS — tempo integral (Ti) ou ganho integral (Ki), conforme o tipo de integral configurado para a malha. Alimenta o faceplate e o otimizador; em branco, aparece como sem dados.',
+  },
+  {
+    key: 'node_id_td',
+    label: 'NodeID Kd/Td',
+    tooltip:
+      'Endereço OPC-UA de onde a ação derivativa do bloco PID é lida no CLP/DCS — tempo derivativo (Td) ou ganho derivativo (Kd). Alimenta o faceplate e o otimizador; em branco, aparece como sem dados.',
   },
   {
     key: 'node_id_mode_actual',
