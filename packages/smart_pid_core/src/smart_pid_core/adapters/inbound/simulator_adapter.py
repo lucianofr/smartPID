@@ -413,6 +413,11 @@ class SimulatorAdapter:
         with self._lock:
             return controller_id in self._controllers
 
+    def controller_ids(self) -> list[int]:
+        """Ids of every loop the twin currently simulates."""
+        with self._lock:
+            return list(self._controllers)
+
     def unregister_controller(self, controller_id: int) -> bool:
         """Drop a controller's simulation state. True if it was present.
 

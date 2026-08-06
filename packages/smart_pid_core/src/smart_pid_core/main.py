@@ -28,6 +28,7 @@ from smart_pid_core.application.event_bus import EventBus
 from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.application.telemetry_publisher import TelemetryPublisher
 from smart_pid_core.application.tuning_store import TuningRecommendationStore
+from smart_pid_core.application.twin_telemetry import TwinTelemetry
 from smart_pid_core.config import CoreSettings
 from smart_pid_domain.enums import ExecutionMode, UserRole
 
@@ -132,6 +133,7 @@ async def _sim_persist_flusher(
     adapter,  # noqa: ANN001
     repo: SQLiteRepository,
     stop_event: asyncio.Event,
+    twin_telemetry: TwinTelemetry | None = None,
     interval_s: float = 2.0,
 ) -> None:
     """Periodically persist simulator controllers whose PID config changed via OPC-UA.
@@ -139,6 +141,10 @@ async def _sim_persist_flusher(
     REST routes already persist on-demand. This flusher covers writes that reach
     the simulator via OPC-UA (e.g. Ti updates from the Fuzzy/RL AI engine) which
     otherwise live only in memory and are lost on restart.
+
+    It also re-runs the twin-telemetry reconcile: loop ownership changes through
+    several routes (loop created/deleted, malha created/deleted, project opened)
+    and this one tick keeps them all honest instead of each caller remembering.
     """
     _log = structlog.get_logger()
     while not stop_event.is_set():
@@ -150,6 +156,11 @@ async def _sim_persist_flusher(
                 await _mirror_sim_pid_params(adapter, repo, cid)
             except Exception:
                 _log.exception("sim_persist_flush_failed", controller_id=cid)
+        if twin_telemetry is not None:
+            try:
+                twin_telemetry.reconcile()
+            except Exception:
+                _log.exception("twin_telemetry_reconcile_failed")
 
 
 async def _mirror_sim_pid_params(
@@ -514,6 +525,22 @@ async def run_daemon(settings: CoreSettings) -> None:
         loop_manager.start_loop(ctrl, initial_ki=last_ki_map.get(ctrl.id))
     logger.info("control_loops_started", count=len(all_controllers))
 
+    # Simulator loops with no malha behind them (the twin's default loop, and
+    # anything POST /simulator/loops minted) are scanned by nobody above: give
+    # them the IO scan + STATUS producer a malha would have brought, so their
+    # trend charts, faceplates and history are fed like any other loop.
+    twin_telemetry: TwinTelemetry | None = None
+    if simulator_adapter is not None:
+        twin_telemetry = TwinTelemetry(
+            bus=bus,
+            io_worker=io_worker,
+            loop_manager=loop_manager,
+            simulator_adapter=simulator_adapter,
+            scan_rate_s=settings.simulator_interval_ms / 1000.0,
+        )
+        twin_telemetry.reconcile()
+        logger.info("twin_telemetry_started", loops=sorted(twin_telemetry.attached_ids))
+
     # Populate AlarmWorker controller metadata for event enrichment
     for ctrl in all_controllers:
         alarm_worker.update_controller_meta(ctrl.id, ctrl.name, ctrl.description)
@@ -617,7 +644,7 @@ async def run_daemon(settings: CoreSettings) -> None:
     sim_flush_task: asyncio.Task | None = None
     if simulator_adapter is not None:
         sim_flush_task = asyncio.create_task(
-            _sim_persist_flusher(simulator_adapter, repo, stop_event)
+            _sim_persist_flusher(simulator_adapter, repo, stop_event, twin_telemetry)
         )
 
     # Run uvicorn and wait for shutdown signal concurrently
@@ -643,6 +670,8 @@ async def run_daemon(settings: CoreSettings) -> None:
     server.should_exit = True
     await server_task
     await telemetry_pub.stop()
+    if twin_telemetry is not None:
+        twin_telemetry.stop_all()
     io_worker.stop()
     db_worker.stop()
     trend_buffer_worker.stop()
