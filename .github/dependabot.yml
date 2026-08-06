@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # Python deps — uv.lock (pip ecosystem supports uv lockfiles)
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    assignees:
+      - lucianofr
+
+  # Web frontend
+  - package-ecosystem: npm
+    directory: /packages/smart_pid_web
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    assignees:
+      - lucianofr
+
+  # Container image
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    assignees:
+      - lucianofr
