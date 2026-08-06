@@ -1,3 +1,4 @@
+import { SessionsPanel } from '@/features/settings/SessionsPanel';
 import { SettingsForm } from '@/features/settings/SettingsForm';
 
 /**
@@ -15,6 +16,7 @@ export function SettingsPage() {
         </p>
       </header>
       <SettingsForm />
+      <SessionsPanel />
     </div>
   );
 }

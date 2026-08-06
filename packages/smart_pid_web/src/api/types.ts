@@ -103,6 +103,15 @@ export type UserRow = components['schemas']['UserResponse'];
 export type UserCreateBody = components['schemas']['UserCreate'];
 export type UserUpdateBody = components['schemas']['UserUpdate'];
 
+/**
+ * Admin-only session surface (routers/auth.py). `ActiveSessionRow` is read
+ * from process memory, so it lists who is connected NOW; `AccessLogRow` is the
+ * durable sign-in history from users.db and outlives both the process and the
+ * open project.
+ */
+export type ActiveSessionRow = components['schemas']['ActiveSessionResponse'];
+export type AccessLogRow = components['schemas']['AccessLogEntry'];
+
 /** GET /system/status — health check, no auth (routers/system.py). */
 export type SystemStatusResponse = components['schemas']['SystemStatusResponse'];
 

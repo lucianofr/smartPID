@@ -33,6 +33,10 @@ export const queryKeys = {
   projectCurrent: ['projects', 'current'] as const,
   /** Admin-only user roster (phase 10). */
   users: ['users'] as const,
+  /** Sessions connected right now, behind the settings security panel. */
+  authSessions: ['auth', 'sessions'] as const,
+  /** Platform sign-in history — keyed by the row cap it was fetched with. */
+  accessLog: (limit: number) => ['auth', 'access-log', limit] as const,
   /** Backend health snapshot behind the executive dashboard (phase 9). */
   systemStatus: ['system', 'status'] as const,
   /** AI tuning log — keyed by the whole executive window (phase 9). */

@@ -1,5 +1,7 @@
 import { api } from './client';
 import type {
+  AccessLogRow,
+  ActiveSessionRow,
   AiHistoryResponse,
   AiStatus,
   AiTuningLogRow,
@@ -227,6 +229,21 @@ export const endpoints = {
    * side: the in-session theme never waits on, nor reverts with, this write.
    */
   setUserTheme: (theme: ContractThemeId) => api.put<void>('/users/me/theme', { theme }),
+
+  // ---- live sessions + sign-in history (routers/auth.py, admin-only) ----
+
+  /** Who is connected right now, and from which source IP. */
+  activeSessions: () => api.get<ActiveSessionRow[]>('/auth/sessions'),
+
+  /** Sign-in / sign-out history of every account, newest first (cap 500). */
+  accessLog: (limit = 50) => api.get<AccessLogRow[]>(`/auth/access-log?limit=${limit}`),
+
+  /**
+   * Ends the session LISTING, not the token: the JWT stays valid until it
+   * expires, exactly as before this route existed. Fire-and-forget — the
+   * client-side sign-out must never wait on, nor be blocked by, the server.
+   */
+  logout: () => api.post<void>('/auth/logout'),
 
   // ---- admin-controlled daemon log levels (routers/system.py, require_admin) ----
 

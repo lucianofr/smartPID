@@ -69,6 +69,17 @@ export function AuthProvider({ children, onPermissionDenied }: AuthProviderProps
   }, []);
 
   const logout = useCallback(() => {
+    // Tell the daemon first: `api.request` captures the Authorization header
+    // synchronously, so this still carries the token being dropped, and the
+    // session stops being listed as connected on the next read of
+    // GET /auth/sessions instead of ageing out over its idle window.
+    //
+    // Guarded on having a token, which also bounds the 401 path: this same
+    // `logout` is `onUnauthorized`, and an expired token would make the POST
+    // 401 and re-enter here — with the token already cleared, so no second
+    // request. Failures are ignored: signing out locally must never depend on
+    // the network.
+    if (tokenRef.current !== null) void endpoints.logout().catch(() => {});
     localStorage.removeItem(STORAGE_KEY);
     sessionStorage.removeItem(STORAGE_KEY); // legacy sessions issued before the move
     tokenRef.current = null;
