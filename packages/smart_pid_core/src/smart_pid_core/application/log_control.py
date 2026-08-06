@@ -62,6 +62,27 @@ def levels_at_or_above(threshold: int) -> tuple[str, ...]:
     return tuple(name for name in LOG_LEVEL_NAMES if _LEVEL_NUMBERS[name] >= threshold)
 
 
+#: Third-party loggers that emit one record per protocol operation. asyncua
+#: logs every OPC-UA read — 98% of all records on a live plant — so it is held
+#: at WARNING unless the operator explicitly asks for DEBUG.
+NOISY_LOGGERS: tuple[str, ...] = ("asyncua",)
+
+
+def clamp_noisy_loggers(
+    levels: tuple[str, ...], names: Sequence[str] = NOISY_LOGGERS
+) -> None:
+    """Hold per-operation chatter at WARNING unless DEBUG is enabled.
+
+    Re-evaluated on every selection change rather than once at startup: the
+    whole point of the Settings control is that it takes effect immediately,
+    so a clamp frozen at boot would still demand a redeploy to lift.
+    ``NOTSET`` hands the logger back to the root level instead of pinning it.
+    """
+    inherited = "DEBUG" in levels
+    for name in names:
+        logging.getLogger(name).setLevel(logging.NOTSET if inherited else logging.WARNING)
+
+
 class LevelSetFilter(logging.Filter):
     """Passes a record only when its severity bucket is in the enabled set."""
 
@@ -93,27 +114,41 @@ class LogLevelController:
         handlers: Sequence[logging.Handler],
         initial: Iterable[str],
         on_change: Callable[[tuple[str, ...]], None] | None = None,
+        noisy_loggers: Sequence[str] = NOISY_LOGGERS,
     ) -> None:
         self._handlers = tuple(handlers)
         self._on_change = on_change
-        self._levels = _normalize(initial)
-        self._filter = LevelSetFilter(_numbers_for(self._levels))
+        self._noisy_loggers = tuple(noisy_loggers)
+        self._filter = LevelSetFilter(frozenset())
         for handler in self._handlers:
             handler.addFilter(self._filter)
-        logging.getLogger().setLevel(_root_level_for(self._levels))
+        self._levels: tuple[str, ...] = ()
+        self._apply(_normalize(initial))
 
     @property
     def levels(self) -> tuple[str, ...]:
         return self._levels
+
+    def _apply(self, levels: tuple[str, ...]) -> None:
+        """Push *levels* at every layer that can silently swallow a record.
+
+        The handler filter alone is not enough: the root logger level decides
+        whether a record is created at all, and structlog's
+        ``filter_by_level`` processor reads that same effective level, so
+        lowering it here is what lets a newly-checked level reach the sink
+        without a restart.
+        """
+        self._filter.update_enabled(_numbers_for(levels))
+        self._levels = levels
+        logging.getLogger().setLevel(_root_level_for(levels))
+        clamp_noisy_loggers(levels, self._noisy_loggers)
 
     def set_levels(self, names: Iterable[str]) -> tuple[str, ...]:
         """Replace the enabled set. Raises ``ValueError`` and leaves the
         previous selection intact when *names* contains an unknown level.
         """
         normalized = _normalize(names)
-        self._filter.update_enabled(_numbers_for(normalized))
-        self._levels = normalized
-        logging.getLogger().setLevel(_root_level_for(normalized))
+        self._apply(normalized)
         if self._on_change is not None:
             self._on_change(normalized)
         return normalized

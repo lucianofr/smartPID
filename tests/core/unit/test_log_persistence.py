@@ -11,13 +11,9 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from unittest.mock import patch
 
+from smart_pid_core.application.log_control import clamp_noisy_loggers
 from smart_pid_core.config import CoreSettings
-from smart_pid_core.main import (
-    LOG_BACKUP_COUNT,
-    LOG_MAX_BYTES,
-    build_log_handlers,
-    quiet_third_party_loggers,
-)
+from smart_pid_core.main import LOG_BACKUP_COUNT, LOG_MAX_BYTES, build_log_handlers
 
 _SECRET = {"SPID_JWT_SECRET": "test-secret-key-minimum-32-bytes!"}
 
@@ -94,7 +90,7 @@ def test_asyncua_spam_is_clamped_at_info() -> None:
     original = lg.level
     try:
         lg.setLevel(logging.NOTSET)
-        quiet_third_party_loggers(logging.INFO)
+        clamp_noisy_loggers(("INFO", "WARNING", "ERROR", "CRITICAL"))
         assert lg.level == logging.WARNING
         assert not lg.isEnabledFor(logging.INFO), "per-read spam still enabled"
     finally:
@@ -106,7 +102,7 @@ def test_asyncua_failures_still_logged() -> None:
     original = lg.level
     try:
         lg.setLevel(logging.NOTSET)
-        quiet_third_party_loggers(logging.INFO)
+        clamp_noisy_loggers(("INFO", "WARNING", "ERROR", "CRITICAL"))
         assert lg.isEnabledFor(logging.WARNING), "clamp must not hide failures"
         assert lg.isEnabledFor(logging.ERROR)
     finally:
@@ -117,8 +113,8 @@ def test_debug_keeps_protocol_tracing() -> None:
     lg = logging.getLogger("asyncua")
     original = lg.level
     try:
-        lg.setLevel(logging.NOTSET)
-        quiet_third_party_loggers(logging.DEBUG)
-        assert lg.level == logging.NOTSET, "DEBUG must keep full OPC-UA tracing"
+        lg.setLevel(logging.WARNING)
+        clamp_noisy_loggers(("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"))
+        assert lg.level == logging.NOTSET, "checking DEBUG must lift the clamp live"
     finally:
         lg.setLevel(original)

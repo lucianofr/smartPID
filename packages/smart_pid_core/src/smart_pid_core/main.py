@@ -726,17 +726,10 @@ def build_log_handlers(settings: CoreSettings) -> list[logging.Handler]:
     return handlers
 
 
-def quiet_third_party_loggers(log_level: int) -> None:
-    """Clamp asyncua's per-request chatter unless the daemon itself is on DEBUG.
-
-    asyncua emits an INFO record for every OPC-UA read: 3565 of 3646 lines
-    (98%) in a 45 s container run. Left alone it rotates the daemon's own
-    lines out of the persisted log within minutes and makes stdout
-    unreadable. WARNING and above still pass, so connection and session
-    failures are never hidden.
-    """
-    if log_level > logging.DEBUG:
-        logging.getLogger("asyncua").setLevel(logging.WARNING)
+# `quiet_third_party_loggers` used to live here and clamped asyncua once, from
+# the boot-time level. That is now `clamp_noisy_loggers`, re-applied by
+# LogLevelController on every selection change so the Settings page takes
+# effect immediately instead of at the next deploy.
 
 
 def main() -> None:
@@ -760,7 +753,6 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
         handlers=log_handlers,
     )
-    quiet_third_party_loggers(log_level)
     # Route structlog through stdlib logging. Its default PrintLoggerFactory
     # writes straight to stdout, bypassing every handler above — which left
     # the persisted file holding third-party chatter and not one of the
@@ -768,6 +760,15 @@ def main() -> None:
     # SPID_LOG_DIR actually capture the log that matters.
     structlog.configure(
         processors=[
+            # MUST be first, and MUST be this processor rather than
+            # `make_filtering_bound_logger(level)`: that wrapper bakes the
+            # boot-time level into its methods, so a level checked in the
+            # Settings page never reached the daemon's own events until the
+            # next deploy. `filter_by_level` asks the stdlib logger at call
+            # time, so the operator's choice applies immediately — and it
+            # raises DropEvent before the renderer runs, so an unchecked
+            # level costs no formatting work either.
+            structlog.stdlib.filter_by_level,
             structlog.contextvars.merge_contextvars,
             structlog.processors.StackInfoRenderer(),
             structlog.dev.set_exc_info,
@@ -776,7 +777,7 @@ def main() -> None:
             # colors=False keeps ANSI escapes out of the log file.
             structlog.dev.ConsoleRenderer(colors=False),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(log_level),
+        wrapper_class=structlog.stdlib.BoundLogger,
         logger_factory=structlog.stdlib.LoggerFactory(),
     )
     daemon_state = DaemonState(settings.daemon_state_path)
