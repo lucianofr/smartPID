@@ -62,10 +62,10 @@
       "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/alarm_worker.py", "line": 147, "label": "class AlarmWorker" }] },
     { "id": "system_event_worker", "type": "backend", "label": "SystemEventWorker", "sublabel": "fachada emit() — sem thread própria", "tag": "publica na thread de quem chama", "pos": [700, 1160], "size": [260, 96],
       "sources": [{ "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/system_event_worker.py", "line": 17, "label": "class SystemEventWorker" }] },
-    { "id": "trend_buffer_worker", "type": "backend", "label": "TrendBufferWorker", "sublabel": "ring de 1 h em memória (TrendBuffer)", "tag": "semente do gráfico", "pos": [700, 1300], "size": [260, 96],
+    { "id": "trend_buffer_worker", "type": "backend", "label": "TrendBufferWorker", "sublabel": "ring de 72 h em memória (TrendBuffer)", "tag": "semente do gráfico", "pos": [700, 1300], "size": [260, 96],
       "sources": [
         { "path": "packages/smart_pid_core/src/smart_pid_core/application/workers/trend_buffer_worker.py", "line": 17, "label": "class TrendBufferWorker" },
-        { "path": "packages/smart_pid_core/src/smart_pid_core/application/trend_buffer.py", "line": 45, "label": "class TrendBuffer" }
+        { "path": "packages/smart_pid_core/src/smart_pid_core/application/trend_buffer.py", "line": 75, "label": "class TrendBuffer" }
       ] },
 
     { "id": "sqlite", "type": "database", "label": "SQLite (project.spid)", "sublabel": "historian · alarmes · eventos de sistema", "pos": [1240, 980], "size": [280, 160],
@@ -110,7 +110,7 @@
     ] },
     { "dot": "violet", "title": "Singleton — assinatura por prefixo", "items": [
       "DBWorker assina os prefixos TELEMETRY e LOG.AI. — lote de 500, flush a cada 5 s",
-      "TrendBufferWorker mantém o ring de 1 h em memória que semeia o gráfico do /trend",
+      "TrendBufferWorker mantém o ring de 72 h em memória que semeia o gráfico do /trend",
       "AlarmWorker assina o prefixo STATUS. e publica EVENT.ALARM.{cid}",
       "Cada um roda numa única thread daemon e atende todas as malhas do projeto"
     ] },
