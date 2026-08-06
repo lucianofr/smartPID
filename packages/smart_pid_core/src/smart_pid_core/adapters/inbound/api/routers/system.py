@@ -1,11 +1,20 @@
-"""System health-check router."""
+"""System health-check and log-level control router."""
 from __future__ import annotations
 
+import logging
 import time
+from typing import Annotated
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
-from smart_pid_domain.dtos.system import SystemStatusResponse
+from smart_pid_core.adapters.inbound.api.dependencies import require_admin
+from smart_pid_core.application.log_control import LOG_LEVEL_NAMES, levels_at_or_above
+from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
+from smart_pid_domain.dtos.system import (
+    LogLevelsResponse,
+    LogLevelsUpdate,
+    SystemStatusResponse,
+)
 
 router = APIRouter()
 
@@ -51,3 +60,35 @@ async def system_status(request: Request) -> SystemStatusResponse:
         cpu_percent=cpu,
         memory_percent=mem,
     )
+
+
+@router.get("/log-levels", response_model=LogLevelsResponse)
+async def get_log_levels(
+    _admin: Annotated[UserClaims, Depends(require_admin)],
+    request: Request,
+) -> LogLevelsResponse:
+    controller = getattr(request.app.state, "log_level_controller", None)
+    if controller is None:
+        # Older app builds (e.g. tests that build a bare app) never wire the
+        # controller; report the root logger's own effective level instead
+        # of failing a read-only probe.
+        current = levels_at_or_above(logging.getLogger().getEffectiveLevel())
+    else:
+        current = controller.levels
+    return LogLevelsResponse(levels=list(current), available=list(LOG_LEVEL_NAMES))
+
+
+@router.put("/log-levels", status_code=status.HTTP_204_NO_CONTENT)
+async def set_log_levels(
+    body: LogLevelsUpdate,
+    _admin: Annotated[UserClaims, Depends(require_admin)],
+    request: Request,
+) -> Response:
+    controller = getattr(request.app.state, "log_level_controller", None)
+    if controller is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Log level controller is not configured on this app",
+        )
+    controller.set_levels(body.levels)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

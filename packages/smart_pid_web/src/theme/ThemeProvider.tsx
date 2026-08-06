@@ -29,7 +29,7 @@ export const THEMES: ReadonlyArray<{ id: ThemeId; label: string }> = [
 
 export const STORAGE_KEY = 'spid.theme';
 /** The design system ships as the product's own face; skins stay opt-in. */
-export const DEFAULT_THEME: ThemeId = 'optimizer';
+export const DEFAULT_THEME: ThemeId = 'optimizer-dark';
 
 /**
  * §6.8 stored-value migration. Without it a returning user with

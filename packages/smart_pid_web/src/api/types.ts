@@ -106,6 +106,15 @@ export type UserUpdateBody = components['schemas']['UserUpdate'];
 /** GET /system/status — health check, no auth (routers/system.py). */
 export type SystemStatusResponse = components['schemas']['SystemStatusResponse'];
 
+/** stdlib logging level names — the only five the daemon accepts (routers/system.py). */
+export type LogLevelName = 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL';
+
+/** GET /system/log-levels — `levels` is what the daemon currently emits, `available` is every selectable name. */
+export interface LogLevelsResponse {
+  levels: LogLevelName[];
+  available: LogLevelName[];
+}
+
 /**
  * GET /alarms/ai-history returns a bare `list[dict]` (routers/alarms.py:56), so
  * the OpenAPI dump carries no schema for it. Hand-mirrored from the SELECT in

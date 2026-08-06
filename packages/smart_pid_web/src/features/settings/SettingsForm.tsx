@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { useCan } from '@/auth/useCan';
 import { Button } from '@/components/Button';
+import { Checkbox } from '@/components/Checkbox';
 import { Field, Input } from '@/components/Field';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/Select';
 import { Switch } from '@/components/Switch';
+import { useTheme, type ThemeId } from '@/theme/ThemeProvider';
+import type { LogLevelName } from '@/api/types';
 import {
   DECIMALS_MAX,
   DECIMALS_MIN,
@@ -11,7 +15,19 @@ import {
   TREND_WINDOW_MIN_S,
   type AppPreferences,
 } from './settingsTypes';
+import { useLogLevels } from './useLogLevels';
 import { useSettings } from './useSettings';
+
+/** stdlib level names, severity-ordered — the skeleton rendered while the query loads. */
+const ALL_LOG_LEVELS: readonly LogLevelName[] = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'];
+
+const LOG_LEVEL_HINTS: Readonly<Record<LogLevelName, string>> = {
+  DEBUG: 'Detalhes internos de depuração (volume muito alto)',
+  INFO: 'Eventos normais de operação (alto volume)',
+  WARNING: 'Situações anômalas que não interrompem a operação',
+  ERROR: 'Falhas que afetam a operação',
+  CRITICAL: 'Falhas graves que exigem ação imediata',
+};
 
 /**
  * Application preferences (§9 `settings.manage`, admin-only).
@@ -63,6 +79,9 @@ export function SettingsForm() {
   const [draft, setDraft] = useState<Draft>(() => toDraft(preferences));
   const [issues, setIssues] = useState<PreferenceIssues>({});
   const [saved, setSaved] = useState(false);
+  const { theme, setTheme, themes } = useTheme();
+  const logLevels = useLogLevels();
+  const [levelsDraft, setLevelsDraft] = useState<LogLevelName[] | null>(null);
 
   if (!canManage) {
     return (
@@ -97,6 +116,30 @@ export function SettingsForm() {
         setSaved(true);
       }}
     >
+      <fieldset className="flex flex-col gap-3 border border-rule p-3">
+        <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-text">
+          Aparência
+        </legend>
+        <Field
+          label="Tema"
+          htmlFor="pref-theme"
+          description="O tema é aplicado imediatamente e salvo na sua conta."
+        >
+          <Select value={theme} onValueChange={(next) => setTheme(next as ThemeId)}>
+            <SelectTrigger id="pref-theme" aria-describedby="pref-theme-desc">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {themes.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      </fieldset>
+
       <fieldset className="flex flex-col gap-3 border border-rule p-3">
         <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-text">
           Exibição
@@ -159,6 +202,62 @@ export function SettingsForm() {
           />
           Confirmar ações destrutivas
         </span>
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-3 border border-rule p-3">
+        <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-text">
+          Registro de log
+        </legend>
+        {logLevels.isError ? (
+          <p className="text-xs text-alarm-crit">
+            Não foi possível carregar os níveis de log.
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-col gap-2">
+              {(logLevels.data?.available ?? ALL_LOG_LEVELS).map((level) => {
+                const activeLevels = levelsDraft ?? logLevels.data?.levels ?? [];
+                const checked = activeLevels.includes(level);
+                return (
+                  <span key={level} className="flex items-center gap-2 text-sm text-text">
+                    <Checkbox
+                      aria-label={`${level} — ${LOG_LEVEL_HINTS[level]}`}
+                      disabled={logLevels.isLoading}
+                      checked={checked}
+                      onCheckedChange={() =>
+                        setLevelsDraft(
+                          checked
+                            ? activeLevels.filter((l) => l !== level)
+                            : [...activeLevels, level],
+                        )
+                      }
+                    />
+                    <span>
+                      <span className="font-medium">{level}</span>
+                      {' — '}
+                      <span className="text-text-soft">{LOG_LEVEL_HINTS[level]}</span>
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+            <p className="text-xs text-text-soft">
+              Desativar WARNING e ERROR oculta falhas reais do sistema.
+            </p>
+            <Button
+              type="button"
+              variant="primary"
+              disabled={logLevels.isLoading || logLevels.isSaving}
+              onClick={() => {
+                const toSave = levelsDraft ?? logLevels.data?.levels ?? [];
+                logLevels.save(toSave);
+                setLevelsDraft(toSave);
+              }}
+            >
+              Aplicar níveis
+            </Button>
+          </>
+        )}
       </fieldset>
 
       <div className="flex items-center gap-3">

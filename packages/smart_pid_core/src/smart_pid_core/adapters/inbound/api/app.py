@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from smart_pid_core.adapters.outbound.system_event_repo import SystemEventRepository
     from smart_pid_core.adapters.outbound.user_repo import UserRepository
     from smart_pid_core.application.event_bus import EventBus
+    from smart_pid_core.application.log_control import LogLevelController
     from smart_pid_core.application.loop_manager import LoopManager
     from smart_pid_core.application.project_service import ProjectService
     from smart_pid_core.application.workers.alarm_worker import AlarmWorker
@@ -123,6 +124,7 @@ def create_app(
     event_bus: EventBus | None = None,
     tuning_store: TuningRecommendationStore | None = None,
     trend_buffer: TrendBuffer | None = None,
+    log_level_controller: LogLevelController | None = None,
 ) -> FastAPI:
     """Build and configure the FastAPI application."""
     app = FastAPI(
@@ -152,6 +154,7 @@ def create_app(
     app.state.login_rate_limiter = auth.LoginRateLimiter()
     app.state.system_event_repo = system_event_repo
     app.state.event_bus = event_bus
+    app.state.log_level_controller = log_level_controller
     app.state.execution_mode = settings.execution_mode
     # Tuning recommendations. Always a real store, even when the caller does
     # not supply one (tests, monitor-only apps): the command routes then read

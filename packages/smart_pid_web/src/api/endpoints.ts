@@ -12,6 +12,8 @@ import type {
   ExportJob,
   ExportRequest,
   HistoryResponse,
+  LogLevelName,
+  LogLevelsResponse,
   MeResponse,
   OpcuaBrowseResponse,
   OpcuaSearchResponse,
@@ -225,6 +227,14 @@ export const endpoints = {
    * side: the in-session theme never waits on, nor reverts with, this write.
    */
   setUserTheme: (theme: ContractThemeId) => api.put<void>('/users/me/theme', { theme }),
+
+  // ---- admin-controlled daemon log levels (routers/system.py, require_admin) ----
+
+  /** `levels` is what the daemon currently emits; `available` is every selectable name. */
+  getLogLevels: () => api.get<LogLevelsResponse>('/system/log-levels'),
+
+  /** 204 on success; an empty list silences everything the daemon itself allows silencing. */
+  setLogLevels: (levels: LogLevelName[]) => api.put<void>('/system/log-levels', { levels }),
 
   // ---- phase 9 · executive dashboard ----
 

@@ -26,6 +26,7 @@ from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.adapters.outbound.user_repo import UserRepository
 from smart_pid_core.application.daemon_state import DaemonState
 from smart_pid_core.application.event_bus import EventBus
+from smart_pid_core.application.log_control import LogLevelController, levels_at_or_above
 from smart_pid_core.application.loop_manager import LoopManager
 from smart_pid_core.application.telemetry_publisher import TelemetryPublisher
 from smart_pid_core.application.tuning_store import TuningRecommendationStore
@@ -286,7 +287,11 @@ async def _retention_cleanup(
         await asyncio.sleep(interval_hours * 3600)
 
 
-async def run_daemon(settings: CoreSettings) -> None:
+async def run_daemon(
+    settings: CoreSettings,
+    daemon_state: DaemonState,
+    log_level_controller: LogLevelController,
+) -> None:
     """Bootstrap and run the backend daemon until interrupted."""
     logger.info(
         "starting_daemon",
@@ -306,8 +311,9 @@ async def run_daemon(settings: CoreSettings) -> None:
     await repo.initialize()
 
     # Restore last active project BEFORE registering controllers so that
-    # simulator / OPC-UA adapters see the correct controller set.
-    daemon_state = DaemonState(settings.daemon_state_path)
+    # simulator / OPC-UA adapters see the correct controller set. The
+    # DaemonState instance is constructed once, in main(), and threaded
+    # through here so there is exactly one writer of daemon_state.json.
     last_project = daemon_state.active_project
     if last_project and repo._db_path.name == "project.spid":
         restore_path = settings.projects_dir / f"{last_project}.spid"
@@ -588,6 +594,7 @@ async def run_daemon(settings: CoreSettings) -> None:
         event_bus=bus,
         tuning_store=tuning_store,
         trend_buffer=trend_buffer,
+        log_level_controller=log_level_controller,
     )
 
     # Set export_worker on app.state so the export router can use it
@@ -747,10 +754,11 @@ def main() -> None:
     # pid_worker.py, etc. — anything not using structlog directly) was
     # silently dropped below WARNING. structlog.configure() alone does not
     # fix this; it only configures structlog's own pipeline.
+    log_handlers = build_log_handlers(settings)
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        handlers=build_log_handlers(settings),
+        handlers=log_handlers,
     )
     quiet_third_party_loggers(log_level)
     # Route structlog through stdlib logging. Its default PrintLoggerFactory
@@ -771,6 +779,11 @@ def main() -> None:
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
         logger_factory=structlog.stdlib.LoggerFactory(),
     )
-    asyncio.run(run_daemon(settings))
+    daemon_state = DaemonState(settings.daemon_state_path)
+    initial_log_levels = daemon_state.log_levels or levels_at_or_above(log_level)
+    log_level_controller = LogLevelController(
+        log_handlers, initial_log_levels, on_change=daemon_state.set_log_levels,
+    )
+    asyncio.run(run_daemon(settings, daemon_state, log_level_controller))
 if __name__ == "__main__":
     main()

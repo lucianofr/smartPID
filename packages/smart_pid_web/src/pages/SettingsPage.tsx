@@ -11,7 +11,7 @@ export function SettingsPage() {
       <header className="shrink-0 border-b border-rule px-3 py-2">
         <h1 className="type-display text-lg text-text">Configurações</h1>
         <p className="text-xs text-text-soft">
-          Preferências locais deste navegador — não alteram o servidor.
+          Algumas preferências ficam só neste navegador; tema e níveis de log são salvos no servidor.
         </p>
       </header>
       <SettingsForm />

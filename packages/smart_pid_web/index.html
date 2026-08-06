@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR" data-theme="optimizer">
+<html lang="pt-BR" data-theme="optimizer-dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -18,7 +18,7 @@
           var stored = localStorage.getItem('spid.theme');
           var legacy = { 'dark-room': 'phosphor', 'md3-dark': 'recorder', 'md3-light': 'recorder', 'ocean': 'recorder' };
           var valid = ['optimizer', 'optimizer-dark', 'recorder', 'phosphor', 'isa101', 'neon'];
-          var theme = valid.indexOf(stored) >= 0 ? stored : legacy[stored] || 'optimizer';
+          var theme = valid.indexOf(stored) >= 0 ? stored : legacy[stored] || 'optimizer-dark';
           document.documentElement.setAttribute('data-theme', theme);
         } catch (e) {
           /* no storage: keep the static neon default */

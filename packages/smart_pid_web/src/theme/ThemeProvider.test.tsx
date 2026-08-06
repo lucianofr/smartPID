@@ -45,7 +45,7 @@ describe('theme registry (spec §6.8 + §10.2)', () => {
     expect(THEMES.map((t) => t.label)).toEqual([
       'Optimizer', 'Optimizer Dark', 'Recorder', 'Phosphor', 'ISA-101', 'Neon',
     ]);
-    expect(DEFAULT_THEME).toBe('optimizer');
+    expect(DEFAULT_THEME).toBe('optimizer-dark');
     expect(STORAGE_KEY).toBe('spid.theme');
   });
 });
@@ -67,21 +67,21 @@ describe('resolveStoredTheme — every §6.8 migration row', () => {
     expect(resolveStoredTheme(id)).toBe(id);
   });
 
-  it('unknown and null fall to optimizer (the product default)', () => {
-    expect(resolveStoredTheme('banana')).toBe('optimizer');
-    expect(resolveStoredTheme(null)).toBe('optimizer');
+  it('unknown and null fall to optimizer-dark (the product default)', () => {
+    expect(resolveStoredTheme('banana')).toBe('optimizer-dark');
+    expect(resolveStoredTheme(null)).toBe('optimizer-dark');
   });
 });
 
 describe('ThemeProvider behavior', () => {
-  it('defaults to optimizer and sets data-theme on <html>', () => {
+  it('defaults to optimizer-dark and sets data-theme on <html>', () => {
     render(
       <ThemeProvider>
         <Probe />
       </ThemeProvider>,
     );
-    expect(screen.getByTestId('current').textContent).toBe('optimizer');
-    expect(document.documentElement.getAttribute('data-theme')).toBe('optimizer');
+    expect(screen.getByTestId('current').textContent).toBe('optimizer-dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('optimizer-dark');
   });
 
   it('migrates a legacy stored value ONCE and writes the migrated value back', () => {
