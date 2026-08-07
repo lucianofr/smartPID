@@ -800,6 +800,7 @@
           },
           "scan_rate_s": {
             "default": 1.0,
+            "exclusiveMinimum": 0.0,
             "title": "Scan Rate S",
             "type": "number"
           },
@@ -869,6 +870,7 @@
           },
           "tss_s": {
             "default": 60.0,
+            "exclusiveMinimum": 0.0,
             "title": "Tss S",
             "type": "number"
           },
@@ -1575,6 +1577,7 @@
           "scan_rate_s": {
             "anyOf": [
               {
+                "exclusiveMinimum": 0.0,
                 "type": "number"
               },
               {
@@ -1684,6 +1687,7 @@
           "tss_s": {
             "anyOf": [
               {
+                "exclusiveMinimum": 0.0,
                 "type": "number"
               },
               {
@@ -3951,7 +3955,7 @@
     },
     "/commands/tuning": {
       "post": {
-        "description": "Write Kp/Ti/Td directly to OPC-UA.\n\nMirrors the safety bar of ``apply-tuning``: supervisor-only, typed body,\nand each supplied parameter is clamped to the controller's\n``max_tuning_change_pct`` relative to its current value before write-back.",
+        "description": "Write Kp/Ti/Td directly to OPC-UA.\n\nMirrors the safety bar of ``apply-tuning``: supervisor-only, typed body,\neach supplied parameter clamped to the controller's\n``max_tuning_change_pct`` relative to its current value, then forced into\nthe absolute range the loop's own configuration allows.",
         "operationId": "write_tuning_commands_tuning_post",
         "requestBody": {
           "content": {

@@ -21,8 +21,9 @@ from smart_pid_core.application.workers.pid_worker import PIDWorker
 from smart_pid_core.config import CoreSettings
 from smart_pid_core.domain.services.pid_engine import PIDEngine
 from smart_pid_core.domain.services.pid_mode_manager import ModeManager
-from smart_pid_domain.enums import ControllerMode
-from smart_pid_domain.models.controller import Controller, PIDParams
+from smart_pid_core.domain.services.tuning_guardrails import KP_MIN
+from smart_pid_domain.enums import ControllerMode, ExecutionMode
+from smart_pid_domain.models.controller import AIConfig, Controller, PIDParams
 from smart_pid_domain.models.tuning import TuningRecommendation
 
 
@@ -198,13 +199,16 @@ class TestApplyTuning:
         await user_repo.close()
         await repo.close()
 
-    async def _register_controller(self, deps: dict) -> int:
+    async def _register_controller(
+        self, deps: dict, ctrl: Controller | None = None,
+    ) -> int:
         """Save controller and register loop context."""
         repo = deps["repo"]
-        ctrl = Controller(
-            id=0, name="TIC-201",
-            pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.5),
-        )
+        if ctrl is None:
+            ctrl = Controller(
+                id=0, name="TIC-201",
+                pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.5),
+            )
         saved = await repo.save(ctrl)
         lm = deps["loop_manager"]
         bus = deps["bus"]
@@ -318,3 +322,114 @@ class TestApplyTuning:
 
         # Verify OPC-UA write was called
         mock_opcua.write_pid_params.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_recommendation_below_ti_band_raised(self, execute_deps) -> None:
+        """apply-tuning had the rate clamp but no absolute band.
+
+        The rate clamp only bounds the step from the CURRENT value, so a
+        recommendation that keeps Ti under the operator's configured Ti/Ki
+        minimum sails through: nothing in this route ever compared the result
+        against the band the AI worker itself is held to.
+        """
+        cid = await self._register_controller(
+            execute_deps,
+            Controller(
+                id=0, name="TIC-202",
+                pid_params=PIDParams(gain=1.0, reset=0.5, rate=0.5),
+                execution_mode=ExecutionMode.SUPERVISORY,
+                ai_config=AIConfig(limit_min=1.0, limit_max=10.0),
+                max_tuning_change_pct=100.0,
+            ),
+        )
+
+        mock_opcua = MagicMock()
+        mock_opcua.read_actual_mode.return_value = ControllerMode.AUTO
+
+        app = create_app(
+            repo=execute_deps["repo"],
+            historian=execute_deps["historian"],
+            user_repo=execute_deps["user_repo"],
+            loop_manager=execute_deps["loop_manager"],
+            settings=execute_deps["settings"],
+            alarm_repo=execute_deps["alarm_repo"],
+            audit_repo=execute_deps["audit_repo"],
+            opcua_adapter=mock_opcua,
+        )
+        rec = TuningRecommendation(
+            id=uuid.uuid4(),
+            controller_id=cid,
+            current_kp=1.0, current_ti=0.5, current_td=0.5,
+            recommended_kp=1.0, recommended_ti=0.5, recommended_td=0.5,
+            reason="retune below the operator band",
+            timestamp=time.time(),
+        )
+        app.state.tuning_store.put(rec)
+
+        headers = {
+            "Authorization": "Bearer " + create_access_token(
+                user_id=1, username="admin", role="admin",
+                secret=execute_deps["settings"].jwt_secret,
+            ),
+        }
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
+            resp = await client.post(
+                f"/commands/apply-tuning/{cid}", headers=headers,
+            )
+        assert resp.status_code == 200
+        assert resp.json()["applied_ti"] == pytest.approx(1.0)
+        assert resp.json()["clamped"] is True
+        _cid, _kp, written_ti, _td = mock_opcua.write_pid_params.call_args.args
+        assert written_ti == pytest.approx(1.0)
+
+    @pytest.mark.asyncio
+    async def test_recommendation_kp_floored(self, execute_deps) -> None:
+        """A zero-gain recommendation must not reach the DCS."""
+        cid = await self._register_controller(
+            execute_deps,
+            Controller(
+                id=0, name="TIC-203",
+                pid_params=PIDParams(gain=1.0, reset=5.0, rate=0.5),
+                execution_mode=ExecutionMode.SUPERVISORY,
+                ai_config=AIConfig(limit_min=1.0, limit_max=10.0),
+                max_tuning_change_pct=100.0,
+            ),
+        )
+
+        mock_opcua = MagicMock()
+        mock_opcua.read_actual_mode.return_value = ControllerMode.AUTO
+
+        app = create_app(
+            repo=execute_deps["repo"],
+            historian=execute_deps["historian"],
+            user_repo=execute_deps["user_repo"],
+            loop_manager=execute_deps["loop_manager"],
+            settings=execute_deps["settings"],
+            alarm_repo=execute_deps["alarm_repo"],
+            audit_repo=execute_deps["audit_repo"],
+            opcua_adapter=mock_opcua,
+        )
+        app.state.tuning_store.put(TuningRecommendation(
+            id=uuid.uuid4(),
+            controller_id=cid,
+            current_kp=1.0, current_ti=5.0, current_td=0.5,
+            recommended_kp=0.0, recommended_ti=5.0, recommended_td=0.5,
+            reason="zero gain",
+            timestamp=time.time(),
+        ))
+
+        headers = {
+            "Authorization": "Bearer " + create_access_token(
+                user_id=1, username="admin", role="admin",
+                secret=execute_deps["settings"].jwt_secret,
+            ),
+        }
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
+            resp = await client.post(
+                f"/commands/apply-tuning/{cid}", headers=headers,
+            )
+        assert resp.status_code == 200
+        _cid, written_kp, _ti, _td = mock_opcua.write_pid_params.call_args.args
+        assert written_kp == pytest.approx(KP_MIN)

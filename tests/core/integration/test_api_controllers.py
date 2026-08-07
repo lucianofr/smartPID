@@ -406,6 +406,133 @@ class TestFullFieldUpdate:
         assert data["shed_time_s"] == 60.0
 
 
+class TestWriteBoundsAtTheBoundary:
+    """Editing a SUPERVISORY loop's `pid_params` writes them to the DCS over
+    OPC-UA (the config dialog is how tuning reaches an external controller), and
+    that write carried no bound at all.
+
+    These are 422s rather than clamps because the route persists before it
+    writes: clamping would store one number and send another, leaving the dialog
+    showing a value the DCS is not running. `inf` used to persist outright and
+    `nan` used to surface as an uncaught IntegrityError 500 — neither told the
+    operator which field was wrong.
+    """
+
+    @pytest.mark.asyncio
+    async def test_infinite_gain_refused_and_never_written(
+        self, client: AsyncClient, admin_headers: dict[str, str], app
+    ) -> None:
+        create_resp = await client.post(
+            "/controllers", json=FULL_CREATE_PAYLOAD, headers=admin_headers,
+        )
+        cid = create_resp.json()["id"]
+
+        written: list[tuple] = []
+
+        class _FakeOPCUA:
+            is_connected = True
+
+            def write_pid_params(self, *args: object) -> None:
+                written.append(args)
+
+        app.state.opcua_adapter = _FakeOPCUA()
+        try:
+            resp = await client.put(
+                f"/controllers/{cid}",
+                # httpx cannot serialise inf, and a real client would not either:
+                # the value arrives as the bare `Infinity` literal Python's json
+                # module accepts on the way in.
+                content=(
+                    '{"pid_params": {"gain": Infinity, "reset": 10.0, '
+                    '"rate": 0.0, "alpha": 0.125, "deadband": 0.0}}'
+                ),
+                headers={**admin_headers, "Content-Type": "application/json"},
+            )
+        finally:
+            app.state.opcua_adapter = None
+        assert resp.status_code == 422
+        assert written == []
+
+    @pytest.mark.asyncio
+    async def test_zero_gain_refused(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        create_resp = await client.post(
+            "/controllers", json=FULL_CREATE_PAYLOAD, headers=admin_headers,
+        )
+        cid = create_resp.json()["id"]
+        resp = await client.put(
+            f"/controllers/{cid}",
+            json={"pid_params": {
+                "gain": 0.0, "reset": 10.0, "rate": 0.0,
+                "alpha": 0.125, "deadband": 0.0,
+            }},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_nan_span_refused_with_field_name(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        """Previously an uncaught sqlite3.IntegrityError, i.e. a bare 500."""
+        create_resp = await client.post(
+            "/controllers", json=FULL_CREATE_PAYLOAD, headers=admin_headers,
+        )
+        cid = create_resp.json()["id"]
+        resp = await client.put(
+            f"/controllers/{cid}",
+            content='{"sp_hi_lim": NaN}',
+            headers={**admin_headers, "Content-Type": "application/json"},
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_zero_scan_rate_refused_on_create(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        """Persisted, a zero scan rate spins the PIDWorker thread every boot."""
+        resp = await client.post(
+            "/controllers",
+            json={**FULL_CREATE_PAYLOAD, "name": "SPIN-1", "scan_rate_s": 0.0},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_valid_tuning_edit_still_reaches_the_dcs(
+        self, client: AsyncClient, admin_headers: dict[str, str], app
+    ) -> None:
+        """The guard must not become a wall: a legitimate edit still writes."""
+        create_resp = await client.post(
+            "/controllers", json=FULL_CREATE_PAYLOAD, headers=admin_headers,
+        )
+        cid = create_resp.json()["id"]
+
+        written: list[tuple] = []
+
+        class _FakeOPCUA:
+            is_connected = True
+
+            def write_pid_params(self, *args: object) -> None:
+                written.append(args)
+
+        app.state.opcua_adapter = _FakeOPCUA()
+        try:
+            resp = await client.put(
+                f"/controllers/{cid}",
+                json={"pid_params": {
+                    "gain": 2.0, "reset": 15.0, "rate": 0.5,
+                    "alpha": 0.125, "deadband": 0.0,
+                }},
+                headers=admin_headers,
+            )
+        finally:
+            app.state.opcua_adapter = None
+        assert resp.status_code == 200
+        assert written == [(cid, 2.0, 15.0, 0.5)]
+
+
 class TestModeBindingAPI:
     @pytest.mark.asyncio
     async def test_create_with_mode_bindings(

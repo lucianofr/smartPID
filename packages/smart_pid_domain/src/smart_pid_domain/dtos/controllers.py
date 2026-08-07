@@ -1,12 +1,132 @@
 """Controller CRUD DTOs — full 30+ field coverage."""
 from __future__ import annotations
 
+import math
+from typing import Annotated, TypeVar
+
 from pydantic import BaseModel, Field, model_validator
+
+from smart_pid_domain.models.controller import KP_MIN
 
 #: Controller tag names are shown in the HMI, embedded in OPC-UA node paths and
 #: stored in every log row, so they are bounded at the API boundary rather than
 #: left to the database to truncate or the UI to overflow.
 MAX_CONTROLLER_NAME_LEN = 128
+
+#: Loop scan period. Zero is finite and therefore slips past a finiteness check,
+#: but PIDWorker caches this value at thread start and closes each pass with
+#: ``sleep_time = scan_s - elapsed; if sleep_time > 0: wait(...)`` — at zero the
+#: wait never happens and the thread spins at 100 % CPU. Persisted, it comes
+#: back that way on every boot, so the bound belongs here.
+PositiveSeconds = Annotated[float, Field(gt=0.0)]
+
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
+
+
+def _non_finite_paths(model: BaseModel, prefix: str = "") -> list[str]:
+    """Dotted paths of every NaN or infinite float this payload carries."""
+    found: list[str] = []
+    for name, value in model:
+        path = f"{prefix}{name}"
+        if isinstance(value, float) and not math.isfinite(value):
+            found.append(path)
+        elif isinstance(value, BaseModel):
+            found.extend(_non_finite_paths(value, f"{path}."))
+    return found
+
+
+class _ControllerWritePayload(BaseModel):
+    """Shared boundary validation for the controller create and update payloads.
+
+    Deliberately mixed into the write models only. Rows holding ``inf`` or a zero
+    gain already exist wherever these payloads were accepted before, and putting
+    the constraints on the shared nested DTOs would turn each such row into a 500
+    on ``GET /controllers`` with no way to repair it from the UI. The recursive
+    walk covers the nested groups without needing a second, stricter copy of
+    each.
+    """
+
+    @model_validator(mode="after")
+    def _reject_non_finite_floats(self: _ModelT) -> _ModelT:
+        """Configuration is the ammunition of every downstream guard.
+
+        ``LoopManager.check_within_limits`` compares a setpoint against
+        ``sp_hi_lim``, so ``sp_hi_lim = inf`` leaves no upper bound and ``nan``
+        compares false against everything. ``clamp_tuning_absolute`` clamps Ti
+        into ``ai_config.limit_min..limit_max``, so ``limit_min = inf`` does not
+        merely disable the clamp — it returns ``inf`` and hands that to the DCS.
+        A guard cannot defend against its own bounds being poisoned, so the
+        bounds are validated where they enter.
+        """
+        bad = _non_finite_paths(self)
+        if bad:
+            msg = "non-finite value not allowed in: " + ", ".join(sorted(bad))
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _enforce_pid_param_floors(self: _ModelT) -> _ModelT:
+        """Bound the gains this payload can push to a DCS.
+
+        Editing a SUPERVISORY loop's ``pid_params`` writes them over OPC-UA (the
+        config dialog is how tuning reaches an external controller) and that
+        write carried no bound at all. Refused here rather than clamped in the
+        router, because the router persists before it writes: clamping would
+        store one number and send another, leaving the dialog showing a value the
+        DCS is not running.
+
+        Zero reset and zero rate stay legal — that is how PIDEngine is told to
+        drop the integral or derivative term. Only negatives lie, by inverting
+        the sign of the term they scale.
+        """
+        params = getattr(self, "pid_params", None)
+        if params is None:
+            return self
+        if params.gain < KP_MIN:
+            msg = f"pid_params.gain must be at least {KP_MIN}, got {params.gain}"
+            raise ValueError(msg)
+        for name in ("reset", "rate"):
+            value = getattr(params, name)
+            if value < 0.0:
+                msg = f"pid_params.{name} must not be negative, got {value}"
+                raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _enforce_band_ordering(self: _ModelT) -> _ModelT:
+        """An inverted band is not a smaller band, it is a broken guard.
+
+        ``check_within_limits`` rejects every value once ``sp_hi_lim <
+        sp_lo_lim``, locking the operator out of their own loop, and
+        ``clamp_tuning_absolute`` applies the floor last, so ``limit_min >
+        limit_max`` pins Ti to ``limit_min`` regardless of what was asked. Neither
+        is what the operator meant by either number.
+
+        ``AIConfigDTO`` already refuses an inverted ``sl_band_lo_pct``/
+        ``sl_band_hi_pct`` pair for the same reason; these are the remaining bands.
+        Only pairs where BOTH sides are present are checked, so a partial patch
+        that moves one side is still allowed to be validated against the persisted
+        other side by the caller.
+        """
+        pairs = (
+            ("sp_lo_lim", "sp_hi_lim"),
+            ("out_lo_lim", "out_hi_lim"),
+            ("arw_lo_lim", "arw_hi_lim"),
+        )
+        for lo_name, hi_name in pairs:
+            lo, hi = getattr(self, lo_name, None), getattr(self, hi_name, None)
+            if lo is not None and hi is not None and lo >= hi:
+                msg = f"{lo_name} ({lo}) must be below {hi_name} ({hi})"
+                raise ValueError(msg)
+        ai = getattr(self, "ai_config", None)
+        if ai is not None and ai.limit_min > ai.limit_max:
+            msg = (
+                f"ai_config.limit_min ({ai.limit_min}) must not exceed "
+                f"limit_max ({ai.limit_max})"
+            )
+            raise ValueError(msg)
+        return self
+
 
 # ── Nested sub-model DTOs ────────────────────────────────────────────────────
 
@@ -122,14 +242,14 @@ class IOOptsDTO(BaseModel):
 # ── CRUD DTOs ────────────────────────────────────────────────────────────────
 
 
-class ControllerCreate(BaseModel):
+class ControllerCreate(_ControllerWritePayload):
     """Payload for creating a new controller (all fields have defaults except name)."""
 
     name: str = Field(min_length=1, max_length=MAX_CONTROLLER_NAME_LEN)
     description: str = ""
     execution_mode: str = "SUPERVISORY"
-    scan_rate_s: float = 1.0
-    tss_s: float = 60.0
+    scan_rate_s: PositiveSeconds = 1.0
+    tss_s: PositiveSeconds = 60.0
     process_speed: str = "MEDIUM"
 
     # Nested config groups
@@ -182,14 +302,14 @@ class ControllerCreate(BaseModel):
     shed_time_s: float = 10.0
 
 
-class ControllerUpdate(BaseModel):
+class ControllerUpdate(_ControllerWritePayload):
     """Patch payload — all fields optional."""
 
     name: str | None = Field(default=None, min_length=1, max_length=MAX_CONTROLLER_NAME_LEN)
     description: str | None = None
     execution_mode: str | None = None
-    scan_rate_s: float | None = None
-    tss_s: float | None = None
+    scan_rate_s: PositiveSeconds | None = None
+    tss_s: PositiveSeconds | None = None
     process_speed: str | None = None
 
     pid_params: PIDParamsDTO | None = None
