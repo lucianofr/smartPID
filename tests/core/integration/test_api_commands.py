@@ -1,7 +1,6 @@
 """Tests for /commands endpoints."""
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 import pytest
@@ -11,7 +10,6 @@ from smart_pid_core.application.loop_manager import LoopContext
 from smart_pid_core.application.workers.pid_worker import PIDWorker
 from smart_pid_core.domain.services.pid_engine import PIDEngine
 from smart_pid_core.domain.services.pid_mode_manager import ModeManager
-from smart_pid_core.domain.services.tuning_guardrails import KP_MIN
 from smart_pid_domain.enums import ControllerMode, ExecutionMode
 from smart_pid_domain.models.controller import AIConfig, Controller, PIDParams
 
@@ -246,29 +244,46 @@ class TestWriteTuningCommand:
         assert resp.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_out_of_range_params_clamped(
+    async def test_supervisory_without_adapter_is_409(
         self,
         client: AsyncClient,
         supervisor_headers: dict[str, str],
         api_deps: dict,
         app,
     ) -> None:
-        """A supervisor pushing a huge gain gets clamped to max_tuning_change_pct."""
+        """A SUPERVISORY loop with no live link answers 409 — the DCS owns the
+        tuning and nothing local can receive it.
+        """
+        cid = await _create_and_start_controller(api_deps)
+        app.state.opcua_adapter = None
+        resp = await client.post(
+            "/commands/tuning",
+            json={"controller_id": cid, "kp": 5.0},
+            headers=supervisor_headers,
+        )
+        assert resp.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_manual_write_is_not_clamped(
+        self,
+        client: AsyncClient,
+        supervisor_headers: dict[str, str],
+        api_deps: dict,
+        app,
+    ) -> None:
+        """The optimizer guardrails do not apply to a manual write (ADR 0001):
+        what the supervisor asks for reaches the DCS verbatim.
+        """
         cid = await _create_and_start_controller(api_deps)
         fake = _FakeOPCUA()
         app.state.opcua_adapter = fake
-        # Current gain is 1.0, max_tuning_change_pct defaults to 10% -> max 1.1
         resp = await client.post(
             "/commands/tuning",
             json={"controller_id": cid, "kp": 100.0},
             headers=supervisor_headers,
         )
         assert resp.status_code == 200
-        assert fake.written is not None
-        _id, written_kp, _ti, _td = fake.written
-        assert written_kp is not None
-        # Clamped to no more than +10% of current (1.0 -> 1.1)
-        assert written_kp <= 1.1 + 1e-9
+        assert fake.written == (cid, 100.0, None, None)
 
     @pytest.mark.asyncio
     async def test_invalid_body_type_rejected(
@@ -284,18 +299,15 @@ class TestWriteTuningCommand:
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_kp_floored_at_absolute_minimum(
+    async def test_kp_below_minimum_refused_422(
         self,
         client: AsyncClient,
         supervisor_headers: dict[str, str],
         api_deps: dict,
         app,
     ) -> None:
-        """The rate clamp bounds the step, not the destination.
-
-        With max_tuning_change_pct at 100 % a single write may legitimately move
-        Kp all the way to zero without tripping the rate guard, and zero gain is
-        a loop that has silently stopped controlling. KP_MIN is the backstop.
+        """Kp < KP_MIN would zero the proportional action — refused with 422
+        instead of the old silent floor.
         """
         cid = await _create_and_start_controller(
             api_deps,
@@ -312,22 +324,20 @@ class TestWriteTuningCommand:
             json={"controller_id": cid, "kp": 0.0},
             headers=supervisor_headers,
         )
-        assert resp.status_code == 200
-        assert fake.written is not None
-        _id, written_kp, _ti, _td = fake.written
-        assert written_kp == pytest.approx(KP_MIN)
+        assert resp.status_code == 422
+        assert "Kp abaixo do mínimo físico" in resp.json()["detail"]
+        assert fake.written is None
 
     @pytest.mark.asyncio
-    async def test_supervisory_ti_raised_into_configured_band(
+    async def test_supervisory_ti_outside_ai_band_written_verbatim(
         self,
         client: AsyncClient,
         supervisor_headers: dict[str, str],
         api_deps: dict,
         app,
     ) -> None:
-        """A SUPERVISORY loop whose Ti already sits under the operator's own
-        Ti/Ki minimum must not be left there by a manual write. The AI worker is
-        held to this band; the manual route must not be the way around it.
+        """The AI band is for the AI worker. A manual Ti write under the
+        configured minimum lands as asked (D7).
         """
         cid = await _create_and_start_controller(
             api_deps,
@@ -349,7 +359,7 @@ class TestWriteTuningCommand:
         assert resp.status_code == 200
         assert fake.written is not None
         _id, _kp, written_ti, _td = fake.written
-        assert written_ti == pytest.approx(1.0)
+        assert written_ti == pytest.approx(0.5)
 
 
 class TestDCSBranchHonoursLoopLimits:
@@ -668,24 +678,24 @@ class TestMonitorModeReachesTheDCS:
         assert fake.modes == []
 
 
-class TestTuningClampsComposeByExecutionMode:
-    """The absolute clamp splits on who runs the PID, and the route must pass the
-    loop's own mode rather than assume one.
+class TestTuningWriteDispatchesByExecutionMode:
+    """The tuning write routes on who runs the PID: SUPERVISORY goes to the DCS
+    over OPC-UA, DDC persists into ``pid_params`` and never touches the adapter.
 
-    Reached through HTTP on purpose: calling the pure function directly cannot
+    Reached through HTTP on purpose: calling the route logic directly cannot
     catch a call site that hardcodes ``ExecutionMode.SUPERVISORY``.
     """
 
     @pytest.mark.asyncio
-    async def test_ddc_loop_keeps_zero_ti_instead_of_the_ai_band(
+    async def test_ddc_write_persists_pid_params_and_skips_opcua(
         self,
         client: AsyncClient,
         supervisor_headers: dict[str, str],
         api_deps: dict,
         app,
     ) -> None:
-        """Under DDC the engine is ours and reads Ti=0 as P-only, so the AI band
-        must not be imposed. The same request on a SUPERVISORY loop lands on 1.0.
+        """Under DDC the write lands in the database and the live worker —
+        partial: only the supplied fields change, the rest stays.
         """
         cid = await _create_and_start_controller(
             api_deps,
@@ -705,83 +715,42 @@ class TestTuningClampsComposeByExecutionMode:
             headers=supervisor_headers,
         )
         assert resp.status_code == 200
-        assert fake.written is not None
-        _id, _kp, written_ti, _td = fake.written
-        assert written_ti == pytest.approx(0.0)
+        assert fake.written is None
+        stored = await api_deps["repo"].get(cid)
+        assert stored.pid_params.reset == pytest.approx(0.0)
+        assert stored.pid_params.gain == pytest.approx(1.0)
+        live = api_deps["loop_manager"].get_controller(cid)
+        assert live.pid_params.reset == pytest.approx(0.0)
 
     @pytest.mark.asyncio
-    async def test_absolute_clamp_still_fires_after_the_rate_clamp(
+    async def test_kp_below_minimum_refused_on_ddc_too(
         self,
         client: AsyncClient,
         supervisor_headers: dict[str, str],
         api_deps: dict,
         app,
     ) -> None:
-        """Both clamps on the same term, with the rate clamp actually limiting.
-
-        Every other tuning test uses max_tuning_change_pct=100, which makes the
-        rate clamp a pass-through. Here 50 % of a current gain of 0.104 lets the
-        write reach 0.052, which is itself below KP_MIN — so the rate clamp
-        produces a value the absolute clamp must still correct.
+        """KP_MIN is a domain invariant: it holds on both branches, and a
+        refusal persists nothing.
         """
         cid = await _create_and_start_controller(
             api_deps,
             Controller(
                 id=0, name="TIC-702",
-                pid_params=PIDParams(gain=0.104, reset=10.0, rate=0.0),
-                execution_mode=ExecutionMode.SUPERVISORY,
-                max_tuning_change_pct=50.0,
+                pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
+                execution_mode=ExecutionMode.DDC,
+                max_tuning_change_pct=100.0,
             ),
         )
-        fake = _FakeOPCUA()
-        app.state.opcua_adapter = fake
+        app.state.opcua_adapter = _FakeOPCUA()
         resp = await client.post(
             "/commands/tuning",
             json={"controller_id": cid, "kp": 0.0},
             headers=supervisor_headers,
         )
-        assert resp.status_code == 200
-        assert fake.written is not None
-        _id, written_kp, _ti, _td = fake.written
-        assert written_kp == pytest.approx(KP_MIN)
-
-    @pytest.mark.asyncio
-    async def test_clamped_write_is_logged(
-        self,
-        client: AsyncClient,
-        supervisor_headers: dict[str, str],
-        api_deps: dict,
-        app,
-        caplog,
-    ) -> None:
-        """Silent clamping is how a mis-scaled client retunes a loop unnoticed:
-        the write reports success and the DCS runs a different number. The log is
-        the only thing connecting the two, so it is part of the contract.
-        """
-        cid = await _create_and_start_controller(
-            api_deps,
-            Controller(
-                id=0, name="TIC-703",
-                pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
-                execution_mode=ExecutionMode.SUPERVISORY,
-                max_tuning_change_pct=100.0,
-            ),
-        )
-        app.state.opcua_adapter = _FakeOPCUA()
-        with caplog.at_level(
-            logging.WARNING,
-            logger="smart_pid_core.adapters.inbound.api.routers.commands",
-        ):
-            resp = await client.post(
-                "/commands/tuning",
-                json={"controller_id": cid, "kp": 0.0},
-                headers=supervisor_headers,
-            )
-        assert resp.status_code == 200
-        assert any(
-            "Kp" in r.getMessage() and "clamped" in r.getMessage()
-            for r in caplog.records
-        ), [r.getMessage() for r in caplog.records]
+        assert resp.status_code == 422
+        stored = await api_deps["repo"].get(cid)
+        assert stored.pid_params.gain == pytest.approx(1.0)
 
 
 class TestOutputWriteHardening:

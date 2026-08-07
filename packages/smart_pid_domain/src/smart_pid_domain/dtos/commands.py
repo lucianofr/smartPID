@@ -43,8 +43,10 @@ class OutputCommand(BaseModel):
 
 
 class TuningCommand(BaseModel):
-    """Direct PID tuning write. Values are clamped server-side to the
-    controller's ``max_tuning_change_pct`` guardrail before being written."""
+    """Direct PID tuning write. A SUPERVISORY loop receives it on the DCS
+    block over OPC-UA; a DDC loop persists it into ``pid_params``. Only the
+    supplied fields are written; ``kp`` below ``KP_MIN`` is refused with 422
+    (ADR 0001)."""
 
     controller_id: ControllerId
     kp: FiniteFloat | None = None

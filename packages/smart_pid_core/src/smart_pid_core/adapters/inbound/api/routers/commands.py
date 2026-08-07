@@ -1,7 +1,6 @@
 """Command router — setpoint, mode, output, and optimizer changes."""
 
 import json
-import logging
 import time
 from dataclasses import replace
 from typing import Annotated
@@ -32,7 +31,6 @@ from smart_pid_core.application.workers.system_event_worker import (  # noqa: TC
 )
 from smart_pid_core.domain.services.tuning_guardrails import (
     clamp_tuning_absolute,
-    clamp_tuning_change,
     clamp_tuning_params,
 )
 from smart_pid_domain.dtos.auth import UserClaims
@@ -47,10 +45,10 @@ from smart_pid_domain.dtos.commands import (
 from smart_pid_domain.enums import AuditAction, ControllerMode, ExecutionMode, TuningRecStatus
 from smart_pid_domain.events import TuningApplied
 from smart_pid_domain.exceptions import ControllerNotFoundError
+from smart_pid_domain.models.controller import KP_MIN
 
 router = APIRouter()
 
-logger = logging.getLogger(__name__)
 
 _MONITOR_DETAIL = "Not available in monitor mode. PID is controlled by external DCS."
 
@@ -59,12 +57,18 @@ _SUPERVISORY_DETAIL = (
     "O DCS é o dono desta malha."
 )
 
+_KP_MIN_DETAIL = (
+    f"Kp abaixo do mínimo físico ({KP_MIN:g}): zeraria a ação proporcional. "
+    "Escrita recusada."
+)
+
 
 def _dcs_owns_loop(execution_mode: str) -> bool:
     """True when the whole daemon runs in monitor mode: every SP/CO/mode
     command is then written to the DCS over OPC-UA instead of the internal
     PIDWorker. The per-loop axis (SUPERVISORY) no longer routes here — it
-    refuses outright, see ``_refuse_supervisory``."""
+    refuses outright, see ``_refuse_supervisory``.
+    """
     return execution_mode == "monitor"
 
 
@@ -320,64 +324,45 @@ async def write_tuning(
     request: Request,
     user: Annotated[UserClaims, Depends(require_admin)],
     lm: Annotated[LoopManager, Depends(get_loop_manager)],
+    repo: Annotated[SQLiteRepository, Depends(get_repo)],
     audit_repo: Annotated[AuditRepository, Depends(get_audit_repo)],
     sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
 ) -> CommandResponse:
-    """Write Kp/Ti/Td directly to OPC-UA.
+    """Manual Kp/Ti/Td write, routed to whoever runs the PID.
 
-    Mirrors the safety bar of ``apply-tuning``: supervisor-only, typed body,
-    each supplied parameter clamped to the controller's
-    ``max_tuning_change_pct`` relative to its current value, then forced into
-    the absolute range the loop's own configuration allows.
+    SUPERVISORY: written to the DCS block over OPC-UA; the database is not
+    touched — the 1 Hz read-back stays the source of truth. DDC: persisted
+    into ``pid_params`` and pushed to the live PIDWorker. The optimizer
+    guardrails do not apply to this manual path (ADR 0001,
+    docs/adr/0001-escrita-manual-de-sintonia-sem-limites.md); the one refusal
+    is ``Kp < KP_MIN``, answered with 422 instead of a silent clamp.
     """
     controller_id = body.controller_id
     ctrl = lm.get_controller(controller_id)
-    max_pct = ctrl.max_tuning_change_pct
-    current = ctrl.pid_params
 
-    kp = (
-        clamp_tuning_change(current.gain, body.kp, max_pct)
-        if body.kp is not None
-        else None
-    )
-    ti = (
-        clamp_tuning_change(current.reset, body.ti, max_pct)
-        if body.ti is not None
-        else None
-    )
-    td = (
-        clamp_tuning_change(current.rate, body.td, max_pct)
-        if body.td is not None
-        else None
-    )
+    if body.kp is not None and body.kp < KP_MIN:
+        raise HTTPException(status_code=422, detail=_KP_MIN_DETAIL)
 
-    # The rate clamp above bounds how far this write may move each term; it does
-    # not bound where the term lands. At a high max_tuning_change_pct a single
-    # write reaches Kp=0, and repeated writes walk there at any percentage. It
-    # also leaves the Ti band the AI worker is held to (ai_worker.py) reachable
-    # only from the AI side, making this route the way around the operator's own
-    # configured Ti/Ki limits.
-    bounded = clamp_tuning_absolute(
-        kp=kp, ti=ti, td=td,
-        execution_mode=ctrl.execution_mode,
-        ti_min=ctrl.ai_config.limit_min,
-        ti_max=ctrl.ai_config.limit_max,
-    )
-    for name, asked, allowed in zip(("Kp", "Ti", "Td"), (kp, ti, td), bounded, strict=True):
-        if asked is not None and allowed != asked:
-            logger.warning(
-                "controller %d: %s write %g outside the limits configured for this "
-                "loop, clamped to %g", controller_id, name, asked, allowed,
-            )
-    kp, ti, td = bounded
-
-    opcua = getattr(request.app.state, "opcua_adapter", None)
-    if opcua is None or not opcua.is_connected:
-        raise HTTPException(status_code=409, detail="OPC-UA not connected")
-    opcua.write_pid_params(controller_id, kp, ti, td)
+    if ctrl.execution_mode is ExecutionMode.SUPERVISORY:
+        opcua = getattr(request.app.state, "opcua_adapter", None)
+        if opcua is None or not opcua.is_connected:
+            raise HTTPException(status_code=409, detail="OPC-UA not connected")
+        opcua.write_pid_params(controller_id, body.kp, body.ti, body.td)
+    else:
+        updates: dict[str, float] = {}
+        if body.kp is not None:
+            updates["gain"] = body.kp
+        if body.ti is not None:
+            updates["reset"] = body.ti
+        if body.td is not None:
+            updates["rate"] = body.td
+        if updates:
+            updated = replace(ctrl, pid_params=replace(ctrl.pid_params, **updates))
+            await repo.save(updated)
+            lm.update_controller(updated)
     _parts = [
         f"{name}={val:.4f}"
-        for name, val in (("Kp", kp), ("Ti", ti), ("Td", td))
+        for name, val in (("Kp", body.kp), ("Ti", body.ti), ("Td", body.td))
         if val is not None
     ]
     _parts_str = ", ".join(_parts) or "no change"
@@ -385,7 +370,7 @@ async def write_tuning(
         audit_repo, sew,
         user.user_id, user.username, AuditAction.TUNE_PID,
         f"controller:{controller_id}",
-        json.dumps({"kp": kp, "ti": ti, "td": td}),
+        json.dumps({"kp": body.kp, "ti": body.ti, "td": body.td}),
         message=(
             f"{user.username} tuned controller "
             f"{controller_label(request, controller_id)}: {_parts_str}"
@@ -393,7 +378,7 @@ async def write_tuning(
     )
     return CommandResponse(
         ok=True, controller_id=controller_id,
-        detail=f"Tuning written: Kp={kp}, Ti={ti}, Td={td}",
+        detail=f"Tuning written: Kp={body.kp}, Ti={body.ti}, Td={body.td}",
     )
 
 

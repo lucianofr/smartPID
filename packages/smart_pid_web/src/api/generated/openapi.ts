@@ -347,12 +347,14 @@ export interface paths {
         put?: never;
         /**
          * Write Tuning
-         * @description Write Kp/Ti/Td directly to OPC-UA.
+         * @description Manual Kp/Ti/Td write, routed to whoever runs the PID.
          *
-         *     Mirrors the safety bar of ``apply-tuning``: supervisor-only, typed body,
-         *     each supplied parameter clamped to the controller's
-         *     ``max_tuning_change_pct`` relative to its current value, then forced into
-         *     the absolute range the loop's own configuration allows.
+         *     SUPERVISORY: written to the DCS block over OPC-UA; the database is not
+         *     touched — the 1 Hz read-back stays the source of truth. DDC: persisted
+         *     into ``pid_params`` and pushed to the live PIDWorker. The optimizer
+         *     guardrails do not apply to this manual path (ADR 0001,
+         *     docs/adr/0001-escrita-manual-de-sintonia-sem-limites.md); the one refusal
+         *     is ``Kp < KP_MIN``, answered with 422 instead of a silent clamp.
          */
         post: operations["write_tuning_commands_tuning_post"];
         delete?: never;
@@ -3004,8 +3006,10 @@ export interface components {
         };
         /**
          * TuningCommand
-         * @description Direct PID tuning write. Values are clamped server-side to the
-         *     controller's ``max_tuning_change_pct`` guardrail before being written.
+         * @description Direct PID tuning write. A SUPERVISORY loop receives it on the DCS
+         *     block over OPC-UA; a DDC loop persists it into ``pid_params``. Only the
+         *     supplied fields are written; ``kp`` below ``KP_MIN`` is refused with 422
+         *     (ADR 0001).
          */
         TuningCommand: {
             /** Controller Id */

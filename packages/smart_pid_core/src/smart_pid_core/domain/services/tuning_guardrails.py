@@ -49,8 +49,13 @@ def clamp_tuning_absolute(
     ``reset == 0`` as "integral disabled", which is a legitimate P-only loop.
     Under SUPERVISORY the gains land in a DCS block instead, and the operator
     has already declared the admissible Ti span through the loop's optimizer
-    limits — the band the AI worker is held to. Honouring it here keeps the
-    manual write path from being the way around the operator's own bounds.
+    limits — the band the AI worker is held to. Honouring it here keeps
+    ``apply-tuning``, the only path that applies an AI recommendation, from
+    being the way around the operator's own bounds. The manual
+    ``POST /commands/tuning`` write deliberately bypasses these guardrails
+    (ADR 0001, docs/adr/0001-escrita-manual-de-sintonia-sem-limites.md): what
+    the operator types is written verbatim, and its sole refusal is
+    ``Kp < KP_MIN``.
 
     ``ti_min > ti_max`` is reachable (the two config fields are validated
     independently), so the floor is applied last and wins.
@@ -62,7 +67,7 @@ def clamp_tuning_absolute(
     alone is not protection — ``max(KP_MIN, nan)`` happens to return ``KP_MIN``
     because ``nan > KP_MIN`` is false, but ``max(nan, x)`` returns ``nan`` and
     ``max(KP_MIN, inf)`` returns ``inf``. A non-finite Ti also arrives with no
-    non-finite bound in sight: ``write_tuning`` feeds this the result of
+    non-finite bound in sight: ``apply_tuning`` feeds this the result of
     ``clamp_tuning_change(current.reset, ...)``, and a legacy ``current.reset`` of
     ``inf`` computes ``inf + -inf``, which is ``nan``.
 
