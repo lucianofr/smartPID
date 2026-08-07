@@ -112,6 +112,14 @@ class CoreSettings(BaseSettings):
     # persistent volume.
     log_dir: Path | None = None
 
+    # Feedback email (Loops-page "message to the developer").
+    # Unset smtp_host disables the endpoint with 503 — local dev needs no mailbox.
+    smtp_host: str | None = None
+    smtp_port: int = 587  # ponytail: STARTTLS only; SSL-on-465 unsupported until needed
+    smtp_user: str = ""
+    smtp_password: str = ""
+    feedback_email_to: str = "luciano82@gmail.com"
+
     # Execution
     execution_mode: str = "monitor"
 

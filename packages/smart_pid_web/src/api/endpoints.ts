@@ -258,6 +258,11 @@ export const endpoints = {
   /** 204 on success; an empty list silences everything the daemon itself allows silencing. */
   setLogLevels: (levels: LogLevelName[]) => api.put<void>('/system/log-levels', { levels }),
 
+  // ---- demo-account feedback (routers/system.py, require_user) ----
+
+  /** 204; 503 = SMTP não configurado no daemon, 429 = cooldown de 60 s por usuário. */
+  sendFeedback: (message: string) => api.post<void>('/system/feedback', { message }),
+
   // ---- phase 9 · executive dashboard ----
 
   /** Backend health snapshot. Unauthenticated by design (routers/system.py). */

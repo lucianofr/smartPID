@@ -1,9 +1,9 @@
 """System status DTOs."""
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 
 
 class SystemStatusResponse(BaseModel):
@@ -31,3 +31,11 @@ class LogLevelsUpdate(BaseModel):
     # daemon still keeps emitting CRITICAL-by-policy records the backend
     # writes outside the standard logging pipeline).
     levels: list[LogLevelName]
+
+
+class FeedbackRequest(BaseModel):
+    """Body of ``POST /system/feedback`` — Loops-page message to the developer."""
+
+    message: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)
+    ]

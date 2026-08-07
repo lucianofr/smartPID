@@ -1238,6 +1238,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/system/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Feedback
+         * @description Email the developer a message typed by a signed-in operator (demo account UX).
+         */
+        post: operations["send_feedback_system_feedback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/system/log-levels": {
         parameters: {
             query?: never;
@@ -2394,6 +2414,14 @@ export interface components {
             format: "csv" | "json";
             /** Start */
             start: string;
+        };
+        /**
+         * FeedbackRequest
+         * @description Body of ``POST /system/feedback`` — Loops-page message to the developer.
+         */
+        FeedbackRequest: {
+            /** Message */
+            message: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -5152,6 +5180,37 @@ export interface operations {
                         [key: string]: unknown;
                     }[];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_feedback_system_feedback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
