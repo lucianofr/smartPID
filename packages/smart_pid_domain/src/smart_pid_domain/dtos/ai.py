@@ -32,6 +32,7 @@ class StatsResponse(BaseModel):
     recent_reversals: int = 0
     tv_per_sample: float = 0.0
     osc: float = 0.0
+    osc_period_s: float = 0.0
     # Excitation context for the same detector: how many samples it was
     # allowed to look at (0 means unmeasured, not calm) and how far the
     # setpoint itself travelled — the scale the amplitude is judged against.

@@ -4,6 +4,8 @@ from __future__ import annotations
 import math
 from collections import deque
 from dataclasses import dataclass
+from itertools import pairwise
+from statistics import median
 
 
 @dataclass
@@ -414,3 +416,28 @@ class StatsCalculator:
                 count += 1
             last_sign = cur_sign
         return count
+
+    @property
+    def osc_period_s(self) -> float:
+        """Median full oscillation period, in seconds, from zero-crossing spacing.
+
+        Walks the settling-masked error series with the same noise threshold
+        as :meth:`zero_crossings` and records the ``elapsed_time`` of each
+        sign flip. A full period is twice the median gap between consecutive
+        flips; the median keeps one interval inflated by a settling gap from
+        skewing the estimate. 0.0 = unmeasured (fewer than 3 crossings, i.e.
+        fewer than 2 half-period intervals) — a hold, not a verdict.
+        """
+        threshold = self._reversal_noise_frac * self._span
+        times: list[float] = []
+        last_sign = 0
+        for s in self._samples:
+            if s.is_settling or abs(s.error) < threshold:
+                continue
+            cur_sign = 1 if s.error > 0 else -1
+            if last_sign != 0 and cur_sign != last_sign:
+                times.append(s.elapsed_time)
+            last_sign = cur_sign
+        if len(times) < 3:
+            return 0.0
+        return 2.0 * median(b - a for a, b in pairwise(times))

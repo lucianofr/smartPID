@@ -26,6 +26,7 @@ const METRICS: StatsData = {
   sample_count: 100,
   mean_abs_error: 0,
   osc: 0,
+  osc_period_s: 0,
   osc_sample_count: 0,
   overshoot: 0,
   pk_pk_error: 0,

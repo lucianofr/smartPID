@@ -114,6 +114,7 @@ describe('Faceplate', () => {
           recent_reversals: 0,
           tv_per_sample: 0,
           osc: 0,
+          osc_period_s: 0,
           osc_sample_count: 0,
           sp_pk_pk: 0,
           overshoot: 0,

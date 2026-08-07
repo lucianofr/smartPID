@@ -1,13 +1,14 @@
 """AI Worker — Ki optimization via Fuzzy or RL on a fixed timer.
 
 Only runs when the loop is in an automatic mode (AUTO, CAS, RCAS).
-Cadence is determined by ProcessSpeed.ai_period_s — independent of
-STATS publication rate.
+Cadence: 2 × TSS at rest; while the loop oscillates, twice the measured
+oscillation period (see _effective_period_s). Independent of STATS
+publication rate.
 
 Two distinct tuning paths live here and must not be conflated:
 
 1. The **continuous integral nudge** — the engine adjusts only Ki/Ti every
-   ``3 × tss`` and the result goes out on ``ACTION.AI.{cid}``, which
+   AI period and the result goes out on ``ACTION.AI.{cid}``, which
    ``IOWorker`` writes straight to the PLC for SUPERVISORY loops.
 2. The **full PID retune proposal** — Kp, Ti *and* Td together, synthesised
    by IMC/lambda tuning from an identified FOPDT model.  A far larger
@@ -100,12 +101,32 @@ _GAIN_MIN_POINTS = 3
 _GAIN_MIN_CO_SPREAD_PCT = 2.0
 _GAIN_MIN_ABS_R = 0.9
 
+# --- AI cadence ----------------------------------------------------------
+# Base: one adjustment per 2 × TSS — the process has settled and the stats
+# recent sub-window (0.4 × 5×TSS = 2×TSS, see StatsCalculator) has fully
+# refreshed since the previous move.
+_AI_PERIOD_TSS_MULT = 2.0
+# While the loop oscillates, evidence renews once per oscillation cycle,
+# not per TSS: react after two full measured periods (classic relay-tuning
+# practice) instead of waiting 2 × TSS.
+_OSC_CADENCE_PERIOD_MULT = 2.0
+# Gate on the published composite score: 0.3 is where the fuzzy MF_OSC
+# "OSC" membership starts (fuzzy_engine_v2.MF_OSC) — below it the engine
+# itself reads the loop as stable.
+_OSC_CADENCE_MIN_SCORE = 0.3
+# Never react faster than 3 fresh STATS snapshots (published every ~5 s):
+# two cycles on the same evidence is double-dosing.
+_OSC_CADENCE_FLOOR_S = 15.0
+# Never slower than the legacy 3 × TSS cadence.
+_OSC_CADENCE_CAP_TSS_MULT = 3.0
+
 
 class AIWorker:
     """Subscribes to TELEMETRY, runs AI engine on a timer, publishes ACTION.AI + LOG.AI.
 
-    AI computation runs every ProcessSpeed.ai_period_s seconds and only
-    executes when the loop is in an automatic mode (AUTO, CAS, RCAS).
+    AI computation runs every _effective_period_s() seconds (2 × TSS base,
+    2 × Posc while oscillating) and only executes when the loop is in an
+    automatic mode (AUTO, CAS, RCAS).
     """
 
     def __init__(
@@ -131,8 +152,9 @@ class AIWorker:
         self._controller = controller
         self._system_event_worker = system_event_worker
         self._ai_config = controller.ai_config
-        # AI period = 3 × TSS (wait for process to settle before next adjustment)
-        self._ai_period_s = 3.0 * controller.tss_s
+        # Base AI period = 2 × TSS; the effective period may shrink while
+        # the loop oscillates (see _effective_period_s).
+        self._ai_period_s = _AI_PERIOD_TSS_MULT * controller.tss_s
         self._integral_type = controller.integral_type.value  # "GAIN_KI" or "TIME_TI"
         self._execution_mode = controller.execution_mode.value  # "SUPERVISORY" or "DDC"
         # Resume from last AI-computed Ki if available, otherwise use config default
@@ -171,7 +193,7 @@ class AIWorker:
         # then synchronous and total.  A bus round-trip would need a new
         # consumer thread and would inherit the ZeroMQ slow-joiner race the
         # rest of this file already works around (see `set_paused`), which for
-        # a once-per-3×tss message means silently losing whole proposals.
+        # a once-per-AI-period message means silently losing whole proposals.
         self._tuning_store = tuning_store
         # Steady-state (CO%, PV%) observations, keyed by CO operating-point
         # bucket -> (co_pct, pv_pct, monotonic_ts).
@@ -184,6 +206,7 @@ class AIWorker:
         self._last_proposal: TuningProposal | None = None
         self._last_retune_skip: str | None = None
         self._last_cycle_skip: str | None = None
+        self._last_cadence_mode: str | None = None
 
     @property
     def controller_id(self) -> int:
@@ -268,14 +291,6 @@ class AIWorker:
         """
         self._enabled = enabled
 
-    def update_process_speed(self, process_speed) -> None:
-        """Hot-reload AI period when process speed changes. Thread-safe via GIL."""
-        self._ai_period_s = 3.0 * self._controller.tss_s
-
-    def update_tss(self, tss_s: float) -> None:
-        """Hot-reload AI period when TSS changes. Thread-safe via GIL."""
-        self._ai_period_s = 3.0 * tss_s
-
     def update_controller(self, controller: Controller) -> None:
         """Adopt a persisted config edit without restarting the worker.
 
@@ -296,9 +311,44 @@ class AIWorker:
         self._ai_config = controller.ai_config
         self._integral_type = controller.integral_type.value
         self._execution_mode = controller.execution_mode.value
-        self._ai_period_s = 3.0 * controller.tss_s
+        self._ai_period_s = _AI_PERIOD_TSS_MULT * controller.tss_s
         if controller.stability_band_pct is not None:
             self._stability_band_pct = controller.stability_band_pct
+
+    def _effective_period_s(self) -> float:
+        """Period until the next AI cycle, decided from the latest STATS.
+
+        Base cadence is ``_AI_PERIOD_TSS_MULT × tss``. While the published
+        oscillation score is significant AND the oscillation period was
+        measurable, the cycle follows the process instead of the clock:
+        ``2 × Posc`` clamped to [_OSC_CADENCE_FLOOR_S, 3 × tss]. Posc > TSS
+        legitimately makes this SLOWER than the base — adjusting more than
+        once per oscillation cycle means reacting to a move whose effect the
+        window has not seen yet.
+        """
+        stats = self._latest_stats
+        if stats is not None:
+            osc = float(stats.get("osc", 0.0))
+            posc = float(stats.get("osc_period_s", 0.0))
+            if osc >= _OSC_CADENCE_MIN_SCORE and posc > 0.0:
+                tss = max(self._controller.tss_s, 1e-3)
+                period = min(
+                    max(_OSC_CADENCE_PERIOD_MULT * posc, _OSC_CADENCE_FLOOR_S),
+                    _OSC_CADENCE_CAP_TSS_MULT * tss,
+                )
+                self._log_cadence("osc", period)
+                return period
+        self._log_cadence("base", self._ai_period_s)
+        return self._ai_period_s
+
+    def _log_cadence(self, mode: str, period_s: float) -> None:
+        """Edge-log cadence source flips (same pattern as _skip_cycle)."""
+        if mode != self._last_cadence_mode:
+            self._last_cadence_mode = mode
+            logger.info(
+                "ai_cadence cid=%d mode=%s period_s=%.1f",
+                self.controller_id, mode, period_s,
+            )
 
     def set_paused(self, paused: bool) -> None:
         """Set the pause hold directly, mirroring `set_enabled`.
@@ -470,7 +520,7 @@ class AIWorker:
         # though PV is back inside the band. The band skip exists
         # because steady-state error carries no tuning information —
         # but the overshoot recorded in the stats window IS tuning
-        # information, and with AI cadence 3xTSS the loop has usually
+        # information, and with AI cadence 2xTSS the loop has usually
         # re-settled before the cycle fires; without this bypass the
         # evidence is never consumed. FUZZY + SP_TRACKING only.
         from smart_pid_core.domain.services.fuzzy_engine_v2 import OVS_ACT_THR
@@ -506,7 +556,7 @@ class AIWorker:
 
         Not edge-triggered: "the optimizer left this loop alone" is the fact
         being audited, and it must be countable per cycle, not per transition.
-        At one line per AI period (3 x TSS) that is not a volume problem.
+        At one line per AI period (>= 15 s) that is not a volume problem.
         """
         logger.info(
             "optimizer_skip %s",
@@ -812,7 +862,7 @@ class AIWorker:
                     self._stop_event.wait(timeout=wait)
                     continue
 
-                next_run = now + self._ai_period_s
+                next_run = now + self._effective_period_s()
 
                 # Skip if disabled via CMD.AI stop, or held by CMD.AI pause
                 if not self._enabled or self._paused:
