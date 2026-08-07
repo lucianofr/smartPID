@@ -124,6 +124,7 @@ class StatsWorker:
             "recent_reversals": calc.recent_reversals,
             "tv_per_sample": calc.tv_per_sample,
             "osc": calc.osc_score(),
+            "osc_period_s": calc.osc_period_s,
             "sample_count": calc.sample_count,
             # Excitation context for the fuzzy OSC detector: how many
             # samples it is allowed to look at, and how far the setpoint

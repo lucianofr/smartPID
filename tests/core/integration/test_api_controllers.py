@@ -603,3 +603,95 @@ class TestOptimizationEnabledInResponse:
         assert resp.status_code == 200
         match = next(c for c in resp.json() if c["name"] == "OPT-OFF-LIST")
         assert match["optimization_enabled"] is False
+
+
+
+class TestTssFollowsSpeedClass:
+    """The speed-class tooltip promises its window IS the expected TSS, and
+    the UI never sends tss_s. Picking a class therefore sets the TSS — which
+    is what the AI cadence (2 x TSS) is derived from.
+    """
+
+    @staticmethod
+    async def _create(client, headers, **body) -> dict:
+        resp = await client.post("/controllers", json=body, headers=headers)
+        assert resp.status_code == 201
+        return resp.json()
+
+    @pytest.mark.asyncio
+    async def test_create_without_tss_adopts_the_class_window(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        data = await self._create(
+            client, admin_headers, name="TIC-600", process_speed="SLOW",
+        )
+        assert data["tss_s"] == 7200.0
+
+    @pytest.mark.asyncio
+    async def test_create_with_an_explicit_tss_keeps_it(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        data = await self._create(
+            client, admin_headers, name="TIC-601", process_speed="SLOW", tss_s=45.0,
+        )
+        assert data["tss_s"] == 45.0
+
+    @pytest.mark.asyncio
+    async def test_changing_the_class_moves_the_tss(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        cid = (
+            await self._create(
+                client, admin_headers, name="TIC-602", process_speed="FAST",
+            )
+        )["id"]
+
+        put = await client.put(
+            f"/controllers/{cid}",
+            json={"process_speed": "MEDIUM"},
+            headers=admin_headers,
+        )
+        assert put.status_code == 200
+        data = (
+            await client.get(f"/controllers/{cid}", headers=admin_headers)
+        ).json()
+        assert data["process_speed"] == "MEDIUM"
+        assert data["tss_s"] == 1200.0
+
+    @pytest.mark.asyncio
+    async def test_an_explicit_tss_wins_over_the_class_window(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        cid = (
+            await self._create(
+                client, admin_headers, name="TIC-603", process_speed="MEDIUM",
+            )
+        )["id"]
+
+        put = await client.put(
+            f"/controllers/{cid}",
+            json={"process_speed": "FAST", "tss_s": 45.0},
+            headers=admin_headers,
+        )
+        assert put.status_code == 200
+        assert put.json()["tss_s"] == 45.0
+
+    @pytest.mark.asyncio
+    async def test_re_saving_the_same_class_never_stomps_a_custom_tss(
+        self, client: AsyncClient, admin_headers: dict[str, str]
+    ) -> None:
+        """The config dialog always sends process_speed, changed or not."""
+        cid = (
+            await self._create(
+                client, admin_headers, name="TIC-604",
+                process_speed="FAST", tss_s=45.0,
+            )
+        )["id"]
+
+        put = await client.put(
+            f"/controllers/{cid}",
+            json={"process_speed": "FAST"},
+            headers=admin_headers,
+        )
+        assert put.status_code == 200
+        assert put.json()["tss_s"] == 45.0

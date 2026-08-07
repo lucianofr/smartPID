@@ -2796,6 +2796,11 @@ export interface components {
              */
             osc: number;
             /**
+             * Osc Period S
+             * @default 0
+             */
+            osc_period_s: number;
+            /**
              * Osc Sample Count
              * @default 0
              */

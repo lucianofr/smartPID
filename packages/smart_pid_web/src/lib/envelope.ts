@@ -138,6 +138,8 @@ export interface StatsData {
   recent_reversals: number;
   tv_per_sample: number;
   osc: number;
+  /** Measured full oscillation period in seconds; 0 = not measurable. */
+  osc_period_s: number;
   sample_count: number;
   /** Samples the oscillation metrics were allowed to see (non-settling).
    *  0 means "unmeasured", not "steady": pk-pk, reversals and zero-crossings

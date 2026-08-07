@@ -1,7 +1,7 @@
 """Tests for AIWorker mode guard and timer-driven cadence.
 
 Rule 1: Fuzzy/RL must only execute when loop mode is AUTO, CAS, or RCAS.
-Rule 2: AI evaluation runs on a fixed timer (ProcessSpeed.ai_period_s).
+Rule 2: AI evaluation runs on a fixed timer (2 × TSS base cadence).
 """
 from __future__ import annotations
 

@@ -70,6 +70,9 @@ class TestStatsWorker:
             assert "overshoot" in data
             assert "osc_sample_count" in data
             assert "sp_pk_pk" in data
+            # The AI cadence reads the oscillation period off the same frame.
+            assert isinstance(data["osc_period_s"], float)
+            assert data["osc_period_s"] >= 0.0
             assert data["controller_id"] == 1
         finally:
             worker.stop()
