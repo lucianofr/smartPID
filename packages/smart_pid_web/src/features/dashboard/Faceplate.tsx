@@ -1,20 +1,25 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useCan } from '@/auth/useCan';
 import { endpoints } from '@/api/endpoints';
 import { queryKeys } from '@/api/queryKeys';
 import type { ControllerMode } from '@/api/types';
 import { AnalogBar } from '@/components/AnalogBar';
+import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
+import { Input } from '@/components/Field';
 import { toast } from '@/components/Toast';
 import { AiPanel } from '@/features/loop-config/AiPanel';
 import { CardControls } from '@/features/loop-config/CardControls';
-import type { Range } from '@/features/loop-config/types';
+import type { ExecutionMode, Range } from '@/features/loop-config/types';
+import { useWriteTuningMutation } from '@/features/loop-config/useCommands';
 import { formatNumber, formatPercent } from '@/lib/format';
 import type { Scale } from '@/lib/scale';
 import type { StatsData, StatusData } from '@/lib/envelope';
 import { useConnectionStatus } from '@/realtime/useConnectionStatus';
 import { useRealtime } from '@/realtime/useRealtime';
 import { cn } from '@/lib/utils';
+import { CHIP, EXEC_MODE_TITLE, MODE_CHIP, MODE_CHIP_FALLBACK, UNKNOWN_MODE_TITLE } from './modeChip';
 import { CO_SCALE } from './useControllers';
 
 export interface FaceplateProps {
@@ -27,6 +32,8 @@ export interface FaceplateProps {
   decimals?: number;
   /** Loop SP limits (`sp_lo_lim`/`sp_hi_lim`); omit to check finiteness only. */
   spRange?: Range;
+  /** Execution mode; absent means locked (D16 — SUPERVISORY until proven otherwise). */
+  executionMode?: ExecutionMode;
 }
 
 /** Operator modes offered on the faceplate; the rest of the enum is config-only. */
@@ -61,6 +68,8 @@ const MODE_ACTIVE: Record<string, string> = {
   AUTO: 'bg-brand-ink text-brand-accent-soft hover:bg-brand-ink',
   MAN: 'bg-alarm-warn text-on-alarm hover:bg-alarm-warn',
 };
+/** Manual tuning entry — one box per gain column, shown only to `tuning.edit`. */
+const TUNING_INPUT = 'numeric mt-0.5 w-full min-w-0 px-1.5 py-1 text-right text-sm';
 
 /**
  * The four §6.7 loop metrics, in the 1a 4-up grid. `IAE` and `2σ/Range` are
@@ -102,16 +111,22 @@ export function Faceplate({
   coScale,
   decimals = 1,
   spRange,
+  executionMode = 'SUPERVISORY',
 }: FaceplateProps) {
   const status = useRealtime<StatusData>(controllerId, 'status');
   const stats = useRealtime<StatsData>(controllerId, 'stats');
   const link = useConnectionStatus();
   const queryClient = useQueryClient();
+  // Fail closed (D16): only an explicit DDC unlocks the operator controls;
+  // any unrecognized execution mode reads as locked, same as an absent one.
+  const supervisory = executionMode !== 'DDC';
+  const canTune = useCan('tuning.edit');
 
   const [coDraft, setCoDraft] = useState(0);
 
   const data = status.last?.data ?? null;
   const mode = data?.mode ?? '—';
+  const modeChip = MODE_CHIP[mode] ?? MODE_CHIP_FALLBACK;
 
   // The manual output field tracks the live CO until the operator edits it,
   // and goes back to tracking whenever the loop leaves MAN.
@@ -136,11 +151,29 @@ export function Faceplate({
     onError: onCommandError,
   });
 
-  const gains: readonly Metric[] = [
-    { label: 'Kp', value: formatNumber(data?.kp ?? null, 2) },
-    { label: 'Ti', value: formatNumber(data?.ti ?? null, 2) },
-    { label: 'Td', value: formatNumber(data?.td ?? null, 2) },
+  const gains: readonly (Metric & { field: 'kp' | 'ti' | 'td' })[] = [
+    { label: 'Kp', value: formatNumber(data?.kp ?? null, 2), field: 'kp' },
+    { label: 'Ti', value: formatNumber(data?.ti ?? null, 2), field: 'ti' },
+    { label: 'Td', value: formatNumber(data?.td ?? null, 2), field: 'td' },
   ];
+  const [tuningDrafts, setTuningDrafts] = useState<Record<'kp' | 'ti' | 'td', string>>({
+    kp: '',
+    ti: '',
+    td: '',
+  });
+  const tuningCmd = useWriteTuningMutation();
+  const submitTuning = (field: 'kp' | 'ti' | 'td'): void => {
+    const raw = tuningDrafts[field].trim();
+    const value = Number(raw);
+    if (raw === '' || !Number.isFinite(value) || tuningCmd.isPending) return;
+    tuningCmd.mutate(
+      { id: controllerId, [field]: value },
+      {
+        onSuccess: () => setTuningDrafts((d) => ({ ...d, [field]: '' })),
+        onError: onCommandError,
+      },
+    );
+  };
 
   return (
     <aside
@@ -168,16 +201,25 @@ export function Faceplate({
             <p className="truncate text-sm text-text-soft">{description}</p>
           ) : null}
         </div>
-        {/* The link dot, not a mode chip: the mode is legible in the segment
-            below, and what the header cannot otherwise say is whether these
-            numbers are current (E2E-047). */}
-        <span
-          aria-hidden="true"
-          className={cn(
-            'mt-1.5 h-[9px] w-[9px] shrink-0 rounded-pill',
-            link.stale ? 'bg-state-error' : 'bg-live',
-          )}
-        />
+        {/* Execution-mode badge beside the link dot: SUPERVISORY vs DDC reads
+            before scrolling down to the mode segment, and the dot still says
+            whether these numbers are current (E2E-047). */}
+        <div className="mt-1.5 flex shrink-0 items-center gap-1.5">
+          <Badge
+            tone="neutral"
+            title={EXEC_MODE_TITLE[executionMode]}
+            className={cn(CHIP, 'text-text-soft')}
+          >
+            {executionMode}
+          </Badge>
+          <span
+            aria-hidden="true"
+            className={cn(
+              'h-[9px] w-[9px] shrink-0 rounded-pill',
+              link.stale ? 'bg-state-error' : 'bg-live',
+            )}
+          />
+        </div>
       </header>
 
       {/* §6.9 shows one line per variable: label, bar, value. AnalogBar already
@@ -210,42 +252,55 @@ export function Faceplate({
         />
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <CardControls
-          controllerId={controllerId}
-          mode={mode}
-          spRange={spRange}
-          controls={['setpoint']}
-        />
-        <CardControls
-          controllerId={controllerId}
-          mode={mode}
-          controls={['output']}
-          outputValue={coDraft}
-          onOutputValueChange={(v) => {
-            setCoTouched(true);
-            setCoDraft(v);
-          }}
-        />
-      </div>
+      {!supervisory ? (
+        <div className="flex flex-col gap-1.5">
+          <CardControls
+            controllerId={controllerId}
+            mode={mode}
+            spRange={spRange}
+            controls={['setpoint']}
+          />
+          <CardControls
+            controllerId={controllerId}
+            mode={mode}
+            controls={['output']}
+            outputValue={coDraft}
+            onOutputValueChange={(v) => {
+              setCoTouched(true);
+              setCoDraft(v);
+            }}
+          />
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-1.5">
         <span className="text-2xs font-bold uppercase tracking-caps text-text-soft">Modo PID</span>
-        <div role="group" aria-label="Modo do controlador" className="flex gap-1.5">
-          {OPERATOR_MODES.map((m) => (
-            <Button
-              key={m}
-              aria-pressed={mode === m}
-              className={cn(SEGMENT_BASE, mode === m ? MODE_ACTIVE[m] : SEGMENT_IDLE)}
-              disabled={modeCmd.isPending}
-              onClick={() => modeCmd.mutate(m)}
-            >
-              {/* Mode codes are data, not prose — and the numeric face is what
-                  keeps AUTO and MAN the same width in both segments. */}
-              <span className="numeric">{m}</span>
-            </Button>
-          ))}
-        </div>
+        {supervisory ? (
+          <Badge
+            tone="neutral"
+            style={{ backgroundColor: modeChip.tint }}
+            className={cn('numeric self-start', CHIP, modeChip.text)}
+            title={mode === 'UNKNOWN' ? UNKNOWN_MODE_TITLE : undefined}
+          >
+            {mode}
+          </Badge>
+        ) : (
+          <div role="group" aria-label="Modo do controlador" className="flex gap-1.5">
+            {OPERATOR_MODES.map((m) => (
+              <Button
+                key={m}
+                aria-pressed={mode === m}
+                className={cn(SEGMENT_BASE, mode === m ? MODE_ACTIVE[m] : SEGMENT_IDLE)}
+                disabled={modeCmd.isPending}
+                onClick={() => modeCmd.mutate(m)}
+              >
+                {/* Mode codes are data, not prose — and the numeric face is what
+                    keeps AUTO and MAN the same width in both segments. */}
+                <span className="numeric">{m}</span>
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div aria-hidden="true" className="h-px shrink-0 bg-rule" />
@@ -258,6 +313,20 @@ export function Faceplate({
           >
             <div className="text-2xs uppercase text-text-soft">{gain.label}</div>
             <div className="numeric text-base font-semibold text-text">{gain.value}</div>
+            {canTune ? (
+              <Input
+                aria-label={`Escrever ${gain.label}`}
+                type="number"
+                inputMode="decimal"
+                className={TUNING_INPUT}
+                placeholder={gain.value}
+                value={tuningDrafts[gain.field]}
+                onChange={(e) => setTuningDrafts((d) => ({ ...d, [gain.field]: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitTuning(gain.field);
+                }}
+              />
+            ) : null}
           </div>
         ))}
       </div>

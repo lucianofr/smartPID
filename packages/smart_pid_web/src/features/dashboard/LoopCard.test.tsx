@@ -151,4 +151,21 @@ describe('LoopCard', () => {
     expect(config.querySelector('svg')).not.toBeNull();
     expect(config.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });
+
+  it('shows the execution-mode badge', () => {
+    const { rerender } = render(
+      <LoopCard controller={makeController()} status={status} onOpenConfig={vi.fn()} onSelect={vi.fn()} />,
+    );
+    expect(screen.getByText('SUPERVISORY')).toBeVisible();
+
+    rerender(
+      <LoopCard
+        controller={makeController({ execution_mode: 'DDC' })}
+        status={status}
+        onOpenConfig={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('DDC')).toBeVisible();
+  });
 });

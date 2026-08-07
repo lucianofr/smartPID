@@ -82,6 +82,17 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('img', { name: 'Tendência TIC-202' })).toBeInTheDocument();
   });
 
+  it('resets the faceplate drafts when the selection changes loop', async () => {
+    // The faceplate is keyed by the selected loop: an un-submitted tuning
+    // draft typed on one loop must not survive the switch, or ENTER on the
+    // next loop would write it to the wrong controller.
+    renderDashboard();
+    const kp = await screen.findByLabelText('Escrever Kp');
+    fireEvent.change(kp, { target: { value: '2.2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'TIC-202' }));
+    expect(screen.getByLabelText('Escrever Kp')).toHaveValue(null);
+  });
+
   it('preselects the loop named by ?loop= so a bad-actor row lands on it', () => {
     renderDashboard(CONTROLLERS, '/?loop=2');
     expect(screen.getByRole('complementary', { name: 'Faceplate TIC-202' })).toBeVisible();

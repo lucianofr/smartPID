@@ -10,6 +10,7 @@ import { TrendPanel } from '@/features/dashboard/TrendPanel';
 import { coScale, pvScale, useControllers } from '@/features/dashboard/useControllers';
 import { useLoopAlarmSeverity } from '@/features/dashboard/useAlarmCounts';
 import { useLoopStatuses } from '@/features/dashboard/useLoopStatuses';
+import type { ExecutionMode } from '@/features/loop-config/types';
 import { LoopConfigDialog, NewLoopDialog } from '@/features/loop-config/LoopConfigDialog';
 import { FeedbackBanner } from '@/features/feedback/FeedbackBanner';
 import { SimulationModeBanner } from '@/features/simulator/SimulationModeBanner';
@@ -175,12 +176,14 @@ export function DashboardPage() {
         </div>
 
         <Faceplate
+          key={selected.id}
           controllerId={selected.id}
           tag={selected.name}
           description={selected.description}
           scale={pvScale(selected)}
           coScale={coScale(selected)}
           spRange={{ min: selected.sp_lo_lim, max: selected.sp_hi_lim }}
+          executionMode={selected.execution_mode as ExecutionMode | undefined}
         />
       </div>
 

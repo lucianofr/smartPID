@@ -12,6 +12,7 @@ import {
   updateController,
   writeTuning,
   type CommandResponse,
+  type TuningWrite,
 } from './commandApi';
 
 /**
@@ -79,12 +80,11 @@ export function useOptimizationMutation(): UseMutationResult<
 export function useWriteTuningMutation(): UseMutationResult<
   CommandResponse,
   ApiError,
-  { id: number; kp: number; ti: number; td: number }
+  { id: number } & TuningWrite
 > {
   const invalidate = useInvalidateLoop();
   return useMutation({
-    mutationFn: ({ id, kp, ti, td }: { id: number; kp: number; ti: number; td: number }) =>
-      writeTuning(id, kp, ti, td),
+    mutationFn: ({ id, ...params }: { id: number } & TuningWrite) => writeTuning(id, params),
     onSuccess: (_data, { id }) => invalidate(id),
   });
 }

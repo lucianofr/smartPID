@@ -41,8 +41,14 @@ export const applyTuning = (controllerId: number) => endpoints.applyTuning(contr
 export const setOptimization = (controllerId: number, enabled: boolean) =>
   api.post<CommandResponse>('/commands/optimization', { controller_id: controllerId, enabled });
 
-export const writeTuning = (controllerId: number, kp: number, ti: number, td: number) =>
-  api.post<CommandResponse>('/commands/tuning', { controller_id: controllerId, kp, ti, td });
+export interface TuningWrite {
+  kp?: number;
+  ti?: number;
+  td?: number;
+}
+
+export const writeTuning = (controllerId: number, params: TuningWrite) =>
+  endpoints.writeTuning(controllerId, params);
 
 /** 404 = no pending recommendation. An expected state, never retried. */
 export const getTuningRecommendation = (controllerId: number) =>

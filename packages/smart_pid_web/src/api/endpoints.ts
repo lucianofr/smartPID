@@ -129,6 +129,9 @@ export const endpoints = {
   applyTuning: (controllerId: number) =>
     api.post<CommandResponse>(`/commands/apply-tuning/${controllerId}`),
 
+  writeTuning: (controllerId: number, params: { kp?: number; ti?: number; td?: number }) =>
+    api.post<CommandResponse>('/commands/tuning', { controller_id: controllerId, ...params }),
+
   /** Telemetry replay for one loop — frames ascend by timestamp. */
   history: (controllerId: number, params: HistoryParams = {}) => {
     const q = new URLSearchParams();

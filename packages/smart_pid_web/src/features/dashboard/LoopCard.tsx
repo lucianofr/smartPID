@@ -4,8 +4,10 @@ import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import type { ControllerResponse } from '@/api/types';
 import type { AlarmSeverity } from '@/features/alarms/types';
+import type { ExecutionMode } from '@/features/loop-config/types';
 import type { FFSignal, StatusData } from '@/lib/envelope';
 import { cn } from '@/lib/utils';
+import { CHIP, EXEC_MODE_TITLE, MODE_CHIP, MODE_CHIP_FALLBACK, UNKNOWN_MODE_TITLE } from './modeChip';
 import { coScale, pvScale } from './useControllers';
 
 export interface LoopCardProps {
@@ -72,33 +74,6 @@ const DOT_BY_ALARM: Record<AnalogBarAlarm, string> = {
 const CLOSED_LOOP_MODES: ReadonlySet<string> = new Set(['AUTO', 'CAS']);
 
 /**
- * Mode chip paint. Not a `Badge` tone: the severity tones carry `badge-glow`
- * (§10.5 is severity-only) and a mode is not an alarm, so `neutral` is the tone
- * and the colour comes from the state tokens here.
- *
- * The tint is an inline `color-mix` (same pattern as `KpiBand`) rather than a
- * `bg-state-running/15` utility. There is no soft variant of `--state-running`
- * in the §6.4 contract, and Tailwind's opacity modifier emits a FULL-opacity
- * fallback outside `@supports color-mix` — which would put green text on solid
- * green. An unsupported inline `color-mix` just drops to no background instead.
- */
-const RUNNING_TINT = 'color-mix(in srgb, var(--state-running) 15%, transparent)';
-
-interface ChipPaint {
-  readonly text: string;
-  readonly tint: string;
-}
-
-const MODE_CHIP: Record<string, ChipPaint> = {
-  AUTO: { text: 'text-state-running', tint: RUNNING_TINT },
-  CAS: { text: 'text-state-running', tint: RUNNING_TINT },
-  MAN: { text: 'text-alarm-warn', tint: 'var(--alarm-warn-bg)' },
-};
-const MODE_CHIP_FALLBACK: ChipPaint = { text: 'text-text-soft', tint: 'var(--surface-sunk)' };
-
-const CHIP = 'border-transparent px-2 py-0.5 text-xs font-bold tracking-wide';
-
-/**
  * One loop in the top strip (§6.9). Fixed 206 px width, never shrinks — the
  * strip is a single horizontal scroller and wrapping would push the trend below
  * the fold. No sparkline: the trend panel is the only chart on this page.
@@ -126,6 +101,7 @@ export function LoopCard({
   const closedLoop = CLOSED_LOOP_MODES.has(mode);
   const modeChip = MODE_CHIP[mode] ?? MODE_CHIP_FALLBACK;
   const strategy = activeAiStrategy(controller);
+  const execMode = (controller.execution_mode as ExecutionMode | undefined) ?? 'SUPERVISORY';
 
   const border =
     alarmSeverity !== null && alarmSeverity !== undefined
@@ -210,6 +186,7 @@ export function LoopCard({
             tone="neutral"
             style={{ backgroundColor: modeChip.tint }}
             className={cn('numeric', CHIP, modeChip.text)}
+            title={mode === 'UNKNOWN' ? UNKNOWN_MODE_TITLE : undefined}
           >
             {mode}
           </Badge>
@@ -221,6 +198,13 @@ export function LoopCard({
             className={cn(CHIP, strategy !== null ? 'bg-state-ai-soft text-state-ai' : 'text-text-soft')}
           >
             {strategy ?? '—'}
+          </Badge>
+          <Badge
+            tone="neutral"
+            title={EXEC_MODE_TITLE[execMode]}
+            className={cn(CHIP, 'text-text-soft')}
+          >
+            {execMode}
           </Badge>
         </div>
 

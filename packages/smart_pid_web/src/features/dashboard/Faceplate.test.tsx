@@ -4,9 +4,11 @@ import { endpoints } from '@/api/endpoints';
 import { queryKeys } from '@/api/queryKeys';
 import type { MeResponse } from '@/api/types';
 import type { Role } from '@/api/types';
+import type { ExecutionMode } from '@/features/loop-config/types';
 import { ff, makeController, statusEnvelope } from '@/test/fixtures';
 import type { Scale } from '@/lib/scale';
 import { createFakeRealtime, createQueryClient, TestProviders } from '@/test/providers';
+import { clearToasts, Toaster } from '@/components/Toast';
 import { Faceplate } from './Faceplate';
 
 const scale = { euMin: 0, euMax: 200, unit: '°C' };
@@ -15,7 +17,11 @@ function me(role: Role): MeResponse {
   return { user_id: 1, username: role, role };
 }
 
-function renderFaceplate(role: Role = 'admin', coScale?: Scale) {
+function renderFaceplate(
+  role: Role = 'admin',
+  coScale?: Scale,
+  executionMode: ExecutionMode | null = 'DDC',
+) {
   localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue(me(role));
   const queryClient = createQueryClient();
@@ -24,12 +30,14 @@ function renderFaceplate(role: Role = 'admin', coScale?: Scale) {
   return {
     ...render(
       <TestProviders queryClient={queryClient} realtime={realtime.value}>
+        <Toaster />
         <Faceplate
           controllerId={5}
           tag="PIC-005"
           description="Pressure"
           scale={scale}
           coScale={coScale}
+          executionMode={executionMode ?? undefined}
         />
       </TestProviders>,
     ),
@@ -44,6 +52,9 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  act(() => {
+    clearToasts();
+  });
 });
 
 describe('Faceplate', () => {
@@ -215,5 +226,77 @@ describe('Faceplate — the user role commands the loop', () => {
     });
     fireEvent.click(output);
     await waitFor(() => expect(setOutput).toHaveBeenCalledWith(5, 12));
+  });
+});
+
+describe('Faceplate — SUPERVISORY', () => {
+  it('locks the loop when executionMode is absent, defaulting to SUPERVISORY', async () => {
+    renderFaceplate('user', undefined, null);
+    await screen.findByRole('complementary', { name: 'Faceplate PIC-005' });
+    expect(screen.queryByLabelText('Setpoint')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'AUTO' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'MAN' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set setpoint' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set output' })).not.toBeInTheDocument();
+    expect(screen.getByText('SUPERVISORY')).toBeVisible();
+  });
+
+  it('shows the mode as a badge instead of the AUTO/MAN group', async () => {
+    const { realtime } = renderFaceplate('admin', undefined, 'SUPERVISORY');
+    act(() => {
+      realtime.emit(statusEnvelope(5, 1, { mode: 'AUTO' }));
+    });
+    expect(await screen.findByText('AUTO', { selector: 'span.numeric' })).toBeVisible();
+    expect(screen.queryByRole('group', { name: 'Modo do controlador' })).not.toBeInTheDocument();
+  });
+
+  it('shows an UNKNOWN mode with a title explaining the missing map', async () => {
+    const { realtime } = renderFaceplate('admin', undefined, 'SUPERVISORY');
+    act(() => {
+      realtime.emit(statusEnvelope(5, 1, { mode: 'UNKNOWN' }));
+    });
+    const badge = await screen.findByText('UNKNOWN', { selector: 'span.numeric' });
+    expect(badge).toHaveAttribute('title', 'Mapeamento de modos não configurado');
+  });
+
+  it('writes a single edited gain on ENTER and clears the draft on success', async () => {
+    const writeTuning = vi.spyOn(endpoints, 'writeTuning').mockResolvedValue({ ok: true });
+    const { realtime } = renderFaceplate('admin', undefined, 'SUPERVISORY');
+    act(() => {
+      realtime.emit(statusEnvelope(5, 1, { kp: 2 }));
+    });
+    const kpInput = await screen.findByLabelText('Escrever Kp');
+    expect(kpInput).toHaveAttribute('placeholder', '2.00');
+
+    fireEvent.change(kpInput, { target: { value: '2.2' } });
+    fireEvent.keyDown(kpInput, { key: 'Enter' });
+
+    await waitFor(() => expect(writeTuning).toHaveBeenCalledWith(5, { kp: 2.2 }));
+    await waitFor(() => expect(kpInput).toHaveValue(null));
+  });
+
+  it('hides the tuning entries without tuning.edit', async () => {
+    renderFaceplate('user', undefined, 'SUPERVISORY');
+    await screen.findByRole('complementary', { name: 'Faceplate PIC-005' });
+    expect(screen.queryByLabelText('Escrever Kp')).not.toBeInTheDocument();
+  });
+
+  it('keeps the tuning entries alongside the AUTO/MAN controls in DDC', async () => {
+    renderFaceplate('admin');
+    expect(await screen.findByLabelText('Escrever Kp')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'AUTO' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'MAN' })).toBeVisible();
+  });
+
+  it('keeps the draft and toasts on a refused write', async () => {
+    vi.spyOn(endpoints, 'writeTuning').mockRejectedValue(new Error('refused'));
+    renderFaceplate('admin', undefined, 'SUPERVISORY');
+    const kpInput = await screen.findByLabelText('Escrever Kp');
+
+    fireEvent.change(kpInput, { target: { value: '2.2' } });
+    fireEvent.keyDown(kpInput, { key: 'Enter' });
+
+    expect(await screen.findByText('Comando recusado')).toBeVisible();
+    expect(kpInput).toHaveValue(2.2);
   });
 });

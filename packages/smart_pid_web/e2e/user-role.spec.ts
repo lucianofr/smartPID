@@ -6,7 +6,7 @@ import { FIC101, TIC202, faceplate, gotoDashboard, loopCard } from './helpers/ha
 // route — so the last test drives a forced 403 to prove the §11 recovery path.
 
 test('user operates the loop: setpoint, mode and manual output stay available', async ({ page }) => {
-  await gotoDashboard(page, { role: 'user' });
+  await gotoDashboard(page, { role: 'user', loops: [TIC202] });
 
   await expect(page.getByRole('spinbutton', { name: 'Setpoint' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Set setpoint' })).toBeVisible();
@@ -17,7 +17,7 @@ test('user operates the loop: setpoint, mode and manual output stay available', 
 });
 
 test('user cannot reach tuning, AI or controller management', async ({ page }) => {
-  await gotoDashboard(page, { role: 'user' });
+  await gotoDashboard(page, { role: 'user', loops: [TIC202] });
   await expect(page.getByRole('spinbutton', { name: 'Setpoint' })).toBeVisible();
 
   await expect(page.getByRole('button', { name: 'Apply tuning' })).toHaveCount(0);
@@ -27,6 +27,16 @@ test('user cannot reach tuning, AI or controller management', async ({ page }) =
   await expect(page.getByRole('region', { name: 'Otimização IA' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Salvar IA' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Nova malha' })).toHaveCount(0);
+});
+
+test('a SUPERVISORY loop hides every operator write control for a user', async ({ page }) => {
+  await gotoDashboard(page, { role: 'user' });
+
+  await expect(page.getByRole('spinbutton', { name: 'Setpoint' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'AUTO' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'MAN' })).toHaveCount(0);
+  await expect(page.getByLabel('Escrever Kp')).toHaveCount(0);
+  await expect(faceplate(page, 'FIC-101').getByText('SUPERVISORY')).toBeVisible();
 });
 
 test('the configuration dialog is read-only for a user', async ({ page }) => {
@@ -56,14 +66,14 @@ test('a 403 on a write raises "sem permissão" and refetches /auth/me', async ({
     if (request.url().includes('/api/auth/me')) meRequests += 1;
   });
 
-  await gotoDashboard(page, { role: 'user' });
+  await gotoDashboard(page, { role: 'user', loops: [TIC202] });
   // Registered after the harness catch-all, so it wins for this one route.
   await page.route('**/api/commands/setpoint', (route) =>
     route.fulfill({ status: 403, json: { detail: 'requires admin role' } }),
   );
 
   const before = meRequests;
-  await page.getByRole('spinbutton', { name: 'Setpoint' }).fill(String(FIC101.sp + 1));
+  await page.getByRole('spinbutton', { name: 'Setpoint' }).fill(String(TIC202.sp + 1));
   await page.getByRole('button', { name: 'Set setpoint' }).click();
 
   await expect(page.getByText(/sem permissão/i)).toBeVisible();
@@ -95,13 +105,13 @@ test('user writes setpoint, mode and manual output to the API', async ({ page })
   const commands = recordCommands(page);
   // Manual output is locked outside MAN and the stubbed socket keeps replaying
   // the fixture's mode, so the loop has to START in MAN for CO to be drivable.
-  await gotoDashboard(page, { role: 'user', loops: [{ ...FIC101, mode: 'MAN' }] });
+  await gotoDashboard(page, { role: 'user', loops: [{ ...TIC202, mode: 'MAN' }] });
 
   await page.getByRole('spinbutton', { name: 'Setpoint' }).fill('57');
   await page.getByRole('button', { name: 'Set setpoint' }).click();
   await expect
     .poll(() => commands)
-    .toContain('/api/commands/setpoint {"controller_id":1,"value":57}');
+    .toContain('/api/commands/setpoint {"controller_id":2,"value":57}');
 
   const output = page.getByRole('button', { name: 'Set output' });
   await expect(output).toBeEnabled();
@@ -109,31 +119,31 @@ test('user writes setpoint, mode and manual output to the API', async ({ page })
   await output.click();
   await expect
     .poll(() => commands)
-    .toContain('/api/commands/output {"controller_id":1,"value":12}');
+    .toContain('/api/commands/output {"controller_id":2,"value":12}');
 
-  await faceplate(page, 'FIC-101')
+  await faceplate(page, 'TIC-202')
     .getByRole('group', { name: 'Modo do controlador' })
     .getByRole('button', { name: 'AUTO', exact: true })
     .click();
   await expect
     .poll(() => commands)
-    .toContain('/api/commands/mode {"controller_id":1,"mode":"AUTO"}');
+    .toContain('/api/commands/mode {"controller_id":2,"mode":"AUTO"}');
 });
 
 test('user reaches the faceplate AUTO/MAN buttons and they command', async ({ page }) => {
   const commands = recordCommands(page);
-  await gotoDashboard(page, { role: 'user' });
+  await gotoDashboard(page, { role: 'user', loops: [TIC202] });
 
-  const modes = faceplate(page, 'FIC-101').getByRole('group', { name: 'Modo do controlador' });
+  const modes = faceplate(page, 'TIC-202').getByRole('group', { name: 'Modo do controlador' });
   await modes.getByRole('button', { name: 'MAN', exact: true }).click();
   await expect
     .poll(() => commands)
-    .toContain('/api/commands/mode {"controller_id":1,"mode":"MAN"}');
+    .toContain('/api/commands/mode {"controller_id":2,"mode":"MAN"}');
 
   await modes.getByRole('button', { name: 'AUTO', exact: true }).click();
   await expect
     .poll(() => commands)
-    .toContain('/api/commands/mode {"controller_id":1,"mode":"AUTO"}');
+    .toContain('/api/commands/mode {"controller_id":2,"mode":"AUTO"}');
 });
 
 test('every loop card offers a live [cfg] for a user — no dead control', async ({ page }) => {

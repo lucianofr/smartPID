@@ -223,7 +223,8 @@ test.describe('responsive dashboard (§6.9)', () => {
     // Acknowledgement.
     await expect(page.getByRole('button', { name: 'ACK ALL' })).toBeVisible();
     // SP entry.
-    const fp = faceplate(page, 'FIC-101');
+    await loopCard(page, 'TIC-202').getByRole('button', { name: 'TIC-202', exact: true }).click();
+    const fp = faceplate(page, 'TIC-202');
     await expect(fp.getByLabel('Setpoint')).toBeVisible();
     await expect(fp.getByRole('button', { name: 'Set setpoint' })).toBeVisible();
   });
@@ -237,7 +238,8 @@ test.describe('responsive dashboard (§6.9)', () => {
     await assertMinTarget(page.getByRole('button', { name: 'ACK ALL' }), TARGET_MIN);
     await assertMinTarget(loopCard(page, 'FIC-101').getByRole('button', { name: 'FIC-101', exact: true }), TARGET_MIN);
 
-    const fp = faceplate(page, 'FIC-101');
+    await loopCard(page, 'TIC-202').getByRole('button', { name: 'TIC-202', exact: true }).click();
+    const fp = faceplate(page, 'TIC-202');
     await assertMinTarget(fp.getByRole('button', { name: 'AUTO' }), TARGET_MIN);
     await assertMinTarget(fp.getByRole('button', { name: 'Set output' }), TARGET_MIN);
   });
