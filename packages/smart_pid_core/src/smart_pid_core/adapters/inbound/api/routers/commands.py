@@ -1,6 +1,7 @@
 """Command router — setpoint, mode, output, and optimizer changes."""
 
 import json
+import logging
 import time
 from dataclasses import replace
 from typing import Annotated
@@ -24,12 +25,13 @@ from smart_pid_core.adapters.inbound.api.dependencies import (
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository  # noqa: TC001
 from smart_pid_core.application.event_bus import EventBus  # noqa: TC001
-from smart_pid_core.application.loop_manager import LoopManager
+from smart_pid_core.application.loop_manager import LoopManager, check_within_limits
 from smart_pid_core.application.tuning_store import TuningRecommendationStore
 from smart_pid_core.application.workers.system_event_worker import (  # noqa: TC001
     SystemEventWorker,
 )
 from smart_pid_core.domain.services.tuning_guardrails import (
+    clamp_tuning_absolute,
     clamp_tuning_change,
     clamp_tuning_params,
 )
@@ -48,27 +50,61 @@ from smart_pid_domain.exceptions import ControllerNotFoundError
 
 router = APIRouter()
 
+logger = logging.getLogger(__name__)
+
 _MONITOR_DETAIL = "Not available in monitor mode. PID is controlled by external DCS."
 
 
 def _dcs_owns_loop(
-    lm: LoopManager, controller_id: int, execution_mode: str, opcua: object | None,
+    lm: LoopManager, controller_id: int, execution_mode: str,
 ) -> bool:
-    """True when the loop's PID runs outside SmartPID, so SP/mode commands must
-    be written to the DCS over OPC-UA instead of the internal PIDWorker. The
-    whole daemon is external in monitor mode; in execute mode a SUPERVISORY
-    controller is external only when an OPC-UA link exists to carry the write
-    (the simulator or a real DCS). With no OPC adapter there is nothing external
-    to command, so SmartPID handles it locally."""
+    """True when the loop's PID runs outside SmartPID, so SP/CO/mode commands
+    must be written to the DCS over OPC-UA instead of the internal PIDWorker.
+
+    The whole daemon is external in monitor mode; in execute mode that is exactly
+    the SUPERVISORY loops.
+
+    Ownership deliberately does NOT depend on an adapter being present. It used
+    to: absent adapter meant "nothing external to command, so SmartPID handles it
+    locally". There is nothing local to hand it to either — ``io_worker`` writes
+    CO for DDC loops only, so the command landed on a PIDWorker that does not
+    drive the loop and answered 200 for a write nothing would apply. A missing
+    link is the same condition as a dead one, and each caller already answers 409
+    for that.
+    """
     if execution_mode == "monitor":
         return True
-    if opcua is None:
-        return False
     try:
         ctrl = lm.get_controller(controller_id)
     except ControllerNotFoundError:
         return False
     return ctrl.execution_mode is ExecutionMode.SUPERVISORY
+
+
+def _write_to_dcs(
+    opcua: object, controller_id: int, param: str, value: float,
+) -> None:
+    """Push one parameter to the external controller, mapping its failures.
+
+    ``OPCUAAdapter.write_parameter`` raises ``KeyError`` when the loop is not
+    registered with the adapter, ``ValueError`` when the loop has no node bound for
+    ``param``, and ``ConnectionError`` when the link dropped between the
+    ``is_connected`` check and the write. None of those had a handler, so each
+    surfaced as a 500 with a traceback. A loop with no CO node bound is an ordinary
+    configuration state rather than a server fault, and it became reachable the
+    moment ``set_output`` started routing SUPERVISORY loops through here.
+    """
+    try:
+        opcua.write_parameter(controller_id, param, value)  # type: ignore[attr-defined]
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Loop has no OPC-UA node bound for '{param}': {exc}",
+        ) from exc
+    except ConnectionError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"OPC-UA write of '{param}' failed: {exc}",
+        ) from exc
 
 
 @router.post("/setpoint", response_model=CommandResponse)
@@ -82,10 +118,16 @@ async def set_setpoint(
     execution_mode: Annotated[str, Depends(get_execution_mode)],
 ) -> CommandResponse:
     opcua = getattr(request.app.state, "opcua_adapter", None)
-    if _dcs_owns_loop(lm, body.controller_id, execution_mode, opcua):
+    if _dcs_owns_loop(lm, body.controller_id, execution_mode):
         if opcua is None or not opcua.is_connected:
             raise HTTPException(status_code=409, detail=_MONITOR_DETAIL)
-        opcua.write_parameter(body.controller_id, "sp", body.value)
+        # This branch skips LoopManager, and with it the sp-span check that the
+        # local branch below gets for free. The span is the operator's, not the
+        # executor's: without this the same out-of-range SP is a 400 on a DDC
+        # loop and a straight write-through on a SUPERVISORY one.
+        ctrl = lm.get_controller(body.controller_id)
+        check_within_limits("SP", body.value, ctrl.sp_lo_lim, ctrl.sp_hi_lim)
+        _write_to_dcs(opcua, body.controller_id, "sp", body.value)
     else:
         lm.set_setpoint(body.controller_id, body.value)
     await audit_and_broadcast(
@@ -115,7 +157,7 @@ async def set_mode(
     execution_mode: Annotated[str, Depends(get_execution_mode)],
 ) -> CommandResponse:
     opcua = getattr(request.app.state, "opcua_adapter", None)
-    if _dcs_owns_loop(lm, body.controller_id, execution_mode, opcua):
+    if _dcs_owns_loop(lm, body.controller_id, execution_mode):
         if opcua is None or not opcua.is_connected:
             raise HTTPException(status_code=409, detail=_MONITOR_DETAIL)
         success = opcua.write_target_mode(body.controller_id, ControllerMode(body.mode))
@@ -151,11 +193,33 @@ async def set_output(
     sew: Annotated[SystemEventWorker | None, Depends(get_system_event_worker)],
     execution_mode: Annotated[str, Depends(get_execution_mode)],
 ) -> CommandResponse:
-    if execution_mode == "monitor":
-        opcua = getattr(request.app.state, "opcua_adapter", None)
+    opcua = getattr(request.app.state, "opcua_adapter", None)
+    if _dcs_owns_loop(lm, body.controller_id, execution_mode):
         if opcua is None or not opcua.is_connected:
             raise HTTPException(status_code=409, detail=_MONITOR_DETAIL)
-        opcua.write_parameter(body.controller_id, "co", body.value)
+        # Same gate as set_setpoint above. This used to test `execution_mode ==
+        # "monitor"` alone, so on a SUPERVISORY loop in execute mode the setpoint
+        # went to the DCS over OPC-UA while the output took the local branch: it
+        # set `_last_co` on a PIDWorker that does not drive that loop, io_worker
+        # dropped the action for not being DDC, and the next telemetry frame
+        # overwrote it. The operator got a 200 for a write the DCS never saw.
+        ctrl = lm.get_controller(body.controller_id)
+        check_within_limits("Output", body.value, ctrl.out_lo_lim, ctrl.out_hi_lim)
+        # A CO write lands on the external block's output, where a running PID
+        # overwrites it on the next scan — the same reason LoopManager refuses one
+        # unless the local worker is in MAN. `apply_tuning` below already reads the
+        # external mode before writing gains, and an output write moves the
+        # actuator more directly than a gain does, so it gets the same bar. A loop
+        # with no mode_actual node reads None, which stays permissive rather than
+        # blocking every such loop.
+        ext_mode = opcua.read_actual_mode(body.controller_id)
+        if ext_mode is not None and ext_mode is not ControllerMode.MAN:
+            raise HTTPException(
+                status_code=409,
+                detail=f"External PID is in {ext_mode.value} mode"
+                " — output write requires Man",
+            )
+        _write_to_dcs(opcua, body.controller_id, "co", body.value)
     else:
         lm.set_output(body.controller_id, body.value)
     await audit_and_broadcast(
@@ -257,8 +321,9 @@ async def write_tuning(
     """Write Kp/Ti/Td directly to OPC-UA.
 
     Mirrors the safety bar of ``apply-tuning``: supervisor-only, typed body,
-    and each supplied parameter is clamped to the controller's
-    ``max_tuning_change_pct`` relative to its current value before write-back.
+    each supplied parameter clamped to the controller's
+    ``max_tuning_change_pct`` relative to its current value, then forced into
+    the absolute range the loop's own configuration allows.
     """
     controller_id = body.controller_id
     ctrl = lm.get_controller(controller_id)
@@ -280,6 +345,26 @@ async def write_tuning(
         if body.td is not None
         else None
     )
+
+    # The rate clamp above bounds how far this write may move each term; it does
+    # not bound where the term lands. At a high max_tuning_change_pct a single
+    # write reaches Kp=0, and repeated writes walk there at any percentage. It
+    # also leaves the Ti band the AI worker is held to (ai_worker.py) reachable
+    # only from the AI side, making this route the way around the operator's own
+    # configured Ti/Ki limits.
+    bounded = clamp_tuning_absolute(
+        kp=kp, ti=ti, td=td,
+        execution_mode=ctrl.execution_mode,
+        ti_min=ctrl.ai_config.limit_min,
+        ti_max=ctrl.ai_config.limit_max,
+    )
+    for name, asked, allowed in zip(("Kp", "Ti", "Td"), (kp, ti, td), bounded, strict=True):
+        if asked is not None and allowed != asked:
+            logger.warning(
+                "controller %d: %s write %g outside the limits configured for this "
+                "loop, clamped to %g", controller_id, name, asked, allowed,
+            )
+    kp, ti, td = bounded
 
     opcua = getattr(request.app.state, "opcua_adapter", None)
     if opcua is None or not opcua.is_connected:
@@ -390,6 +475,16 @@ async def apply_tuning(
         rec_ti=rec.recommended_ti,
         rec_td=rec.recommended_td,
         max_pct=ctrl.max_tuning_change_pct,
+    )
+    # The rate clamp above only bounds the step away from the CURRENT value, so
+    # a recommendation that keeps a term outside the loop's configured range
+    # passes untouched. `clamped` below compares against what was recommended,
+    # so folding this in here also makes the flag report an absolute clamp.
+    kp, ti, td = clamp_tuning_absolute(
+        kp=kp, ti=ti, td=td,
+        execution_mode=ctrl.execution_mode,
+        ti_min=ctrl.ai_config.limit_min,
+        ti_max=ctrl.ai_config.limit_max,
     )
     clamped = (
         kp != rec.recommended_kp

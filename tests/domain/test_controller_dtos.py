@@ -17,6 +17,7 @@ from smart_pid_domain.dtos.controllers import (
     ScaleConfigDTO,
     TagBindingsDTO,
 )
+from smart_pid_domain.models.controller import KP_MIN
 
 # ── Sub-model defaults ──────────────────────────────────────────────────────
 
@@ -302,3 +303,222 @@ class TestPermittedModesDTOs:
             permitted_modes=["MAN", "AUTO", "CAS"],
         )
         assert r.permitted_modes == ["MAN", "AUTO", "CAS"]
+
+
+
+class TestInputModelsRejectNonFinite:
+    """Non-finite configuration disarms every downstream guard.
+
+    The clamps that protect the actuation path compare a value against the
+    loop's own limits, and those limits come from this payload. With
+    ``sp_hi_lim = inf`` no setpoint ever exceeds it; with ``ai_config.limit_min
+    = inf`` the Ti clamp does not merely stop working, it returns ``inf`` and
+    writes that to the DCS. The configuration is the guard's ammunition, so it
+    is validated at the boundary rather than defended against downstream.
+    """
+
+    @pytest.mark.parametrize("bad", [float("inf"), float("-inf"), float("nan")])
+    def test_create_rejects_non_finite_nested_gain(self, bad: float) -> None:
+        with pytest.raises(ValidationError):
+            ControllerCreate(name="TIC-100", pid_params=PIDParamsDTO(gain=bad))
+
+    @pytest.mark.parametrize("bad", [float("inf"), float("-inf"), float("nan")])
+    def test_update_rejects_non_finite_ti_band(self, bad: float) -> None:
+        """`limit_min` is the field that poisons rather than disables."""
+        with pytest.raises(ValidationError):
+            ControllerUpdate(ai_config=AIConfigDTO(limit_min=bad))
+
+    @pytest.mark.parametrize(
+        "field", ["sp_hi_lim", "sp_lo_lim", "out_hi_lim", "out_lo_lim"],
+    )
+    def test_update_rejects_non_finite_span(self, field: str) -> None:
+        with pytest.raises(ValidationError):
+            ControllerUpdate(**{field: float("inf")})
+
+    def test_update_rejects_non_finite_pv_scale(self) -> None:
+        with pytest.raises(ValidationError):
+            ControllerUpdate(pv_scale=ScaleConfigDTO(eu_min=0.0, eu_max=float("inf")))
+
+    def test_create_rejects_non_finite_top_level(self) -> None:
+        with pytest.raises(ValidationError):
+            ControllerCreate(name="TIC-100", max_tuning_change_pct=float("inf"))
+
+    def test_error_names_the_offending_field(self) -> None:
+        """A 422 the operator cannot act on is barely better than a 500."""
+        with pytest.raises(ValidationError, match="limit_max"):
+            ControllerUpdate(ai_config=AIConfigDTO(limit_max=float("inf")))
+
+    def test_valid_payload_still_accepted(self) -> None:
+        """The guard must not become a wall."""
+        c = ControllerCreate(
+            name="TIC-100",
+            scan_rate_s=0.5,
+            pid_params=PIDParamsDTO(gain=2.5, reset=20.0, rate=0.5),
+            pv_scale=ScaleConfigDTO(eu_min=-50.0, eu_max=250.0),
+            ai_config=AIConfigDTO(limit_min=1.0, limit_max=10.0),
+            sp_hi_lim=200.0, sp_lo_lim=-50.0,
+        )
+        assert c.pid_params.gain == 2.5
+        assert c.pv_scale.eu_min == -50.0
+        assert c.sp_lo_lim == -50.0
+
+    def test_none_optional_fields_still_accepted(self) -> None:
+        """An omitted field is not a non-finite one."""
+        u = ControllerUpdate()
+        assert u.sp_hi_lim is None
+        assert u.pid_params is None
+
+    def test_response_still_reads_legacy_non_finite(self) -> None:
+        """The read path stays open on purpose.
+
+        Rows holding `inf` already exist wherever this payload was accepted
+        before. Constraining the shared nested DTOs would turn every such row
+        into a 500 on GET /controllers and leave no way to repair it from the
+        UI, so the constraint lives on the input models alone.
+        """
+        r = ControllerResponse(
+            id=1, name="TIC-100", description="", mode="AUTO",
+            pv=0.0, sp=0.0, co=0.0,
+            ai_config=AIConfigDTO(limit_max=float("inf")),
+            sp_hi_lim=float("inf"),
+        )
+        assert r.ai_config.limit_max == float("inf")
+        assert r.sp_hi_lim == float("inf")
+
+
+class TestScanRateMustBePositive:
+    """`scan_rate_s` reaches PIDWorker as the loop's sleep budget.
+
+    ``pid_worker`` caches it at thread start and ends each pass with
+    ``sleep_time = scan_s - elapsed; if sleep_time > 0: wait(...)``. At zero the
+    wait never happens and the thread spins at 100 % CPU, and because the value
+    is persisted it comes back that way on every boot.
+    """
+
+    @pytest.mark.parametrize("bad", [0.0, -1.0])
+    def test_create_rejects_non_positive(self, bad: float) -> None:
+        with pytest.raises(ValidationError):
+            ControllerCreate(name="TIC-100", scan_rate_s=bad)
+
+    @pytest.mark.parametrize("bad", [0.0, -1.0])
+    def test_update_rejects_non_positive(self, bad: float) -> None:
+        with pytest.raises(ValidationError):
+            ControllerUpdate(scan_rate_s=bad)
+
+    def test_small_positive_still_accepted(self) -> None:
+        assert ControllerCreate(name="TIC-100", scan_rate_s=0.05).scan_rate_s == 0.05
+
+
+class TestInputModelsEnforceGainFloor:
+    """`PUT /controllers/{id}` writes a SUPERVISORY loop's gains straight to the
+    DCS (the config dialog is how tuning reaches an external controller), and
+    that write carried no bound at all.
+
+    Refused here rather than clamped in the router: the router persists before
+    it writes, so clamping there would store one number and send another, and
+    the dialog would show the operator a value the DCS is not running.
+    """
+
+    @pytest.mark.parametrize("bad", [0.0, -2.0])
+    def test_create_rejects_gain_below_floor(self, bad: float) -> None:
+        with pytest.raises(ValidationError, match="gain"):
+            ControllerCreate(name="TIC-100", pid_params=PIDParamsDTO(gain=bad))
+
+    @pytest.mark.parametrize("bad", [0.0, -2.0])
+    def test_update_rejects_gain_below_floor(self, bad: float) -> None:
+        with pytest.raises(ValidationError, match="gain"):
+            ControllerUpdate(pid_params=PIDParamsDTO(gain=bad))
+
+    def test_gain_at_floor_accepted(self) -> None:
+        c = ControllerCreate(name="TIC-100", pid_params=PIDParamsDTO(gain=KP_MIN))
+        assert c.pid_params.gain == pytest.approx(KP_MIN)
+
+    def test_negative_reset_rejected(self) -> None:
+        """A negative Ti flips the sign of the integral term."""
+        with pytest.raises(ValidationError, match="reset"):
+            ControllerUpdate(pid_params=PIDParamsDTO(gain=1.0, reset=-1.0))
+
+    def test_negative_rate_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="rate"):
+            ControllerUpdate(pid_params=PIDParamsDTO(gain=1.0, rate=-1.0))
+
+    def test_zero_reset_and_rate_accepted(self) -> None:
+        """Zero is how the engine is told to run P-only; only negatives lie."""
+        u = ControllerUpdate(pid_params=PIDParamsDTO(gain=1.0, reset=0.0, rate=0.0))
+        assert u.pid_params is not None
+        assert u.pid_params.reset == 0.0
+        assert u.pid_params.rate == 0.0
+
+    def test_ti_outside_optimizer_band_still_accepted(self) -> None:
+        """`limit_min`/`limit_max` bound what the AI may propose, not what the
+        operator may configure — the loop config tooltip says exactly that.
+        """
+        u = ControllerUpdate(
+            pid_params=PIDParamsDTO(gain=1.0, reset=500.0),
+            ai_config=AIConfigDTO(limit_min=1.0, limit_max=10.0),
+        )
+        assert u.pid_params is not None
+        assert u.pid_params.reset == 500.0
+
+    def test_response_still_reads_legacy_zero_gain(self) -> None:
+        r = ControllerResponse(
+            id=1, name="TIC-100", description="", mode="AUTO",
+            pv=0.0, sp=0.0, co=0.0,
+            pid_params=PIDParamsDTO(gain=0.0),
+        )
+        assert r.pid_params.gain == 0.0
+
+
+class TestInputModelsRejectInvertedBands:
+    """An inverted band is not a smaller band, it is a broken guard.
+
+    `check_within_limits` rejects every value once `sp_hi_lim < sp_lo_lim`, locking
+    the operator out of their own loop. `clamp_tuning_absolute` applies the floor
+    last, so `limit_min > limit_max` pins Ti to `limit_min` no matter what was
+    asked. `AIConfigDTO` already refuses an inverted surge-level band for the same
+    reason; these are the bands that were left out.
+    """
+
+    @pytest.mark.parametrize(
+        ("lo_name", "hi_name"),
+        [
+            ("sp_lo_lim", "sp_hi_lim"),
+            ("out_lo_lim", "out_hi_lim"),
+            ("arw_lo_lim", "arw_hi_lim"),
+        ],
+    )
+    def test_inverted_span_rejected(self, lo_name: str, hi_name: str) -> None:
+        with pytest.raises(ValidationError, match=lo_name):
+            ControllerUpdate(**{lo_name: 90.0, hi_name: 10.0})
+
+    def test_equal_bounds_rejected(self) -> None:
+        """A zero-width span accepts exactly one value, which is never intended."""
+        with pytest.raises(ValidationError):
+            ControllerUpdate(sp_lo_lim=50.0, sp_hi_lim=50.0)
+
+    def test_inverted_ti_band_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="limit_min"):
+            ControllerUpdate(ai_config=AIConfigDTO(limit_min=10.0, limit_max=1.0))
+
+    def test_equal_ti_band_accepted(self) -> None:
+        """Pinning Ti to a single value is a legitimate optimizer instruction."""
+        u = ControllerUpdate(ai_config=AIConfigDTO(limit_min=5.0, limit_max=5.0))
+        assert u.ai_config is not None
+        assert u.ai_config.limit_min == 5.0
+
+    def test_one_sided_patch_still_accepted(self) -> None:
+        """A partial edit carries one side; the other lives in the stored record,
+        which this payload cannot see.
+        """
+        assert ControllerUpdate(sp_hi_lim=10.0).sp_hi_lim == 10.0
+        assert ControllerUpdate(sp_lo_lim=90.0).sp_lo_lim == 90.0
+
+    def test_ordered_bands_accepted(self) -> None:
+        c = ControllerCreate(
+            name="TIC-100",
+            sp_lo_lim=-50.0, sp_hi_lim=250.0,
+            out_lo_lim=0.0, out_hi_lim=100.0,
+            arw_lo_lim=5.0, arw_hi_lim=95.0,
+        )
+        assert c.sp_hi_lim == 250.0
+        assert c.arw_lo_lim == 5.0

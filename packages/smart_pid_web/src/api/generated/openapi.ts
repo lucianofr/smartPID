@@ -350,8 +350,9 @@ export interface paths {
          * @description Write Kp/Ti/Td directly to OPC-UA.
          *
          *     Mirrors the safety bar of ``apply-tuning``: supervisor-only, typed body,
-         *     and each supplied parameter is clamped to the controller's
-         *     ``max_tuning_change_pct`` relative to its current value before write-back.
+         *     each supplied parameter clamped to the controller's
+         *     ``max_tuning_change_pct`` relative to its current value, then forced into
+         *     the absolute range the loop's own configuration allows.
          */
         post: operations["write_tuning_commands_tuning_post"];
         delete?: never;

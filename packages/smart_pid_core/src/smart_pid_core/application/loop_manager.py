@@ -26,6 +26,21 @@ if TYPE_CHECKING:
     from smart_pid_domain.models.controller import Controller
 
 
+def check_within_limits(label: str, value: float, lo: float, hi: float) -> None:
+    """Raise DomainError when ``value`` falls outside the loop's configured span.
+
+    Shared with the command router's DCS branch. The span is a property of the
+    loop the operator configured, not of who executes its PID, so a SUPERVISORY
+    loop whose SP is written out over OPC-UA must get the same answer as a DDC
+    one handled locally. Keeping the comparison in one function is what makes
+    those two paths answer alike instead of drifting apart.
+    """
+    if value > hi:
+        raise DomainError(f"{label} {value} above high limit {hi}")
+    if value < lo:
+        raise DomainError(f"{label} {value} below low limit {lo}")
+
+
 @dataclass
 class LoopContext:
     """Holds references to all active components for one control loop."""
@@ -180,14 +195,7 @@ class LoopManager:
         if ctx is None:
             raise ControllerNotFoundError(controller_id)
         c = ctx.controller
-        if value > c.sp_hi_lim:
-            raise DomainError(
-                f"SP {value} above high limit {c.sp_hi_lim}",
-            )
-        if value < c.sp_lo_lim:
-            raise DomainError(
-                f"SP {value} below low limit {c.sp_lo_lim}",
-            )
+        check_within_limits("SP", value, c.sp_lo_lim, c.sp_hi_lim)
         ctx.pid_worker.set_sp(value)
 
     def set_mode(
@@ -282,12 +290,5 @@ class LoopManager:
         if ctx.pid_worker.current_mode != ControllerMode.MAN:
             raise DomainError("Output can only be set in MAN mode")
         c = ctx.controller
-        if value > c.out_hi_lim:
-            raise DomainError(
-                f"Output {value} above high limit {c.out_hi_lim}",
-            )
-        if value < c.out_lo_lim:
-            raise DomainError(
-                f"Output {value} below low limit {c.out_lo_lim}",
-            )
+        check_within_limits("Output", value, c.out_lo_lim, c.out_hi_lim)
         ctx.pid_worker.set_output(value)

@@ -1,6 +1,8 @@
 """Tests for SimulatorAdapter — TelemetrySource + ControlWriter."""
 from __future__ import annotations
 
+import logging
+import math
 import time
 from unittest.mock import MagicMock, patch
 
@@ -13,6 +15,7 @@ from smart_pid_core.adapters.inbound.simulator_adapter import (
 )
 from smart_pid_core.adapters.outbound.sqlite_repo import SQLiteRepository
 from smart_pid_core.config import CoreSettings
+from smart_pid_core.domain.services.tuning_guardrails import KP_MIN
 from smart_pid_domain.enums import ProcessPresetName
 from smart_pid_domain.models.controller import TagBindings
 
@@ -782,3 +785,287 @@ class TestStandaloneLoopSurvivesRestart:
             if fresh is not None:
                 fresh.stop()
             await repo.close()
+
+
+class TestOPCUAWriteGuards:
+    """The twin stands in for an external DCS, so it takes writes from OPC-UA
+    clients the platform does not control. A real DCS bounds what its own blocks
+    accept; only CO was bounded here, and every other writable parameter went
+    straight into the running loop.
+    """
+
+    def test_sp_above_pv_span_clamped(self, adapter: SimulatorAdapter) -> None:
+        """PV is already hard-clamped to the span (the tick's pv assignment), so
+        an SP outside it is an error the loop can never close — the integral
+        just winds up against a wall.
+        """
+        adapter.register_controller(1, pv_min=0.0, pv_max=100.0)
+        adapter._on_opcua_write(1, "sp", 500.0)
+        assert adapter._controllers[1].sp == pytest.approx(100.0)
+
+    def test_sp_below_pv_span_clamped(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1, pv_min=20.0, pv_max=100.0)
+        adapter._on_opcua_write(1, "sp", -50.0)
+        assert adapter._controllers[1].sp == pytest.approx(20.0)
+
+    def test_sp_inside_span_untouched(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1, pv_min=0.0, pv_max=180.0)
+        adapter._on_opcua_write(1, "sp", 150.0)
+        assert adapter._controllers[1].sp == pytest.approx(150.0)
+
+    def test_pid_sp_clamped_like_sp(self, adapter: SimulatorAdapter) -> None:
+        """`pid_sp` writes the same field, so it needs the same bound."""
+        adapter.register_controller(1, pv_min=0.0, pv_max=100.0)
+        adapter._on_opcua_write(1, "pid_sp", 500.0)
+        assert adapter._controllers[1].sp == pytest.approx(100.0)
+
+    def test_zero_kp_floored(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, "kp", 0.0)
+        assert adapter._controllers[1].pid_params.gain == pytest.approx(KP_MIN)
+
+    def test_negative_ti_floored_at_zero(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, "ti", -5.0)
+        assert adapter._controllers[1].pid_params.reset == pytest.approx(0.0)
+
+    def test_negative_td_floored_at_zero(self, adapter: SimulatorAdapter) -> None:
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, "td", -2.0)
+        assert adapter._controllers[1].pid_params.rate == pytest.approx(0.0)
+
+    def test_ti_zero_still_disables_integral(self, adapter: SimulatorAdapter) -> None:
+        """The twin runs its own PID, which reads reset == 0 as P-only. That
+        door stays open; only negatives, which flip the term's sign, are barred.
+        """
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, "ti", 0.0)
+        assert adapter._controllers[1].pid_params.reset == pytest.approx(0.0)
+
+    def test_unknown_mode_ignored(self, adapter: SimulatorAdapter) -> None:
+        """Mode is 0=MAN/1=AUTO. Garbage has no defensible clamp target:
+        rounding up would put the loop in AUTO on a bad write, rounding down
+        would silently drop it out of automatic control. Keep what the operator
+        left.
+        """
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, "mode", 1)
+        adapter._on_opcua_write(1, "mode", 7)
+        assert adapter._controllers[1].pid_mode == 1
+
+    def test_unknown_pid_structure_ignored(self, adapter: SimulatorAdapter) -> None:
+        """0=ISA, 1=PARALLEL, 2=SERIES. Anything else would index nothing."""
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, "pid_structure", 2)
+        adapter._on_opcua_write(1, "pid_structure", 9)
+        assert adapter._controllers[1].pid_structure == 2
+
+    def test_valid_mode_still_applies(self, adapter: SimulatorAdapter) -> None:
+        """The guard must not become a wall."""
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, "mode", 1)
+        assert adapter._controllers[1].pid_mode == 1
+
+    def test_rejected_write_is_not_marked_dirty(self, adapter: SimulatorAdapter) -> None:
+        """A discarded write changed nothing, so it must not schedule a DB
+        flush that would persist the unchanged value as if it were new config.
+        """
+        adapter.register_controller(1)
+        adapter.consume_dirty_cids()
+        adapter._on_opcua_write(1, "mode", 7)
+        assert adapter.consume_dirty_cids() == []
+
+    @pytest.mark.parametrize("param", ["co", "sp", "pid_sp", "kp", "ti", "td"])
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_write_discarded(
+        self, adapter: SimulatorAdapter, param: str, bad: float,
+    ) -> None:
+        """Non-finite values must be refused before any clamp, not through one.
+
+        Python's min/max do not propagate NaN: `max(0.0, nan)` is 0.0 while
+        `max(nan, 0.0)` is nan, so a clamp would have quietly resolved NaN to
+        whichever limit the argument order happened to favour and the loop would
+        run on a number nobody asked for.
+        """
+        adapter.register_controller(1, pv_min=0.0, pv_max=100.0)
+        before = (
+            adapter._controllers[1].last_co,
+            adapter._controllers[1].sp,
+            adapter._controllers[1].pid_params.gain,
+            adapter._controllers[1].pid_params.reset,
+            adapter._controllers[1].pid_params.rate,
+        )
+        adapter._on_opcua_write(1, param, bad)
+        assert (
+            adapter._controllers[1].last_co,
+            adapter._controllers[1].sp,
+            adapter._controllers[1].pid_params.gain,
+            adapter._controllers[1].pid_params.reset,
+            adapter._controllers[1].pid_params.rate,
+        ) == before
+
+    _LOGGER = "smart_pid_core.adapters.inbound.simulator_adapter"
+
+    def test_clamped_write_is_logged(
+        self, adapter: SimulatorAdapter, caplog,
+    ) -> None:
+        """The twin accepts the write and runs a different number. The WARNING is
+        the only thing connecting the two, so it is part of the contract, not
+        decoration: a mis-scaled client would otherwise retune a loop unnoticed.
+        """
+        adapter.register_controller(1, pv_min=0.0, pv_max=100.0)
+        with caplog.at_level(logging.WARNING, logger=self._LOGGER):
+            adapter._on_opcua_write(1, "sp", 500.0)
+        assert any(
+            "sp" in r.getMessage() and "clamped" in r.getMessage()
+            for r in caplog.records
+        ), [r.getMessage() for r in caplog.records]
+
+    def test_discarded_write_is_logged(
+        self, adapter: SimulatorAdapter, caplog,
+    ) -> None:
+        """A discarded write leaves the loop where it was while the client
+        believes it moved it, so it has to be visible.
+        """
+        adapter.register_controller(1)
+        with caplog.at_level(logging.WARNING, logger=self._LOGGER):
+            adapter._on_opcua_write(1, "mode", 7)
+        assert any(
+            "mode" in r.getMessage() and "discarded" in r.getMessage()
+            for r in caplog.records
+        ), [r.getMessage() for r in caplog.records]
+
+    def test_in_range_write_logs_nothing(
+        self, adapter: SimulatorAdapter, caplog,
+    ) -> None:
+        """A guard that warns on every legitimate write trains operators to
+        ignore it.
+        """
+        adapter.register_controller(1, pv_min=0.0, pv_max=100.0)
+        with caplog.at_level(logging.WARNING, logger=self._LOGGER):
+            adapter._on_opcua_write(1, "sp", 55.0)
+            adapter._on_opcua_write(1, "kp", 2.0)
+            adapter._on_opcua_write(1, "mode", 1)
+        assert caplog.records == []
+
+    @staticmethod
+    def _pushed(adapter: SimulatorAdapter) -> list[dict]:
+        return [
+            call.kwargs["values"]
+            for call in adapter._opcua_server.update_values.call_args_list
+        ]
+
+    def test_clamped_gain_is_pushed_back_to_the_node(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        """A corrected write must correct the node too, or readback lies forever.
+
+        The per-tick echo deliberately excludes kp/ti/td/pid_structure so it does
+        not race external writes, and those are precisely the parameters this
+        guard corrects. Without an explicit push, a client that wrote Kp=-5 keeps
+        reading -5 back while the twin runs the floor — the node and the running
+        loop disagree indefinitely.
+        """
+        adapter.register_controller(1)
+        adapter._opcua_server.update_values.reset_mock()
+        adapter._on_opcua_write(1, "kp", -5.0)
+        assert any(
+            v.get("kp") == pytest.approx(KP_MIN) for v in self._pushed(adapter)
+        ), self._pushed(adapter)
+
+    def test_discarded_structure_is_pushed_back_to_the_node(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        """A discard has no fallback echo at all, so it needs the push most."""
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, "pid_structure", 2)
+        adapter._opcua_server.update_values.reset_mock()
+        adapter._on_opcua_write(1, "pid_structure", 9)
+        assert any(
+            v.get("pid_structure") == 2 for v in self._pushed(adapter)
+        ), self._pushed(adapter)
+
+    def test_accepted_write_does_not_push_config_back(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        """Pushing on every write would reintroduce the race the tick avoids.
+
+        Config nodes are owned by external clients; re-writing them when nothing
+        was corrected would revert a change the HMI or the optimizer just made.
+        """
+        adapter.register_controller(1)
+        adapter._opcua_server.update_values.reset_mock()
+        adapter._on_opcua_write(1, "kp", 2.0)
+        assert self._pushed(adapter) == []
+
+    def test_repeated_bad_write_is_logged_once_per_window(
+        self, adapter: SimulatorAdapter, caplog,
+    ) -> None:
+        """A client retrying at the subscription rate must not flood the log.
+
+        `_on_opcua_write` runs once per notification with no debounce, so a stuck
+        client at 10 Hz would write 10 warnings a second indefinitely and chew
+        through the rotation budget. Same shape io_worker already throttles.
+        """
+        adapter.register_controller(1, pv_min=0.0, pv_max=100.0)
+        with caplog.at_level(logging.WARNING, logger=self._LOGGER):
+            for _ in range(5):
+                adapter._on_opcua_write(1, "sp", 500.0)
+        assert len(caplog.records) == 1, [r.getMessage() for r in caplog.records]
+
+    def test_throttle_is_per_parameter(
+        self, adapter: SimulatorAdapter, caplog,
+    ) -> None:
+        """Suppressing one parameter must not hide a different one."""
+        adapter.register_controller(1, pv_min=0.0, pv_max=100.0)
+        with caplog.at_level(logging.WARNING, logger=self._LOGGER):
+            adapter._on_opcua_write(1, "sp", 500.0)
+            adapter._on_opcua_write(1, "sp", 900.0)
+            adapter._on_opcua_write(1, "kp", -1.0)
+        assert len(caplog.records) == 2, [r.getMessage() for r in caplog.records]
+
+    def test_clamped_gain_is_still_marked_dirty(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        """A clamp moved the config, so it has to reach the database.
+
+        Only a discard leaves the loop untouched. Suppressing the flush for both
+        would lose the floored gain on the next restart and silently restore the
+        rejected value.
+        """
+        adapter.register_controller(1)
+        adapter.consume_dirty_cids()
+        adapter._on_opcua_write(1, "kp", -5.0)
+        assert adapter.consume_dirty_cids() == [1]
+        assert adapter._controllers[1].pid_params.gain == pytest.approx(KP_MIN)
+
+    @pytest.mark.parametrize(
+        ("param", "attr"), [("kp", "gain"), ("ti", "reset"), ("td", "rate")],
+    )
+    def test_huge_but_finite_gain_is_capped(
+        self, adapter: SimulatorAdapter, param: str, attr: str,
+    ) -> None:
+        """`math.isfinite` is no defence: 1e308 is finite and indistinguishable
+        from infinity against any real process value.
+
+        This port takes writes from any client that can reach it, so a floor alone
+        left the gains open upward. A real DCS block bounds its own tuning entries
+        in both directions.
+        """
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, param, 1e308)
+        landed = getattr(adapter._controllers[1].pid_params, attr)
+        assert math.isfinite(landed)
+        assert landed < 1e6, f"{param} landed at {landed}"
+
+    def test_ordinary_gain_is_untouched_by_the_ceiling(
+        self, adapter: SimulatorAdapter,
+    ) -> None:
+        adapter.register_controller(1)
+        adapter._on_opcua_write(1, "kp", 12.5)
+        adapter._on_opcua_write(1, "ti", 240.0)
+        adapter._on_opcua_write(1, "td", 30.0)
+        params = adapter._controllers[1].pid_params
+        assert (params.gain, params.reset, params.rate) == pytest.approx(
+            (12.5, 240.0, 30.0),
+        )

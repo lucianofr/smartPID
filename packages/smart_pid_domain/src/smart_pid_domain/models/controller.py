@@ -39,6 +39,17 @@ class ScaleConfig:
         return self.eu_max - self.eu_min
 
 
+#: Smallest proportional gain the platform will hand to any controller.
+#:
+#: Kp does not carry the loop's action here — ``Controller.direct_acting`` does,
+#: and PIDEngine derives the error sign from it. So a non-positive gain is never
+#: "reverse acting": zero is a loop that has silently stopped responding, and
+#: negative double-inverts against ``direct_acting`` into positive feedback on
+#: every term at once. A domain invariant, not the policy of one write path, so
+#: it lives beside the parameters it bounds.
+KP_MIN: float = 0.1
+
+
 @dataclass
 class PIDParams:
     """PID tuning parameters."""
