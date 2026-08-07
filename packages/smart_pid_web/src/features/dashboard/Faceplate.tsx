@@ -22,6 +22,8 @@ export interface FaceplateProps {
   tag: string;
   description?: string;
   scale: Scale;
+  /** CO display scale; defaults to the fixed 0–100 % valve range. */
+  coScale?: Scale;
   decimals?: number;
   /** Loop SP limits (`sp_lo_lim`/`sp_hi_lim`); omit to check finiteness only. */
   spRange?: Range;
@@ -97,6 +99,7 @@ export function Faceplate({
   tag,
   description,
   scale,
+  coScale,
   decimals = 1,
   spRange,
 }: FaceplateProps) {
@@ -200,7 +203,7 @@ export function Faceplate({
         <AnalogBar
           label="CO"
           value={data?.co.value ?? null}
-          scale={CO_SCALE}
+          scale={coScale ?? CO_SCALE}
           size="faceplate"
           decimals={decimals}
           stale={status.stale}

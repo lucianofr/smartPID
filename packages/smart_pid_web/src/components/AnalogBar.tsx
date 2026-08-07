@@ -128,6 +128,21 @@ export function AnalogBar({
         {stale && finite ? <span aria-hidden="true">*</span> : null}
         {formatNumber(value, decimals)}
       </span>
+      {/* A sibling of the numeral, never inside it: the figure column is
+          `numeric`/right-aligned and the unit must not ride that alignment.
+          Fixed width keeps the bars of a card aligned across rows whose units
+          differ in length. */}
+      {scale.unit !== '' ? (
+        <span
+          className={cn(
+            'shrink-0 truncate text-left text-text-soft',
+            faceplate ? 'w-9 text-xs' : 'w-6 text-2xs',
+            stale && 'text-text-disabled',
+          )}
+        >
+          {scale.unit}
+        </span>
+      ) : null}
     </div>
   );
 }

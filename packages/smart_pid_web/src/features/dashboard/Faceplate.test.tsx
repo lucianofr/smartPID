@@ -5,6 +5,7 @@ import { queryKeys } from '@/api/queryKeys';
 import type { MeResponse } from '@/api/types';
 import type { Role } from '@/api/types';
 import { ff, makeController, statusEnvelope } from '@/test/fixtures';
+import type { Scale } from '@/lib/scale';
 import { createFakeRealtime, createQueryClient, TestProviders } from '@/test/providers';
 import { Faceplate } from './Faceplate';
 
@@ -14,7 +15,7 @@ function me(role: Role): MeResponse {
   return { user_id: 1, username: role, role };
 }
 
-function renderFaceplate(role: Role = 'admin') {
+function renderFaceplate(role: Role = 'admin', coScale?: Scale) {
   localStorage.setItem('smart-pid-token', 'jwt');
   vi.spyOn(endpoints, 'me').mockResolvedValue(me(role));
   const queryClient = createQueryClient();
@@ -23,7 +24,13 @@ function renderFaceplate(role: Role = 'admin') {
   return {
     ...render(
       <TestProviders queryClient={queryClient} realtime={realtime.value}>
-        <Faceplate controllerId={5} tag="PIC-005" description="Pressure" scale={scale} />
+        <Faceplate
+          controllerId={5}
+          tag="PIC-005"
+          description="Pressure"
+          scale={scale}
+          coScale={coScale}
+        />
       </TestProviders>,
     ),
     realtime,
@@ -58,6 +65,27 @@ describe('Faceplate', () => {
     const co = within(fp).getByRole('meter', { name: 'CO' });
     expect(co).toHaveAttribute('aria-valuenow', '64');
     expect(co).toHaveAttribute('aria-valuetext', '64.0 %');
+  });
+
+  it('takes the CO unit from coScale, and the fixed 0-100 % valve range without it', async () => {
+    const kpa = renderFaceplate('admin', { euMin: 0, euMax: 100, unit: 'kPa' });
+    act(() => {
+      kpa.realtime.emit(statusEnvelope(5, 1, { pv: ff(150.2), sp: ff(152), co: ff(64) }));
+    });
+    let fp = await screen.findByRole('complementary', { name: 'Faceplate PIC-005' });
+    expect(within(fp).getByText('kPa')).toBeVisible();
+    expect(within(fp).getByRole('meter', { name: 'CO' })).toHaveAttribute(
+      'aria-valuetext',
+      '64.0 kPa',
+    );
+    kpa.unmount();
+
+    const plain = renderFaceplate();
+    act(() => {
+      plain.realtime.emit(statusEnvelope(5, 1, { pv: ff(150.2), sp: ff(152), co: ff(64) }));
+    });
+    fp = await screen.findByRole('complementary', { name: 'Faceplate PIC-005' });
+    expect(within(fp).getByText('%')).toBeVisible();
   });
 
   it('shows the mode as a numeric badge and the stats block', async () => {
