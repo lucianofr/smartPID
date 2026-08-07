@@ -65,6 +65,8 @@ class TestStatsWorker:
             data = msgpack.unpackb(payload)
             assert "iae" in data
             assert "total_variation" in data
+            # The SP-strategy step-shape input travels on the same snapshot.
+            assert "overshoot" in data
             assert data["controller_id"] == 1
         finally:
             worker.stop()

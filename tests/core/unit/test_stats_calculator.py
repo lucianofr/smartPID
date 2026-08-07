@@ -356,3 +356,98 @@ class TestOscillationEvidenceIsDistinguishableFromCalm:
                               sp=30.0 if i % 8 < 4 else 70.0)
         assert fixed.osc_score() > moving.osc_score()
         assert fixed.osc_score() == pytest.approx(1.0)
+
+
+class TestOvershootFrac:
+    """SP-step overshoot — the one indicator computed *through* the settling
+    mask, because that is exactly where a step transient lives.
+    """
+
+    @staticmethod
+    def _calc(pairs, *, span=100.0, window=200):
+        """Feed (sp, pv) pairs. Every sample is flagged as settling, so any
+        non-zero result also proves the mask does not hide the transient.
+        """
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        calc = StatsCalculator(window_size=window, span=span, setpoint=pairs[0][0])
+        for sp, pv in pairs:
+            calc._setpoint = sp
+            calc.add_sample(error=sp - pv, co=50.0, dt=1.0, is_settling=True, sp=sp)
+        return calc
+
+    def test_up_step_overshoot_is_a_fraction_of_the_step(self):
+        # SP 40 -> 60 (step of 20), PV peaks at 70 -> 10/20.
+        calc = self._calc([(40.0, 40.0)] * 5 + [(60.0, 70.0)] + [(60.0, 60.0)] * 10)
+        assert calc.overshoot_frac == pytest.approx(0.5)
+
+    def test_it_reads_through_the_settling_mask(self):
+        """The oscillation metrics are blind here by design; the overshoot
+        indicator exists precisely to see what they cannot."""
+        calc = self._calc([(40.0, 40.0)] * 5 + [(60.0, 70.0)] + [(60.0, 60.0)] * 10)
+        assert calc.osc_sample_count == 0
+        assert calc.pk_pk_error == 0.0
+        assert calc.zero_crossings == 0
+        assert calc.overshoot_frac > 0.0
+
+    def test_down_step_overshoot_uses_the_step_direction(self):
+        # SP 60 -> 50 (step of 10), PV dips to 47 -> 3/10.
+        calc = self._calc([(60.0, 60.0)] * 5 + [(50.0, 47.0)] + [(50.0, 50.0)] * 10)
+        assert calc.overshoot_frac == pytest.approx(0.3)
+
+    def test_no_setpoint_change_is_never_overshoot(self):
+        calc = self._calc([(50.0, 50.0 + (k % 7)) for k in range(30)])
+        assert calc.overshoot_frac == 0.0
+
+    def test_excursion_below_the_noise_floor_is_ignored(self):
+        # 0.3 EU on a span of 100 is under the 0.005 x span reversal floor.
+        calc = self._calc([(40.0, 40.0)] * 5 + [(60.0, 60.3)] + [(60.0, 60.0)] * 10)
+        assert calc.overshoot_frac == 0.0
+
+    def test_approaching_the_new_setpoint_is_not_overshoot(self):
+        """PV climbing towards the new SP without ever crossing it carries a
+        large error, but it is approach error, not overshoot."""
+        approach = [(60.0, 40.0 + 1.8 * k) for k in range(11)]
+        calc = self._calc([(40.0, 40.0)] * 5 + approach + [(60.0, 58.0)] * 5)
+        assert calc.overshoot_frac == 0.0
+
+    def test_the_worst_step_in_the_window_wins(self):
+        calc = self._calc(
+            [(40.0, 40.0)] * 3
+            + [(60.0, 62.0)] + [(60.0, 60.0)] * 8      # 2/20 = 0.10
+            + [(40.0, 34.0)] + [(40.0, 40.0)] * 8      # 6/20 = 0.30
+        )
+        assert calc.overshoot_frac == pytest.approx(0.3)
+
+    def test_consecutive_sp_changes_merge_into_one_step(self):
+        """A setpoint ramping to target over adjacent samples is one event of
+        20, not two of 10 — otherwise the fraction doubles."""
+        calc = self._calc(
+            [(40.0, 40.0)] * 3
+            + [(50.0, 40.0), (60.0, 45.0)]
+            + [(60.0, 70.0)] + [(60.0, 60.0)] * 8
+        )
+        assert calc.overshoot_frac == pytest.approx(0.5)
+
+    def test_distant_same_direction_steps_stay_separate(self):
+        """Two 20-unit steps ten samples apart are two events; merging them
+        would report 10/40 instead of 10/20."""
+        calc = self._calc(
+            [(40.0, 40.0)] * 3
+            + [(60.0, 60.0)] * 10
+            + [(80.0, 90.0)] + [(80.0, 80.0)] * 8
+        )
+        assert calc.overshoot_frac == pytest.approx(0.5)
+
+    def test_a_step_on_the_last_sample_has_no_excursion_yet(self):
+        calc = self._calc([(40.0, 40.0)] * 5 + [(60.0, 40.0)])
+        assert calc.overshoot_frac == 0.0
+
+    def test_too_few_samples_or_no_span_is_zero(self):
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        assert StatsCalculator(window_size=10, span=100.0, setpoint=50.0).overshoot_frac == 0.0
+        assert self._calc([(40.0, 40.0)]).overshoot_frac == 0.0
+        assert self._calc(
+            [(40.0, 40.0)] * 3 + [(60.0, 70.0)] * 5, span=0.0,
+        ).overshoot_frac == 0.0

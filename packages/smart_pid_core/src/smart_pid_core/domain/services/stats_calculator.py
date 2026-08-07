@@ -39,6 +39,11 @@ class StatsCalculator:
     # roughly 2×TSS after the loop stabilises, instead of lingering for
     # the full 5×TSS while stale oscillation data ages out.
     _DEFAULT_RECENT_FRACTION = 0.4
+    # A SP change of at least this fraction of span counts as a setpoint
+    # step for :meth:`overshoot_frac`. Keep aligned with
+    # ``StatsWorker._sp_change_frac``, which arms the settling mask on the
+    # same threshold.
+    _DEFAULT_SP_STEP_FRAC = 0.01
 
     def __init__(
         self,
@@ -47,12 +52,14 @@ class StatsCalculator:
         setpoint: float,
         reversal_noise_frac: float = _DEFAULT_REVERSAL_NOISE_FRAC,
         recent_fraction: float = _DEFAULT_RECENT_FRACTION,
+        sp_step_frac: float = _DEFAULT_SP_STEP_FRAC,
     ) -> None:
         self._window_size = window_size
         self._span = span
         self._setpoint = setpoint
         self._reversal_noise_frac = reversal_noise_frac
         self._recent_fraction = min(1.0, max(0.1, recent_fraction))
+        self._sp_step_frac = sp_step_frac
         self._samples: deque[_Sample] = deque(maxlen=window_size)
         self._elapsed_time = 0.0
 
@@ -190,6 +197,60 @@ class StatsCalculator:
             return 0.0
         sps = [s.sp for s in self._samples]
         return max(sps) - min(sps)
+
+    @property
+    def overshoot_frac(self) -> float:
+        """Worst SP-step overshoot visible in the window, as a fraction of
+        that step's size.
+
+        A step is a consecutive-sample SP change >= sp_step_frac x span;
+        adjacent same-direction changes merge into one event (SP ramping to
+        target). For each event the adverse excursion of PV beyond the NEW
+        setpoint, in the direction of the step, is peak-detected over the
+        samples from the end of the event to the start of the next one (or
+        window end). Reads straight through the settling mask on purpose:
+        the mask exists to protect the oscillation metrics, and the
+        overshoot lives inside the masked region.
+
+        0.0 when no step is in the window or no excursion exceeds the noise
+        floor (reversal_noise_frac x span). Not clamped above; consumers
+        clamp.
+        """
+        samples = list(self._samples)
+        n = len(samples)
+        if n < 2 or self._span <= 0:
+            return 0.0
+        step_thr = self._sp_step_frac * self._span
+        noise = self._reversal_noise_frac * self._span
+
+        worst = 0.0
+        sign = 0.0        # direction of the open event; 0.0 = none open
+        dsp_total = 0.0   # total SP travel of the open event
+        peak = 0.0        # worst adverse excursion since the event settled
+        last_step_i = -2  # index of the previous step sample, for merging
+
+        for i in range(1, n):
+            d = samples[i].sp - samples[i - 1].sp
+            if abs(d) >= step_thr:
+                cur = 1.0 if d > 0 else -1.0
+                if cur == sign and last_step_i == i - 1:
+                    dsp_total += d          # SP still ramping to target
+                else:
+                    if sign != 0.0 and peak > noise:
+                        worst = max(worst, peak / abs(dsp_total))
+                    sign, dsp_total = cur, d
+                last_step_i = i
+                # The excursion is measured against the SP reached so far.
+                peak = 0.0
+            if sign != 0.0:
+                # error = SP - PV, so -sign*error is "PV beyond SP in the
+                # direction of the step" for both step directions.
+                excursion = -sign * samples[i].error
+                if excursion > peak:
+                    peak = excursion
+        if sign != 0.0 and peak > noise:
+            worst = max(worst, peak / abs(dsp_total))
+        return worst
 
     @property
     def pk_pk_error(self) -> float:

@@ -132,6 +132,9 @@ class StatsWorker:
             # from a step response.
             "osc_sample_count": calc.osc_sample_count,
             "sp_pk_pk": calc.sp_pk_pk,
+            # Step-shape input for the SP-tracking fuzzy strategy: the one
+            # indicator that reads through the settling mask.
+            "overshoot": calc.overshoot_frac,
         }
 
     def _run(self) -> None:
