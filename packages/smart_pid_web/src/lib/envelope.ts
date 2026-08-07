@@ -111,8 +111,9 @@ export interface SystemEventData {
   timestamp: string;
 }
 
-/** STATS.{id} — stats_worker.py:86-108. The wire payload has NO controller_id
- *  (loop identity travels in envelope.loop_id); the REST StatsResponse does. */
+/** STATS.{id} — stats_worker.py:106-138 (get_current_stats). The wire payload
+ *  has NO controller_id (loop identity travels in envelope.loop_id); the REST
+ *  StatsResponse does. */
 export interface StatsData {
   iae: number;
   itae: number;
