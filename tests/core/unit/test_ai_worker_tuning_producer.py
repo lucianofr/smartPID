@@ -441,5 +441,67 @@ class TestLiveConfigEditsReachTheWorker:
         worker.update_controller(
             replace(controller, tss_s=30.0, stability_band_pct=0.5),
         )
-        assert worker._ai_period_s == pytest.approx(90.0)
+        assert worker._ai_period_s == pytest.approx(60.0)
         assert worker._stability_band_pct == pytest.approx(0.5)
+
+
+class TestCadence:
+    """The AI tick is 2 × TSS at rest, and follows the measured oscillation
+    period while the loop actually oscillates.
+    """
+
+    @staticmethod
+    def _cadence_worker(stats: dict[str, float] | None) -> AIWorker:
+        from dataclasses import replace
+
+        worker = _worker(
+            replace(_controller(), tss_s=60.0), TuningRecommendationStore(),
+        )
+        worker._latest_stats = stats
+        return worker
+
+    def test_the_base_period_is_two_tss(self) -> None:
+        assert self._cadence_worker(None)._ai_period_s == pytest.approx(120.0)
+
+    def test_no_stats_yet_holds_the_base_period(self) -> None:
+        worker = self._cadence_worker(None)
+        assert worker._effective_period_s() == pytest.approx(120.0)
+
+    def test_a_score_below_the_gate_holds_the_base_period(self) -> None:
+        worker = self._cadence_worker({"osc": 0.2, "osc_period_s": 30.0})
+        assert worker._effective_period_s() == pytest.approx(120.0)
+
+    def test_an_unmeasurable_period_holds_the_base_period(self) -> None:
+        """A high score with no measured period is not actionable evidence."""
+        worker = self._cadence_worker({"osc": 0.8, "osc_period_s": 0.0})
+        assert worker._effective_period_s() == pytest.approx(120.0)
+
+    def test_an_oscillating_loop_follows_two_oscillation_periods(self) -> None:
+        worker = self._cadence_worker({"osc": 0.8, "osc_period_s": 30.0})
+        assert worker._effective_period_s() == pytest.approx(60.0)
+
+    def test_a_fast_oscillation_is_held_at_the_floor(self) -> None:
+        """2 × 4 s would re-tune on stats the window has not refreshed."""
+        worker = self._cadence_worker({"osc": 0.8, "osc_period_s": 4.0})
+        assert worker._effective_period_s() == pytest.approx(15.0)
+
+    def test_a_slow_oscillation_is_capped_at_the_legacy_cadence(self) -> None:
+        """Posc > TSS legitimately runs slower than the base, but never
+        slower than the 3 × TSS the worker used before.
+        """
+        worker = self._cadence_worker({"osc": 0.8, "osc_period_s": 200.0})
+        assert worker._effective_period_s() == pytest.approx(180.0)
+
+    def test_the_cadence_source_is_edge_logged(self, caplog) -> None:
+        """One line per flip, not per tick — this runs every AI cycle."""
+        worker = self._cadence_worker({"osc": 0.8, "osc_period_s": 30.0})
+        with caplog.at_level(logging.INFO, logger=_AI_WORKER_LOGGER):
+            for _ in range(3):
+                worker._effective_period_s()
+            assert caplog.text.count("ai_cadence") == 1
+            assert "mode=osc period_s=60.0" in caplog.text
+
+            worker._latest_stats = None
+            worker._effective_period_s()
+        assert caplog.text.count("ai_cadence") == 2
+        assert "mode=base period_s=120.0" in caplog.text
