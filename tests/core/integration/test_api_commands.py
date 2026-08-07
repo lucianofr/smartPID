@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from smart_pid_core.adapters.inbound.api.routers.commands import _SUPERVISORY_DETAIL
 from smart_pid_core.application.loop_manager import LoopContext
 from smart_pid_core.application.workers.pid_worker import PIDWorker
 from smart_pid_core.domain.services.pid_engine import PIDEngine
@@ -352,16 +353,15 @@ class TestWriteTuningCommand:
 
 
 class TestDCSBranchHonoursLoopLimits:
-    """The sp/out span belongs to the loop, not to whoever runs its PID.
+    """Monitor mode routes SP/CO/mode to the DCS over OPC-UA.
 
-    `_dcs_owns_loop` routes SUPERVISORY and monitor-mode commands straight to
-    `opcua.write_parameter`, bypassing the LoopManager that carries the range
-    check. Same command, same controller, same out-of-range value must land the
-    same answer whichever branch is taken.
+    A SUPERVISORY loop in execute mode no longer reaches this branch at all —
+    `_refuse_supervisory` answers 409 before any span check. In-range writes
+    still reach the DCS in monitor mode; out-of-range ones keep their 400.
     """
 
     @pytest.mark.asyncio
-    async def test_setpoint_above_limit_rejected_on_dcs_branch(
+    async def test_setpoint_on_supervisory_loop_refused_409(
         self,
         client: AsyncClient,
         user_headers: dict[str, str],
@@ -384,38 +384,12 @@ class TestDCSBranchHonoursLoopLimits:
             json={"controller_id": cid, "value": 150.0},
             headers=user_headers,
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == _SUPERVISORY_DETAIL
         assert fake.params == []
 
     @pytest.mark.asyncio
-    async def test_setpoint_below_limit_rejected_on_dcs_branch(
-        self,
-        client: AsyncClient,
-        user_headers: dict[str, str],
-        api_deps: dict,
-        app,
-    ) -> None:
-        cid = await _create_and_start_controller(
-            api_deps,
-            Controller(
-                id=0, name="TIC-401",
-                pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
-                execution_mode=ExecutionMode.SUPERVISORY,
-                sp_hi_lim=100.0, sp_lo_lim=20.0,
-            ),
-        )
-        fake = _FakeOPCUA()
-        app.state.opcua_adapter = fake
-        resp = await client.post(
-            "/commands/setpoint",
-            json={"controller_id": cid, "value": 5.0},
-            headers=user_headers,
-        )
-        assert resp.status_code == 400
-        assert fake.params == []
-
-    @pytest.mark.asyncio
-    async def test_setpoint_inside_limits_still_reaches_dcs(
+    async def test_setpoint_inside_limits_reaches_dcs_in_monitor_mode(
         self,
         client: AsyncClient,
         user_headers: dict[str, str],
@@ -423,24 +397,63 @@ class TestDCSBranchHonoursLoopLimits:
         app,
     ) -> None:
         """The guard must not become a wall: in-range writes still go out."""
+        from smart_pid_core.adapters.inbound.api.dependencies import get_execution_mode
+
         cid = await _create_and_start_controller(
             api_deps,
             Controller(
                 id=0, name="TIC-402",
                 pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
-                execution_mode=ExecutionMode.SUPERVISORY,
+                execution_mode=ExecutionMode.DDC,
                 sp_hi_lim=100.0, sp_lo_lim=0.0,
             ),
         )
         fake = _FakeOPCUA()
         app.state.opcua_adapter = fake
-        resp = await client.post(
-            "/commands/setpoint",
-            json={"controller_id": cid, "value": 55.0},
-            headers=user_headers,
-        )
+        app.dependency_overrides[get_execution_mode] = lambda: "monitor"
+        try:
+            resp = await client.post(
+                "/commands/setpoint",
+                json={"controller_id": cid, "value": 55.0},
+                headers=user_headers,
+            )
+        finally:
+            app.dependency_overrides.pop(get_execution_mode, None)
         assert resp.status_code == 200
         assert fake.params == [(cid, "sp", 55.0)]
+
+    @pytest.mark.asyncio
+    async def test_setpoint_above_limit_rejected_in_monitor_mode(
+        self,
+        client: AsyncClient,
+        user_headers: dict[str, str],
+        api_deps: dict,
+        app,
+    ) -> None:
+        from smart_pid_core.adapters.inbound.api.dependencies import get_execution_mode
+
+        cid = await _create_and_start_controller(
+            api_deps,
+            Controller(
+                id=0, name="TIC-404",
+                pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
+                execution_mode=ExecutionMode.DDC,
+                sp_hi_lim=100.0, sp_lo_lim=0.0,
+            ),
+        )
+        fake = _FakeOPCUA()
+        app.state.opcua_adapter = fake
+        app.dependency_overrides[get_execution_mode] = lambda: "monitor"
+        try:
+            resp = await client.post(
+                "/commands/setpoint",
+                json={"controller_id": cid, "value": 150.0},
+                headers=user_headers,
+            )
+        finally:
+            app.dependency_overrides.pop(get_execution_mode, None)
+        assert resp.status_code == 400
+        assert fake.params == []
 
     @pytest.mark.asyncio
     async def test_output_above_limit_rejected_in_monitor_mode(
@@ -476,20 +489,18 @@ class TestDCSBranchHonoursLoopLimits:
         assert fake.params == []
 
     @pytest.mark.asyncio
-    async def test_output_reaches_dcs_on_supervisory_loop(
+    async def test_output_on_supervisory_loop_refused_409(
         self,
         client: AsyncClient,
         user_headers: dict[str, str],
         api_deps: dict,
         app,
     ) -> None:
-        """CO is read/write over OPC-UA on a SUPERVISORY loop, same as SP.
+        """CO on a SUPERVISORY loop is refused outright, not written anywhere.
 
-        `set_output` gated on `execution_mode == "monitor"` while `set_setpoint`
-        gated on `_dcs_owns_loop`, so on a SUPERVISORY loop in execute mode the
-        setpoint went to the DCS and the output did not: it landed in the local
-        PIDWorker, `io_worker` dropped it for not being DDC, and the next
-        telemetry frame overwrote it. HTTP 200, DCS never saw the value.
+        The loop's PID runs in the DCS and the daemon is in execute mode, so
+        there is no local worker that owns this output — the route answers 409
+        before the span check and never touches the adapter.
         """
         cid = await _create_and_start_controller(
             api_deps,
@@ -507,46 +518,18 @@ class TestDCSBranchHonoursLoopLimits:
             json={"controller_id": cid, "value": 55.0},
             headers=user_headers,
         )
-        assert resp.status_code == 200
-        assert fake.params == [(cid, "co", 55.0)]
-
-    @pytest.mark.asyncio
-    async def test_output_above_limit_rejected_on_supervisory_loop(
-        self,
-        client: AsyncClient,
-        user_headers: dict[str, str],
-        api_deps: dict,
-        app,
-    ) -> None:
-        cid = await _create_and_start_controller(
-            api_deps,
-            Controller(
-                id=0, name="FIC-501",
-                pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
-                execution_mode=ExecutionMode.SUPERVISORY,
-                out_hi_lim=80.0, out_lo_lim=0.0,
-            ),
-        )
-        fake = _FakeOPCUA()
-        app.state.opcua_adapter = fake
-        resp = await client.post(
-            "/commands/output",
-            json={"controller_id": cid, "value": 95.0},
-            headers=user_headers,
-        )
-        assert resp.status_code == 400
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == _SUPERVISORY_DETAIL
         assert fake.params == []
 
 
 class TestSupervisoryWithoutLinkRefuses:
-    """A SUPERVISORY loop has no local PID to fall back to.
+    """A SUPERVISORY loop refuses commands whether or not a link exists.
 
-    `_dcs_owns_loop` returned False whenever no OPC-UA adapter was installed,
-    documented as "there is nothing external to command, so SmartPID handles it
-    locally". There is nothing local either: `io_worker` writes CO for DDC loops
-    only, so the command set a value on a PIDWorker that does not drive the loop
-    and answered 200 for a write nothing would ever apply. Absent link is the
-    same condition as a dead link, and that already answers 409.
+    In execute mode `_refuse_supervisory` answers 409 before the adapter is
+    ever consulted — the absence of a link is no longer what the refusal
+    hangs on. These tests pin it anyway: a loop with no link at all used to
+    answer 200 for a write nothing would ever apply.
     """
 
     @staticmethod
@@ -624,21 +607,51 @@ class TestSupervisoryWithoutLinkRefuses:
         assert resp.status_code == 200
 
 
-class TestSupervisoryModeReachesTheDCS:
-    """The 409 path is covered above; this covers the write actually happening.
+class TestMonitorModeReachesTheDCS:
+    """Monitor mode writes the mode change to the DCS over OPC-UA.
 
-    Without it, a call site hardcoded to the local branch would leave every
-    SUPERVISORY mode change silently local and the suite still green.
+    A SUPERVISORY loop in execute mode refuses instead; a monitor daemon with
+    a live link is where a mode write still happens, and without this test a
+    call site hardcoded to the local branch would leave it silently dropped.
     """
 
     @pytest.mark.asyncio
-    async def test_mode_written_over_opcua(
+    async def test_mode_written_over_opcua_in_monitor_mode(
         self, client: AsyncClient, user_headers: dict[str, str], api_deps: dict, app
     ) -> None:
+        from smart_pid_core.adapters.inbound.api.dependencies import get_execution_mode
+
         cid = await _create_and_start_controller(
             api_deps,
             Controller(
                 id=0, name="TIC-700",
+                pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
+                execution_mode=ExecutionMode.DDC,
+            ),
+        )
+        fake = _FakeOPCUA()
+        app.state.opcua_adapter = fake
+        app.dependency_overrides[get_execution_mode] = lambda: "monitor"
+        try:
+            resp = await client.post(
+                "/commands/mode",
+                json={"controller_id": cid, "mode": "AUTO"},
+                headers=user_headers,
+            )
+        finally:
+            app.dependency_overrides.pop(get_execution_mode, None)
+        assert resp.status_code == 200
+        assert fake.modes == [(cid, ControllerMode.AUTO)]
+
+    @pytest.mark.asyncio
+    async def test_mode_on_supervisory_loop_refused_409(
+        self, client: AsyncClient, user_headers: dict[str, str], api_deps: dict, app
+    ) -> None:
+        """The refusal is not the no-link case: a connected adapter still 409s."""
+        cid = await _create_and_start_controller(
+            api_deps,
+            Controller(
+                id=0, name="TIC-704",
                 pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
                 execution_mode=ExecutionMode.SUPERVISORY,
             ),
@@ -650,8 +663,9 @@ class TestSupervisoryModeReachesTheDCS:
             json={"controller_id": cid, "mode": "AUTO"},
             headers=user_headers,
         )
-        assert resp.status_code == 200
-        assert fake.modes == [(cid, ControllerMode.AUTO)]
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == _SUPERVISORY_DETAIL
+        assert fake.modes == []
 
 
 class TestTuningClampsComposeByExecutionMode:
@@ -771,7 +785,7 @@ class TestTuningClampsComposeByExecutionMode:
 
 
 class TestOutputWriteHardening:
-    """Routing SUPERVISORY output through OPC-UA reached two conditions the local
+    """Monitor-mode output writes through OPC-UA reach two conditions the local
     branch never had to answer for.
     """
 
@@ -782,7 +796,7 @@ class TestOutputWriteHardening:
             Controller(
                 id=0, name=name,
                 pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
-                execution_mode=ExecutionMode.SUPERVISORY,
+                execution_mode=ExecutionMode.DDC,
                 out_hi_lim=100.0, out_lo_lim=0.0,
             ),
         )
@@ -795,8 +809,10 @@ class TestOutputWriteHardening:
 
         `OPCUAAdapter.write_parameter` raises ValueError for a missing node mapping
         and KeyError for an unregistered loop, and nothing handled either — the
-        local branch never reached that code for an execute-mode SUPERVISORY loop.
+        local branch never reached that code for a monitor-mode write.
         """
+        from smart_pid_core.adapters.inbound.api.dependencies import get_execution_mode
+
         cid = await self._loop(api_deps, "FIC-800")
 
         class _Unmapped(_FakeOPCUA):
@@ -805,11 +821,15 @@ class TestOutputWriteHardening:
                 raise ValueError(msg)
 
         app.state.opcua_adapter = _Unmapped()
-        resp = await client.post(
-            "/commands/output",
-            json={"controller_id": cid, "value": 42.0},
-            headers=user_headers,
-        )
+        app.dependency_overrides[get_execution_mode] = lambda: "monitor"
+        try:
+            resp = await client.post(
+                "/commands/output",
+                json={"controller_id": cid, "value": 42.0},
+                headers=user_headers,
+            )
+        finally:
+            app.dependency_overrides.pop(get_execution_mode, None)
         assert resp.status_code == 409
         assert "co" in resp.json()["detail"]
 
@@ -822,14 +842,20 @@ class TestOutputWriteHardening:
         MAN; apply-tuning already reads the external mode before writing gains, and
         an output write moves the actuator more directly than a gain does.
         """
+        from smart_pid_core.adapters.inbound.api.dependencies import get_execution_mode
+
         cid = await self._loop(api_deps, "FIC-801")
         fake = _FakeOPCUA(mode=ControllerMode.AUTO)
         app.state.opcua_adapter = fake
-        resp = await client.post(
-            "/commands/output",
-            json={"controller_id": cid, "value": 42.0},
-            headers=user_headers,
-        )
+        app.dependency_overrides[get_execution_mode] = lambda: "monitor"
+        try:
+            resp = await client.post(
+                "/commands/output",
+                json={"controller_id": cid, "value": 42.0},
+                headers=user_headers,
+            )
+        finally:
+            app.dependency_overrides.pop(get_execution_mode, None)
         assert resp.status_code == 409
         assert "AUTO" in resp.json()["detail"]
         assert fake.params == []
@@ -838,14 +864,20 @@ class TestOutputWriteHardening:
     async def test_written_when_the_external_block_is_in_man(
         self, client: AsyncClient, user_headers: dict[str, str], api_deps: dict, app
     ) -> None:
+        from smart_pid_core.adapters.inbound.api.dependencies import get_execution_mode
+
         cid = await self._loop(api_deps, "FIC-802")
         fake = _FakeOPCUA(mode=ControllerMode.MAN)
         app.state.opcua_adapter = fake
-        resp = await client.post(
-            "/commands/output",
-            json={"controller_id": cid, "value": 42.0},
-            headers=user_headers,
-        )
+        app.dependency_overrides[get_execution_mode] = lambda: "monitor"
+        try:
+            resp = await client.post(
+                "/commands/output",
+                json={"controller_id": cid, "value": 42.0},
+                headers=user_headers,
+            )
+        finally:
+            app.dependency_overrides.pop(get_execution_mode, None)
         assert resp.status_code == 200
         assert fake.params == [(cid, "co", 42.0)]
 
@@ -856,13 +888,19 @@ class TestOutputWriteHardening:
         """No mode_actual node mapped reads None. Blocking every such loop would
         make the guard a wall; apply-tuning treats None the same way.
         """
+        from smart_pid_core.adapters.inbound.api.dependencies import get_execution_mode
+
         cid = await self._loop(api_deps, "FIC-803")
         fake = _FakeOPCUA(mode=None)
         app.state.opcua_adapter = fake
-        resp = await client.post(
-            "/commands/output",
-            json={"controller_id": cid, "value": 42.0},
-            headers=user_headers,
-        )
+        app.dependency_overrides[get_execution_mode] = lambda: "monitor"
+        try:
+            resp = await client.post(
+                "/commands/output",
+                json={"controller_id": cid, "value": 42.0},
+                headers=user_headers,
+            )
+        finally:
+            app.dependency_overrides.pop(get_execution_mode, None)
         assert resp.status_code == 200
         assert fake.params == [(cid, "co", 42.0)]

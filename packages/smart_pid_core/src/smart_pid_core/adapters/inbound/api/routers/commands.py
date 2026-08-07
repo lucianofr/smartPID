@@ -54,31 +54,33 @@ logger = logging.getLogger(__name__)
 
 _MONITOR_DETAIL = "Not available in monitor mode. PID is controlled by external DCS."
 
+_SUPERVISORY_DETAIL = (
+    "Malha em SUPERVISORY: PV/SP/CO/MODE são somente leitura. "
+    "O DCS é o dono desta malha."
+)
 
-def _dcs_owns_loop(
-    lm: LoopManager, controller_id: int, execution_mode: str,
-) -> bool:
-    """True when the loop's PID runs outside SmartPID, so SP/CO/mode commands
-    must be written to the DCS over OPC-UA instead of the internal PIDWorker.
 
-    The whole daemon is external in monitor mode; in execute mode that is exactly
-    the SUPERVISORY loops.
+def _dcs_owns_loop(execution_mode: str) -> bool:
+    """True when the whole daemon runs in monitor mode: every SP/CO/mode
+    command is then written to the DCS over OPC-UA instead of the internal
+    PIDWorker. The per-loop axis (SUPERVISORY) no longer routes here — it
+    refuses outright, see ``_refuse_supervisory``."""
+    return execution_mode == "monitor"
 
-    Ownership deliberately does NOT depend on an adapter being present. It used
-    to: absent adapter meant "nothing external to command, so SmartPID handles it
-    locally". There is nothing local to hand it to either — ``io_worker`` writes
-    CO for DDC loops only, so the command landed on a PIDWorker that does not
-    drive the loop and answered 200 for a write nothing would apply. A missing
-    link is the same condition as a dead one, and each caller already answers 409
-    for that.
+
+def _refuse_supervisory(lm: LoopManager, controller_id: int) -> None:
+    """409 for a process-variable command on a SUPERVISORY loop.
+
+    Runs only on the local branch, i.e. daemon in execute mode — the daemon
+    axis is checked first (design §5.2). Unknown controller falls through:
+    the local branch right after answers its own 404.
     """
-    if execution_mode == "monitor":
-        return True
     try:
         ctrl = lm.get_controller(controller_id)
     except ControllerNotFoundError:
-        return False
-    return ctrl.execution_mode is ExecutionMode.SUPERVISORY
+        return
+    if ctrl.execution_mode is ExecutionMode.SUPERVISORY:
+        raise HTTPException(status_code=409, detail=_SUPERVISORY_DETAIL)
 
 
 def _write_to_dcs(
@@ -118,7 +120,7 @@ async def set_setpoint(
     execution_mode: Annotated[str, Depends(get_execution_mode)],
 ) -> CommandResponse:
     opcua = getattr(request.app.state, "opcua_adapter", None)
-    if _dcs_owns_loop(lm, body.controller_id, execution_mode):
+    if _dcs_owns_loop(execution_mode):
         if opcua is None or not opcua.is_connected:
             raise HTTPException(status_code=409, detail=_MONITOR_DETAIL)
         # This branch skips LoopManager, and with it the sp-span check that the
@@ -129,6 +131,7 @@ async def set_setpoint(
         check_within_limits("SP", body.value, ctrl.sp_lo_lim, ctrl.sp_hi_lim)
         _write_to_dcs(opcua, body.controller_id, "sp", body.value)
     else:
+        _refuse_supervisory(lm, body.controller_id)
         lm.set_setpoint(body.controller_id, body.value)
     await audit_and_broadcast(
         audit_repo, sew,
@@ -157,7 +160,7 @@ async def set_mode(
     execution_mode: Annotated[str, Depends(get_execution_mode)],
 ) -> CommandResponse:
     opcua = getattr(request.app.state, "opcua_adapter", None)
-    if _dcs_owns_loop(lm, body.controller_id, execution_mode):
+    if _dcs_owns_loop(execution_mode):
         if opcua is None or not opcua.is_connected:
             raise HTTPException(status_code=409, detail=_MONITOR_DETAIL)
         success = opcua.write_target_mode(body.controller_id, ControllerMode(body.mode))
@@ -166,6 +169,7 @@ async def set_mode(
                 status_code=502, detail="Failed to write mode to DCS",
             )
     else:
+        _refuse_supervisory(lm, body.controller_id)
         lm.set_mode(body.controller_id, body.mode)
     await audit_and_broadcast(
         audit_repo, sew,
@@ -194,7 +198,7 @@ async def set_output(
     execution_mode: Annotated[str, Depends(get_execution_mode)],
 ) -> CommandResponse:
     opcua = getattr(request.app.state, "opcua_adapter", None)
-    if _dcs_owns_loop(lm, body.controller_id, execution_mode):
+    if _dcs_owns_loop(execution_mode):
         if opcua is None or not opcua.is_connected:
             raise HTTPException(status_code=409, detail=_MONITOR_DETAIL)
         # Same gate as set_setpoint above. This used to test `execution_mode ==
@@ -221,6 +225,7 @@ async def set_output(
             )
         _write_to_dcs(opcua, body.controller_id, "co", body.value)
     else:
+        _refuse_supervisory(lm, body.controller_id)
         lm.set_output(body.controller_id, body.value)
     await audit_and_broadcast(
         audit_repo, sew,
