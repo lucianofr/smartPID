@@ -2622,6 +2622,11 @@
             "title": "Osc",
             "type": "number"
           },
+          "osc_period_s": {
+            "default": 0.0,
+            "title": "Osc Period S",
+            "type": "number"
+          },
           "osc_sample_count": {
             "default": 0,
             "title": "Osc Sample Count",

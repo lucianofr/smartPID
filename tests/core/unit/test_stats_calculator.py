@@ -451,3 +451,58 @@ class TestOvershootFrac:
         assert self._calc(
             [(40.0, 40.0)] * 3 + [(60.0, 70.0)] * 5, span=0.0,
         ).overshoot_frac == 0.0
+
+
+class TestOscPeriod:
+    """Oscillation period read off the spacing of the settling-masked
+    zero crossings. 0.0 means "not measurable", never "not oscillating".
+    """
+
+    @staticmethod
+    def _sine(period_s, *, amplitude=10.0, n=100, is_settling=False):
+        import math
+
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        calc = StatsCalculator(window_size=200, span=100.0, setpoint=0.0)
+        for k in range(n):
+            calc.add_sample(
+                error=amplitude * math.sin(2 * math.pi * k / period_s),
+                co=50.0, dt=1.0, is_settling=is_settling,
+            )
+        return calc
+
+    def test_measures_full_period_of_a_clean_sinewave(self):
+        # Crossings land one sample after each half-cycle, so the gaps are
+        # half-periods and the reported value is the full period.
+        assert self._sine(20.0).osc_period_s == pytest.approx(20.0, rel=0.15)
+
+    def test_quiet_series_under_noise_threshold_is_unmeasured(self):
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        # |error| < reversal_noise_frac × span = 0.5 → no admissible sample.
+        calc = StatsCalculator(window_size=100, span=100.0, setpoint=0.0)
+        for k in range(100):
+            calc.add_sample(error=0.1 if k % 2 else -0.1, co=50.0, dt=1.0)
+        assert calc.osc_period_s == 0.0
+
+    def test_too_few_crossings_is_unmeasured(self):
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        def _flips(sequence):
+            calc = StatsCalculator(window_size=100, span=100.0, setpoint=0.0)
+            for e in sequence:
+                calc.add_sample(error=e, co=50.0, dt=1.0)
+            return calc.osc_period_s
+
+        # Single step: one sign flip, no interval at all.
+        assert _flips([-30.0] * 10 + [30.0] * 10) == 0.0
+        # Two crossings give one interval — a lone gap is not an estimate.
+        assert _flips([-30.0] * 5 + [30.0] * 5 + [-30.0] * 5) == 0.0
+        # Three crossings is the first measurable case.
+        assert _flips([-30.0] * 5 + [30.0] * 5 + [-30.0] * 5 + [30.0] * 5) == 10.0
+
+    def test_settling_samples_are_ignored(self):
+        # Same wave that measures 20.0 above, flagged as an SP-step
+        # transient: chasing a setpoint is not oscillation.
+        assert self._sine(20.0, is_settling=True).osc_period_s == 0.0
