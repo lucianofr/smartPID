@@ -42,7 +42,10 @@ def bus():
     b.stop()
 
 
-def _controller(stability_band_pct: float | None = None) -> Controller:
+def _controller(
+    stability_band_pct: float | None = None,
+    objective: ControlObjective = ControlObjective.SP_TRACKING,
+) -> Controller:
     return Controller(
         id=1,
         name="FIC-301",
@@ -52,7 +55,7 @@ def _controller(stability_band_pct: float | None = None) -> Controller:
         stability_band_pct=stability_band_pct,
         ai_config=AIConfig(
             engine=AIEngine.FUZZY,
-            objective=ControlObjective.SP_TRACKING,
+            objective=objective,
             dead_time_l=0.1,
             limit_min=0.1,
             limit_max=100.0,
@@ -248,3 +251,68 @@ class TestBandResolution:
         worker._last_sp, worker._last_pv = _SP, _MOVING_PV
         worker._pid_enabled = False
         assert worker._optimization_skip_reason() == "enabled"
+
+
+class TestOvershootReopensTheBand:
+    """A SP step that overshot is tuning information, and it is gone by the
+    time the band reopens: AI cadence is 3xTSS, so the loop has re-settled
+    long before the next cycle fires. Without a bypass the evidence sitting
+    in the stats window is never consumed.
+    """
+
+    @staticmethod
+    def _at_setpoint(worker):
+        worker._last_sp, worker._last_pv = _SP, _SP - 0.5  # 1 %, inside 2 %
+        return worker
+
+    def test_a_recorded_overshoot_reopens_an_otherwise_closed_band(self, bus):
+        worker = self._at_setpoint(AIWorker(bus=bus, controller=_controller()))
+        assert worker._optimization_skip_reason() == "stability_band"
+        worker._latest_stats = {"overshoot": 0.30}
+        assert worker._optimization_skip_reason() is None
+
+    def test_a_negligible_overshoot_leaves_the_band_closed(self, bus):
+        worker = self._at_setpoint(AIWorker(bus=bus, controller=_controller()))
+        worker._latest_stats = {"overshoot": 0.02}
+        assert worker._optimization_skip_reason() == "stability_band"
+
+    def test_the_enabled_gate_still_outranks_the_bypass(self, bus):
+        worker = self._at_setpoint(AIWorker(bus=bus, controller=_controller()))
+        worker._latest_stats = {"overshoot": 0.30}
+        worker._pid_enabled = False
+        assert worker._optimization_skip_reason() == "enabled"
+
+    def test_other_objectives_keep_todays_behaviour(self, bus):
+        """The bypass is SP-tracking only: no other strategy consumes the
+        overshoot indicator, so for them it is not evidence of anything."""
+        worker = self._at_setpoint(AIWorker(
+            bus=bus,
+            controller=_controller(
+                objective=ControlObjective.DISTURBANCE_REJECTION,
+            ),
+        ))
+        worker._latest_stats = {"overshoot": 0.30}
+        assert worker._optimization_skip_reason() == "stability_band"
+
+    def test_the_cycle_actually_tunes_while_pv_sits_at_setpoint(self, bus):
+        worker = AIWorker(bus=bus, controller=_controller(), initial_ki=12.5)
+        worker._ai_period_s = _TEST_AI_PERIOD
+        worker._latest_stats = {
+            "overshoot": 0.30, "sample_count": 200, "osc_sample_count": 200,
+        }
+        worker.start()
+        try:
+            pub = bus.create_publisher()
+            sub = bus.create_subscriber(b"ACTION.AI.1")
+            time.sleep(0.05)
+            deadline = time.monotonic() + _TEST_AI_PERIOD * 3
+            while time.monotonic() < deadline:
+                _feed(pub, 1, pv=_SP - 0.5, pid_enabled=True)
+                time.sleep(0.05)
+            actions = _drain(sub)
+            assert actions, "a recorded overshoot must be tuned at setpoint"
+            assert actions[0]["new_ki"] > 12.5, (
+                f"Ti must be raised against an overshoot: {actions[0]}"
+            )
+        finally:
+            worker.stop()

@@ -1517,3 +1517,164 @@ class TestSPTrackingNeverInvertsOnAnOscillatingLoop:
             mean_abs_error=4.0, tv_per_sample=2.0, sp_pk_pk=0.0,
         ))
         assert d.inputs["OSC"] == pytest.approx(1.0)
+
+
+class TestSPOvershootInput:
+    """OVS — the SP-step shape indicator the window-averaged metrics cannot
+    see. IAE dilutes the transient over 5xTSS and OSC needs two zero
+    crossings, so a well-damped-but-overshooting step reads as "settled".
+    """
+
+    @staticmethod
+    def _settled(**over):
+        """A window that looks perfectly calm to IAE / OSC / EFF."""
+        base = {
+            "mean_abs_error": 0.5,
+            "recent_pk_pk_error": 0.0,
+            "reversals": 0,
+            "zero_crossings": 0,
+            "tv_per_sample": 0.0,
+            "sample_count": 200,
+            "osc_sample_count": 200,
+        }
+        base.update(over)
+        return base
+
+    def _decide(self, stats, ti=10.0):
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        return FuzzyEngineV2().compute_adjustment_from_stats(
+            stats=stats, span=100.0, ti_current=ti,
+            limit_min=0.1, limit_max=1000.0,
+        )
+
+    def test_no_step_in_the_window_leaves_every_gate_open(self):
+        """ovs = 0 -> NONE = 1, so every ovs-gated rule fires at full
+        strength: identical to the pre-OVS rule base."""
+        assert self._decide(self._settled()).delta_ti == pytest.approx(0.0)
+        assert self._decide(
+            self._settled(overshoot=0.0),
+        ).delta_ti == pytest.approx(0.0)
+
+    def test_a_calm_window_hiding_a_big_overshoot_still_damps(self):
+        d = self._decide(self._settled(overshoot=0.5))
+        assert d.delta_ti == pytest.approx(0.35)
+        assert d.new_ti == pytest.approx(13.5)
+        assert "OVS=0.50" in d.reasoning
+
+    def test_moderate_overshoot_damps_gently(self):
+        d = self._decide(self._settled(overshoot=0.12))
+        assert 0.0 < d.delta_ti <= 0.15
+
+    def test_overshoot_blocks_the_reduce_verdict(self):
+        """The R1 signature — standing offset, calm valve, no oscillation —
+        earns a Ti reduction. An overshooting loop is never lazy, and
+        reducing Ti there arms a bigger overshoot on the next step.
+        """
+        lazy = self._settled(mean_abs_error=30.0, tv_per_sample=0.2)
+        assert self._decide(lazy).delta_ti < 0.0
+        assert self._decide({**lazy, "overshoot": 0.5}).delta_ti > 0.0
+
+    def test_overshoot_bypasses_the_min_osc_samples_hold(self):
+        """The hold exists because the mask left no oscillation evidence.
+        The overshoot is measured FROM the masked region, so it is valid
+        evidence precisely when the oscillation metrics are not.
+        """
+        masked = self._settled(osc_sample_count=3)
+        assert self._decide(masked).delta_ti == 0.0
+        assert "hold" in self._decide(masked).reasoning
+        assert self._decide({**masked, "overshoot": 0.5}).delta_ti > 0.0
+
+    def test_a_negligible_overshoot_does_not_bypass_the_hold(self):
+        d = self._decide(self._settled(osc_sample_count=3, overshoot=0.02))
+        assert d.delta_ti == 0.0
+        assert "hold" in d.reasoning
+
+
+class TestOvershootElimination:
+    """Closed-loop proof that the tuner actually removes step overshoot.
+
+    Pure domain: a FOPDT plant under positional PI, its samples fed to a real
+    StatsCalculator, and the snapshot built by the real
+    ``StatsWorker.get_current_stats`` so the engine consumes exactly the
+    production payload. Overshoot is measured from the simulated PV trace,
+    never from the indicator under test.
+    """
+
+    TAU, DEAD, DT, KP = 20.0, 2, 1.0, 1.0
+    SP_LO, SP_HI = 50.0, 60.0
+    STEP_EVERY, DECIDE_EVERY = 120, 60
+
+    @classmethod
+    def _step_overshoots(cls, trace, n_steps):
+        out = []
+        size = cls.SP_HI - cls.SP_LO
+        for s in range(1, n_steps + 1):
+            a = s * cls.STEP_EVERY
+            b = min(a + cls.STEP_EVERY, len(trace))
+            target = trace[a][0]
+            sign = 1.0 if target > trace[a - 1][0] else -1.0
+            peak = max(sign * (pv - target) for _, pv in trace[a:b])
+            out.append(max(0.0, peak) / size)
+        return out
+
+    def _run(self, ti0, n_steps, *, adapt):
+        from types import SimpleNamespace
+
+        from smart_pid_core.application.workers.stats_worker import StatsWorker
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import FuzzyEngineV2
+        from smart_pid_core.domain.services.stats_calculator import StatsCalculator
+
+        engine = FuzzyEngineV2()
+        calc = StatsCalculator(window_size=100, span=100.0, setpoint=self.SP_LO)
+        snap = SimpleNamespace(_calculator=calc, controller_id=1)
+        ti, sp, pv = ti0, self.SP_LO, self.SP_LO
+        int_e = self.SP_LO * ti / self.KP          # CO = 50 %, loop at rest
+        delay = [self.SP_LO] * (self.DEAD + 1)
+        trace: list[tuple[float, float]] = []
+
+        for k in range(self.STEP_EVERY * (n_steps + 1)):
+            if k and k % self.STEP_EVERY == 0 and k // self.STEP_EVERY <= n_steps:
+                sp = self.SP_HI if sp == self.SP_LO else self.SP_LO
+            e = sp - pv
+            raw = self.KP * e + (self.KP / ti) * int_e
+            co = min(100.0, max(0.0, raw))
+            if co == raw:                          # anti-windup
+                int_e += e * self.DT
+            delay.append(co)
+            pv += (self.DT / self.TAU) * (delay.pop(0) - pv)
+            calc._setpoint = sp
+            calc.add_sample(error=e, co=co, dt=self.DT, is_settling=False, sp=sp)
+            trace.append((sp, pv))
+            if adapt and k and k % self.DECIDE_EVERY == 0:
+                new_ti = engine.compute_adjustment_from_stats(
+                    stats=StatsWorker.get_current_stats(snap),
+                    span=100.0, ti_current=ti, limit_min=0.1, limit_max=1000.0,
+                ).new_ti
+                # Bumpless transfer: a positional PI must rescale its
+                # integral store, or the Ti change alone kicks the output.
+                int_e *= new_ti / ti
+                ti = new_ti
+        return self._step_overshoots(trace, n_steps), ti
+
+    def test_the_untuned_loop_keeps_overshooting(self):
+        """Ti = 4 against tau = 20 overshoots ~50 % and never recovers on its
+        own — the scenario has to be real before the fix can be credited."""
+        overshoots, ti = self._run(4.0, 8, adapt=False)
+        assert ti == 4.0
+        assert overshoots[0] > 0.25
+        assert overshoots[-1] > 0.25
+
+    def test_the_tuner_eliminates_the_overshoot(self):
+        overshoots, ti = self._run(4.0, 8, adapt=True)
+        assert overshoots[0] > 0.25, "scenario must start with a real overshoot"
+        assert ti > 4.0, f"Ti was never raised: {ti}"
+        assert overshoots[-1] < 0.05, f"overshoot not eliminated: {overshoots}"
+
+    def test_ti_stops_climbing_once_the_steps_come_in_clean(self):
+        """The correction must fade out with the overshoot, or Ti walks to
+        limit_max on any loop whose setpoint keeps moving."""
+        short = self._run(4.0, 8, adapt=True)[1]
+        long_run = self._run(4.0, 16, adapt=True)[1]
+        assert long_run == pytest.approx(short), (
+            f"Ti kept growing after convergence: {short} -> {long_run}"
+        )

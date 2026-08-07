@@ -457,12 +457,31 @@ class AIWorker:
             ``|PV - SP|`` is inside the loop's stability band. At steady state
             the error carries no information about the tuning, and changing
             Ki/Ti there only arms an overshoot on the next setpoint step.
+            Bypassed for FUZZY + SP_TRACKING while the stats window still
+            holds a significant SP-step overshoot — that overshoot IS tuning
+            information, and it is gone by the time the band reopens.
 
         Neither guard touches Kp or Kd: the whole cycle is skipped or none of
         it is.
         """
         if self._pid_enabled is False:
             return "enabled"
+        # A recent SP step that overshot is actionable evidence even
+        # though PV is back inside the band. The band skip exists
+        # because steady-state error carries no tuning information —
+        # but the overshoot recorded in the stats window IS tuning
+        # information, and with AI cadence 3xTSS the loop has usually
+        # re-settled before the cycle fires; without this bypass the
+        # evidence is never consumed. FUZZY + SP_TRACKING only.
+        from smart_pid_core.domain.services.fuzzy_engine_v2 import OVS_ACT_THR
+        from smart_pid_domain.enums import ControlObjective
+        if (
+            self._ai_config.engine == AIEngine.FUZZY
+            and self._ai_config.objective == ControlObjective.SP_TRACKING
+            and self._latest_stats is not None
+            and float(self._latest_stats.get("overshoot", 0.0)) >= OVS_ACT_THR
+        ):
+            return None
         band = abs(self._last_sp) * self._stability_band_pct / 100.0
         if abs(self._last_pv - self._last_sp) < band:
             return "stability_band"

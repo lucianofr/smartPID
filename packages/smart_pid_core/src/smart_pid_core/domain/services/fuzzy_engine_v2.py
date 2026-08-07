@@ -138,6 +138,20 @@ MF_EFF: MFSet = {
     "EXCESS":   ("trap", (0.7, 0.9, 1.0, 1.0)),
 }
 
+# Overshoot of the last SP step(s) in the stats window, as a fraction of
+# the step size. NONE tops out at 2% ("eliminated"); MOD is the
+# classical quarter-decay neighbourhood; HIGH saturates at 30% — the
+# reported field case reads ~0.5, i.e. fully HIGH.
+MF_OVS: MFSet = {
+    "NONE": ("trap", (0.0, 0.0, 0.02, 0.06)),
+    "MOD":  ("tri",  (0.04, 0.12, 0.22)),
+    "HIGH": ("trap", (0.15, 0.30, 1.0, 1.0)),
+}
+
+# Overshoot below this is not actionable evidence: it neither bypasses
+# the min-osc-samples hold nor the AI worker's stability-band skip.
+OVS_ACT_THR: float = 0.05
+
 OUTPUT_CENTERS: dict[str, float] = {
     "RM": -0.35, "R": -0.15, "M": 0.0, "A": +0.15, "AM": +0.35,
 }
@@ -148,18 +162,26 @@ OUTPUT_CENTERS: dict[str, float] = {
 # only ever justified by POSITIVE evidence of laziness — a standing offset the
 # valve is NOT working to close — and every ambiguous combination resolves
 # towards damping, or towards leaving the loop alone.
+#
+# Overshoot on a setpoint step is the mirror image: positive evidence that the
+# integrator is too fast. While the last step overshot, a "reduce" or "settled"
+# verdict from the window-averaged metrics is a lie — the transient that proves
+# otherwise is hidden by the settling mask — so `ovs NONE` gates them.
 RULES: list[Rule] = [
-    # R1: persistent offset with a calm valve → integrator genuinely lazy.
-    # This is the only signature that earns a reduction.
-    ({"iae": "HIGH", "osc": "STABLE", "eff": "SMOOTH"}, "R"),
-    ({"iae": "HIGH", "osc": "STABLE", "eff": "MODERATE"}, "R"),
-    # R1': offset the valve is already fighting at full stroke. NOT a slow
-    # loop — a loop at its limit (output saturation, a downstream
-    # constraint, stiction, or an oscillation the detector could not
-    # resolve). Speeding the integrator up there only winds it harder.
-    # This rule used to say "RM" (−0.35); combined with an OSC reading that
-    # collapses to 0 when the settling mask covers the window, it is what
-    # drove Ti down cycle after cycle on a visibly oscillating loop. Damp.
+    # R0: setpoint-step overshoot — the primary SP-tracking defect. Fires
+    # on the per-step indicator regardless of the window-averaged
+    # metrics: the transient that produced it is settling-masked, so
+    # OSC/IAE structurally cannot see it.
+    ({"ovs": "HIGH"}, "AM"),
+    ({"ovs": "MOD"},  "A"),
+    # R1: persistent offset with a calm valve → integrator genuinely
+    # lazy. Only when the last step came in clean — an overshooting loop
+    # is never lazy, and reducing Ti there arms the next overshoot.
+    ({"iae": "HIGH", "osc": "STABLE", "eff": "SMOOTH", "ovs": "NONE"}, "R"),
+    ({"iae": "HIGH", "osc": "STABLE", "eff": "MODERATE", "ovs": "NONE"}, "R"),
+    # R1': offset the valve is already fighting at full stroke. NOT a
+    # slow loop — a loop at its limit. Damp. (History: this rule at "RM"
+    # plus a masked OSC is what drove Ti down on an oscillating loop.)
     ({"iae": "HIGH", "osc": "STABLE", "eff": "EXCESS"}, "A"),
     ({"iae": "MED",  "osc": "STABLE", "eff": "EXCESS"}, "A"),
     ({"iae": "LOW",  "osc": "STABLE", "eff": "EXCESS"}, "A"),
@@ -167,26 +189,27 @@ RULES: list[Rule] = [
     ({"iae": "HIGH", "osc": "UNSTABLE"}, "AM"),
     ({"iae": "MED",  "osc": "UNSTABLE"}, "AM"),
     ({"iae": "LOW",  "osc": "UNSTABLE"}, "A"),
-    # R3: nervous loop (oscillating + chattering valve) → slow down integrator
+    # R3: nervous loop (oscillating + chattering valve) → slow integrator
     ({"osc": "OSC", "eff": "EXCESS"}, "A"),
-    # R3': sustained PV oscillation with a calm valve. Classical tuning says
-    # oscillation → more damping — but only when the oscillation actually
-    # costs something. Mild ringing on a loop already holding a low error is
-    # the normal shape of a step response; damping it further only buys
-    # sluggishness, and chasing it makes Ti creep up without bound on any
-    # loop whose setpoint keeps moving.
-    ({"iae": "LOW",  "osc": "OSC", "eff": "MODERATE"}, "M"),
-    ({"iae": "LOW",  "osc": "OSC", "eff": "SMOOTH"}, "M"),
+    # R3-gap: sustained oscillation, high error, working (not chattering)
+    # valve — previously uncovered, produced a structural hold.
+    ({"iae": "HIGH", "osc": "OSC", "eff": "MODERATE"}, "A"),
+    # R3': mild ringing on a loop already holding low error is the normal
+    # shape of a step response; damp only when it costs something — and
+    # only when the step itself did not overshoot.
+    ({"iae": "LOW",  "osc": "OSC", "eff": "MODERATE", "ovs": "NONE"}, "M"),
+    ({"iae": "LOW",  "osc": "OSC", "eff": "SMOOTH", "ovs": "NONE"}, "M"),
     ({"iae": "MED",  "osc": "OSC", "eff": "SMOOTH"}, "A"),
     ({"iae": "HIGH", "osc": "OSC", "eff": "SMOOTH"}, "AM"),
     # R4: acceptable compromise
-    ({"iae": "MED", "osc": "OSC", "eff": "MODERATE"}, "M"),
-    # R5: settled
-    ({"iae": "LOW", "osc": "STABLE", "eff": "SMOOTH"}, "M"),
-    ({"iae": "LOW", "osc": "STABLE", "eff": "MODERATE"}, "M"),
+    ({"iae": "MED", "osc": "OSC", "eff": "MODERATE", "ovs": "NONE"}, "M"),
+    # R5: settled — only settled if the last step also came in clean;
+    # otherwise these M-votes dilute the OVS correction in the CoG.
+    ({"iae": "LOW", "osc": "STABLE", "eff": "SMOOTH", "ovs": "NONE"}, "M"),
+    ({"iae": "LOW", "osc": "STABLE", "eff": "MODERATE", "ovs": "NONE"}, "M"),
     # R6: moderate offset, calm PV and calm valve → gentle reduce
-    ({"iae": "MED", "osc": "STABLE", "eff": "SMOOTH"}, "R"),
-    ({"iae": "MED", "osc": "STABLE", "eff": "MODERATE"}, "R"),
+    ({"iae": "MED", "osc": "STABLE", "eff": "SMOOTH", "ovs": "NONE"}, "R"),
+    ({"iae": "MED", "osc": "STABLE", "eff": "MODERATE", "ovs": "NONE"}, "R"),
 ]
 
 
@@ -271,12 +294,15 @@ class FuzzyEngineV2:
         self._cos.append(co_frac)
 
     def infer(
-        self, iae: float, osc: float, eff: float,
+        self, iae: float, osc: float, eff: float, ovs: float = 0.0,
     ) -> tuple[float, dict[str, dict[str, float]]]:
         input_mfs = {
             "iae": _fuzzify(iae, MF_IAE),
             "osc": _fuzzify(osc, MF_OSC),
             "eff": _fuzzify(eff, MF_EFF),
+            # ovs=0.0 means "no step observed": NONE = 1, which opens every
+            # ovs-gated rule — i.e. exactly the pre-OVS behaviour.
+            "ovs": _fuzzify(ovs, MF_OVS),
         }
         delta, output_strengths = _run_rules(input_mfs, RULES, OUTPUT_CENTERS)
         delta = max(-0.5, min(0.5, delta))
@@ -297,6 +323,9 @@ class FuzzyEngineV2:
         return self._build_decision(
             iae, osc, eff, pk_pk, reversals, len(self._errors),
             ti_current, limit_min, limit_max,
+            # The internal deque carries no SP data, so no step evidence can
+            # exist on this path; absent evidence leaves the gates open.
+            ovs=0.0,
         )
 
     def compute_adjustment_from_stats(
@@ -340,18 +369,24 @@ class FuzzyEngineV2:
         zero_crossings = int(stats.get("zero_crossings", reversals))
         tv_per = float(stats.get("tv_per_sample", 0.0))
         n = int(stats.get("sample_count", 0))
+        # Per-step overshoot — the only indicator computed through the
+        # settling mask, so the only one that can see a step transient.
+        ovs = max(0.0, min(1.0, float(stats.get("overshoot", 0.0))))
         # How many samples the oscillation metrics were actually allowed to
         # see. StatsWorker masks SP-step transients; when the setpoint moves
         # faster than the mask decays, that masking can cover the entire
         # window and every oscillation metric collapses to a structural
         # zero. Reading that as "STABLE" is what made the tuner cut Ti on a
         # loop in a limit cycle. No evidence is a hold, not a verdict.
+        # The overshoot indicator is the exception: it is measured FROM the
+        # masked region, so it is valid evidence precisely when the
+        # oscillation metrics are not, and a significant one must act.
         osc_n = int(stats.get("osc_sample_count", n))
-        if osc_n < self._MIN_OSC_SAMPLES:
+        if osc_n < self._MIN_OSC_SAMPLES and ovs < OVS_ACT_THR:
             return AIDecisionV2(
                 delta_ti=0.0,
                 new_ti=ti_current,
-                inputs={"IAE": 0.0, "OSC": 0.0, "EFF": 0.0,
+                inputs={"IAE": 0.0, "OSC": 0.0, "EFF": 0.0, "OVS": ovs,
                         "osc_samples": osc_n, "window": n},
                 reasoning=(
                     f"FuzzyV2[SP]: hold — only {osc_n} of {n} samples are "
@@ -377,6 +412,7 @@ class FuzzyEngineV2:
         return self._build_decision(
             iae, osc, eff, pk_pk_frac, reversals, n,
             ti_current, limit_min, limit_max,
+            ovs=ovs,
             zero_crossings=zero_crossings,
         )
 
@@ -391,11 +427,12 @@ class FuzzyEngineV2:
         ti_current: float,
         limit_min: float,
         limit_max: float,
+        ovs: float,
         zero_crossings: int | None = None,
     ) -> AIDecisionV2:
-        delta_ti, mfs = self.infer(iae, osc, eff)
+        delta_ti, mfs = self.infer(iae, osc, eff, ovs)
         new_ti = max(limit_min, min(limit_max, ti_current * (1.0 + delta_ti)))
-        inputs = {"IAE": iae, "OSC": osc, "EFF": eff,
+        inputs = {"IAE": iae, "OSC": osc, "EFF": eff, "OVS": ovs,
                   "pk_pk": pk_pk, "reversals": reversals, "window": n}
         if zero_crossings is not None:
             inputs["zero_crossings"] = zero_crossings
@@ -407,7 +444,7 @@ class FuzzyEngineV2:
             reasoning=(
                 f"FuzzyV2[SP]: IAE={iae:.2f} OSC={osc:.2f} "
                 f"(pkpk={pk_pk:.2f} rev={reversals}/{n}{zc_str}) "
-                f"EFF={eff:.2f} Δ_Ti={delta_ti:+.3f} "
+                f"EFF={eff:.2f} OVS={ovs:.2f} Δ_Ti={delta_ti:+.3f} "
                 f"Ti: {ti_current:.4f} → {new_ti:.4f}"
             ),
             membership_values=mfs,
