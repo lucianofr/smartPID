@@ -40,9 +40,9 @@ async function selectTheme(page: Page, theme: (typeof THEMES)[number]): Promise<
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
 }
 
-test('optimizer is the default when nothing is stored', async ({ page }) => {
+test('optimizer-dark is the default when nothing is stored', async ({ page }) => {
   await gotoDashboard(page, { loops: LOOPS });
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'optimizer');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'optimizer-dark');
   // The pre-paint script in index.html and the static attribute agree, so the
   // stored value is only written once the operator picks something.
   expect(await page.evaluate(() => localStorage.getItem('spid.theme'))).toBeNull();
@@ -128,7 +128,7 @@ const LEGACY: ReadonlyArray<readonly [string, string]> = [
   ['md3-dark', 'recorder'],
   ['md3-light', 'recorder'],
   ['ocean', 'recorder'],
-  ['not-a-theme', 'optimizer'],
+  ['not-a-theme', 'optimizer-dark'],
 ];
 
 for (const [stored, expected] of LEGACY) {

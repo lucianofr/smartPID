@@ -108,6 +108,17 @@ export async function mockRest(page: Page, options: RestOptions = {}): Promise<v
   await page.route('**/api/controllers', (route) =>
     route.fulfill({ json: loops.map(controllerPayload) }),
   );
+  // The config dialog saves over PUT /controllers/{id}; the shell never runs a
+  // backend, so echo the request body back as the updated controller. Specs that
+  // need to observe the write register their own earlier route and `fallback()`
+  // onto this one (integral-type.spec.ts does exactly that).
+  await page.route('**/api/controllers/*', (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback();
+    const id = Number(route.request().url().split('/').pop());
+    const body = JSON.parse(route.request().postData() ?? '{}') as Record<string, unknown>;
+    const base = controllerPayload(loops.find((l) => l.id === id) ?? loops[0]);
+    return route.fulfill({ json: { ...base, ...body, id } });
+  });
   await page.route('**/api/alarms/active', (route) =>
     route.fulfill({ json: options.alarms ?? [] }),
   );
