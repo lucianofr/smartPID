@@ -131,6 +131,13 @@ export interface StatsData {
   tv_per_sample: number;
   osc: number;
   sample_count: number;
+  /** Samples the oscillation metrics were allowed to see (non-settling).
+   *  0 means "unmeasured", not "steady": pk-pk, reversals and zero-crossings
+   *  are structural zeros when the settling mask covers the whole window. */
+  osc_sample_count: number;
+  /** Peak-to-peak setpoint travel over the window, engineering units — the
+   *  scale the oscillation amplitude has to be judged against. */
+  sp_pk_pk: number;
   /** Worst SP-step overshoot in the window, as a fraction of the step. */
   overshoot: number;
 }

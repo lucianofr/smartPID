@@ -65,8 +65,11 @@ class TestStatsWorker:
             data = msgpack.unpackb(payload)
             assert "iae" in data
             assert "total_variation" in data
-            # The SP-strategy step-shape input travels on the same snapshot.
+            # The SP-strategy step-shape input and the excitation context the
+            # fuzzy OSC detector needs travel on the same snapshot.
             assert "overshoot" in data
+            assert "osc_sample_count" in data
+            assert "sp_pk_pk" in data
             assert data["controller_id"] == 1
         finally:
             worker.stop()

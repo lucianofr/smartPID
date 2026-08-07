@@ -40,11 +40,13 @@ const BASE_METRICS: Omit<StatsResponse, 'controller_id'> = {
   sample_count: 100,
   mean_abs_error: 0,
   osc: 0,
+  osc_sample_count: 0,
   overshoot: 0,
   pk_pk_error: 0,
   recent_pk_pk_error: 0,
   recent_reversals: 0,
   reversals: 0,
+  sp_pk_pk: 0,
   tv_per_sample: 0,
   zero_crossings: 0,
 };

@@ -24,6 +24,7 @@ def mock_stats_worker():
         "controller_id": 1, "iae": 5.0, "itae": 10.0, "ise": 25.0,
         "mse": 12.5, "std_dev": 2.0, "total_variation": 3.0,
         "variability_sp": 0.08, "variability_range": 0.04, "sample_count": 100,
+        "osc_sample_count": 40, "sp_pk_pk": 12.5,
     }
     return w
 
@@ -72,6 +73,19 @@ class TestStatsAPI:
         data = resp.json()
         assert data["iae"] == 5.0
         assert data["sample_count"] == 100
+
+    @pytest.mark.asyncio
+    async def test_get_stats_exposes_the_oscillation_context(self, stats_client):
+        """osc_sample_count and sp_pk_pk travel on the STATS bus payload, so
+        the REST DTO has to carry them too: without the admissible-sample
+        count a pk-pk of 0 reads as "calm" when it really means "unmeasured",
+        and without the setpoint travel the amplitude has no scale."""
+        client, headers = stats_client
+        resp = await client.get("/controllers/1/stats", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["osc_sample_count"] == 40
+        assert data["sp_pk_pk"] == 12.5
 
     @pytest.mark.asyncio
     async def test_get_stats_unknown_controller(self, stats_client):
