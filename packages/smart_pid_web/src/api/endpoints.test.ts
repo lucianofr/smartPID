@@ -16,7 +16,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 const calledPath = () => fetchMock.mock.calls[0][0] as string;
 
-describe('endpoints — exact backend routes (app.py:161-174 prefixes)', () => {
+describe('endpoints — exact backend routes (app.py create_app prefixes)', () => {
   it('login posts credentials to /api/auth/login', async () => {
     await endpoints.login('admin', 'secret');
     expect(calledPath()).toBe('/api/auth/login');
@@ -39,7 +39,7 @@ describe('endpoints — exact backend routes (app.py:161-174 prefixes)', () => {
     expect(calledPath()).toBe('/api/alarms/active');
   });
 
-  it('alarmHistory sends BOTH start and end (alarms.py:38-39) plus limit', async () => {
+  it('alarmHistory sends BOTH start and end (alarms.py get_alarm_history) plus limit', async () => {
     await endpoints.alarmHistory({
       start: '2026-07-26T10:00:00.000Z',
       end: '2026-07-26T11:00:00.000Z',

@@ -56,7 +56,8 @@ export function useDeactivateUser(): UseMutationResult<UserRow, ApiError, number
 }
 
 /**
- * The users router raises exactly two 409s (users.py:52,80) and they mean very
+ * The users router raises exactly two 409s (users.py
+ * _reject_if_last_active_admin and create_user) and they mean very
  * different things to the administrator, so neither may collapse into "falhou".
  */
 export function userErrorMessage(error: ApiError, fallback: string): string {

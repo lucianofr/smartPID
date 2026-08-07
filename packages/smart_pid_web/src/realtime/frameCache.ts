@@ -4,9 +4,9 @@ import type { AnyEnvelope, RealtimeType } from '../lib/envelope';
  * Last-frame cache — pure module, no React, no DOM (spec §7).
  *
  * One slot per (type, loop_id): the same granularity the backend's
- * ConnectionBuffer coalesces on (realtime.py:168-191). A component that mounts
- * after a frame has already arrived would otherwise render empty until the next
- * one — seconds of blank faceplate on a slow loop.
+ * ConnectionBuffer coalesces on (realtime.py ConnectionBuffer). A component
+ * that mounts after a frame has already arrived would otherwise render empty
+ * until the next one — seconds of blank faceplate on a slow loop.
  */
 
 /** Cache/coalesce slot key. `loop_id` is null for broadcasts (EVENT.SYSTEM). */

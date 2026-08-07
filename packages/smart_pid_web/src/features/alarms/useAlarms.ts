@@ -27,7 +27,8 @@ import type { ActiveAlarm, AlarmSeverity, AlarmStatus, AlarmType } from './types
 /** A flood emits hundreds of frames a second; one reconcile per window is enough. */
 export const REFETCH_COALESCE_MS = 500;
 
-/** Backend history default is 100 (alarms.py:41) — too small for an operator window. */
+/** Backend history default is 100 (alarms.py get_alarm_history) — too small for
+ *  an operator window. */
 export const HISTORY_LIMIT = 1000;
 
 export type AlarmSort = 'severity' | 'time';
@@ -181,7 +182,8 @@ export function useAlarms(filters: AlarmFilters = DEFAULT_ALARM_FILTERS): UseAla
 }
 
 export interface AlarmHistoryFilter {
-  /** ISO-8601 — the backend REQUIRES both bounds (alarms.py:38-39). */
+  /** ISO-8601 — the backend REQUIRES both bounds
+   *  (alarms.py get_alarm_history). */
   start: string;
   end: string;
   limit: number;

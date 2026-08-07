@@ -33,14 +33,18 @@ import type {
 import type { ContractThemeId } from '../theme/contract';
 
 export interface AlarmHistoryParams {
-  /** ISO-8601 — backend parses with datetime.fromisoformat (alarms.py:46). */
+  /** ISO-8601 — backend parses with datetime.fromisoformat
+   *  (alarms.py get_alarm_history). */
   start: string;
-  /** ISO-8601 — REQUIRED by the backend alongside start (alarms.py:38-39). */
+  /** ISO-8601 — REQUIRED by the backend alongside start
+   *  (alarms.py get_alarm_history). */
   end: string;
-  /** Backend default is 100 (alarms.py:41) — resync passes an explicit high cap. */
+  /** Backend default is 100 (alarms.py get_alarm_history) — resync passes an
+   *  explicit high cap. */
   limit?: number;
   offset?: number;
-  /** Narrow to one loop (alarms.py:40) — omitted means every controller. */
+  /** Narrow to one loop (alarms.py get_alarm_history) — omitted means every
+   *  controller. */
   controllerId?: number;
 }
 
@@ -52,7 +56,8 @@ export interface HistoryParams {
 }
 
 export interface AiTuningHistoryParams {
-  /** ISO-8601 — both bounds are REQUIRED by the route (alarms.py:62-63). */
+  /** ISO-8601 — both bounds are REQUIRED by the route
+   *  (alarms.py get_ai_log_history). */
   start: string;
   end: string;
   /** Narrow to one loop; omitted means every controller. */
