@@ -23,3 +23,12 @@ export function pvScale(controller: ControllerResponse): Scale {
 
 /** CO is always a valve percentage — the right trend axis and the CO bar. */
 export const CO_SCALE: Scale = { euMin: 0, euMax: 100, unit: '%' };
+
+/**
+ * CO display scale. The range stays the fixed 0–100 valve percentage — only the
+ * unit is per-loop today; honouring `out_scale.eu_*` is a separate change that
+ * has to move the CO entry box and the trend's right axis with it.
+ */
+export function coScale(controller: ControllerResponse): Scale {
+  return { euMin: 0, euMax: 100, unit: controller.out_scale?.unit || '%' };
+}

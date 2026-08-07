@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/components/Dialog';
 import { Field, Input } from '@/components/Field';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/Tabs';
 import { toast } from '@/components/Toast';
 import type {
   AiConfigDto,
@@ -39,7 +40,13 @@ import {
   useDeleteControllerMutation,
   useUpdateControllerMutation,
 } from './useCommands';
-import { hasErrors, validateAiConfig, validateLimits, validatePidParams } from './validation';
+import {
+  hasErrors,
+  validateAiConfig,
+  validateEngineeringLimits,
+  validateLimits,
+  validatePidParams,
+} from './validation';
 import {
   NODE_ID_FIELDS,
   NodeIdField,
@@ -50,17 +57,11 @@ import {
 import { AiConfigSection } from './AiConfigSection';
 
 /**
- * Sections the DCS owns while the loop is SUPERVISORY. Smart PID only watches
- * that loop — showing tuning, scaling or shed here would invite a write that
- * the DCS immediately overrides. In DDC the PID runs here, so all of it applies.
+ * Tabs the DCS owns while the loop is SUPERVISORY. Smart PID only watches that
+ * loop — showing tuning or shed here would invite a write that the DCS
+ * immediately overrides. In DDC the PID runs here, so all of it applies.
  */
-export const DDC_SECTIONS = [
-  'PID Tuning',
-  'Scaling & Limits',
-  'Filters & IO',
-  'Shed & Safety',
-  'PID Structure',
-] as const;
+export const DDC_TABS = ['Sintonia', 'Avançado'] as const;
 
 export interface LoopConfigDialogProps {
   controller: ControllerResponse;
@@ -282,6 +283,8 @@ type Draft = {
   pid: PidParamsForm;
   limits: LimitsForm;
   pv_scale: ScaleConfigDto;
+  /** CO engineering scale (`out_scale` on the wire), symmetric with `pv_scale`. */
+  co_scale: ScaleConfigDto;
   bindings: Pick<
     TagBindingsDto,
     | 'node_id_pv'
@@ -321,7 +324,8 @@ type Draft = {
 
 function toDraft(c: ControllerResponse): Draft {
   const pid = c.pid_params ?? { gain: 1, reset: 10, rate: 0, alpha: 0.125, deadband: 0 };
-  const pv = c.pv_scale ?? { eu_min: 0, eu_max: 100, unit: '' };
+  const pv = c.pv_scale ?? { eu_min: 0, eu_max: 100, unit: '%' };
+  const co = c.out_scale ?? { eu_min: 0, eu_max: 100, unit: '%' };
   const tags = c.tag_bindings;
   const ai = c.ai_config as Partial<AiConfigDto> | undefined;
   const modeIntMap = {} as Record<ControllerMode, string>;
@@ -347,7 +351,10 @@ function toDraft(c: ControllerResponse): Draft {
       sp_rate_up: c.sp_rate_up ?? 0,
       sp_rate_dn: c.sp_rate_dn ?? 0,
     },
-    pv_scale: { ...pv },
+    // A legacy blank unit coerces to `%`: the dialog now always writes a unit,
+    // and a blank box invites saving one back.
+    pv_scale: { ...pv, unit: pv.unit || '%' },
+    co_scale: { ...co, unit: co.unit || '%' },
     bindings: {
       node_id_pv: tags?.node_id_pv ?? '',
       node_id_sp: tags?.node_id_sp ?? '',
@@ -408,6 +415,16 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
   const isDdc = draft.execution_mode === 'DDC';
   const pidErrors = isDdc ? validatePidParams(draft.pid) : {};
   const limitErrors = isDdc ? validateLimits(draft.limits) : {};
+  // Never DDC-gated: the PV/CO scales and the SP band are display and
+  // operator-entry contracts, and a SUPERVISORY loop needs both.
+  const scaleErrors = validateEngineeringLimits({
+    pv_eu_min: draft.pv_scale.eu_min,
+    pv_eu_max: draft.pv_scale.eu_max,
+    co_eu_min: draft.co_scale.eu_min,
+    co_eu_max: draft.co_scale.eu_max,
+    sp_lo_lim: draft.limits.sp_lo_lim,
+    sp_hi_lim: draft.limits.sp_hi_lim,
+  });
   const aiErrors = validateAiConfig({
     engine: draft.ai.engine,
     objective: draft.ai.objective,
@@ -422,6 +439,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
   const blocked =
     hasErrors(pidErrors) ||
     hasErrors(limitErrors) ||
+    hasErrors(scaleErrors) ||
     hasErrors(aiErrors) ||
     draft.name.trim() === '';
 
@@ -470,6 +488,9 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
   };
 
   const save = (): void => {
+    // sp_* ride the always-sent block below; the DDC spread must not restate
+    // them or the two copies could disagree.
+    const { sp_hi_lim, sp_lo_lim, ...ddcLimits } = draft.limits;
     update.mutate(
       {
         id: controller.id,
@@ -490,6 +511,12 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
           // there would strand the field exactly where it matters most.
           integral_type: draft.integral_type,
           stability_band_pct: stabilityBandPayload(),
+          // Engineering scales and the SP band persist in every execution
+          // mode — the Limites tab is not DDC-gated.
+          pv_scale: draft.pv_scale,
+          out_scale: draft.co_scale,
+          sp_hi_lim,
+          sp_lo_lim,
           ai_config: {
             engine: draft.ai.engine,
             objective: draft.ai.objective,
@@ -505,13 +532,12 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
             ? {
                 pid_params: draft.pid,
                 pid_structure: draft.pid_structure,
-                pv_scale: draft.pv_scale,
                 shed_opt: draft.shed_opt,
                 shed_time_s: draft.shed_time_s,
                 max_tuning_change_pct: draft.max_tuning_change_pct,
                 low_cut: draft.low_cut,
                 ff_gain: draft.ff_gain,
-                ...draft.limits,
+                ...ddcLimits,
               }
             : {}),
         },
@@ -535,112 +561,91 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-2">
-          <TextField
-            label="Nome"
-            tooltip="Nome de identificação da malha (tag), exibido nos cards e no faceplate."
-            value={draft.name}
-            disabled={readOnly}
-            onChange={(v) => setDraft((p) => ({ ...p, name: v }))}
-          />
-          <TextField
-            label="Descrição"
-            tooltip="Texto livre descrevendo o processo controlado por esta malha."
-            value={draft.description}
-            disabled={readOnly}
-            onChange={(v) => setDraft((p) => ({ ...p, description: v }))}
-          />
-          <SelectField
-            label="Modo de execução"
-            tooltip="SUPERVISORY: o PID roda no CLP/DCS e o SmartPID só monitora. DDC: o PID roda dentro do SmartPID, que escreve a saída diretamente."
-            value={draft.execution_mode}
-            options={EXECUTION_MODES}
-            disabled={readOnly}
-            onChange={(v) => setDraft((p) => ({ ...p, execution_mode: v as ExecutionMode }))}
-          />
-          <NumberField
-            label="Taxa de varredura (s)"
-            tooltip="Intervalo, em segundos, entre execuções do algoritmo PID quando a malha está em DDC."
-            value={draft.scan_rate_s}
-            disabled={readOnly}
-            onChange={(v) => setDraft((p) => ({ ...p, scan_rate_s: v }))}
-          />
-          {NODE_ID_FIELDS.map(({ key, label, tooltip }) => (
-            <NodeIdField
-              key={key}
-              label={label}
-              tooltip={tooltip}
-              value={draft.bindings[key]}
-              disabled={readOnly}
-              onChange={(v) => patchBinding(key, v)}
-              onBrowse={canManage ? () => setPicking(key) : undefined}
-            />
-          ))}
-        </div>
+        <Tabs defaultValue="geral">
+          <TabsList aria-label="Seções da configuração">
+            <TabsTrigger value="geral">Geral</TabsTrigger>
+            <TabsTrigger value="tags">Tags</TabsTrigger>
+            <TabsTrigger value="limites">Limites</TabsTrigger>
+            {/* The execution-mode select lives on Geral, the default tab, so
+                switching to SUPERVISORY can never pull the tab out from under
+                the operator who is standing on it. */}
+            {isDdc ? <TabsTrigger value="sintonia">Sintonia</TabsTrigger> : null}
+            {isDdc ? <TabsTrigger value="avancado">Avançado</TabsTrigger> : null}
+            <TabsTrigger value="ia">IA</TabsTrigger>
+          </TabsList>
 
-        <Section label="Mapeamento de Modo">
-          {CONTROLLER_MODES.map((mode) => (
-            <ModeMapField
-              key={mode}
-              mode={mode}
-              value={draft.modeIntMap[mode]}
-              disabled={readOnly}
-              onChange={(v) => patchModeMap(mode, v)}
-            />
-          ))}
-        </Section>
+          <TabsContent value="geral">
+            <div className="grid grid-cols-2 gap-2">
+              <TextField
+                label="Nome"
+                tooltip="Nome de identificação da malha (tag), exibido nos cards e no faceplate."
+                value={draft.name}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, name: v }))}
+              />
+              <TextField
+                label="Descrição"
+                tooltip="Texto livre descrevendo o processo controlado por esta malha."
+                value={draft.description}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, description: v }))}
+              />
+              <SelectField
+                label="Modo de execução"
+                tooltip="SUPERVISORY: o PID roda no CLP/DCS e o SmartPID só monitora. DDC: o PID roda dentro do SmartPID, que escreve a saída diretamente."
+                value={draft.execution_mode}
+                options={EXECUTION_MODES}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, execution_mode: v as ExecutionMode }))}
+              />
+              <NumberField
+                label="Taxa de varredura (s)"
+                tooltip="Intervalo, em segundos, entre execuções do algoritmo PID quando a malha está em DDC."
+                value={draft.scan_rate_s}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, scan_rate_s: v }))}
+              />
+            </div>
+          </TabsContent>
 
-        {isDdc ? (
-          <>
-            <Section label="PID Tuning">
-              <NumberField
-                label="Ganho (Kp)"
-                tooltip="Ganho proporcional do controlador PID."
-                value={draft.pid.gain}
-                disabled={readOnly}
-                error={pidErrors.gain}
-                onChange={(v) => patchPid('gain', v)}
-              />
-              <NumberField
-                label="Reset (Ti)"
-                tooltip="Tempo integral (reset), em segundos por repetição — quanto menor, mais rápida a ação integral."
-                value={draft.pid.reset}
-                disabled={readOnly}
-                error={pidErrors.reset}
-                onChange={(v) => patchPid('reset', v)}
-              />
-              <NumberField
-                label="Rate (Td)"
-                tooltip="Tempo derivativo — antecipa a tendência do erro. Zero desativa a ação derivativa (controlador PI)."
-                value={draft.pid.rate}
-                disabled={readOnly}
-                error={pidErrors.rate}
-                onChange={(v) => patchPid('rate', v)}
-              />
-              <NumberField
-                label="Filtro derivativo (alpha)"
-                tooltip="Fator de filtro do termo derivativo (0–1), reduz ruído amplificado pela derivada."
-                value={draft.pid.alpha}
-                disabled={readOnly}
-                error={pidErrors.alpha}
-                onChange={(v) => patchPid('alpha', v)}
-              />
-              <NumberField
-                label="Banda morta"
-                tooltip="Faixa de erro, em unidades de engenharia, dentro da qual o controlador não atua."
-                value={draft.pid.deadband}
-                disabled={readOnly}
-                error={pidErrors.deadband}
-                onChange={(v) => patchPid('deadband', v)}
-              />
+          <TabsContent value="tags" className="flex flex-col gap-3">
+            <div className="grid grid-cols-2 gap-2">
+              {NODE_ID_FIELDS.map(({ key, label, tooltip }) => (
+                <NodeIdField
+                  key={key}
+                  label={label}
+                  tooltip={tooltip}
+                  value={draft.bindings[key]}
+                  disabled={readOnly}
+                  onChange={(v) => patchBinding(key, v)}
+                  onBrowse={canManage ? () => setPicking(key) : undefined}
+                />
+              ))}
+            </div>
+
+            <Section label="Mapeamento de Modo">
+              {CONTROLLER_MODES.map((mode) => (
+                <ModeMapField
+                  key={mode}
+                  mode={mode}
+                  value={draft.modeIntMap[mode]}
+                  disabled={readOnly}
+                  onChange={(v) => patchModeMap(mode, v)}
+                />
+              ))}
             </Section>
+          </TabsContent>
 
-            <Section label="Scaling & Limits">
+          {/* Not DDC-gated: these are the display and operator-entry ranges.
+              A SUPERVISORY loop still draws bars and still takes a setpoint. */}
+          <TabsContent value="limites" className="flex flex-col gap-3">
+            <Section label="PV">
               <NumberField
                 label="PV mín."
                 tooltip="Limite inferior da escala de engenharia da PV, usado para converter o sinal bruto e desenhar a barra e o gráfico."
                 value={draft.pv_scale.eu_min}
                 disabled={readOnly}
+                error={scaleErrors.pv_eu_min}
                 onChange={(v) => setDraft((p) => ({ ...p, pv_scale: { ...p.pv_scale, eu_min: v } }))}
               />
               <NumberField
@@ -648,6 +653,7 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
                 tooltip="Limite superior da escala de engenharia da PV, usado para converter o sinal bruto e desenhar a barra e o gráfico."
                 value={draft.pv_scale.eu_max}
                 disabled={readOnly}
+                error={scaleErrors.pv_eu_max}
                 onChange={(v) => setDraft((p) => ({ ...p, pv_scale: { ...p.pv_scale, eu_max: v } }))}
               />
               <TextField
@@ -657,44 +663,15 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
                 disabled={readOnly}
                 onChange={(v) => setDraft((p) => ({ ...p, pv_scale: { ...p.pv_scale, unit: v } }))}
               />
-              <NumberField
-                label="Saída mín."
-                tooltip="Limite inferior permitido para a saída de controle (CO), em %."
-                value={draft.limits.out_lo_lim}
-                disabled={readOnly}
-                error={limitErrors.out_lo_lim}
-                onChange={(v) => patchLimit('out_lo_lim', v)}
-              />
-              <NumberField
-                label="Saída máx."
-                tooltip="Limite superior permitido para a saída de controle (CO), em %."
-                value={draft.limits.out_hi_lim}
-                disabled={readOnly}
-                error={limitErrors.out_hi_lim}
-                onChange={(v) => patchLimit('out_hi_lim', v)}
-              />
-              <NumberField
-                label="ARW mín."
-                tooltip="Limite inferior de anti-windup do termo integral — impede que o integrador acumule além da faixa útil da saída."
-                value={draft.limits.arw_lo_lim}
-                disabled={readOnly}
-                error={limitErrors.arw_lo_lim}
-                onChange={(v) => patchLimit('arw_lo_lim', v)}
-              />
-              <NumberField
-                label="ARW máx."
-                tooltip="Limite superior de anti-windup do termo integral — impede que o integrador acumule além da faixa útil da saída."
-                value={draft.limits.arw_hi_lim}
-                disabled={readOnly}
-                error={limitErrors.arw_hi_lim}
-                onChange={(v) => patchLimit('arw_hi_lim', v)}
-              />
+            </Section>
+
+            <Section label="SP">
               <NumberField
                 label="SP mín."
                 tooltip="Limite inferior permitido para o setpoint digitado pelo operador."
                 value={draft.limits.sp_lo_lim}
                 disabled={readOnly}
-                error={limitErrors.sp_lo_lim}
+                error={scaleErrors.sp_lo_lim}
                 onChange={(v) => patchLimit('sp_lo_lim', v)}
               />
               <NumberField
@@ -702,154 +679,280 @@ export function LoopConfigDialog({ controller, open, onClose }: LoopConfigDialog
                 tooltip="Limite superior permitido para o setpoint digitado pelo operador."
                 value={draft.limits.sp_hi_lim}
                 disabled={readOnly}
-                error={limitErrors.sp_hi_lim}
+                error={scaleErrors.sp_hi_lim}
                 onChange={(v) => patchLimit('sp_hi_lim', v)}
               />
-            </Section>
-
-            <Section label="Filters & IO">
-              <NumberField
-                label="Filtro PV (s)"
-                tooltip="Constante de tempo do filtro de primeira ordem aplicado à leitura da PV."
-                value={draft.limits.pv_ftime}
-                disabled={readOnly}
-                error={limitErrors.pv_ftime}
-                onChange={(v) => patchLimit('pv_ftime', v)}
-              />
-              <NumberField
-                label="Filtro SP (s)"
-                tooltip="Constante de tempo do filtro de primeira ordem aplicado ao setpoint."
-                value={draft.limits.sp_ftime}
-                disabled={readOnly}
-                error={limitErrors.sp_ftime}
-                onChange={(v) => patchLimit('sp_ftime', v)}
-              />
-              <NumberField
-                label="Rampa SP subida"
-                tooltip="Taxa máxima de variação do setpoint por segundo, ao subir, antes de chegar ao valor digitado."
-                value={draft.limits.sp_rate_up}
-                disabled={readOnly}
-                error={limitErrors.sp_rate_up}
-                onChange={(v) => patchLimit('sp_rate_up', v)}
-              />
-              <NumberField
-                label="Rampa SP descida"
-                tooltip="Taxa máxima de variação do setpoint por segundo, ao descer, antes de chegar ao valor digitado."
-                value={draft.limits.sp_rate_dn}
-                disabled={readOnly}
-                error={limitErrors.sp_rate_dn}
-                onChange={(v) => patchLimit('sp_rate_dn', v)}
-              />
-              <NumberField
-                label="Corte baixo"
-                tooltip="Valor de PV abaixo do qual o sinal é tratado como corte de baixa escala (low cut)."
-                value={draft.low_cut}
-                disabled={readOnly}
-                onChange={(v) => setDraft((p) => ({ ...p, low_cut: v }))}
-              />
-              <NumberField
-                label="Ganho FF"
-                tooltip="Ganho aplicado ao sinal de feedforward somado à saída do PID."
-                value={draft.ff_gain}
-                disabled={readOnly}
-                onChange={(v) => setDraft((p) => ({ ...p, ff_gain: v }))}
+              {/* The SP shares the PV's engineering scale, so it cannot carry a
+                  unit of its own — shown read-only rather than hidden, because
+                  "which unit is this box in?" is the operator's first question. */}
+              <TextField
+                label="Unidade SP"
+                tooltip="Herdada da unidade da PV — SP compartilha a escala da PV."
+                value={draft.pv_scale.unit}
+                disabled
+                onChange={() => undefined}
               />
             </Section>
 
-            <Section label="Shed & Safety">
-              <SelectField
-                label="Modo de shed"
-                tooltip="Modo para o qual a malha muda automaticamente quando o link de I/O é perdido."
-                value={draft.shed_opt}
-                options={SHED_OPTIONS}
+            <Section label="CO">
+              <NumberField
+                label="CO mín."
+                tooltip="Limite inferior da escala de engenharia do CO, usado para exibir a saída de controle."
+                value={draft.co_scale.eu_min}
                 disabled={readOnly}
-                onChange={(v) => setDraft((p) => ({ ...p, shed_opt: v }))}
+                error={scaleErrors.co_eu_min}
+                onChange={(v) => setDraft((p) => ({ ...p, co_scale: { ...p.co_scale, eu_min: v } }))}
               />
               <NumberField
-                label="Tempo de shed (s)"
-                tooltip="Tempo, em segundos, sem comunicação de I/O antes de aplicar o modo de shed."
-                value={draft.shed_time_s}
+                label="CO máx."
+                tooltip="Limite superior da escala de engenharia do CO, usado para exibir a saída de controle."
+                value={draft.co_scale.eu_max}
                 disabled={readOnly}
-                onChange={(v) => setDraft((p) => ({ ...p, shed_time_s: v }))}
+                error={scaleErrors.co_eu_max}
+                onChange={(v) => setDraft((p) => ({ ...p, co_scale: { ...p.co_scale, eu_max: v } }))}
               />
-              <NumberField
-                label="Mudança máx. de sintonia (%)"
-                tooltip="Variação percentual máxima permitida em um único ajuste de sintonia enviado pela IA."
-                value={draft.max_tuning_change_pct}
+              <TextField
+                label="Unidade CO"
+                tooltip="Unidade de engenharia exibida junto ao valor do CO (ex.: %, kPa)."
+                value={draft.co_scale.unit}
                 disabled={readOnly}
-                onChange={(v) => setDraft((p) => ({ ...p, max_tuning_change_pct: v }))}
+                onChange={(v) => setDraft((p) => ({ ...p, co_scale: { ...p.co_scale, unit: v } }))}
+              />
+            </Section>
+          </TabsContent>
+
+          {isDdc ? (
+            <TabsContent value="sintonia" className="flex flex-col gap-3">
+              <Section label="PID Tuning">
+                <NumberField
+                  label="Ganho (Kp)"
+                  tooltip="Ganho proporcional do controlador PID."
+                  value={draft.pid.gain}
+                  disabled={readOnly}
+                  error={pidErrors.gain}
+                  onChange={(v) => patchPid('gain', v)}
+                />
+                <NumberField
+                  label="Reset (Ti)"
+                  tooltip="Tempo integral (reset), em segundos por repetição — quanto menor, mais rápida a ação integral."
+                  value={draft.pid.reset}
+                  disabled={readOnly}
+                  error={pidErrors.reset}
+                  onChange={(v) => patchPid('reset', v)}
+                />
+                <NumberField
+                  label="Rate (Td)"
+                  tooltip="Tempo derivativo — antecipa a tendência do erro. Zero desativa a ação derivativa (controlador PI)."
+                  value={draft.pid.rate}
+                  disabled={readOnly}
+                  error={pidErrors.rate}
+                  onChange={(v) => patchPid('rate', v)}
+                />
+                <NumberField
+                  label="Filtro derivativo (alpha)"
+                  tooltip="Fator de filtro do termo derivativo (0–1), reduz ruído amplificado pela derivada."
+                  value={draft.pid.alpha}
+                  disabled={readOnly}
+                  error={pidErrors.alpha}
+                  onChange={(v) => patchPid('alpha', v)}
+                />
+                <NumberField
+                  label="Banda morta"
+                  tooltip="Faixa de erro, em unidades de engenharia, dentro da qual o controlador não atua."
+                  value={draft.pid.deadband}
+                  disabled={readOnly}
+                  error={pidErrors.deadband}
+                  onChange={(v) => patchPid('deadband', v)}
+                />
+              </Section>
+
+              <Section label="PID Structure">
+                <SelectField
+                  label="Estrutura"
+                  tooltip="Forma matemática do algoritmo PID: ISA (interativa), Paralela ou Série."
+                  value={draft.pid_structure}
+                  options={PID_STRUCTURES}
+                  disabled={readOnly}
+                  onChange={(v) => setDraft((p) => ({ ...p, pid_structure: v }))}
+                />
+              </Section>
+
+              {/* Actuation clamps, not the CO display scale (that is the CO
+                  section on Limites): these bound what the DDC PID may write. */}
+              <Section label="Saída & ARW">
+                <NumberField
+                  label="Saída mín."
+                  tooltip="Limite inferior permitido para a saída de controle (CO), em %."
+                  value={draft.limits.out_lo_lim}
+                  disabled={readOnly}
+                  error={limitErrors.out_lo_lim}
+                  onChange={(v) => patchLimit('out_lo_lim', v)}
+                />
+                <NumberField
+                  label="Saída máx."
+                  tooltip="Limite superior permitido para a saída de controle (CO), em %."
+                  value={draft.limits.out_hi_lim}
+                  disabled={readOnly}
+                  error={limitErrors.out_hi_lim}
+                  onChange={(v) => patchLimit('out_hi_lim', v)}
+                />
+                <NumberField
+                  label="ARW mín."
+                  tooltip="Limite inferior de anti-windup do termo integral — impede que o integrador acumule além da faixa útil da saída."
+                  value={draft.limits.arw_lo_lim}
+                  disabled={readOnly}
+                  error={limitErrors.arw_lo_lim}
+                  onChange={(v) => patchLimit('arw_lo_lim', v)}
+                />
+                <NumberField
+                  label="ARW máx."
+                  tooltip="Limite superior de anti-windup do termo integral — impede que o integrador acumule além da faixa útil da saída."
+                  value={draft.limits.arw_hi_lim}
+                  disabled={readOnly}
+                  error={limitErrors.arw_hi_lim}
+                  onChange={(v) => patchLimit('arw_hi_lim', v)}
+                />
+              </Section>
+            </TabsContent>
+          ) : null}
+
+          {isDdc ? (
+            <TabsContent value="avancado" className="flex flex-col gap-3">
+              <Section label="Filters & IO">
+                <NumberField
+                  label="Filtro PV (s)"
+                  tooltip="Constante de tempo do filtro de primeira ordem aplicado à leitura da PV."
+                  value={draft.limits.pv_ftime}
+                  disabled={readOnly}
+                  error={limitErrors.pv_ftime}
+                  onChange={(v) => patchLimit('pv_ftime', v)}
+                />
+                <NumberField
+                  label="Filtro SP (s)"
+                  tooltip="Constante de tempo do filtro de primeira ordem aplicado ao setpoint."
+                  value={draft.limits.sp_ftime}
+                  disabled={readOnly}
+                  error={limitErrors.sp_ftime}
+                  onChange={(v) => patchLimit('sp_ftime', v)}
+                />
+                <NumberField
+                  label="Rampa SP subida"
+                  tooltip="Taxa máxima de variação do setpoint por segundo, ao subir, antes de chegar ao valor digitado."
+                  value={draft.limits.sp_rate_up}
+                  disabled={readOnly}
+                  error={limitErrors.sp_rate_up}
+                  onChange={(v) => patchLimit('sp_rate_up', v)}
+                />
+                <NumberField
+                  label="Rampa SP descida"
+                  tooltip="Taxa máxima de variação do setpoint por segundo, ao descer, antes de chegar ao valor digitado."
+                  value={draft.limits.sp_rate_dn}
+                  disabled={readOnly}
+                  error={limitErrors.sp_rate_dn}
+                  onChange={(v) => patchLimit('sp_rate_dn', v)}
+                />
+                <NumberField
+                  label="Corte baixo"
+                  tooltip="Valor de PV abaixo do qual o sinal é tratado como corte de baixa escala (low cut)."
+                  value={draft.low_cut}
+                  disabled={readOnly}
+                  onChange={(v) => setDraft((p) => ({ ...p, low_cut: v }))}
+                />
+                <NumberField
+                  label="Ganho FF"
+                  tooltip="Ganho aplicado ao sinal de feedforward somado à saída do PID."
+                  value={draft.ff_gain}
+                  disabled={readOnly}
+                  onChange={(v) => setDraft((p) => ({ ...p, ff_gain: v }))}
+                />
+              </Section>
+
+              <Section label="Shed & Safety">
+                <SelectField
+                  label="Modo de shed"
+                  tooltip="Modo para o qual a malha muda automaticamente quando o link de I/O é perdido."
+                  value={draft.shed_opt}
+                  options={SHED_OPTIONS}
+                  disabled={readOnly}
+                  onChange={(v) => setDraft((p) => ({ ...p, shed_opt: v }))}
+                />
+                <NumberField
+                  label="Tempo de shed (s)"
+                  tooltip="Tempo, em segundos, sem comunicação de I/O antes de aplicar o modo de shed."
+                  value={draft.shed_time_s}
+                  disabled={readOnly}
+                  onChange={(v) => setDraft((p) => ({ ...p, shed_time_s: v }))}
+                />
+                <NumberField
+                  label="Mudança máx. de sintonia (%)"
+                  tooltip="Variação percentual máxima permitida em um único ajuste de sintonia enviado pela IA."
+                  value={draft.max_tuning_change_pct}
+                  disabled={readOnly}
+                  onChange={(v) => setDraft((p) => ({ ...p, max_tuning_change_pct: v }))}
+                />
+              </Section>
+            </TabsContent>
+          ) : null}
+
+          {/* Not DDC-gated: these fields are what SETS the optimizer state, and
+              the optimizer runs for a SUPERVISORY loop too. `integral_type` in
+              particular decides the sign of every integral adjustment and rides
+              the ACTION.AI write-back that only a SUPERVISORY loop performs. */}
+          <TabsContent value="ia" className="flex flex-col gap-3">
+            <Section label="Integral Type">
+              <RadioGroupField
+                legend="Tipo integral"
+                value={draft.integral_type}
+                options={INTEGRAL_TYPE_OPTIONS}
+                disabled={readOnly}
+                onChange={(v) => setDraft((p) => ({ ...p, integral_type: v }))}
               />
             </Section>
 
-            <Section label="PID Structure">
-              <SelectField
-                label="Estrutura"
-                tooltip="Forma matemática do algoritmo PID: ISA (interativa), Paralela ou Série."
-                value={draft.pid_structure}
-                options={PID_STRUCTURES}
+            <Section label="AI Optimization">
+              <AiConfigSection
+                value={{
+                  ...draft.ai,
+                  speed: draft.process_speed,
+                  integral_type: draft.integral_type as IntegralType,
+                }}
+                errors={aiErrors}
                 disabled={readOnly}
-                onChange={(v) => setDraft((p) => ({ ...p, pid_structure: v }))}
+                onChange={(patch) =>
+                  setDraft((p) => {
+                    const { speed, ...ai } = patch;
+                    return {
+                      ...p,
+                      process_speed: speed ?? p.process_speed,
+                      ai: { ...p.ai, ...ai },
+                    };
+                  })
+                }
               />
             </Section>
-          </>
-        ) : null}
 
-        {/* Not DDC-gated: these fields are what SETS the optimizer state, and
-            the optimizer runs for a SUPERVISORY loop too. `integral_type` in
-            particular decides the sign of every integral adjustment and rides
-            the ACTION.AI write-back that only a SUPERVISORY loop performs. */}
-        <Section label="Integral Type">
-          <RadioGroupField
-            legend="Tipo integral"
-            value={draft.integral_type}
-            options={INTEGRAL_TYPE_OPTIONS}
-            disabled={readOnly}
-            onChange={(v) => setDraft((p) => ({ ...p, integral_type: v }))}
-          />
-        </Section>
-
-        <Section label="AI Optimization">
-          <AiConfigSection
-            value={{
-              ...draft.ai,
-              speed: draft.process_speed,
-              integral_type: draft.integral_type as IntegralType,
-            }}
-            errors={aiErrors}
-            disabled={readOnly}
-            onChange={(patch) =>
-              setDraft((p) => {
-                const { speed, ...ai } = patch;
-                return {
-                  ...p,
-                  process_speed: speed ?? p.process_speed,
-                  ai: { ...p.ai, ...ai },
-                };
-              })
-            }
-          />
-        </Section>
-
-        <Section label="Optimizer Guardrail">
-          <Field
-            label="Banda de estabilidade (% do SP)"
-            htmlFor={stabilityBandId}
-            tooltip="Enquanto |PV - SP| ficar dentro desta faixa a malha é considerada em regime e o otimizador não altera Ki/Ti. Em branco, usa o padrão global do daemon (2%)."
-          >
-            <Input
-              id={stabilityBandId}
-              type="number"
-              inputMode="decimal"
-              step={0.1}
-              min={0}
-              className="numeric"
-              placeholder="global"
-              value={draft.stability_band_pct}
-              disabled={readOnly}
-              onChange={(e) => setDraft((p) => ({ ...p, stability_band_pct: e.target.value }))}
-            />
-          </Field>
-        </Section>
+            <Section label="Optimizer Guardrail">
+              <Field
+                label="Banda de estabilidade (% do SP)"
+                htmlFor={stabilityBandId}
+                tooltip="Enquanto |PV - SP| ficar dentro desta faixa a malha é considerada em regime e o otimizador não altera Ki/Ti. Em branco, usa o padrão global do daemon (2%)."
+              >
+                <Input
+                  id={stabilityBandId}
+                  type="number"
+                  inputMode="decimal"
+                  step={0.1}
+                  min={0}
+                  className="numeric"
+                  placeholder="global"
+                  value={draft.stability_band_pct}
+                  disabled={readOnly}
+                  onChange={(e) => setDraft((p) => ({ ...p, stability_band_pct: e.target.value }))}
+                />
+              </Field>
+            </Section>
+          </TabsContent>
+        </Tabs>
 
         {update.error !== null ? (
           <p role="alert" className="text-sm font-medium text-alarm-crit">

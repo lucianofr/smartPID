@@ -7,7 +7,7 @@ import { Faceplate } from '@/features/dashboard/Faceplate';
 import { KpiBand } from '@/features/dashboard/KpiBand';
 import { activeAiStrategy, LoopCard } from '@/features/dashboard/LoopCard';
 import { TrendPanel } from '@/features/dashboard/TrendPanel';
-import { pvScale, useControllers } from '@/features/dashboard/useControllers';
+import { coScale, pvScale, useControllers } from '@/features/dashboard/useControllers';
 import { useLoopAlarmSeverity } from '@/features/dashboard/useAlarmCounts';
 import { useLoopStatuses } from '@/features/dashboard/useLoopStatuses';
 import { LoopConfigDialog, NewLoopDialog } from '@/features/loop-config/LoopConfigDialog';
@@ -174,6 +174,7 @@ export function DashboardPage() {
           tag={selected.name}
           description={selected.description}
           scale={pvScale(selected)}
+          coScale={coScale(selected)}
           spRange={{ min: selected.sp_lo_lim, max: selected.sp_hi_lim }}
         />
       </div>

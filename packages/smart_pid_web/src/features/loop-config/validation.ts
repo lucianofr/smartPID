@@ -70,12 +70,46 @@ export function validateLimits(limits: LimitsForm): FieldErrors {
 
   band('out_lo_lim', 'out_hi_lim', 'Limite inferior da saída deve ser menor que o superior');
   band('arw_lo_lim', 'arw_hi_lim', 'Limite inferior de ARW deve ser menor que o superior');
-  band('sp_lo_lim', 'sp_hi_lim', 'Limite inferior do SP deve ser menor que o superior');
 
   for (const key of NON_NEGATIVE_LIMIT_FIELDS) {
     const value = limits[key];
     if (!Number.isFinite(value) || value < 0) errors[key] = 'Deve ser 0 ou maior';
   }
+  return errors;
+}
+
+/**
+ * Engineering ranges shown on the Limites tab. Unlike `validateLimits` these
+ * apply in every execution mode: the PV/CO scales and the SP band are display
+ * and operator-entry contracts, not DDC algorithm parameters.
+ */
+export interface EngineeringLimitsForm {
+  pv_eu_min: number;
+  pv_eu_max: number;
+  co_eu_min: number;
+  co_eu_max: number;
+  sp_lo_lim: number;
+  sp_hi_lim: number;
+}
+
+export function validateEngineeringLimits(form: EngineeringLimitsForm): FieldErrors {
+  const errors: FieldErrors = {};
+  const band = (
+    lo: keyof EngineeringLimitsForm,
+    hi: keyof EngineeringLimitsForm,
+    message: string,
+  ): void => {
+    if (!Number.isFinite(form[lo])) errors[lo] = 'Deve ser um número';
+    if (!Number.isFinite(form[hi])) errors[hi] = 'Deve ser um número';
+    if (Number.isFinite(form[lo]) && Number.isFinite(form[hi]) && form[lo] >= form[hi]) {
+      errors[lo] = message;
+    }
+  };
+
+  band('pv_eu_min', 'pv_eu_max', 'Limite inferior da PV deve ser menor que o superior');
+  band('co_eu_min', 'co_eu_max', 'Limite inferior do CO deve ser menor que o superior');
+  band('sp_lo_lim', 'sp_hi_lim', 'Limite inferior do SP deve ser menor que o superior');
+
   return errors;
 }
 

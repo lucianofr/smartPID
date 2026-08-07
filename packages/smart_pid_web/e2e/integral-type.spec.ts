@@ -12,9 +12,12 @@ import { gotoDashboard, loopCard } from './helpers/harness';
  * only a SUPERVISORY loop performs.
  */
 
-async function openConfig(page: Page) {
+/** The dialog is tabbed; every field below Geral needs its tab activated first. */
+async function openConfig(page: Page, tab: 'Geral' | 'Tags' | 'Limites' | 'IA' = 'Geral') {
   await loopCard(page, 'FIC-101').getByRole('button', { name: 'Configurar FIC-101' }).click();
-  return page.getByRole('dialog');
+  const dialog = page.getByRole('dialog');
+  if (tab !== 'Geral') await dialog.getByRole('tab', { name: tab }).click();
+  return dialog;
 }
 
 test('integral type renders as a radio group, saves, and reopens on the saved value', async ({
@@ -35,7 +38,7 @@ test('integral type renders as a radio group, saves, and reopens on the saved va
     await route.fallback();
   });
 
-  const dialog = await openConfig(page);
+  const dialog = await openConfig(page, 'IA');
   await expect(dialog).toBeVisible();
 
   const timeTi = dialog.getByRole('radio', { name: 'Tempo Integral (Ti)' });
@@ -58,7 +61,7 @@ test('integral type renders as a radio group, saves, and reopens on the saved va
 
 test('the PLC process-running binding is offered next to the other NodeIDs', async ({ page }) => {
   await gotoDashboard(page);
-  const dialog = await openConfig(page);
+  const dialog = await openConfig(page, 'Tags');
   // getByLabel would also match the field's tooltip button, which shares the
   // accessible-name prefix — address the control by its role instead.
   await expect(dialog.getByRole('textbox', { name: 'NodeID PID em uso' })).toBeVisible();
@@ -68,7 +71,7 @@ test('the optimizer stability band is editable and blank means "inherit global"'
   page,
 }) => {
   await gotoDashboard(page);
-  const dialog = await openConfig(page);
+  const dialog = await openConfig(page, 'IA');
   const band = dialog.getByRole('spinbutton', { name: 'Banda de estabilidade (% do SP)' });
   await expect(band).toBeVisible();
   await expect(band).toHaveValue('');
@@ -83,7 +86,7 @@ test('the optimizer stability band is editable and blank means "inherit global"'
  */
 test('the integral limits are labelled after the loop integral type', async ({ page }) => {
   await gotoDashboard(page);
-  const dialog = await openConfig(page);
+  const dialog = await openConfig(page, 'IA');
 
   await expect(dialog.getByRole('spinbutton', { name: 'Ti mínimo' })).toBeVisible();
   await expect(dialog.getByRole('spinbutton', { name: 'Ti máximo' })).toBeVisible();
@@ -96,7 +99,7 @@ test('the integral limits are labelled after the loop integral type', async ({ p
 
 test('the level band appears only for the SURGE_LEVEL objective', async ({ page }) => {
   await gotoDashboard(page);
-  const dialog = await openConfig(page);
+  const dialog = await openConfig(page, 'IA');
   const levelMin = dialog.getByRole('spinbutton', { name: 'Nível mín. (%)' });
 
   await expect(levelMin).toHaveCount(0);

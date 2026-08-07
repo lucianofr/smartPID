@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   hasErrors,
   validateAiConfig,
+  validateEngineeringLimits,
   validateLimits,
   validateOutput,
   validatePidParams,
@@ -101,15 +102,48 @@ describe('validateLimits', () => {
     expect(validateLimits({ ...ok, arw_lo_lim: 120 }).arw_lo_lim).toBe(
       'Limite inferior de ARW deve ser menor que o superior',
     );
-    expect(validateLimits({ ...ok, sp_lo_lim: 100 }).sp_lo_lim).toBe(
-      'Limite inferior do SP deve ser menor que o superior',
-    );
+    // The SP band moved to `validateEngineeringLimits`: it applies in every
+    // execution mode, not just DDC.
+    expect(validateLimits({ ...ok, sp_lo_lim: 100 }).sp_lo_lim).toBeUndefined();
   });
 
   it('rejects negative filter times and SP rate limits', () => {
     const e = validateLimits({ ...ok, pv_ftime: -1, sp_rate_up: -2 });
     expect(e.pv_ftime).toBe('Deve ser 0 ou maior');
     expect(e.sp_rate_up).toBe('Deve ser 0 ou maior');
+  });
+});
+
+describe('validateEngineeringLimits', () => {
+  const ok = {
+    pv_eu_min: 0,
+    pv_eu_max: 100,
+    co_eu_min: 0,
+    co_eu_max: 100,
+    sp_lo_lim: 0,
+    sp_hi_lim: 100,
+  };
+
+  it('accepts the schema defaults', () => {
+    expect(validateEngineeringLimits(ok)).toEqual({});
+  });
+
+  it('requires every low bound to sit below its high bound', () => {
+    expect(validateEngineeringLimits({ ...ok, pv_eu_min: 150 }).pv_eu_min).toBe(
+      'Limite inferior da PV deve ser menor que o superior',
+    );
+    expect(validateEngineeringLimits({ ...ok, co_eu_min: 100 }).co_eu_min).toBe(
+      'Limite inferior do CO deve ser menor que o superior',
+    );
+    expect(validateEngineeringLimits({ ...ok, sp_lo_lim: 100 }).sp_lo_lim).toBe(
+      'Limite inferior do SP deve ser menor que o superior',
+    );
+  });
+
+  it('flags a non-numeric bound on the field that carries it', () => {
+    const e = validateEngineeringLimits({ ...ok, pv_eu_max: Number.NaN, co_eu_min: Number.NaN });
+    expect(e.pv_eu_max).toBe('Deve ser um número');
+    expect(e.co_eu_min).toBe('Deve ser um número');
   });
 });
 

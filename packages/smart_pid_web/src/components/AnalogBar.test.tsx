@@ -84,4 +84,21 @@ describe('AnalogBar', () => {
     expect(screen.getByRole('meter', { name: 'PV' })).toHaveAttribute('aria-valuetext', '150.2 °C');
     expect(screen.queryByText('*')).not.toBeInTheDocument();
   });
+
+  // The unit was previously only in `aria-valuetext`: a sighted operator read
+  // "150.2" with no way to know whether that was °C, bar or %.
+  it('prints the engineering unit next to the figure', () => {
+    render(<AnalogBar label="PV" value={150.2} scale={scale} />);
+    expect(screen.getByText('°C')).toBeVisible();
+    // Its own element, never appended to the numeral: the figure column is
+    // right-aligned mono and e2e anchors read the number alone.
+    expect(screen.getByText('150.2')).toBeInTheDocument();
+  });
+
+  it('prints nothing when the loop has no unit configured', () => {
+    const { container } = render(
+      <AnalogBar label="CO" value={42} scale={{ euMin: 0, euMax: 100, unit: '' }} />,
+    );
+    expect(container.textContent).toBe('CO42.0');
+  });
 });

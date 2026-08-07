@@ -36,6 +36,21 @@ describe('LoopCard', () => {
     expect(screen.getByRole('meter', { name: 'CO' })).toHaveAttribute('aria-valuemax', '100');
   });
 
+  // The CO unit used to be hardcoded `%`. A loop whose output is a flow or a
+  // pressure setpoint has to be able to say so.
+  it('takes the CO unit from the loop config and the PV unit from pv_scale', () => {
+    const kpa = makeController({
+      id: 5,
+      name: 'PIC-005',
+      pv_scale: { eu_min: 0, eu_max: 200, unit: '°C' },
+      out_scale: { eu_min: 0, eu_max: 100, unit: 'kPa' },
+    });
+    render(<LoopCard controller={kpa} status={status} onOpenConfig={vi.fn()} onSelect={vi.fn()} />);
+    expect(screen.getByText('kPa')).toBeVisible();
+    // PV and SP share the PV engineering unit — one bar each.
+    expect(screen.getAllByText('°C')).toHaveLength(2);
+  });
+
   it('degrades to em dashes before the first status frame', () => {
     render(<LoopCard controller={controller} status={null} onOpenConfig={vi.fn()} onSelect={vi.fn()} />);
     expect(screen.getByText('PIC-005')).toBeVisible();

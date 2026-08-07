@@ -6,7 +6,7 @@ import type { ControllerResponse } from '@/api/types';
 import type { AlarmSeverity } from '@/features/alarms/types';
 import type { FFSignal, StatusData } from '@/lib/envelope';
 import { cn } from '@/lib/utils';
-import { CO_SCALE, pvScale } from './useControllers';
+import { coScale, pvScale } from './useControllers';
 
 export interface LoopCardProps {
   controller: ControllerResponse;
@@ -197,7 +197,7 @@ export function LoopCard({
         <AnalogBar
           label="CO"
           value={status?.co.value ?? null}
-          scale={CO_SCALE}
+          scale={coScale(controller)}
           decimals={decimals}
           size="card"
           stale={stale}
