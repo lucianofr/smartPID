@@ -263,7 +263,11 @@ def _body_to_controller(body: ControllerCreate) -> Controller:
         description=body.description,
         execution_mode=ExecutionMode(body.execution_mode),
         scan_rate_s=body.scan_rate_s,
-        tss_s=body.tss_s,
+        tss_s=(
+            body.tss_s
+            if "tss_s" in body.model_fields_set
+            else float(ProcessSpeed(body.process_speed).stats_window_s)
+        ),
         process_speed=ProcessSpeed(body.process_speed),
         pid_params=PIDParams(
             gain=body.pid_params.gain,
@@ -521,6 +525,18 @@ async def update_controller(
                 updates[field_name] = value
     except ValueError as exc:
         _reject_invalid_enum(exc)
+
+    # The UI never sends tss_s; the speed-class tooltip promises its window
+    # IS the expected TSS. Make that true: an explicit class CHANGE without
+    # an explicit tss_s adopts the class window as the new TSS. An explicit
+    # tss_s in the same request always wins, and re-saving the same class
+    # never stomps a custom TSS.
+    if (
+        "process_speed" in updates
+        and updates["process_speed"] != controller.process_speed
+        and "tss_s" not in body_dict
+    ):
+        updates["tss_s"] = float(updates["process_speed"].stats_window_s)
 
     # Capture old/new for audit trail
     old_values: dict = {}
