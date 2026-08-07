@@ -1,20 +1,35 @@
 """System health-check and log-level control router."""
 from __future__ import annotations
 
+import asyncio
 import logging
+import smtplib
 import time
+from datetime import UTC, datetime
+from email.message import EmailMessage
 from typing import Annotated
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
-from smart_pid_core.adapters.inbound.api.dependencies import require_admin
+from smart_pid_core.adapters.inbound.api.dependencies import (
+    get_settings,
+    require_admin,
+    require_user,
+)
 from smart_pid_core.application.log_control import LOG_LEVEL_NAMES, levels_at_or_above
+from smart_pid_core.config import CoreSettings  # noqa: TC001
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
 from smart_pid_domain.dtos.system import (
+    FeedbackRequest,
     LogLevelsResponse,
     LogLevelsUpdate,
     SystemStatusResponse,
 )
+
+logger = structlog.get_logger()
+
+_FEEDBACK_MIN_INTERVAL_S = 60.0
 
 router = APIRouter()
 
@@ -91,4 +106,59 @@ async def set_log_levels(
             detail="Log level controller is not configured on this app",
         )
     controller.set_levels(body.levels)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _deliver_feedback(settings: CoreSettings, msg: EmailMessage) -> None:
+    """Blocking SMTP submit — always called via ``asyncio.to_thread``."""
+    assert settings.smtp_host is not None  # noqa: S101 — caller 503s on unset host
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
+        smtp.starttls()
+        if settings.smtp_user:
+            smtp.login(settings.smtp_user, settings.smtp_password)
+        smtp.send_message(msg)
+
+
+@router.post("/feedback", status_code=status.HTTP_204_NO_CONTENT)
+async def send_feedback(
+    body: FeedbackRequest,
+    user: Annotated[UserClaims, Depends(require_user)],
+    settings: Annotated[CoreSettings, Depends(get_settings)],
+    request: Request,
+) -> Response:
+    """Email the developer a message typed by a signed-in operator (demo account UX)."""
+    if not settings.smtp_host:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email delivery is not configured on this server",
+        )
+    # ponytail: in-process per-user cooldown (dict on app.state, lazily created like
+    # log_level_controller). Lost on restart, racy across concurrent requests from the
+    # same user — acceptable for a single-process daemon; budget only burns on success.
+    sent: dict[int, float] = getattr(request.app.state, "feedback_last_sent", {})
+    now = time.monotonic()
+    prev = sent.get(user.user_id)
+    if prev is not None and now - prev < _FEEDBACK_MIN_INTERVAL_S:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Wait a minute before sending another message",
+        )
+    msg = EmailMessage()
+    msg["From"] = settings.smtp_user or settings.feedback_email_to
+    msg["To"] = settings.feedback_email_to
+    msg["Subject"] = f"[Smart PID] Mensagem de {user.username}"
+    msg.set_content(
+        f"Usuário: {user.username} (id {user.user_id})\n"
+        f"Data: {datetime.now(UTC).isoformat()}\n\n{body.message}"
+    )
+    try:
+        await asyncio.to_thread(_deliver_feedback, settings, msg)
+    except (OSError, smtplib.SMTPException):
+        logger.warning("feedback_email_failed", username=user.username)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="Email delivery failed"
+        ) from None
+    sent[user.user_id] = now
+    request.app.state.feedback_last_sent = sent
+    logger.info("feedback_email_sent", username=user.username)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -1,7 +1,9 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { endpoints } from '@/api/endpoints';
 import { queryKeys } from '@/api/queryKeys';
+import type { MeResponse } from '@/api/types';
+import { FEEDBACK_PROMPT } from '@/features/feedback/FeedbackBanner';
 import { ff, makeController, statusEnvelope } from '@/test/fixtures';
 import { createFakeRealtime, createQueryClient, TestProviders } from '@/test/providers';
 import { DashboardPage } from './DashboardPage';
@@ -15,9 +17,10 @@ function renderDashboard(
   controllers = CONTROLLERS,
   path = '/',
   realtime = createFakeRealtime(),
+  me: MeResponse = { user_id: 1, username: 'admin', role: 'admin' },
 ) {
   localStorage.setItem('smart-pid-token', 'jwt');
-  vi.spyOn(endpoints, 'me').mockResolvedValue({ user_id: 1, username: 'admin', role: 'admin' });
+  vi.spyOn(endpoints, 'me').mockResolvedValue(me);
   const queryClient = createQueryClient();
   queryClient.setQueryData(queryKeys.controllers, controllers);
   queryClient.setQueryData(queryKeys.alarmsActive, []);
@@ -142,5 +145,20 @@ describe('DashboardPage', () => {
     const pv = within(first).getByRole('meter', { name: 'PV' });
     expect(pv).toHaveAttribute('aria-valuenow', '11.5');
     expect(pv).toHaveAttribute('aria-valuetext', expect.stringContaining('desatualizado'));
+  });
+
+  it('offers the demo account a line to the developer', async () => {
+    renderDashboard(CONTROLLERS, '/', createFakeRealtime(), {
+      user_id: 3,
+      username: 'demo',
+      role: 'user',
+    });
+    expect(await screen.findByText(FEEDBACK_PROMPT)).toBeVisible();
+  });
+
+  it('keeps the developer invitation off a real operator page', async () => {
+    renderDashboard();
+    await waitFor(() => expect(endpoints.me).toHaveBeenCalled());
+    expect(screen.queryByText(FEEDBACK_PROMPT)).toBeNull();
   });
 });

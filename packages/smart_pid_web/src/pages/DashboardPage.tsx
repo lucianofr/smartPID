@@ -11,6 +11,7 @@ import { coScale, pvScale, useControllers } from '@/features/dashboard/useContro
 import { useLoopAlarmSeverity } from '@/features/dashboard/useAlarmCounts';
 import { useLoopStatuses } from '@/features/dashboard/useLoopStatuses';
 import { LoopConfigDialog, NewLoopDialog } from '@/features/loop-config/LoopConfigDialog';
+import { FeedbackBanner } from '@/features/feedback/FeedbackBanner';
 import { SimulationModeBanner } from '@/features/simulator/SimulationModeBanner';
 import { useTwinRunning } from '@/features/simulator/useSimulatorStatus';
 import { useCan } from '@/auth/useCan';
@@ -88,6 +89,7 @@ export function DashboardPage() {
         {/* Zeros are the honest reading of an empty roster — dropping the band
             here would make the page jump the moment the first loop lands. */}
         <KpiBand loops={0} aiActive={0} variability={UNAVAILABLE} savings={UNAVAILABLE} />
+        <FeedbackBanner />
         <EmptyState
           className="flex-1"
           message="Nenhuma malha configurada."
@@ -116,6 +118,9 @@ export function DashboardPage() {
         variability={UNAVAILABLE}
         savings={UNAVAILABLE}
       />
+      {/* Demo-account only, and below the KPI band: an invitation to write to
+          the developer must never outrank the operational readings. */}
+      <FeedbackBanner />
       <div
         data-testid="dashboard-detail"
         className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden"
