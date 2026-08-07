@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import random
 import threading
 import time
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING
 from smart_pid_core.adapters.inbound.opcua_server import OPCUAServer
 from smart_pid_core.domain.services.pid_engine import PIDEngine, PIDState
 from smart_pid_core.domain.services.process_models import ProcessModel
+from smart_pid_core.domain.services.tuning_guardrails import KP_MIN
 from smart_pid_domain.dtos.simulator import (
     AutoDisturbanceRequest,
     AutoSPRequest,
@@ -176,6 +178,40 @@ def _clamp_co(co: float) -> float:
     return min(CO_MAX_PCT, max(CO_MIN_PCT, co))
 
 
+#: OPC-UA gain parameter -> the ``PIDParams`` field it writes and the range that
+#: field accepts.
+#:
+#: The twin runs its own PID, so the floors are the DDC column of
+#: ``clamp_tuning_absolute``: Kp may not reach zero (a loop that has silently
+#: stopped controlling), while Ti and Td keep 0 as "term disabled" but refuse
+#: negatives, which flip the sign of the term they scale.
+#:
+#: The ceilings exist because this port takes writes from any client that can
+#: reach it, and ``math.isfinite`` is no defence: 1e308 is finite and is
+#: indistinguishable from infinity against any real process value. A real DCS
+#: block bounds its own tuning entries the same way. These are the twin's own
+#: bounds, not the platform's — the operator's Ti optimizer band lives in the
+#: controller record, which the twin deliberately does not know about, because it
+#: stands in for an external system that would not know it either.
+_GAIN_RANGES: dict[str, tuple[str, float, float]] = {
+    "kp": ("gain", KP_MIN, 1_000.0),
+    "ti": ("reset", 0.0, 100_000.0),
+    "td": ("rate", 0.0, 10_000.0),
+}
+
+#: 0=MAN, 1=AUTO — see ``_ControllerSim.pid_mode``.
+_VALID_PID_MODES = frozenset({0, 1})
+
+#: 0=ISA, 1=PARALLEL, 2=SERIES — see ``_ControllerSim.pid_structure``.
+_VALID_PID_STRUCTURES = frozenset({0, 1, 2})
+
+
+#: Quiet window per (controller, parameter) for rejected-write warnings. A client
+#: that retries a bad value at the subscription rate would otherwise log once per
+#: notification; io_worker throttles the identical failure shape the same way.
+WRITE_WARN_INTERVAL_S: float = 60.0
+
+
 #: Multiple of the loop's own dynamics that an auto-SP period must clear.
 #:
 #: A setpoint step the process has not finished answering is not excitation, it
@@ -221,6 +257,51 @@ class SimulatorAdapter:
         # Controllers whose persistable config changed via OPC-UA since the
         # last flush. Drained by the main-loop flusher through consume_dirty_cids().
         self._dirty_cids: set[int] = set()
+        # Last time a rejected OPC-UA write was reported, per (controller, param).
+        self._last_write_warn: dict[tuple[int, str], float] = {}
+
+    def _warn_write_once(
+        self, controller_id: int, param: str, message: str, *args: object,
+    ) -> None:
+        """Report a rejected write, first occurrence then once per quiet window.
+
+        A stuck or mis-scaled client retries at the subscription rate, so an
+        unthrottled warning here is a warning per notification: at 10 Hz that
+        buries every other message and burns the log rotation budget in hours.
+        The window is per parameter so suppressing one does not hide another.
+        """
+        now = time.monotonic()
+        key = (controller_id, param)
+        last = self._last_write_warn.get(key)
+        if last is not None and now - last < WRITE_WARN_INTERVAL_S:
+            return
+        self._last_write_warn[key] = now
+        logger.warning(message, *args)
+
+    def _bounded(
+        self, controller_id: int, param: str, asked: float, allowed: float,
+    ) -> float:
+        """Return ``allowed``, reporting when it differs from what was asked.
+
+        Silent clamping is how a mis-scaled client retunes a loop unnoticed: the
+        write appears to succeed, the twin runs on a different number, and nothing
+        connects the two.
+        """
+        if allowed != asked:
+            self._warn_write_once(
+                controller_id, param,
+                "controller %d: OPC-UA write %s=%g outside the range this loop "
+                "accepts, clamped to %g", controller_id, param, asked, allowed,
+            )
+        return allowed
+
+    def _discard(self, controller_id: int, param: str, asked: float) -> None:
+        """Report a write that has no representable value to fall back to."""
+        self._warn_write_once(
+            controller_id, param,
+            "controller %d: OPC-UA write %s=%r is not a value this parameter can "
+            "take, write discarded", controller_id, param, asked,
+        )
 
     def start_opcua(self) -> None:
         """Start only the OPC-UA server (without simulation loop)."""
@@ -280,29 +361,90 @@ class SimulatorAdapter:
         return self._thread is not None and self._thread.is_alive()
 
     def _on_opcua_write(self, controller_id: int, param: str, value: float) -> None:
-        """Handle writes from OPC-UA clients (e.g., OPCUAAdapter writing CO)."""
+        """Handle writes from OPC-UA clients (e.g., OPCUAAdapter writing CO).
+
+        The twin stands in for an external DCS, which means it accepts writes
+        from clients this platform does not control, and a real DCS bounds what
+        its own blocks take: an out-of-span setpoint or a sign-flipped gain is
+        refused at the block rather than carried into the algorithm. Only CO was
+        bounded here.
+
+        Continuous terms are clamped into the range this loop accepts.
+        ``mode`` and ``pid_structure`` are enumerations with no meaningful clamp
+        target — rounding a bad mode up would put the loop in AUTO, rounding it
+        down would drop it out of automatic control — so an unrepresentable
+        value is discarded and the loop keeps what the operator left. Either way
+        the write is reported.
+
+        Known limitation: this runs from a ``subscribe_data_change`` notification,
+        which asyncua delivers only after the node has been written and the client
+        already holds a Good StatusCode. A correction therefore cannot surface as
+        a Bad write response the way a real DCS block would — the corrected node
+        value and the log are the only channels. Returning Bad would mean moving
+        off subscription notification onto an AttributeService-level intercept.
+        """
+        # NaN and inf must go before any clamp, not through it: min/max do not
+        # propagate NaN in Python (`max(0.0, nan)` is 0.0, and swapping the
+        # arguments returns nan instead), so a non-finite write would quietly
+        # land on a limit value as though the client had asked for it.
+        if not math.isfinite(value):
+            self._discard(controller_id, param, value)
+            return
+        clamped = False
+        discarded = False
         with self._lock:
             ctrl = self._controllers.get(controller_id)
             if ctrl is None:
                 return
             if param == "co":
-                ctrl.last_co = _clamp_co(value)
-            elif param == "sp":
-                ctrl.sp = value
-            elif param == "kp":
-                ctrl.pid_params.gain = value
-            elif param == "ti":
-                ctrl.pid_params.reset = value
-            elif param == "td":
-                ctrl.pid_params.rate = value
+                ctrl.last_co = self._bounded(
+                    controller_id, param, value, _clamp_co(value),
+                )
+                clamped = ctrl.last_co != value
+            elif param in ("sp", "pid_sp"):
+                # PV is hard-clamped to this span every tick, so an SP outside
+                # it is an error the loop can never close — the integral just
+                # winds up against a wall it cannot move.
+                ctrl.sp = self._bounded(
+                    controller_id, param, value,
+                    min(ctrl.pv_max, max(ctrl.pv_min, value)),
+                )
+                clamped = ctrl.sp != value
+            elif param in _GAIN_RANGES:
+                attr, floor, ceiling = _GAIN_RANGES[param]
+                allowed = self._bounded(
+                    controller_id, param, value, min(ceiling, max(floor, value)),
+                )
+                setattr(ctrl.pid_params, attr, allowed)
+                clamped = allowed != value
             elif param == "pid_structure":
-                ctrl.pid_structure = int(value)
-            elif param == "pid_sp":
-                ctrl.sp = value
+                if int(value) not in _VALID_PID_STRUCTURES:
+                    self._discard(controller_id, param, value)
+                    discarded = True
+                else:
+                    ctrl.pid_structure = int(value)
             elif param == "mode":
-                self._apply_pid_mode_locked(ctrl, int(value))
-            if param in _OPCUA_PERSISTABLE_PARAMS:
+                if int(value) not in _VALID_PID_MODES:
+                    self._discard(controller_id, param, value)
+                    discarded = True
+                else:
+                    self._apply_pid_mode_locked(ctrl, int(value))
+            # A clamped write still moved the config, so it must be persisted; a
+            # discarded one changed nothing and must not schedule a flush that
+            # would rewrite the unchanged value as though it were new.
+            if not discarded and param in _OPCUA_PERSISTABLE_PARAMS:
                 self._dirty_cids.add(controller_id)
+        if clamped or discarded:
+            # Put the value the loop actually runs back on the node. The per-tick
+            # echo carries pv/sp/co/mode but deliberately excludes the config
+            # nodes (kp/ti/td/pid_structure) so it cannot race an external write,
+            # and those are exactly what this guard corrects — without this push a
+            # client that wrote Kp=-5 keeps reading -5 back forever while the twin
+            # runs the floor. Only on a correction: pushing after an accepted write
+            # would revert a change the HMI or the optimizer just made, which is
+            # the race the tick avoids. Outside the lock, as set_pid_params does —
+            # self._lock is not reentrant.
+            self._sync_pid_config_to_opcua(controller_id)
 
     def consume_dirty_cids(self) -> list[int]:
         """Return and clear the list of controllers whose persistable config
