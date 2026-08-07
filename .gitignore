@@ -80,6 +80,7 @@ testsprite_tests/tmp/config.json
 .qoder/
 
 # These DO hold tracked files, so name the entries rather than the directory.
+.claude/reports/
 .claude/settings.json.bak
 .claude/skills/
 .cursor/mcp.json
