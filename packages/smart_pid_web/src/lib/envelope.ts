@@ -131,6 +131,8 @@ export interface StatsData {
   tv_per_sample: number;
   osc: number;
   sample_count: number;
+  /** Worst SP-step overshoot in the window, as a fraction of the step. */
+  overshoot: number;
 }
 
 export type AnyEnvelope =

@@ -2795,6 +2795,11 @@ export interface components {
              */
             osc: number;
             /**
+             * Overshoot
+             * @default 0
+             */
+            overshoot: number;
+            /**
              * Pk Pk Error
              * @default 0
              */
@@ -5217,7 +5222,7 @@ export interface operations {
     query_trend_trend__controller_id__get: {
         parameters: {
             query?: {
-                /** @description Window length; capped at the 1 h ring */
+                /** @description Window length in seconds; capped at the 72 h ring */
                 seconds?: number;
             };
             header?: never;
