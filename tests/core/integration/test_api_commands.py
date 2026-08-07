@@ -26,6 +26,7 @@ async def _create_and_start_controller(
     if ctrl is None:
         ctrl = Controller(
             id=0, name="TIC-101", pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
+            execution_mode=ExecutionMode.SUPERVISORY,
         )
     saved = await repo.save(ctrl)
     # Register loop context without starting the PIDWorker thread to avoid hangs
@@ -457,6 +458,7 @@ class TestDCSBranchHonoursLoopLimits:
                 id=0, name="FIC-403",
                 pid_params=PIDParams(gain=1.0, reset=10.0, rate=0.0),
                 out_hi_lim=80.0, out_lo_lim=0.0,
+                execution_mode=ExecutionMode.DDC,
             ),
         )
         fake = _FakeOPCUA()

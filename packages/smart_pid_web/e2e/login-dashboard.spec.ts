@@ -16,6 +16,7 @@ const PIC005: HarnessLoop = {
   sp: 152,
   co: 64,
   mode: 'AUTO',
+  executionMode: 'DDC',
 };
 
 test.beforeEach(async ({ page }) => {

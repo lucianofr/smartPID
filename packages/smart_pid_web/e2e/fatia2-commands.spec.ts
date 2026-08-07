@@ -15,6 +15,7 @@ const FULL_CONTROLLER = {
   name: 'PIC-005',
   description: 'Pressure',
   mode: 'AUTO',
+  execution_mode: 'DDC',
   pv: 150.2,
   sp: 152,
   co: 64,

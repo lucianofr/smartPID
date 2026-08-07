@@ -26,6 +26,7 @@ export interface HarnessLoop {
   sp: number;
   co: number;
   mode: string;
+  executionMode: 'SUPERVISORY' | 'DDC';
 }
 
 export const FIC101: HarnessLoop = {
@@ -39,6 +40,7 @@ export const FIC101: HarnessLoop = {
   sp: 55,
   co: 42,
   mode: 'AUTO',
+  executionMode: 'SUPERVISORY',
 };
 
 export const TIC202: HarnessLoop = {
@@ -52,6 +54,7 @@ export const TIC202: HarnessLoop = {
   sp: 185,
   co: 61,
   mode: 'AUTO',
+  executionMode: 'DDC',
 };
 
 function controllerPayload(loop: HarnessLoop): Record<string, unknown> {
@@ -60,6 +63,7 @@ function controllerPayload(loop: HarnessLoop): Record<string, unknown> {
     name: loop.name,
     description: loop.description,
     mode: loop.mode,
+    execution_mode: loop.executionMode,
     pv: loop.pv,
     sp: loop.sp,
     co: loop.co,

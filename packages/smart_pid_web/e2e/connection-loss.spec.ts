@@ -27,6 +27,7 @@ const TIC047: HarnessLoop = {
   sp: 50,
   co: 25,
   mode: 'AUTO',
+  executionMode: 'DDC',
 };
 
 const banner = (page: Page) => page.getByTestId('connection-banner');
