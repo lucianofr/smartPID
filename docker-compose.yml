@@ -29,6 +29,19 @@ services:
       # admin account with this password on first boot (never logged). When
       # unset/empty it generates a random one and logs it once at WARNING.
       SPID_BOOTSTRAP_ADMIN_PASSWORD: ${SPID_BOOTSTRAP_ADMIN_PASSWORD:-}
+      # Feedback email (POST /system/feedback). Dokploy's Environment tab only
+      # writes a .env that compose interpolates, so a var not named here never
+      # reaches the container. Empty host leaves the endpoint answering 503
+      # rather than failing boot, which is what local dev and a misconfigured
+      # deploy both want.
+      SPID_SMTP_HOST: ${SPID_SMTP_HOST:-}
+      SPID_SMTP_PORT: ${SPID_SMTP_PORT:-587}
+      SPID_SMTP_USER: ${SPID_SMTP_USER:-}
+      # Gmail app password: the 16 characters with no spaces. Google displays
+      # them in groups of four and an unquoted .env value keeps those spaces,
+      # which SMTP AUTH then rejects.
+      SPID_SMTP_PASSWORD: ${SPID_SMTP_PASSWORD:-}
+      SPID_FEEDBACK_EMAIL_TO: ${SPID_FEEDBACK_EMAIL_TO:-luciano82@gmail.com}
       SPID_API_HOST: 0.0.0.0
       SPID_API_PORT: "8032"
       # Host-header allow-list and browser origins for the public domain.
