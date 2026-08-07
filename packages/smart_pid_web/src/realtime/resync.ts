@@ -27,7 +27,8 @@ export interface ResyncApi {
   simulatorStatus(): Promise<SimulatorStatus>;
 }
 
-/** Backend limit default is 100 (alarms.py:41) — too small for a long gap. */
+/** Backend limit default is 100 (alarms.py get_alarm_history) — too small for a
+ *  long gap. */
 export const RESYNC_HISTORY_LIMIT = 1000;
 
 export function createResyncRunner(deps: {
@@ -57,9 +58,9 @@ export function createResyncRunner(deps: {
     }
 
     // A loop with optimization off has no AI worker, and `/ai/status` answers
-    // 404 by design (ai.py:54-60). Letting that reject the fan-out took the
-    // WHOLE resync down, and §8 recycles the socket on a failed resync — so on
-    // the live 4-loop plant (one AI worker, three 404s) reconnect became an
+    // 404 by design (ai.py get_ai_status). Letting that reject the fan-out took
+    // the WHOLE resync down, and §8 recycles the socket on a failed resync — so
+    // on the live 4-loop plant (one AI worker, three 404s) reconnect became an
     // endless connect → resync → 404 → close loop and the session NEVER came
     // back without a page reload. AI status is decoration; plant state is not.
     // Anything else (5xx, transport) still fails: the backend is not healthy.

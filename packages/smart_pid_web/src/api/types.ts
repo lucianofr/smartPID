@@ -62,13 +62,14 @@ export type AlarmThreshold = components['schemas']['AlarmThreshold'];
 export type AlarmConfigResponse = components['schemas']['AlarmConfigResponse'];
 export type AlarmConfigUpdate = components['schemas']['AlarmConfigUpdate'];
 
-/** Row status CASE — alarm_repo.py:129-132 / 209-212. */
+/** Row status CASE — alarm_repo.py AlarmRepository.get_active / get_history. */
 export type AlarmRowStatus = 'UNACKNOWLEDGED' | 'ACKNOWLEDGED' | 'CLEARED_UNACK';
 
 /**
  * GET /alarms/active and GET /alarms/history return bare `list[dict]`
- * (routers/alarms.py:30,43) — the OpenAPI dump carries no schema for them.
- * Hand-mirrored from the SELECT in alarm_repo.py:114-135 (the LEFT JOIN makes
+ * (routers/alarms.py get_active_alarms / get_alarm_history) — the OpenAPI dump
+ * carries no schema for them. Hand-mirrored from the SELECT in
+ * alarm_repo.py AlarmRepository.get_active (the LEFT JOIN makes
  * controller_name nullable).
  */
 export interface AlarmRow {
@@ -125,10 +126,12 @@ export interface LogLevelsResponse {
 }
 
 /**
- * GET /alarms/ai-history returns a bare `list[dict]` (routers/alarms.py:56), so
- * the OpenAPI dump carries no schema for it. Hand-mirrored from the SELECT in
- * ai_repo.py:142-150 — note it exposes `controller_name` and NOT the `approved`
- * flag that the per-loop `AITuningLogEntry` schema carries.
+ * GET /alarms/ai-history returns a bare `list[dict]`
+ * (routers/alarms.py get_ai_log_history), so the OpenAPI dump carries no schema
+ * for it. Hand-mirrored from the SELECT in
+ * ai_repo.py AIRepository.get_tuning_history_range — note it exposes
+ * `controller_name` and NOT the `approved` flag that the per-loop
+ * `AITuningLogEntry` schema carries.
  */
 export interface AiTuningLogRow {
   id: number;

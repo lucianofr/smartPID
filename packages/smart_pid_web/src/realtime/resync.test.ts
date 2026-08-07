@@ -98,9 +98,9 @@ describe('createResyncRunner', () => {
 
   /**
    * E2E-047 — measured on the live 4-loop plant: only loop 1 had an AI worker,
-   * so `/controllers/{2,3,4}/ai/status` answered 404 by design (ai.py:54-60),
-   * the fan-out rejected, §8 recycled the socket on the failed resync, and the
-   * session never came back without a page reload.
+   * so `/controllers/{2,3,4}/ai/status` answered 404 by design
+   * (ai.py get_ai_status), the fan-out rejected, §8 recycled the socket on the
+   * failed resync, and the session never came back without a page reload.
    */
   it('tolerates a loop with no AI worker — 404 must not wedge the whole resync', async () => {
     const api = fakeApi({

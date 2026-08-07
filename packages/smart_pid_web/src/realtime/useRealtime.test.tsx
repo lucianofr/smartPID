@@ -25,7 +25,7 @@ class MockWS {
   _open() {
     this.readyState = 1;
     this.onopen?.();
-    // Server handshake ack (realtime.py:225)
+    // Server handshake ack (realtime.py register_realtime_ws)
     this.onmessage?.({ data: JSON.stringify({ type: 'auth_ok' }) });
   }
   _emit(obj: unknown) {
@@ -249,7 +249,7 @@ describe('§8 resync sequencing (integration)', () => {
     expect(result.current.status.live).toBe(false);
 
     // Envelopes during resync are held back: status coalesces (latest wins),
-    // alarm events queue lossless — mirroring realtime.py:168-191.
+    // alarm events queue lossless — mirroring realtime.py ConnectionBuffer.
     const alarmSeen: unknown[] = [];
     act(() => {
       result.current.alarms.subscribe((env) => alarmSeen.push(env.data));

@@ -2622,6 +2622,11 @@
             "title": "Osc",
             "type": "number"
           },
+          "osc_sample_count": {
+            "default": 0,
+            "title": "Osc Sample Count",
+            "type": "integer"
+          },
           "overshoot": {
             "default": 0.0,
             "title": "Overshoot",
@@ -2650,6 +2655,11 @@
           "sample_count": {
             "title": "Sample Count",
             "type": "integer"
+          },
+          "sp_pk_pk": {
+            "default": 0.0,
+            "title": "Sp Pk Pk",
+            "type": "number"
           },
           "std_dev": {
             "title": "Std Dev",

@@ -2795,6 +2795,11 @@ export interface components {
              */
             osc: number;
             /**
+             * Osc Sample Count
+             * @default 0
+             */
+            osc_sample_count: number;
+            /**
              * Overshoot
              * @default 0
              */
@@ -2821,6 +2826,11 @@ export interface components {
             reversals: number;
             /** Sample Count */
             sample_count: number;
+            /**
+             * Sp Pk Pk
+             * @default 0
+             */
+            sp_pk_pk: number;
             /** Std Dev */
             std_dev: number;
             /** Total Variation */

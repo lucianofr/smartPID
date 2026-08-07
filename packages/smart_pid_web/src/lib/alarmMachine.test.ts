@@ -27,7 +27,7 @@ describe('transition — full 12-cell table', () => {
   });
 });
 
-describe('fromActiveRow — mirrors alarm_repo.py:129-132 CASE', () => {
+describe('fromActiveRow — mirrors alarm_repo.py AlarmRepository.get_active CASE', () => {
   it('acknowledged & cleared → NORMAL (row leaves the active set)', () => {
     expect(fromActiveRow({ acknowledged: 1, cleared_at: '2026-07-26T00:00:00Z' })).toBe('NORMAL');
   });

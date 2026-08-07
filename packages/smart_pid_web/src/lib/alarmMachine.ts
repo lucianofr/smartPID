@@ -2,9 +2,11 @@
  * Four-state alarm ack/clear machine — pure module (spec §7).
  *
  * Wire events: EVENT.ALARM.{id} carries transition TRIGGERED | CLEARED
- * (alarm_worker.py:175, alarm_engine.py:207,240). ACK is a client action
+ * (alarm_worker.py AlarmWorker._loop, alarm_engine.py
+ * AlarmEngine._check_transition). ACK is a client action
  * (POST /alarms/{id}/ack). Row-state derivation mirrors the backend CASE in
- * alarm_repo.py:129-132; cleared∧acked rows leave the active set entirely.
+ * alarm_repo.py AlarmRepository.get_active; cleared∧acked rows leave the
+ * active set entirely.
  */
 
 export type AlarmPointState =

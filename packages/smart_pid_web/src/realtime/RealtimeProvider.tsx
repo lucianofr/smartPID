@@ -70,7 +70,8 @@ export interface RealtimeProviderProps {
 
 const INITIAL_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 10_000;
-/** Mirrors the backend per-connection lossless cap (realtime.py:28). */
+/** Mirrors the backend per-connection lossless cap
+ *  (realtime.py _LOSSLESS_QUEUE_MAX). */
 const RESYNC_BUFFER_MAX = 256;
 
 /**
@@ -103,7 +104,7 @@ export function RealtimeProvider({ token, resync, onAuthExpired, children }: Rea
   const phaseRef = useRef<ConnectionPhase>('idle');
   const hadSession = useRef(false);
   const backoff = useRef(INITIAL_BACKOFF_MS);
-  // Resync buffering — backend ConnectionBuffer policy (realtime.py:168-191):
+  // Resync buffering — backend ConnectionBuffer policy (realtime.py ConnectionBuffer):
   // status/stats coalesce per (type, loop_id); everything else queues lossless.
   const coalesced = useRef(new Map<string, AnyEnvelope>());
   const lossless = useRef<AnyEnvelope[]>([]);
@@ -229,7 +230,7 @@ export function RealtimeProvider({ token, resync, onAuthExpired, children }: Rea
       tracker.current.reset(); // new connection = new seq baseline (last_seen_ts kept)
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'auth', token })); // realtime.py:208-216
+        ws.send(JSON.stringify({ type: 'auth', token })); // realtime.py register_realtime_ws
       };
 
       ws.onmessage = (e: { data: string }) => {
@@ -273,7 +274,8 @@ export function RealtimeProvider({ token, resync, onAuthExpired, children }: Rea
       ws.onclose = (e: { code: number }) => {
         if (cancelled) return;
         if (e.code === 4401) {
-          // Token invalid (realtime.py:27) → force re-login; never reconnect.
+          // Token invalid (realtime.py _WS_CLOSE_AUTH) → force re-login; never
+          // reconnect.
           setPhaseBoth('auth-failed');
           onAuthExpired();
           return;

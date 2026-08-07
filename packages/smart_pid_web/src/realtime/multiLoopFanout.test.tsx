@@ -51,7 +51,8 @@ class WireSocket {
 
 const LOOPS = [1, 2, 3, 4] as const;
 
-/** The bridge stamps ONE monotonic seq across every loop (realtime.py:156). */
+/** The bridge stamps ONE monotonic seq across every loop
+ *  (realtime.py RealtimeBridge._seq). */
 let seq = 0;
 const statusEnv = (loopId: number, pv: number, t: number) => ({
   type: 'status',

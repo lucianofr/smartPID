@@ -1,11 +1,12 @@
 /**
  * WS envelope — pure module, no React, no DOM (spec §7).
  *
- * Mirrors the backend bridge field-for-field:
- *   realtime.py:109    envelope shape {type, loop_id, seq, ts, data}
- *   realtime.py:82-89  topic → type taxonomy (has_loop_id per prefix)
- *   realtime.py:154    seq: monotonic per-bridge counter (shared by all sockets)
- *   realtime.py:156    ts: server time.time() → epoch SECONDS
+ * Mirrors the backend bridge field-for-field. Anchored on symbols, not line
+ * numbers: the numbers this block used to carry had all drifted.
+ *   realtime.py map_topic_to_envelope  envelope shape {type, loop_id, seq, ts, data}
+ *   realtime.py _TOPIC_MAP             topic → type taxonomy (has_loop_id per prefix)
+ *   realtime.py RealtimeBridge._seq    monotonic per-bridge counter (all sockets share it)
+ *   realtime.py RealtimeBridge._run    ts: server time.time() → epoch SECONDS
  */
 
 export type RealtimeType = 'status' | 'action' | 'ai' | 'alarm' | 'system' | 'stats';
@@ -21,16 +22,18 @@ export const REALTIME_TYPES: readonly RealtimeType[] = [
 
 export interface RealtimeEnvelope<T = unknown> {
   type: RealtimeType;
-  /** Parsed from the numeric topic suffix; null for EVENT.SYSTEM (realtime.py:99). */
+  /** Parsed from the numeric topic suffix; null for EVENT.SYSTEM
+   *  (realtime.py map_topic_to_envelope). */
   loop_id: number | null;
-  /** Per-bridge monotonic counter (realtime.py:154); restarts when the daemon restarts. */
+  /** Per-bridge monotonic counter (realtime.py RealtimeBridge._seq); restarts
+   *  when the daemon restarts. */
   seq: number;
-  /** Epoch seconds, server-stamped (realtime.py:156). */
+  /** Epoch seconds, server-stamped (realtime.py RealtimeBridge._run). */
   ts: number;
   data: T;
 }
 
-/** Fieldbus signal dict — pid_worker.py:88-95 (_serialize_ff_signal). */
+/** Fieldbus signal dict — pid_worker.py _serialize_ff_signal. */
 export interface FFSignal {
   value: number;
   severity: string;
@@ -40,9 +43,11 @@ export interface FFSignal {
 
 /**
  * STATUS.{id} — two producers, one shape plus two monitor-only fields:
- *   execute: pid_worker.py:438-455 (timestamp ISO-8601 string; kp/ti/td always numbers)
- *   monitor: monitor_worker.py:109-138 (timestamp may be float epoch seconds via
- *            time.time() fallback; adds error + saturated; kp/ti/td via .get() → null)
+ *   execute: pid_worker.py PIDWorker._loop, the STATUS.{id} send (timestamp
+ *            ISO-8601 string; kp/ti/td always numbers)
+ *   monitor: monitor_worker.py MonitorWorker._enrich (timestamp may be float
+ *            epoch seconds via the time.time() fallback; adds error +
+ *            saturated; kp/ti/td via .get() → null)
  */
 export interface StatusData {
   controller_id: number;
@@ -57,13 +62,14 @@ export interface StatusData {
   td: number | null;
   integral_val: number;
   timestamp: string | number;
-  /** monitor mode only: pv - sp (monitor_worker.py:116,132). */
+  /** monitor mode only: pv - sp (monitor_worker.py MonitorWorker._enrich). */
   error?: number;
-  /** monitor mode only: CO limit_bits HIGH_LIMITED/LOW_LIMITED (monitor_worker.py:118-121,133). */
+  /** monitor mode only: CO limit_bits HIGH_LIMITED/LOW_LIMITED
+   *  (monitor_worker.py MonitorWorker._enrich). */
   saturated?: boolean;
 }
 
-/** ACTION.CTRL.{id} — pid_worker.py:421-430. */
+/** ACTION.CTRL.{id} — pid_worker.py PIDWorker._loop, the ACTION.CTRL.{id} send. */
 export interface ActionData {
   controller_id: number;
   co: FFSignal;
@@ -73,7 +79,7 @@ export interface ActionData {
   timestamp: string;
 }
 
-/** ACTION.AI.{id} — ai_worker.py:295-305. */
+/** ACTION.AI.{id} — ai_worker.py AIWorker._loop, the ACTION.AI.{id} send. */
 export interface AiData {
   controller_id: number;
   gamma: number;
@@ -86,11 +92,12 @@ export interface AiData {
   timestamp: string;
 }
 
-/** Wire transition values — alarm_engine.py:207,240. */
+/** Wire transition values — alarm_engine.py AlarmEngine._check_transition. */
 export type AlarmTransition = 'TRIGGERED' | 'CLEARED';
 
-/** EVENT.ALARM.{id} — alarm_worker.py:169-179. Carries NO row id: alarms are keyed
- *  client-side by (controller_id, alarm_type); REST remains the source of row state. */
+/** EVENT.ALARM.{id} — alarm_worker.py AlarmWorker._loop, the EVENT.ALARM.{id}
+ *  send. Carries NO row id: alarms are keyed client-side by
+ *  (controller_id, alarm_type); REST remains the source of row state. */
 export interface AlarmEventData {
   controller_id: number;
   controller_name: string;
@@ -103,7 +110,7 @@ export interface AlarmEventData {
   timestamp: string;
 }
 
-/** EVENT.SYSTEM — system_event_worker.py:31-39. */
+/** EVENT.SYSTEM — system_event_worker.py SystemEventWorker.emit. */
 export interface SystemEventData {
   source: string;
   severity: string;
@@ -111,8 +118,9 @@ export interface SystemEventData {
   timestamp: string;
 }
 
-/** STATS.{id} — stats_worker.py:86-108. The wire payload has NO controller_id
- *  (loop identity travels in envelope.loop_id); the REST StatsResponse does. */
+/** STATS.{id} — stats_worker.py StatsWorker.get_current_stats. The wire payload
+ *  has NO controller_id (loop identity travels in envelope.loop_id); the REST
+ *  StatsResponse does. */
 export interface StatsData {
   iae: number;
   itae: number;
@@ -131,6 +139,13 @@ export interface StatsData {
   tv_per_sample: number;
   osc: number;
   sample_count: number;
+  /** Samples the oscillation metrics were allowed to see (non-settling).
+   *  0 means "unmeasured", not "steady": pk-pk, reversals and zero-crossings
+   *  are structural zeros when the settling mask covers the whole window. */
+  osc_sample_count: number;
+  /** Peak-to-peak setpoint travel over the window, engineering units — the
+   *  scale the oscillation amplitude has to be judged against. */
+  sp_pk_pk: number;
   /** Worst SP-step overshoot in the window, as a fraction of the step. */
   overshoot: number;
 }
@@ -143,7 +158,8 @@ export type AnyEnvelope =
   | (RealtimeEnvelope<SystemEventData> & { type: 'system' })
   | (RealtimeEnvelope<StatsData> & { type: 'stats' });
 
-/** First server frame after a successful handshake (realtime.py:225). Not an envelope. */
+/** First server frame after a successful handshake (realtime.py
+ *  register_realtime_ws). Not an envelope. */
 export function isAuthOk(v: unknown): boolean {
   return typeof v === 'object' && v !== null && (v as { type?: unknown }).type === 'auth_ok';
 }

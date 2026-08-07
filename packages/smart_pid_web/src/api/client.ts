@@ -93,7 +93,7 @@ async function toApiError(res: Response): Promise<ApiError> {
     const body: unknown = await res.json();
     const d = (body as { detail?: unknown }).detail;
     if (typeof d === 'string') {
-      detail = d; // error_handlers.py:22-34 shape
+      detail = d; // error_handlers.py register_error_handlers shape
     } else if (Array.isArray(d)) {
       fields = d.filter(isValidationIssue); // FastAPI 422 shape
       detail = fields.map((f) => f.msg).join('; ') || detail;
