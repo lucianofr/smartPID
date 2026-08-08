@@ -13,6 +13,7 @@ import type {
   ControllerResponse,
   ExportJob,
   ExportRequest,
+  FuzzyTraceResponse,
   HistoryResponse,
   LogLevelName,
   LogLevelsResponse,
@@ -94,6 +95,13 @@ export const endpoints = {
 
   aiStatus: (controllerId: number) =>
     api.get<AiStatus>(`/controllers/${controllerId}/ai/status`),
+
+  /**
+   * One fuzzy inference trace (§ fuzzy screen). 404 when the loop has no AI
+   * worker, the engine is not FUZZY, or no inference has run yet.
+   */
+  fuzzyTrace: (controllerId: number) =>
+    api.get<FuzzyTraceResponse>(`/controllers/${controllerId}/ai/fuzzy`),
 
   /**
    * The loop's own tuning log. Seeds the faceplate optimizer log so a freshly

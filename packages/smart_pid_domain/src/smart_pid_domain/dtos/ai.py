@@ -90,3 +90,42 @@ class TuningRecommendationResponse(BaseModel):
     timestamp: float
     status: TuningRecStatus
     source: str | None = None
+
+
+class FuzzyMembershipFunction(BaseModel):
+    label: str            # e.g. "LOW"
+    kind: str              # "tri" | "trap"
+    params: list[float]    # 3 values for tri, 4 for trap
+    degree: float           # membership degree of the crisp input, 0..1
+
+
+class FuzzyInputTrace(BaseModel):
+    name: str               # e.g. "iae"
+    value: float            # crisp input value
+    domain_min: float       # plot x-axis lower bound
+    domain_max: float       # plot x-axis upper bound
+    functions: list[FuzzyMembershipFunction]
+
+
+class FuzzyRuleTrace(BaseModel):
+    index: int                   # position in the strategy rule base, 0-based
+    conditions: dict[str, str]   # {"iae": "HIGH", "osc": "STABLE"}
+    output: str                  # output level label, e.g. "R"
+    strength: float              # firing strength 0..1
+    fired: bool                  # strength > 0.0
+
+
+class FuzzyOutputTrace(BaseModel):
+    label: str       # e.g. "R"
+    center: float    # singleton centre, e.g. -0.15
+    strength: float  # aggregated strength
+
+
+class FuzzyTraceResponse(BaseModel):
+    controller_id: int
+    objective: ControlObjective
+    timestamp: float                   # unix seconds when infer() ran
+    inputs: list[FuzzyInputTrace]
+    rules: list[FuzzyRuleTrace]
+    outputs: list[FuzzyOutputTrace]
+    delta_ti: float                    # defuzzified output

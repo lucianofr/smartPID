@@ -15,6 +15,8 @@ export const queryKeys = {
   aiStatus: (controllerId: number) => ['ai', 'status', controllerId] as const,
   /** Per-loop tuning log behind the faceplate optimizer panel. */
   aiHistory: (controllerId: number) => ['ai', 'history', controllerId] as const,
+  /** One loop's fuzzy inference trace — the fuzzy screen's poll key. */
+  fuzzyTrace: (controllerId: number) => ['ai', 'fuzzy', controllerId] as const,
   opcuaStatus: ['opcua', 'status'] as const,
   simulatorStatus: ['simulator', 'status'] as const,
   /** Loop performance metrics for every controller (phase 7 multitrend). */

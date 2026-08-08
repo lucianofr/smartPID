@@ -23,6 +23,17 @@ export type AiStatus = components['schemas']['AIStatusResponse'];
 /** GET /controllers/{id}/ai/history — the loop's own tuning log, newest 50. */
 export type AiHistoryResponse = components['schemas']['AIHistoryResponse'];
 export type AiTuningLogEntry = components['schemas']['AITuningLogEntry'];
+/**
+ * GET /controllers/{id}/ai/fuzzy — one fuzzy inference trace, only when the
+ * loop runs the FUZZY engine and the AI has cycled at least once (404
+ * otherwise — no worker, wrong engine, or no inference yet).
+ */
+export type FuzzyTraceResponse = components['schemas']['FuzzyTraceResponse'];
+export type FuzzyInputTrace = components['schemas']['FuzzyInputTrace'];
+export type FuzzyRuleTrace = components['schemas']['FuzzyRuleTrace'];
+export type FuzzyOutputTrace = components['schemas']['FuzzyOutputTrace'];
+/** `Dto` suffix: the feature's plain view-model type is `MembershipFunction` (features/fuzzy/types.ts). */
+export type FuzzyMembershipFunctionDto = components['schemas']['FuzzyMembershipFunction'];
 export type AiConfigDto = components['schemas']['AIConfigDTO'];
 export type ScaleConfigDto = components['schemas']['ScaleConfigDTO'];
 export type TagBindingsDto = components['schemas']['TagBindingsDTO'];

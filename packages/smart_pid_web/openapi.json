@@ -1825,6 +1825,183 @@
         "title": "FeedbackRequest",
         "type": "object"
       },
+      "FuzzyInputTrace": {
+        "properties": {
+          "domain_max": {
+            "title": "Domain Max",
+            "type": "number"
+          },
+          "domain_min": {
+            "title": "Domain Min",
+            "type": "number"
+          },
+          "functions": {
+            "items": {
+              "$ref": "#/components/schemas/FuzzyMembershipFunction"
+            },
+            "title": "Functions",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "domain_min",
+          "domain_max",
+          "functions"
+        ],
+        "title": "FuzzyInputTrace",
+        "type": "object"
+      },
+      "FuzzyMembershipFunction": {
+        "properties": {
+          "degree": {
+            "title": "Degree",
+            "type": "number"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "params": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Params",
+            "type": "array"
+          }
+        },
+        "required": [
+          "label",
+          "kind",
+          "params",
+          "degree"
+        ],
+        "title": "FuzzyMembershipFunction",
+        "type": "object"
+      },
+      "FuzzyOutputTrace": {
+        "properties": {
+          "center": {
+            "title": "Center",
+            "type": "number"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "strength": {
+            "title": "Strength",
+            "type": "number"
+          }
+        },
+        "required": [
+          "label",
+          "center",
+          "strength"
+        ],
+        "title": "FuzzyOutputTrace",
+        "type": "object"
+      },
+      "FuzzyRuleTrace": {
+        "properties": {
+          "conditions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Conditions",
+            "type": "object"
+          },
+          "fired": {
+            "title": "Fired",
+            "type": "boolean"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "output": {
+            "title": "Output",
+            "type": "string"
+          },
+          "strength": {
+            "title": "Strength",
+            "type": "number"
+          }
+        },
+        "required": [
+          "index",
+          "conditions",
+          "output",
+          "strength",
+          "fired"
+        ],
+        "title": "FuzzyRuleTrace",
+        "type": "object"
+      },
+      "FuzzyTraceResponse": {
+        "properties": {
+          "controller_id": {
+            "title": "Controller Id",
+            "type": "integer"
+          },
+          "delta_ti": {
+            "title": "Delta Ti",
+            "type": "number"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/FuzzyInputTrace"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "objective": {
+            "$ref": "#/components/schemas/ControlObjective"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/FuzzyOutputTrace"
+            },
+            "title": "Outputs",
+            "type": "array"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/FuzzyRuleTrace"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "number"
+          }
+        },
+        "required": [
+          "controller_id",
+          "objective",
+          "timestamp",
+          "inputs",
+          "rules",
+          "outputs",
+          "delta_ti"
+        ],
+        "title": "FuzzyTraceResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -4268,6 +4445,49 @@
         "summary": "Update Controller",
         "tags": [
           "controllers"
+        ]
+      }
+    },
+    "/controllers/{controller_id}/ai/fuzzy": {
+      "get": {
+        "description": "Return the last fuzzy inference trace for controller, for HMI plotting.",
+        "operationId": "get_ai_fuzzy_trace_controllers__controller_id__ai_fuzzy_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "controller_id",
+            "required": true,
+            "schema": {
+              "title": "Controller Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FuzzyTraceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ai Fuzzy Trace",
+        "tags": [
+          "ai"
         ]
       }
     },

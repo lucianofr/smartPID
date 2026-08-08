@@ -103,7 +103,7 @@ export function useStats(): UseStatsResult {
 }
 
 /** Latest STATS payload per loop, replaced in place as frames arrive. */
-function useRealtimeStats(): ReadonlyMap<number, StatsData> {
+export function useRealtimeStats(): ReadonlyMap<number, StatsData> {
   const { subscribe } = useRealtime<StatsData>(null, 'stats');
   const [live, setLive] = useState<ReadonlyMap<number, StatsData>>(() => new Map());
 

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Union
@@ -80,6 +81,23 @@ def _fuzzify(value: float, mfs: MFSet) -> dict[str, float]:
     return out
 
 
+def _rule_strength(
+    condition: dict[str, str], input_mfs: dict[str, dict[str, float]],
+) -> float:
+    """Mamdani AND (min) of one rule's premises against fuzzified inputs.
+
+    Unknown keys in ``condition`` (absent from ``input_mfs``) are silently
+    skipped so the same rule base works across strategies with different
+    input sets.
+    """
+    strength = 1.0
+    for key, level in condition.items():
+        if key not in input_mfs:
+            continue
+        strength = min(strength, input_mfs[key].get(level, 0.0))
+    return strength
+
+
 def _run_rules(
     input_mfs: dict[str, dict[str, float]],
     rules: list[Rule],
@@ -93,11 +111,7 @@ def _run_rules(
     """
     output_strengths: dict[str, float] = {lvl: 0.0 for lvl in output_centers}
     for condition, out_lvl in rules:
-        strength = 1.0
-        for key, level in condition.items():
-            if key not in input_mfs:
-                continue
-            strength = min(strength, input_mfs[key].get(level, 0.0))
+        strength = _rule_strength(condition, input_mfs)
         output_strengths[out_lvl] = max(output_strengths[out_lvl], strength)
     numerator = sum(
         output_centers[lvl] * s for lvl, s in output_strengths.items()
@@ -114,6 +128,51 @@ class AIDecisionV2:
     inputs: dict[str, float]                   # strategy-specific indicator values
     reasoning: str
     membership_values: dict[str, dict[str, float]]
+
+
+@dataclass(frozen=True)
+class InferenceTrace:
+    timestamp: float
+    values: dict[str, float]                    # crisp inputs, keyed as in memberships
+    mfsets: dict[str, MFSet]                     # input name -> MF definitions
+    memberships: dict[str, dict[str, float]]     # input name -> level -> degree
+    rules: list[Rule]
+    rule_strengths: list[float]                  # parallel to rules
+    output_centers: dict[str, float]
+    output_strengths: dict[str, float]
+    delta: float
+
+
+def _build_trace(
+    values: dict[str, float],
+    mfsets: dict[str, MFSet],
+    memberships: dict[str, dict[str, float]],
+    rules: list[Rule],
+    output_centers: dict[str, float],
+    output_strengths: dict[str, float],
+    delta: float,
+) -> InferenceTrace:
+    return InferenceTrace(
+        timestamp=time.time(),
+        values=values,
+        mfsets=mfsets,
+        memberships=memberships,
+        rules=rules,
+        rule_strengths=[_rule_strength(cond, memberships) for cond, _ in rules],
+        output_centers=output_centers,
+        output_strengths=output_strengths,
+        delta=delta,
+    )
+
+
+class _TraceCapture:
+    """Mixin recording the most recent infer() call for API introspection."""
+
+    _last_trace: InferenceTrace | None = None
+
+    @property
+    def last_trace(self) -> InferenceTrace | None:
+        return self._last_trace
 
 
 # ===========================================================================
@@ -213,7 +272,7 @@ RULES: list[Rule] = [
 ]
 
 
-class FuzzyEngineV2:
+class FuzzyEngineV2(_TraceCapture):
     """SP Tracking tuner: IAE + 2σ/span + TV → Δ_Ti."""
 
     _DEFAULT_WINDOW = 20
@@ -306,6 +365,11 @@ class FuzzyEngineV2:
         }
         delta, output_strengths = _run_rules(input_mfs, RULES, OUTPUT_CENTERS)
         delta = max(-0.5, min(0.5, delta))
+        self._last_trace = _build_trace(
+            {"iae": iae, "osc": osc, "eff": eff, "ovs": ovs},
+            {"iae": MF_IAE, "osc": MF_OSC, "eff": MF_EFF, "ovs": MF_OVS},
+            input_mfs, RULES, OUTPUT_CENTERS, output_strengths, delta,
+        )
         return delta, {**input_mfs, "output": output_strengths}
 
     def compute_adjustment(
@@ -516,7 +580,7 @@ RULES_DR: list[Rule] = [
 ]
 
 
-class FuzzyEngineV2DisturbanceRejection:
+class FuzzyEngineV2DisturbanceRejection(_TraceCapture):
     """Event-triggered tuner for disturbance rejection.
 
     State machine over the error-magnitude signal:
@@ -832,6 +896,11 @@ class FuzzyEngineV2DisturbanceRejection:
             input_mfs, RULES_DR, OUTPUT_CENTERS_DR,
         )
         delta = max(-0.5, min(0.5, delta))
+        self._last_trace = _build_trace(
+            {"e_max": e_max, "t_rec": t_rec, "osc": osc},
+            {"e_max": MF_E_MAX_DR, "t_rec": MF_T_REC_DR, "osc": MF_OSC_DR},
+            input_mfs, RULES_DR, OUTPUT_CENTERS_DR, output_strengths, delta,
+        )
         return delta, {**input_mfs, "output": output_strengths}
 
     # Rolling-window OSC expressed as the normalised peak-to-peak error over
@@ -1058,7 +1127,7 @@ RULES_SL: list[Rule] = [
 ]
 
 
-class FuzzyEngineV2SurgeLevel:
+class FuzzyEngineV2SurgeLevel(_TraceCapture):
     """Averaging / surge-level tuner: band position, rate, error, valve TV.
 
     Priority is static and explicit: safety (S1/S2 plus the CO-ramp gate) >
@@ -1197,6 +1266,11 @@ class FuzzyEngineV2SurgeLevel:
         )
         # Spec allows the AM trapezoid to reach +1.5 — keep the wider clamp.
         delta = max(-1.0, min(1.5, delta))
+        self._last_trace = _build_trace(
+            {"pos": pos, "dpos": dpos, "err": err, "tv": tv},
+            {"pos": MF_POS_SL, "dpos": MF_DPOS_SL, "err": MF_ERR_SL, "tv": MF_TV_MV_SL},
+            input_mfs, RULES_SL, OUTPUT_CENTERS_SL, output_strengths, delta,
+        )
         return delta, {**input_mfs, "output": output_strengths}
 
     def compute_adjustment(
@@ -1311,6 +1385,10 @@ class FuzzyEngineV2Dispatcher:
     @property
     def engine(self) -> AnyFuzzyV2Engine:
         return self._engine
+
+    @property
+    def last_trace(self) -> InferenceTrace | None:
+        return self._engine.last_trace
 
     def update_sample(
         self, error_frac: float, pv_frac: float, co_frac: float,

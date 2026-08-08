@@ -440,6 +440,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/controllers/{controller_id}/ai/fuzzy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ai Fuzzy Trace
+         * @description Return the last fuzzy inference trace for controller, for HMI plotting.
+         */
+        get: operations["get_ai_fuzzy_trace_controllers__controller_id__ai_fuzzy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/controllers/{controller_id}/ai/history": {
         parameters: {
             query?: never;
@@ -2425,6 +2445,70 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** FuzzyInputTrace */
+        FuzzyInputTrace: {
+            /** Domain Max */
+            domain_max: number;
+            /** Domain Min */
+            domain_min: number;
+            /** Functions */
+            functions: components["schemas"]["FuzzyMembershipFunction"][];
+            /** Name */
+            name: string;
+            /** Value */
+            value: number;
+        };
+        /** FuzzyMembershipFunction */
+        FuzzyMembershipFunction: {
+            /** Degree */
+            degree: number;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Params */
+            params: number[];
+        };
+        /** FuzzyOutputTrace */
+        FuzzyOutputTrace: {
+            /** Center */
+            center: number;
+            /** Label */
+            label: string;
+            /** Strength */
+            strength: number;
+        };
+        /** FuzzyRuleTrace */
+        FuzzyRuleTrace: {
+            /** Conditions */
+            conditions: {
+                [key: string]: string;
+            };
+            /** Fired */
+            fired: boolean;
+            /** Index */
+            index: number;
+            /** Output */
+            output: string;
+            /** Strength */
+            strength: number;
+        };
+        /** FuzzyTraceResponse */
+        FuzzyTraceResponse: {
+            /** Controller Id */
+            controller_id: number;
+            /** Delta Ti */
+            delta_ti: number;
+            /** Inputs */
+            inputs: components["schemas"]["FuzzyInputTrace"][];
+            objective: components["schemas"]["ControlObjective"];
+            /** Outputs */
+            outputs: components["schemas"]["FuzzyOutputTrace"][];
+            /** Rules */
+            rules: components["schemas"]["FuzzyRuleTrace"][];
+            /** Timestamp */
+            timestamp: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -3849,6 +3933,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_fuzzy_trace_controllers__controller_id__ai_fuzzy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                controller_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FuzzyTraceResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

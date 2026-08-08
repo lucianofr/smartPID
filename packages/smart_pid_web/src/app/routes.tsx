@@ -26,6 +26,8 @@ const ProjectsPage = lazyPage(() => import('@/pages/ProjectsPage'), (m) => m.Pro
 const SettingsPage = lazyPage(() => import('@/pages/SettingsPage'), (m) => m.SettingsPage);
 const ConnectionPage = lazyPage(() => import('@/pages/ConnectionPage'), (m) => m.ConnectionPage);
 const UsersPage = lazyPage(() => import('@/pages/UsersPage'), (m) => m.UsersPage);
+const StatsPage = lazyPage(() => import('@/pages/StatsPage'), (m) => m.StatsPage);
+const FuzzyPage = lazyPage(() => import('@/pages/FuzzyPage'), (m) => m.FuzzyPage);
 
 /**
  * Single route/navigation registry (§6.9). Every later phase appends ONE
@@ -69,6 +71,16 @@ export const appRoutes: AppRoute[] = [
     path: '/executive',
     element: ExecutiveDashboardPage,
     nav: { label: 'Executivo', order: 50 },
+  },
+  {
+    path: '/stats',
+    element: StatsPage,
+    nav: { label: 'Stats', order: 60 },
+  },
+  {
+    path: '/fuzzy',
+    element: FuzzyPage,
+    nav: { label: 'Fuzzy', order: 70 },
   },
   // The configuration-menu administration group. Every entry is `adminOnly`:
   // the routers behind them are `require_admin`, so a `user` who reached one

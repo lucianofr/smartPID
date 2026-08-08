@@ -19,9 +19,19 @@ from smart_pid_core.adapters.outbound.ai_repo import AIRepository  # noqa: TC001
 from smart_pid_core.adapters.outbound.audit_repo import AuditRepository  # noqa: TC001
 from smart_pid_core.application.event_bus import EventBus  # noqa: TC001
 from smart_pid_core.config import CoreSettings
-from smart_pid_domain.dtos.ai import AIHistoryResponse, AIStatusResponse, AITuningLogEntry
+from smart_pid_core.domain.services.fuzzy_engine_v2 import InferenceTrace, MFSet
+from smart_pid_domain.dtos.ai import (
+    AIHistoryResponse,
+    AIStatusResponse,
+    AITuningLogEntry,
+    FuzzyInputTrace,
+    FuzzyMembershipFunction,
+    FuzzyOutputTrace,
+    FuzzyRuleTrace,
+    FuzzyTraceResponse,
+)
 from smart_pid_domain.dtos.auth import UserClaims  # noqa: TC001
-from smart_pid_domain.enums import AuditAction
+from smart_pid_domain.enums import AIEngine, AuditAction, ControlObjective
 
 if TYPE_CHECKING:
     from smart_pid_core.application.workers.ai_worker import AIWorker
@@ -42,6 +52,80 @@ async def _get_ai_worker(
             detail=f"No AI worker for controller {controller_id}",
         )
     return worker
+
+
+_SATURATED_BREAKPOINT = 1.0e6
+_FALLBACK_DOMAIN_SPAN = 1.0
+
+
+def _mfset_domain(mfset: MFSet) -> tuple[float, float]:
+    """Plot bounds for one input's membership functions.
+
+    Disturbance Rejection models an unbounded upper tail with a trapezoid
+    plateau pinned to a very large sentinel (``_RIGHT_SAT`` in
+    fuzzy_engine_v2.py) so "very slow"/"very big" stays fully-belonging
+    past the last real breakpoint. Including that sentinel verbatim would
+    collapse the plotted x-axis to a vertical line, so breakpoints at or
+    beyond 1e6 are treated as saturated and excluded from the max.
+    """
+    breakpoints = [p for _, params in mfset.values() for p in params]
+    lo = min(breakpoints)
+    finite = [p for p in breakpoints if p < _SATURATED_BREAKPOINT]
+    hi = max(finite) if finite else lo
+    if hi <= lo:
+        hi = lo + _FALLBACK_DOMAIN_SPAN
+    return lo, hi
+
+
+def _fuzzy_input_trace(name: str, value: float, trace: InferenceTrace) -> FuzzyInputTrace:
+    mfset = trace.mfsets[name]
+    domain_min, domain_max = _mfset_domain(mfset)
+    # Keep the crisp-value marker on-canvas even if it sits outside the
+    # MF-derived domain.
+    domain_min = min(domain_min, value)
+    domain_max = max(domain_max, value)
+    degrees = trace.memberships[name]
+    functions = [
+        FuzzyMembershipFunction(
+            label=label, kind=kind, params=list(params),
+            degree=degrees.get(label, 0.0),
+        )
+        for label, (kind, params) in mfset.items()
+    ]
+    return FuzzyInputTrace(
+        name=name, value=value, domain_min=domain_min, domain_max=domain_max,
+        functions=functions,
+    )
+
+
+def _fuzzy_trace_response(
+    controller_id: int, objective: ControlObjective, trace: InferenceTrace,
+) -> FuzzyTraceResponse:
+    rules = [
+        FuzzyRuleTrace(
+            index=i, conditions=dict(condition), output=out_lvl,
+            strength=strength, fired=strength > 0.0,
+        )
+        for i, ((condition, out_lvl), strength) in enumerate(
+            zip(trace.rules, trace.rule_strengths, strict=True),
+        )
+    ]
+    outputs = [
+        FuzzyOutputTrace(label=label, center=center, strength=trace.output_strengths[label])
+        for label, center in trace.output_centers.items()
+    ]
+    return FuzzyTraceResponse(
+        controller_id=controller_id,
+        objective=objective,
+        timestamp=trace.timestamp,
+        inputs=[
+            _fuzzy_input_trace(name, value, trace)
+            for name, value in trace.values.items()
+        ],
+        rules=rules,
+        outputs=outputs,
+        delta_ti=trace.delta,
+    )
 
 
 @router.get("/{controller_id}/ai/status", response_model=AIStatusResponse)
@@ -86,6 +170,27 @@ async def get_ai_history(
         controller_id=controller_id,
         entries=[AITuningLogEntry(**e) for e in entries],
     )
+
+
+@router.get("/{controller_id}/ai/fuzzy", response_model=FuzzyTraceResponse)
+async def get_ai_fuzzy_trace(
+    controller_id: int,
+    user: Annotated[UserClaims, Depends(require_user)],
+    worker: Annotated["AIWorker", Depends(_get_ai_worker)],
+) -> FuzzyTraceResponse:
+    """Return the last fuzzy inference trace for controller, for HMI plotting."""
+    if worker._ai_config.engine != AIEngine.FUZZY:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Controller {controller_id} AI engine is not FUZZY",
+        )
+    trace: InferenceTrace | None = worker._engine.last_trace
+    if trace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No fuzzy inference has run yet for controller {controller_id}",
+        )
+    return _fuzzy_trace_response(controller_id, worker._engine.objective, trace)
 
 
 @router.post("/{controller_id}/ai/start")

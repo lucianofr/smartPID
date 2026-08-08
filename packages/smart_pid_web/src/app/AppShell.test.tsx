@@ -119,6 +119,8 @@ describe('AppShell', () => {
       'Alarms',
       'Sim',
       'Executivo',
+      'Stats',
+      'Fuzzy',
     ]);
     expect(within(nav).getByRole('link', { name: 'Executivo' })).toHaveAttribute(
       'href',
