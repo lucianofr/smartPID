@@ -76,23 +76,39 @@ describe('StatsPage', () => {
 
   it('shows every metric label for a loop that has stats', () => {
     renderStats();
-    expect(screen.getAllByText('IAE')).toHaveLength(2);
-    expect(screen.getAllByText('Overshoot')).toHaveLength(2);
-    expect(screen.getAllByText('Cruzamentos por zero')).toHaveLength(2);
+    const notLegend = (el: HTMLElement) => !el.closest('details');
+    expect(screen.getAllByText('IAE').filter(notLegend)).toHaveLength(2);
+    expect(screen.getAllByText('Overshoot').filter(notLegend)).toHaveLength(2);
+    expect(screen.getAllByText('Cruzamentos por zero').filter(notLegend)).toHaveLength(2);
   });
 
   it('reflects a live STATUS frame in the block-mode badge, not the REST mode field', () => {
     const { realtime } = renderStats([makeController({ id: 1, name: 'FIC-101', mode: 'MAN' })], [
       statsRow(1),
     ]);
+    const region = screen.getByRole('region', { name: 'Estatísticas das malhas' });
     // No live frame yet: the REST `mode` field must never leak into the badge.
-    expect(screen.getByText('UNKNOWN')).toBeVisible();
-    expect(screen.queryByText('MAN')).not.toBeInTheDocument();
+    const badgeUnknown = within(region)
+      .getAllByText('UNKNOWN')
+      .find((el) => !el.closest('details'));
+    expect(badgeUnknown).toBeVisible();
+    expect(
+      within(region)
+        .getAllByText('MAN')
+        .every((el) => el.closest('details')),
+    ).toBe(true);
 
     act(() => realtime.emit(statusEnvelope(1, 1, { pv: ff(10), mode: 'CAS' })));
 
-    expect(screen.getByText('CAS')).toBeVisible();
-    expect(screen.queryByText('UNKNOWN')).not.toBeInTheDocument();
+    const badgeCas = within(region)
+      .getAllByText('CAS')
+      .find((el) => !el.closest('details'));
+    expect(badgeCas).toBeVisible();
+    expect(
+      within(region)
+        .getAllByText('UNKNOWN')
+        .every((el) => el.closest('details')),
+    ).toBe(true);
   });
 
   it('shows an em dash for a loop whose AI engine opted out (NONE)', () => {
@@ -108,7 +124,7 @@ describe('StatsPage', () => {
       ],
       [statsRow(1)],
     );
-    const cards = screen.getAllByText('SUPERVISORY');
+    const cards = screen.getAllByText('SUPERVISORY').filter((el) => !el.closest('details'));
     expect(cards).toHaveLength(2);
     expect(screen.getByText('Sem estatísticas para esta malha.')).toBeVisible();
   });
@@ -116,5 +132,15 @@ describe('StatsPage', () => {
   it('shows an empty state when no loops are configured', () => {
     renderStats([], []);
     expect(screen.getByText('Nenhuma malha configurada.')).toBeVisible();
+  });
+
+  it('renders the legend with a known abbreviation and its description', () => {
+    renderStats();
+    const details = screen.getByText('Legenda').closest('details');
+    expect(details).not.toBeNull();
+    expect(within(details as HTMLElement).getByText('IAE')).toBeInTheDocument();
+    expect(
+      within(details as HTMLElement).getByText('Integral do erro absoluto'),
+    ).toBeInTheDocument();
   });
 });

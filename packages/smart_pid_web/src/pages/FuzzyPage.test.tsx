@@ -212,4 +212,22 @@ describe('FuzzyPage', () => {
     expect(screen.getByText('Nenhuma malha usa o motor fuzzy.')).toBeVisible();
     expect(spy).not.toHaveBeenCalled();
   });
+
+  it('renders the legend, scoped to the terms the current trace puts on screen', async () => {
+    renderFuzzy(
+      [FUZZY_LOOP_A],
+      [[FUZZY_LOOP_A.id, oneInputTrace(FUZZY_LOOP_A.id, 'iae')]],
+    );
+    expect(await screen.findByText('Legenda')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'iae' })).toBeInTheDocument();
+  });
+
+  it('shows no legend on the "no execution yet" empty state — no terms are on screen to explain', async () => {
+    vi.spyOn(endpoints, 'fuzzyTrace').mockRejectedValue(
+      new ApiError(404, 'not-found', 'No fuzzy inference recorded'),
+    );
+    renderFuzzy([FUZZY_LOOP_A]);
+    await screen.findByText('Nenhuma execução fuzzy registrada para esta malha ainda.');
+    expect(screen.queryByText('Legenda')).not.toBeInTheDocument();
+  });
 });

@@ -1,7 +1,9 @@
+import { Legend } from '@/components/Legend';
 import { EmptyState, ErrorState, LoadingState } from '@/components/MissingState';
 import { useControllers } from '@/features/dashboard/useControllers';
 import { useLoopStatuses } from '@/features/dashboard/useLoopStatuses';
 import { LoopStatsCard } from '@/features/stats/LoopStatsCard';
+import { statsLegendGroups } from '@/features/stats/statsLegend';
 import { useLoopStats } from '@/features/stats/useLoopStats';
 
 /**
@@ -55,6 +57,7 @@ export function StatsPage() {
             status={statuses.get(controller.id)}
           />
         ))}
+        <Legend groups={statsLegendGroups()} className="col-span-full" />
       </section>
     </div>
   );

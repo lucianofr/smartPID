@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/Select';
 import { EmptyState, ErrorState, LoadingState } from '@/components/MissingState';
+import { Legend } from '@/components/Legend';
 import { activeAiStrategy } from '@/features/dashboard/LoopCard';
 import { useControllers } from '@/features/dashboard/useControllers';
 import { FuzzyRuleTable } from '@/features/fuzzy/FuzzyRuleTable';
 import { MembershipFunctionPlot } from '@/features/fuzzy/MembershipFunctionPlot';
+import { fuzzyLegendGroups } from '@/features/fuzzy/glossary';
 import { useFuzzyTrace } from '@/features/fuzzy/useFuzzyTrace';
 import { formatDateTime, formatNumber } from '@/lib/format';
 
@@ -96,6 +98,7 @@ export function FuzzyPage() {
             ))}
           </div>
           <FuzzyRuleTable rules={trace.view.rules} outputs={trace.view.outputs} />
+          <Legend groups={fuzzyLegendGroups(trace.view)} />
         </div>
       ) : null}
     </section>

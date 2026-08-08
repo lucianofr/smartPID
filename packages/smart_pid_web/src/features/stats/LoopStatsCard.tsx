@@ -18,18 +18,18 @@ import type { LoopStatsRow } from './useLoopStats';
 const METRIC_DECIMALS = 2;
 const INTEGER_DECIMALS = 0;
 
-interface Metric {
+export interface Metric {
   label: string;
   title: string;
   value(row: LoopStatsRow): string;
 }
 
-interface MetricGroup {
+export interface MetricGroup {
   title: string;
   metrics: readonly Metric[];
 }
 
-const METRIC_GROUPS: readonly MetricGroup[] = [
+export const METRIC_GROUPS: readonly MetricGroup[] = [
   {
     title: 'Integrais de erro',
     metrics: [
