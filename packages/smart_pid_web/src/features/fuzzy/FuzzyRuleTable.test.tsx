@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { FuzzyRuleTable } from './FuzzyRuleTable';
+import { OUTPUT_TERMS } from './glossary';
 import type { FuzzyOutput, FuzzyRule } from './types';
 
 const RULES: FuzzyRule[] = [
@@ -55,5 +56,28 @@ describe('FuzzyRuleTable', () => {
     render(<FuzzyRuleTable rules={RULES} outputs={OUTPUTS} />);
     expect(screen.getByText('Saídas agregadas')).toBeInTheDocument();
     expect(screen.getByText('-0.15')).toBeInTheDocument();
+  });
+
+  it('spells out each aggregated output level next to it, not only in the page legend', () => {
+    // RM/R/M/A/AM are opaque on their own, and the page legend is a collapsed
+    // <details> far below a 21-row rule base — the meaning has to be readable
+    // where the level is shown.
+    render(<FuzzyRuleTable rules={RULES} outputs={OUTPUTS} />);
+    for (const output of OUTPUTS) {
+      const row = screen.getByRole('row', { name: new RegExp(`^${output.label}\\b`) });
+      expect(within(row).getByText(OUTPUT_TERMS[output.label])).toBeInTheDocument();
+    }
+  });
+
+  it('marks an undocumented output level with an em dash instead of a blank cell', () => {
+    render(<FuzzyRuleTable rules={[]} outputs={[{ label: 'ZZ', center: 0, strength: 0 }]} />);
+    const row = screen.getByRole('row', { name: /^ZZ\b/ });
+    expect(within(row).getByText('—')).toBeInTheDocument();
+  });
+
+  it('explains a rule THEN level on hover so the 21-row base is readable in place', () => {
+    render(<FuzzyRuleTable rules={RULES} outputs={OUTPUTS} />);
+    const cell = within(screen.getByTestId('rule-row-1')).getByText('R');
+    expect(cell).toHaveAttribute('title', OUTPUT_TERMS.R);
   });
 });

@@ -1,5 +1,6 @@
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { OUTPUT_TERMS } from './glossary';
 import type { FuzzyOutput, FuzzyRule } from './types';
 
 /**
@@ -74,7 +75,10 @@ export function FuzzyRuleTable({ rules, outputs, className }: FuzzyRuleTableProp
                   {rule.index}
                 </th>
                 <td className={HEADER_CELL}>{conditionsLabel(rule.conditions)}</td>
-                <td className={cn(HEADER_CELL, rule.fired && 'font-semibold text-state-ai')}>
+                <td
+                  className={cn(HEADER_CELL, rule.fired && 'font-semibold text-state-ai')}
+                  title={OUTPUT_TERMS[rule.output]}
+                >
                   {rule.output}
                 </td>
                 <td className={cn('numeric', NUMERIC_CELL, rule.fired && 'font-semibold text-state-ai')}>
@@ -97,6 +101,9 @@ export function FuzzyRuleTable({ rules, outputs, className }: FuzzyRuleTableProp
               <th scope="col" className={HEADER_CELL}>
                 Nível
               </th>
+              <th scope="col" className={HEADER_CELL}>
+                Significado
+              </th>
               <th scope="col" className={NUMERIC_CELL}>
                 Centro
               </th>
@@ -111,6 +118,11 @@ export function FuzzyRuleTable({ rules, outputs, className }: FuzzyRuleTableProp
                 <th scope="row" className={cn('font-normal', HEADER_CELL)}>
                   {output.label}
                 </th>
+                {/* Em dash for a level the glossary does not document, same
+                    absent-value convention as the dashboard cards. */}
+                <td className={cn(HEADER_CELL, 'text-text-soft')}>
+                  {OUTPUT_TERMS[output.label] ?? '—'}
+                </td>
                 <td className={cn('numeric', NUMERIC_CELL)}>
                   {formatNumber(output.center, STRENGTH_DECIMALS)}
                 </td>
